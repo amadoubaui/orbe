@@ -137,7 +137,19 @@ function openSwitcher(p) {
     const name = document.createElement('span');
     name.className = 'name';
     name.textContent = it.title;
-    el.append(faviconEl(it.favicon, it.title), name);
+    // Vignette de la page quand elle existe, sinon l'icône du site.
+    if (it.thumb) {
+      const shot = document.createElement('img');
+      shot.className = 'shot';
+      shot.src = it.thumb;
+      const cap = document.createElement('span');
+      cap.className = 'cap';
+      cap.append(faviconEl(it.favicon, it.title), name);
+      el.classList.add('has-shot');
+      el.append(shot, cap);
+    } else {
+      el.append(faviconEl(it.favicon, it.title), name);
+    }
     box.appendChild(el);
   });
 }

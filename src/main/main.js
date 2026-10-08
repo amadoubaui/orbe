@@ -37,9 +37,17 @@ if (!SELFTEST && !process.env.ORBE_USER_DATA && !app.requestSingleInstanceLock()
 
 function openUrl(url) {
   if (!app.isReady()) return pendingUrls.push(url);
-  if (store.state.settings.externalLinks === 'little' && !openUrl.direct) return new little.LittleWindow(url);
+  // Aiguillage (comme Air Traffic Control dans Arc) : la première règle dont le
+  // texte figure dans l'adresse décide de l'Espace, ou de la petite fenêtre.
+  let target = null;
+  if (!openUrl.direct) {
+    const rule = (store.state.settings.routes || []).find((r) => r.match && url.toLowerCase().includes(r.match.toLowerCase()));
+    target = rule ? rule.to : (store.state.settings.externalLinks === 'little' ? 'little' : null);
+  }
+  if (target === 'little') return new little.LittleWindow(url);
   let w = OrbeWindow.primary;
   if (!w) w = new OrbeWindow();
+  if (target && store.state.spaces.some((sp) => sp.id === target)) w.switchSpace(target);
   w.newTab(url);
   if (w.win.isMinimized()) w.win.restore();
   w.win.focus();
@@ -129,6 +137,7 @@ const SETTABLE = {
   autoPip: (v) => typeof v === 'boolean',
   adblock: (v) => typeof v === 'boolean',
   peekLinks: (v) => typeof v === 'boolean',
+  routes: (v) => Array.isArray(v) && v.length <= 100 && v.every((r) => r && typeof r.match === 'string' && r.match.length <= 200 && typeof r.to === 'string' && r.to.length <= 40),
 };
 
 function profileList() {
@@ -215,7 +224,7 @@ async function globalAction(action, a, sender) {
     case 'shortcuts:get':
       return shortcutGroups();
     case 'settings:get':
-      return { settings: s.settings, profiles: profileList(), engines: Object.entries(suggest.ENGINES).map(([id, e]) => ({ id, name: e.name })), version: app.getVersion(), chrome: process.versions.chrome };
+      return { settings: s.settings, spaces: s.spaces.map((sp) => ({ id: sp.id, name: `${sp.icon} ${sp.name}` })), profiles: profileList(), engines: Object.entries(suggest.ENGINES).map(([id, e]) => ({ id, name: e.name })), version: app.getVersion(), chrome: process.versions.chrome };
     case 'settings:set':
       for (const [k, v] of Object.entries(a || {})) if (Object.hasOwn(SETTABLE, k) && SETTABLE[k](v)) s.settings[k] = v;
       store.save();
@@ -345,7 +354,7 @@ app.whenReady().then(async () => {
   if (SELFTEST) {
     try {
       // ORBE_SCENARIO : autre scénario de test (ex. tests/sites.js, sites réels).
-      await require(process.env.ORBE_SCENARIO ? path.resolve(process.env.ORBE_SCENARIO) : '../../tests/selftest')({ first, OrbeWindow, store, win, little, commands, menu, openSettings });
+      await require(process.env.ORBE_SCENARIO ? path.resolve(process.env.ORBE_SCENARIO) : '../../tests/selftest')({ first, OrbeWindow, store, win, little, commands, menu, openSettings, openUrl });
       store.flush();
       app.exit(0);
     } catch (err) {

@@ -27,9 +27,8 @@ animations des onglets, Boosts et Zap, extensions Chrome (expérimental).
 
 - Scission verticale ; glisser un onglet sur la page pour scinder.
 - Balayage entre Espaces qui suit le doigt.
-- Règles d'aiguillage des liens (Air Traffic Control).
 - Bibliothèque : médias et Espaces ; aperçu des fichiers récents au survol.
-- Centre de contrôle du site ; vignettes dans la bascule ⌃Tab.
+- Centre de contrôle du site.
 - Easels et notes.
 
 ## Ensuite, par ordre de priorité

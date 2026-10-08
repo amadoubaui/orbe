@@ -28,6 +28,7 @@ const DEFAULT_SETTINGS = {
   sidebarWidth: 250,
   maxLiveTabs: 30,
   peekLinks: true,
+  routes: [],
   externalLinks: 'window',
   autoPip: true,
   adblock: true,

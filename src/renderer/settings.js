@@ -92,10 +92,44 @@ el('ext-add').onclick = async () => {
   if (r && r.list) { input.value = ''; drawExtensions(r.list); }
 };
 
+// Aiguillage des liens venus d'autres applications
+let routes = [];
+let spaceNames = [];
+function drawRoutes() {
+  const box = el('routes');
+  box.textContent = '';
+  routes.forEach((r, i) => {
+    const line = document.createElement('div');
+    line.className = 'line';
+    const body = document.createElement('div');
+    body.className = 'grow name';
+    const dest = r.to === 'little' ? t('set.externalLittle') : ((spaceNames.find((x) => x.id === r.to) || {}).name || '?');
+    body.textContent = `« ${r.match} »  →  ${dest}`;
+    const del = document.createElement('button');
+    del.className = 'btn';
+    del.textContent = t('set.profileDelete');
+    del.onclick = () => { routes.splice(i, 1); O.send('settings:set', { routes }); drawRoutes(); };
+    line.append(body, del);
+    box.appendChild(line);
+  });
+  el('route-to').innerHTML = spaceNames.map((x) => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('') + `<option value="little">${esc(t('set.externalLittle'))}</option>`;
+}
+el('route-add').onclick = () => {
+  const match = el('route-match').value.trim();
+  if (!match) return;
+  routes.push({ match, to: el('route-to').value });
+  O.send('settings:set', { routes });
+  el('route-match').value = '';
+  drawRoutes();
+};
+
 async function init() {
   drawExtensions(await O.send('ext:list'));
   const data = await O.send('settings:get');
   drawProfiles(data.profiles);
+  routes = (data.settings.routes || []).slice();
+  spaceNames = data.spaces;
+  drawRoutes();
   el('searchEngine').innerHTML = data.engines.map((e) => `<option value="${esc(e.id)}">${esc(e.name)}</option>`).join('');
   el('version').textContent = `Orbe ${data.version} · Chromium ${data.chrome}`;
   fill(data.settings);

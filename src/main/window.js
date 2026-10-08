@@ -692,6 +692,12 @@ class OrbeWindow {
     // En quittant un onglet qui joue du son, il passe dans le lecteur miniature.
     for (const prevId of this.visibleIds()) {
       const prevRt = live.get(prevId);
+      // Vignette pour la bascule ⌃Tab, prise au moment de quitter la page.
+      if (prevId !== id && prevRt && !prevRt.wc.isDestroyed() && !this.incognito) {
+        prevRt.wc.capturePage().then((img) => {
+          if (!img.isEmpty()) prevRt.thumb = img.resize({ width: 320, quality: 'good' }).toJPEG(70).toString('base64');
+        }).catch(() => {});
+      }
       if (prevId !== id && prevRt && !prevRt.wc.isDestroyed() && prevRt.wc.isCurrentlyAudible()) {
         prevRt.playing = true;
         this.mediaId = prevId;
@@ -1341,7 +1347,8 @@ class OrbeWindow {
     s.index = (s.index + delta + s.ids.length) % s.ids.length;
     const items = s.ids.map((id) => {
       const tab = this.data.tabs[id];
-      return { id, title: tab.customTitle || tab.title || suggest.strip(tab.url), favicon: this.incognito ? '' : tab.favicon };
+      const thumb = live.get(id) && live.get(id).thumb;
+      return { id, title: tab.customTitle || tab.title || suggest.strip(tab.url), favicon: this.incognito ? '' : tab.favicon, thumb: thumb ? 'data:image/jpeg;base64,' + thumb : '' };
     });
     // La vue de la bascule prend le clavier : c'est elle qui verra le
     // relâchement de ⌃ (remettre une vue au premier plan retire le clavier à la page).

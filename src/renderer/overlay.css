@@ -150,3 +150,9 @@ body.peek #backdrop { background: rgba(0, 0, 0, 0.42); animation: fade 160ms var
 #theme-grain { width: 100%; accent-color: var(--accent); }
 /* Adresse du lien survolé */
 #status { position: fixed; inset: 0; padding: 0 9px; display: flex; align-items: center; border-radius: 8px; background: rgba(30, 30, 34, 0.92); color: rgba(255, 255, 255, 0.92); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Bascule ⌃Tab : vignettes des pages. */
+.sw.has-shot { width: 168px; height: 132px; justify-content: flex-start; padding: 8px 8px 0; gap: 8px; }
+.sw .shot { width: 152px; height: 92px; object-fit: cover; object-position: top; border-radius: 7px; box-shadow: 0 0 0 0.5px var(--panel-line); }
+.sw .cap { display: flex; align-items: center; gap: 6px; max-width: 100%; }
+.sw .cap .favicon, .sw .cap .letter { width: 14px; height: 14px; border-radius: 4px; font-size: 9px; }

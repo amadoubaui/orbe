@@ -51,7 +51,7 @@ function serve() {
   return new Promise((resolve) => server.listen(0, () => resolve(server)));
 }
 
-module.exports = async function selftest({ first: w, OrbeWindow, store, win, little, commands, openSettings }) {
+module.exports = async function selftest({ first: w, OrbeWindow, store, win, little, commands, openSettings, openUrl }) {
   const results = [];
   let failed = 0;
   const check = (name, ok, detail = '') => {
@@ -341,6 +341,14 @@ module.exports = async function selftest({ first: w, OrbeWindow, store, win, lit
   for (const id of [...imported.today, ...w.data.favs[imported.profileId], imported.pinned[0].id, importedFolder.children[0].id]) delete w.data.tabs[id];
   w.data.favs[imported.profileId] = [];
   OrbeWindow.pushAll();
+
+  // Aiguillage des liens venus d'autres applications
+  store.state.settings.routes = [{ match: '/b', to: s2.id }];
+  openUrl(base + '/b');
+  check('aiguillage : le lien s’ouvre dans l’Espace de la règle', w.space === s2 && tabs()[w.activeId].url === base + '/b');
+  w.close(w.activeId);
+  store.state.settings.routes = [];
+  w.spaceAt(1);
 
   // Langue
   await until(() => ui('document.querySelector("#b-newtab .title").textContent === "Nouvel onglet"'), 'libellé français');
