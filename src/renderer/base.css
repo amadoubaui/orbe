@@ -36,6 +36,9 @@
 
 * { box-sizing: border-box; }
 
+/* Un élément masqué le reste, même si une règle lui donne un « display ». */
+[hidden] { display: none !important; }
+
 html, body {
   height: 100%;
   margin: 0;

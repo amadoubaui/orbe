@@ -49,6 +49,7 @@ function servir() {
       case '/e': return res.end(page('Page E', '<h1>Echo</h1>'));
       case '/long': return res.end(page('Un titre de page vraiment très long pour vérifier la coupe du texte dans la barre latérale', '<h1>Long</h1>'));
       case '/compteur': return res.end(page('Compteur ' + hits['/compteur'], '<h1>Compteur</h1>'));
+      case '/connexion': return res.end(page('Connexion', '<form action="/b" method="get"><input id="u" name="u" autocomplete="username" placeholder="identifiant"><br><br><input id="p" type="password" autocomplete="current-password" placeholder="mot de passe"><br><br><button id="ok">Se connecter</button></form>'));
       case '/saisie': return res.end(page('Page Saisie', '<input id="champ" autofocus><script>document.getElementById("champ").focus()</script>'));
       default:
         res.statusCode = 404;
@@ -66,7 +67,8 @@ async function lancer() {
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'orbe-ui-'));
   const app = await _electron.launch({
     executablePath: electronBin,
-    args: ['-r', path.join(__dirname, 'prelude.js'), root],
+    // Trousseau factice : les tests ne touchent jamais au vrai trousseau du système.
+    args: ['-r', path.join(__dirname, 'prelude.js'), '--use-mock-keychain', root],
     env: { ...process.env, ORBE_USER_DATA: userData, ORBE_NO_WELCOME: '1' },
   });
 
