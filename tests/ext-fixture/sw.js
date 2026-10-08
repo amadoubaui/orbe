@@ -8,6 +8,8 @@ const early = {
   windows: typeof chrome.windows,
   cookies: typeof chrome.cookies,
   tabsCreate: typeof chrome.tabs.create,
+  // Chromium expose aussi `browser` : il doit être complété de la même façon.
+  browser: typeof browser === 'undefined' ? 'absent' : typeof (browser.permissions && browser.permissions.onRemoved && browser.windows && browser.storage.sync.get),
 };
 
 const log = [];

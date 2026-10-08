@@ -1,7 +1,7 @@
 // Couche d'API chrome.* (src/main/ext-api.js, src/preload/ext.js) : essai de
 // bout en bout dans le vrai navigateur, sans réseau, avec l'extension
 // tests/ext-fixture et un petit serveur local.
-//   ORBE_SCENARIO=tests/ext-api.js node scripts/dev.js --selftest   (npm run test:ext)
+//   npm run test:ext      (ou : ORBE_SCENARIO=tests/ext-api.js node scripts/dev.js --selftest)
 const http = require('http');
 const path = require('path');
 const { BrowserWindow } = require('electron');
@@ -64,9 +64,17 @@ module.exports = async function extApiTest({ first: w, OrbeWindow, win, extApi, 
   };
   const events = async (name) => (await sw({ type: 'log' })).filter((e) => e.name === name);
 
+  // Motifs d'URL et couleurs (fonctions pures)
+  const mp = extApi.matchPattern;
+  check('motifs d’URL de Chrome', mp('<all_urls>', 'https://a.fr/x') && !mp('<all_urls>', 'chrome://settings/') && mp('*://*.exemple.fr/*', 'http://www.exemple.fr/a?b=1') && mp('*://*.exemple.fr/*', 'https://exemple.fr/')
+    && !mp('*://*.exemple.fr/*', 'https://mauvaisexemple.fr/') && !mp('https://exemple.fr/*', 'http://exemple.fr/') && mp('https://exemple.fr/a/*', 'https://exemple.fr/a/b') && !mp('https://exemple.fr/a/*', 'https://exemple.fr/b')
+    && mp('http://127.0.0.1/*', 'http://127.0.0.1:8080/x') && !mp('*://*/*', 'file:///etc/hosts') && !mp('n’importe quoi', 'https://a.fr/'));
+  check('couleurs de pastille', extApi.parseColor('#f00').join() === '255,0,0,255' && extApi.parseColor([1, 2, 3]).join() === '1,2,3,255' && extApi.parseColor('rgba(0, 128, 255, 0.5)').join() === '0,128,255,128' && extApi.parseColor('#11223344').join() === '17,34,51,68');
+
   // Mise en place
   const early = await until(() => sw({ type: 'early' }), 'service worker');
   check('le service worker voit les API ajoutées dès sa première ligne', early.permissions === 'object' && early.onRemoved === 'function' && early.windows === 'object' && early.cookies === 'object', early);
+  check('`browser`, quand Chromium le fournit, est complété comme `chrome`', early.browser === 'absent' || early.browser === 'function', early.browser);
   check('les pages d’extension les voient aussi', await page('typeof chrome.permissions.contains === "function" && typeof chrome.windows.getAll === "function" && typeof chrome.cookies.get === "function"'));
   check('une API non déclarée reste absente (notifications)', await page('typeof chrome.notifications === "undefined"'));
 
@@ -120,8 +128,10 @@ module.exports = async function extApiTest({ first: w, OrbeWindow, win, extApi, 
   check('appel avec rappel : résultat', okGet.value && okGet.value.id === rtA.wc.id && okGet.lastError === null);
   const nativeErr = await sw({ type: 'callback', path: 'tabs.sendMessage', args: [987654, 'x'] });
   check('runtime.lastError d’Electron reste lisible', typeof nativeErr.lastError === 'string' && nativeErr.lastError.length > 0, nativeErr);
-  const shot = await call('tabs.captureVisibleTab');
-  check('tabs.captureVisibleTab rend une image', /^data:image\/jpeg;base64,.{100,}/.test(shot));
+  // Écran éteint ou fenêtre masquée : Chromium ne peut rien capturer, ce n'est pas la couche d'API.
+  const shot = await call('tabs.captureVisibleTab').catch((err) => err);
+  if (shot instanceof Error && /Viz|capture/i.test(shot.message)) console.log('  – tabs.captureVisibleTab non vérifié : ' + shot.message);
+  else check('tabs.captureVisibleTab rend une image', /^data:image\/jpeg;base64,.{100,}/.test(shot), String(shot).slice(0, 80));
 
   // windows
   const cur = await call('windows.getCurrent', { populate: true });
@@ -208,10 +218,24 @@ module.exports = async function extApiTest({ first: w, OrbeWindow, win, extApi, 
   check('runtime.openOptionsPage ouvre la page dans un onglet d’Orbe', (await optRt.wc.executeJavaScript('call("tabs.getCurrent")')).id === optRt.wc.id);
   check('un site web ne reçoit aucune API ajoutée', await rtA.wc.executeJavaScript('typeof chrome === "undefined" || typeof chrome.permissions === "undefined"'));
 
+  // Service worker endormi (Chromium l'arrête après 30 s d'inactivité) : un
+  // événement doit le réveiller. Son journal, en mémoire, repart alors de zéro.
+  pilot.destroy();
+  const asleep = () => !Object.values(ses.serviceWorkers.getAllRunning()).some((i) => i.scope === ext.url);
+  if (await until(asleep, 'arrêt du service worker', 50000).catch(() => false)) {
+    const late = w.newTab(base + '/tard');
+    await until(() => w.data.tabs[late.id].title === 'Page tard', 'page tard');
+    const pilot2 = new BrowserWindow({ show: false, webPreferences: { session: ses, sandbox: true, contextIsolation: true } });
+    await pilot2.loadURL(ext.url + 'options.html');
+    const log = await until(async () => { const l = await pilot2.webContents.executeJavaScript('sw({ type: "log" })'); return l.some((e) => e.name === 'tabs.onUpdated' && e.args[1].title === 'Page tard') && l; }, 'événement après réveil');
+    check('un événement réveille le service worker endormi', !log.some((e) => e.name === 'permissions.onAdded') && log.some((e) => e.name === 'tabs.onCreated'), log.map((e) => e.name));
+    check('les autorisations accordées survivent au réveil', (await pilot2.webContents.executeJavaScript('sw({ type: "call", path: "permissions.contains", args: [{ permissions: ["contextMenus"] }] })')).value === false);
+    pilot2.destroy();
+  } else console.log('  – réveil du service worker non vérifié : il ne s’est pas arrêté');
+
   const errors = swLogs.filter((m) => /error|not a function|undefined/i.test(m));
   check('aucune erreur dans la console du service worker', errors.length === 0, errors.join(' | '));
 
-  pilot.destroy();
   server.close();
   console.log(`\n${results.length - failed}/${results.length} vérifications réussies\n`);
   if (failed) throw new Error(`${failed} vérification(s) en échec`);
