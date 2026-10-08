@@ -21,10 +21,11 @@ const PAGE_PRELOAD = path.join(__dirname, '../preload/page.js');
 const CHANNEL = 'orbe-pw';
 const MAX_USER = 300;
 const MAX_PASS = 1000;
-const ARMED_TTL = 20e3; // un envoi de formulaire attend au plus ce délai sa confirmation
+// Délais que les tests raccourcissent.
+const limits = { armedTtl: 20e3 }; // un envoi de formulaire attend au plus ce délai sa confirmation
 const PROMPT_TTL = 45e3; // durée d'affichage de la proposition d'enregistrement
 const USERNAME_TTL = 10 * 60e3; // connexion en deux étapes : identifiant retenu
-const CHOICE_TTL = 3 * 60e3; // connexion en deux étapes : compte choisi à la première
+const CHOICE_TTL = 45e3; // connexion en deux étapes : compte choisi à la première
 const AUTH_GRACE = 90e3; // après Touch ID, pas de nouvelle demande pendant ce délai
 const CLIPBOARD_TTL = 60e3;
 
@@ -156,28 +157,42 @@ const siteOf = (origin) => origin.replace(/^https:\/\//, '');
 // refuse de poser sur un suffixe public (session en mémoire, jamais utilisée
 // pour naviguer). En cas de doute, le domaine enregistrable est l'hôte entier.
 const registrableCache = new Map();
+const suffixCache = new Map(); // domaine -> cookie de domaine accepté ?
 let pslSession = null;
 
 async function cookieAllowed(domain) {
+  if (suffixCache.has(domain)) return suffixCache.get(domain);
   if (!pslSession) pslSession = session.fromPartition('orbe-suffixes');
+  let ok;
   try {
     await pslSession.cookies.set({ url: `https://x.${domain}/`, name: 's', value: '1', domain: '.' + domain });
-    return true;
+    ok = true;
   } catch {
-    return false;
+    ok = false;
   }
+  if (suffixCache.size > 5000) suffixCache.clear();
+  suffixCache.set(domain, ok);
+  return ok;
 }
 
+// Le domaine enregistrable est le PLUS LONG suffixe public de l'hôte, plus une
+// étiquette. Les suffixes publics s'emboîtent (« amazonaws.com » est un
+// domaine ordinaire, « s3.amazonaws.com » un suffixe public) : on sonde donc
+// tous les suffixes de l'hôte, et le plus long qui est refusé l'emporte.
 async function registrable(host) {
   if (registrableCache.has(host)) return registrableCache.get(host);
   let out = host;
   const ip = /^\[.*\]$/.test(host) || /^\d+(\.\d+){3}$/.test(host);
-  if (!ip && host.includes('.') && /^[a-z0-9.-]+$/.test(host)) {
+  // Hôte inhabituel (point final, caractères hors ASCII simple) : pas de parenté.
+  if (!ip && /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(host)) {
     const labels = host.split('.');
+    let longest = -1; // indice de début du plus long suffixe refusé
     for (let i = labels.length - 1; i >= 0; i--) {
-      const candidate = labels.slice(i).join('.');
-      if (await cookieAllowed(candidate)) { out = candidate; break; }
+      if (!(await cookieAllowed(labels.slice(i).join('.')))) longest = i;
     }
+    // Un domaine de premier niveau est toujours refusé : si rien ne l'est, la
+    // sonde ne fonctionne pas, et l'hôte entier reste la règle (la plus stricte).
+    if (longest > 0) out = labels.slice(longest - 1).join('.');
   }
   if (registrableCache.size > 2000) registrableCache.clear();
   registrableCache.set(host, out);
@@ -393,8 +408,8 @@ async function copySecret(text) {
 // --- Confirmation d'identité -------------------------------------------------
 let authUntil = 0;
 
-async function authenticate(reason, parent) {
-  if (Date.now() < authUntil) return true;
+async function authenticate(reason, parent, { fresh = false } = {}) {
+  if (!fresh && Date.now() < authUntil) return true;
   let ok = false;
   if (hooks.authenticate) ok = !!(await hooks.authenticate(reason));
   else if (platform.isMac && systemPreferences.canPromptTouchID()) {
@@ -428,13 +443,21 @@ function frameInfo(frame) {
   }
 }
 
+// Un envoi relevé ne reste en mémoire que le temps d'être confirmé.
+function disarm(st) {
+  clearTimeout(st.armedTimer);
+  st.armedTimer = null;
+  st.armed = null;
+}
+
 function stateOf(wc) {
   let st = states.get(wc.id);
   if (!st) {
-    st = { wc, focus: null, armed: null, generated: null, lastUsername: null, chosen: null, tokens: 0, windowStart: 0, hideTimer: null };
+    st = { wc, focus: null, armed: null, generated: null, lastUsername: null, chosen: null, tokens: 0, buckets: new Map(), windowStart: 0, hideTimer: null, armedTimer: null };
     states.set(wc.id, st);
     wc.once('destroyed', () => {
       clearTimeout(st.hideTimer);
+      clearTimeout(st.armedTimer);
       states.delete(wc.id);
       for (const o of overlays.values()) {
         if (o.pick && o.pick.wc === wc) hidePicker(o);
@@ -443,26 +466,47 @@ function stateOf(wc) {
     });
     // Un envoi de formulaire est confirmé par la navigation qui le suit.
     wc.on('did-start-navigation', (details) => {
-      if (details.isSameDocument || !st.armed) return;
+      if (details.isSameDocument) return;
+      if (details.isMainFrame) {
+        // La page change : la liste ouverte pour l'ancienne ne lui survit pas,
+        // et le champ signalé n'existe plus.
+        hidePickerFor(wc);
+        st.focus = null;
+        st.generated = null;
+        // Le compte choisi à la première étape ne suit pas vers un autre site.
+        let next = '';
+        try { next = new URL(details.url).origin; } catch {}
+        if (st.chosen && st.chosen.origin !== next) st.chosen = null;
+      }
+      if (!st.armed) return;
       const armed = st.armed;
       // Seule compte la navigation de la page ou du cadre du formulaire.
       let node = -1;
       try { node = details.frame ? details.frame.frameTreeNodeId : -1; } catch {}
       if (!details.isMainFrame && node !== armed.node) return;
-      st.armed = null;
-      if (Date.now() - armed.at < ARMED_TTL) offerSave(wc, armed);
+      disarm(st);
+      if (Date.now() - armed.at < limits.armedTtl) offerSave(wc, armed);
     });
   }
   return st;
 }
 
-// Débit limité : une page (ou un moteur de rendu compromis) ne peut pas noyer
-// le processus principal de messages.
-function allowed(st) {
+// Débit limité, par cadre : une publicité dans un iframe qui inonde le canal
+// n'épuise que son propre quota, pas celui de la page. Un plafond plus large
+// borne l'ensemble des iframes d'une page ; le cadre principal n'y est pas soumis.
+const FRAME_LIMIT = 40;
+const SUBFRAMES_LIMIT = 400;
+function allowed(st, frame, main) {
   const now = Date.now();
-  if (now - st.windowStart > 2000) { st.windowStart = now; st.tokens = 0; }
+  if (now - st.windowStart > 2000) { st.windowStart = now; st.tokens = 0; st.buckets.clear(); }
+  let node = -1;
+  try { node = frame.frameTreeNodeId; } catch {}
+  const n = (st.buckets.get(node) || 0) + 1;
+  st.buckets.set(node, n);
+  if (n > FRAME_LIMIT) return false;
+  if (main) return true;
   st.tokens += 1;
-  return st.tokens <= 60;
+  return st.tokens <= SUBFRAMES_LIMIT;
 }
 
 const settings = () => store.state.settings;
@@ -477,7 +521,7 @@ async function onPageMessage(e, msg) {
   const info = frameInfo(frame);
   if (!info) return;
   const st = stateOf(wc);
-  if (!allowed(st)) return;
+  if (!allowed(st, frame, info.main)) return;
   switch (msg.type) {
     case 'focus': return onFocus(st, pid, frame, info, msg);
     case 'blur': return scheduleHide(st);
@@ -489,14 +533,16 @@ async function onPageMessage(e, msg) {
     case 'armed': {
       const password = typeof msg.password === 'string' ? msg.password : '';
       if (!password || password.length > MAX_PASS) return undefined;
+      disarm(st);
       st.armed = { pid, origin: info.origin, node: frame.frameTreeNodeId, username: clip(msg.username, MAX_USER).trim(), password, at: Date.now() };
+      st.armedTimer = setTimeout(() => disarm(st), limits.armedTtl);
       return undefined;
     }
     case 'gone': {
       const armed = st.armed;
       if (!armed || armed.origin !== info.origin) return undefined;
-      st.armed = null;
-      if (Date.now() - armed.at < ARMED_TTL) offerSave(wc, armed);
+      disarm(st);
+      if (Date.now() - armed.at < limits.armedTtl) offerSave(wc, armed);
       return undefined;
     }
     case 'generated': {
@@ -532,12 +578,13 @@ async function onFocus(st, pid, frame, info, msg) {
     const m = await matchesFor(pid, info.origin);
     if (st.focus !== focus) return;
     // Seconde étape d'une connexion en deux temps : le compte vient d'être
-    // choisi pour cette même origine dans cet onglet, on termine sans redemander.
+    // choisi pour cette même origine dans cet onglet. Rien n'est rempli d'office :
+    // la liste se réduit à ce compte, et il faut encore le cliquer.
     const c = st.chosen;
-    if (c && field === 'password' && !focus.hasUser && c.origin === info.origin && c.frameMain === info.main && Date.now() - c.at < CHOICE_TTL) {
-      st.chosen = null;
-      const e = [...m.exact, ...m.related].find((x) => x.id === c.id);
-      if (e) return fill(st, focus, e, { passwordOnly: true });
+    if (c && Date.now() - c.at > CHOICE_TTL) st.chosen = null;
+    else if (c && field === 'password' && !focus.hasUser && c.origin === info.origin && c.frameMain === info.main) {
+      const only = m.exact.find((x) => x.id === c.id);
+      if (only) { m.exact = [only]; m.related = []; }
     }
     for (const e of m.exact) items.push({ id: e.id, kind: 'exact', label: e.username || t('pw.noUsername'), sub: siteOf(e.origin) });
     for (const e of m.related) items.push({ id: e.id, kind: 'related', label: e.username || t('pw.noUsername'), sub: siteOf(e.origin) });
@@ -546,13 +593,13 @@ async function onFocus(st, pid, frame, info, msg) {
   showPicker(st, focus, items);
 }
 
-function fill(st, focus, entry, { passwordOnly = false } = {}) {
+function fill(st, focus, entry) {
   // Le cadre a pu naviguer entre l'affichage de la liste et le choix.
   const info = frameInfo(focus.frame);
   if (!info || info.origin !== focus.origin) return false;
   const withPassword = focus.wantsPassword || focus.field === 'password';
   const payload = { type: 'fill' };
-  if (!passwordOnly) payload.username = entry.username;
+  payload.username = entry.username;
   if (withPassword) payload.password = entry.password;
   try { focus.frame.send(CHANNEL, payload); } catch { return false; }
   entry.usedAt = Date.now();
@@ -632,7 +679,9 @@ function showPicker(st, focus, items, at) {
   const o = overlayOf(where.win);
   const b = where.view.getBounds();
   const width = Math.min(320, b.width);
-  const height = Math.min(b.height, 58 + Math.min(items.length, 5) * 40);
+  // Hauteur fixe (la liste défile à l'intérieur) : la taille de la vue ne dit
+  // rien du nombre de comptes.
+  const height = Math.min(b.height, 218);
   let x;
   let y;
   if (at) {
@@ -963,7 +1012,8 @@ async function importDialog(pid) {
 
 async function exportDialog(pid) {
   if (!open()) return { error: t('pw.unavailable') };
-  if (!(await authenticate(t('pw.authExport'), manager))) return null;
+  // Tout le coffre en clair : toujours une nouvelle confirmation d'identité.
+  if (!(await authenticate(t('pw.authExport'), manager, { fresh: true }))) return null;
   const sure = await hooks.confirm(manager, { type: 'warning', message: t('pw.exportTitle'), detail: t('pw.exportPlain'), buttons: [t('pw.export'), t('pw.cancel')], defaultId: 1, cancelId: 1 });
   if (!sure) return null;
   const r = await dialog.showSaveDialog(manager, { title: t('pw.export'), defaultPath: path.join(app.getPath('documents'), 'Mots de passe Orbe.csv'), filters: [{ name: 'CSV', extensions: ['csv'] }] });
@@ -1015,5 +1065,5 @@ module.exports = {
   attach, configure, action, sync, contextMenuItems, openManager, forgetProfile, hooks,
   // Pour les tests et l'import.
   save, remove, setNever, matchesFor, relation, registrable, importCsv, exportCsv, parseCsv, generate, originOf, status, encryptionAvailable,
-  internals: { vault, states, overlays, copySecret, clearClipboardIfOurs, authenticate, open, bucket, get manager() { return manager; } },
+  internals: { vault, states, overlays, limits, allowed, CHOICE_TTL, copySecret, clearClipboardIfOurs, authenticate, open, bucket, get manager() { return manager; } },
 };

@@ -4,17 +4,20 @@ Orbe enregistre et remplit les mots de passe lui-même : les extensions de
 trousseau (Mots de passe iCloud, entre autres) ont besoin d'un pont natif que
 Chromium embarqué n'offre pas.
 
-Ce document décrit ce qui est protégé, contre qui, et ce qui ne l'est pas. Il
-sert de base à une relecture de sécurité indépendante, qui reste à faire.
+Ce document décrit ce qui est protégé, contre qui, et ce qui ne l'est pas. Une
+première relecture de sécurité indépendante a eu lieu ; ses constats sont
+corrigés et chacun a son test (voir « Tests »). Les points encore ouverts sont
+listés à la fin.
 
 ## Ce que fait la fonction
 
 - **Enregistrer** : après l'envoi d'un formulaire de connexion, une proposition
   apparaît en haut à droite de la page (Enregistrer / Jamais pour ce site / Plus
   tard). Jamais en navigation privée.
-- **Remplir** : quand un champ de connexion prend le clavier et que des comptes
-  existent pour ce site, leur liste s'ouvre sous le champ. Rien n'est rempli
-  sans un clic sur un compte. Clic droit dans un champ → « Remplir un mot de
+- **Remplir** : quand tu cliques un champ de connexion (ou l'atteins avec
+  Tabulation) et que des comptes existent pour ce site, leur liste s'ouvre sous
+  le champ. Rien n'est rempli sans un clic sur un compte. Un champ qui prend le
+  clavier tout seul au chargement n'ouvre pas la liste : il faut le cliquer. Clic droit dans un champ → « Remplir un mot de
   passe… » sert de secours quand le formulaire n'est pas reconnu.
 - **Gérer** : menu Orbe → Mots de passe… (ou Réglages → Mots de passe → Gérer…) :
   recherche, affichage et copie après confirmation d'identité, modification,
@@ -79,11 +82,26 @@ avant le script d'Orbe.
   page, écouter ses événements ou envoyer des `postMessage` ne l'atteint pas.
 - La liste n'est pas falsifiable par la page (autre processus, autre vue). Sa
   position, donnée par la page, est bornée à la vue de l'onglet : elle ne peut
-  pas recouvrir l'interface d'Orbe. Un clic arrivé dans les 300 ms qui suivent
-  son apparition est ignoré.
-- Un formulaire rempli et envoyé par le script de la page, sans saisie réelle
-  de l'utilisateur, ne déclenche pas de proposition d'enregistrement.
-- Débit du canal limité par page ; longueurs bornées.
+  pas recouvrir l'interface d'Orbe. Sa hauteur est fixe (elle ne dit rien du
+  nombre de comptes). Un clic arrivé dans les 500 ms qui suivent son apparition
+  est ignoré, pour la liste comme pour la proposition d'enregistrement.
+- **La liste ne s'ouvre que sur un geste réel** : clic de confiance sur le
+  champ, ou Tabulation. Un `focus()` de la page, un champ en `autofocus` ou un
+  événement fabriqué n'ouvrent rien. Le champ doit être réellement visible :
+  au moins 8 px, opacité (ancêtres compris) d'au moins 0,1, dans la fenêtre.
+- **La liste ne survit pas à une navigation** de la page : elle est retirée dès
+  que la navigation commence, et le champ signalé est oublié.
+- **Proposition d'enregistrement** : seul un mot de passe réellement saisi (ou
+  collé) par l'utilisateur est proposé — le champ devait être de type
+  `password` à la première saisie, et sa valeur doit être restée celle de la
+  dernière saisie. Un champ de texte changé en mot de passe par la page, ou une
+  valeur remplacée par script, ne propose rien. Le remplacement d'un compte
+  existant nomme ce compte dans la question, n'a rien de modifiable, et Entrée
+  ne le valide pas.
+- Débit du canal limité par cadre (un iframe bavard n'épuise que son quota),
+  avec un plafond pour l'ensemble des iframes d'une page ; longueurs bornées.
+- Un envoi de formulaire relevé mais non confirmé quitte la mémoire au bout de
+  20 secondes.
 
 ### Règles d'origine
 
@@ -96,19 +114,30 @@ avant le script d'Orbe.
 | iframe d'une autre origine que la page | — | seuls les comptes de l'origine **de l'iframe** ; confirmation qui nomme la page hôte |
 
 Le domaine enregistrable s'appuie sur la liste des suffixes publics embarquée
-dans Chromium (`a.github.io` et `b.github.io` ne partagent rien). Electron ne
-l'expose pas : Orbe l'interroge en posant un cookie de domaine dans une session
-en mémoire qui ne sert à rien d'autre — Chromium le refuse sur un suffixe
-public. En cas d'échec, le domaine enregistrable est l'hôte entier (règle la
-plus stricte).
+dans Chromium. Electron ne l'expose pas : Orbe l'interroge en posant un cookie
+de domaine dans une session en mémoire qui ne sert à rien d'autre — Chromium le
+refuse sur un suffixe public. La règle : **le plus long suffixe refusé de
+l'hôte, plus une étiquette**. Tous les suffixes de l'hôte sont sondés, car les
+suffixes publics s'emboîtent : `amazonaws.com` est un domaine ordinaire, mais
+`s3.amazonaws.com` est un suffixe public ; `victime.s3.amazonaws.com` et
+`pirate.s3.amazonaws.com` ne partagent donc rien, pas plus que `a.github.io` et
+`b.github.io`. Si aucun suffixe n'est refusé (la sonde ne fonctionne pas), si
+l'hôte est une adresse IP ou s'il a une forme inhabituelle (point final), le
+domaine enregistrable est l'hôte entier — la règle la plus stricte.
+
+Limite : la règle vaut ce que vaut la liste. Des hébergeurs mutualisés qui n'y
+figurent pas (ou pas à ce niveau) restent « liés » entre locataires, comme ils
+partagent déjà leurs cookies dans tout navigateur. Seule la boîte de
+confirmation, qui nomme les deux adresses, sépare alors les deux sites.
 
 ### Connexion en deux étapes
 
 À la première étape, seul l'identifiant est rempli ; le mot de passe n'est pas
-envoyé au moteur de rendu. Si un champ de mot de passe sans champ identifiant
-prend ensuite le clavier dans le même onglet, sur la même origine exacte, dans
-les trois minutes, il reçoit le mot de passe du compte choisi sans nouvelle
-demande, une seule fois.
+envoyé au moteur de rendu. **Rien n'est rempli d'office à la seconde étape.**
+Quand tu cliques ensuite le champ du mot de passe (même onglet, même origine
+exacte, dans les 45 secondes), la liste s'ouvre réduite au seul compte choisi :
+un second clic l'envoie. Ce souvenir du compte choisi est effacé dès que
+l'onglet navigue vers un autre site.
 
 ### Interface d'Orbe
 
@@ -119,7 +148,7 @@ demande, une seule fois.
 - La liste des comptes envoyée à l'interface ne contient aucun mot de passe.
 - Afficher, copier, exporter demandent Touch ID (ou le mot de passe de session)
   via `systemPreferences.promptTouchID` quand il existe ; la confirmation vaut
-  90 secondes. Un mot de passe affiché est masqué au bout de 30 secondes ou dès
+  90 secondes pour afficher et copier. **L'export la redemande toujours.** Un mot de passe affiché est masqué au bout de 30 secondes ou dès
   que la fenêtre passe à l'arrière-plan.
 - Un mot de passe copié est effacé du presse-papiers après 60 secondes, et à la
   fermeture d'Orbe, s'il s'y trouve encore.
@@ -150,11 +179,11 @@ la confirmation d'identité, avertit, puis écrit le fichier en `0600`.
   alors : faire apparaître la liste des comptes de cette origine (sans la
   lire), obtenir le mot de passe du compte que l'utilisateur choisit — que la
   page aurait reçu de toute façon —, et provoquer des propositions
-  d'enregistrement avec des valeurs inventées, pour son origine. Il ne peut pas
-  obtenir un compte d'une autre origine, ni un compte non choisi, sauf le cas
-  des deux étapes ci-dessus (mot de passe du compte que l'utilisateur vient de
-  choisir sur cette origine). L'isolation des sites de Chromium fait que ce
-  processus n'héberge en principe qu'un site.
+  d'enregistrement avec des valeurs inventées, pour son origine (les gardes
+  « geste réel » et « valeur réellement saisie » vivent dans le script de page,
+  donc dans ce même processus). Il ne peut pas obtenir un compte d'une autre
+  origine, ni un compte non choisi. L'isolation des sites de Chromium fait que
+  ce processus n'héberge en principe qu'un site.
 - **Une page malveillante ou une injection de script sur le site légitime**
   reçoit le mot de passe dès que l'utilisateur le remplit. Aucun gestionnaire
   n'y peut rien.
@@ -171,6 +200,9 @@ la confirmation d'identité, avertit, puis écrit le fichier en `0600`.
   façon remplir un compte sur son site.
 - Le presse-papiers est lisible par toute application pendant les 60 secondes ;
   les gestionnaires d'historique de presse-papiers peuvent garder la copie.
+  Marquer la copie comme confidentielle (`org.nspasteboard.ConcealedType`)
+  n'est pas possible : l'API `clipboard` d'Electron 44 ignore les types qu'elle
+  ne connaît pas (vérifié), et Orbe n'a pas de module natif.
 - **Sous Windows**, DPAPI protège contre les autres comptes de la machine, pas
   contre un programme du même utilisateur.
 - **Détection des formulaires par heuristique** : un formulaire peut ne pas
@@ -179,9 +211,24 @@ la confirmation d'identité, avertit, puis écrit le fichier en `0600`.
 - Pas de synchronisation, pas de clés d'accès (passkeys), pas de codes à usage
   unique (le champ `OTPAuth` d'un import est conservé et réexporté, pas utilisé).
 
+## Application fabriquée
+
+- **Mode test verrouillé** : `--selftest`, `ORBE_SCENARIO` et le trousseau
+  factice n'existent que lancé depuis les sources (`!app.isPackaged`).
+  L'application fabriquée les refuse (code de sortie 2), sauf avec `--orbe-test`
+  **et** un `ORBE_USER_DATA` distinct du vrai dossier de données : c'est ce
+  qu'utilise l'essai de fumée de l'intégration continue. Le mode test ne peut
+  donc jamais s'appliquer au vrai profil.
+- **Fusibles d'Electron (macOS)** : `scripts/build-mac.js` coupe `RunAsNode`,
+  `EnableNodeOptionsEnvironmentVariable` et `EnableNodeCliInspectArguments`
+  dans le binaire (sans dépendance), avant la signature, puis relit leur état
+  (`npm run build -- --fuses`). Sans cela, un autre programme pourrait lancer
+  Orbe.app comme un simple Node.js et demander la clé du coffre sous son
+  identité. **Pas encore fait pour la version Windows** (`scripts/build-win.js`).
+
 ## Tests
 
-`tests/passwords.js` (53 vérifications, sans réseau, appelées par `npm test`) :
+`tests/passwords.js` (72 vérifications, sans réseau, appelées par `npm test`) :
 proposition à l'envoi, remplissage sur l'origine exacte, refus sur une autre
 origine et en http, sous-domaine avec confirmation, deux étapes, application
 monopage, iframe d'une autre origine, navigation privée, profils, page hostile
@@ -189,17 +236,28 @@ monopage, iframe d'une autre origine, navigation privée, profils, page hostile
 script), chiffrement au repos, coffre abîmé, presse-papiers, CSV aller-retour.
 En test, le trousseau du système n'est jamais touché (`use-mock-keychain`).
 
+Régressions de la relecture de sécurité (section « Pages hostiles ») : pas de
+remplissage silencieux à la seconde étape (champ invisible, focus fabriqué,
+aller-retour par un autre site) ; locataires voisins d'un suffixe public
+emboîté ; champ de commentaire changé en mot de passe, valeur remplacée par la
+page ; clic précoce et Entrée sur la proposition ; quota de débit par cadre et
+iframe bavard ; liste sans geste réel, champ transparent, liste après
+navigation, hauteur fixe ; export sans délai de grâce ; envoi non confirmé
+oublié à l'échéance.
+
 `tests/passwords-sites.js` (Internet) relève ce qui est reconnu sur de vraies
 pages de connexion, sans rien saisir.
 
 ## À faire relire
 
-1. `onPageMessage`, `frameInfo`, `fill` et `onPick` : la chaîne qui mène d'un
-   message de page à l'envoi d'un mot de passe.
-2. La règle des deux étapes (envoi sans second clic).
-3. `relation` et `registrable` : le recours aux cookies pour la liste des
-   suffixes publics.
-4. `nodeIntegrationInSubFrames` sur les vues d'onglet.
-5. Les heuristiques de `src/preload/page.js` face à un formulaire piégé
-   (champs cachés, formulaire d'un autre usage).
+Points encore ouverts :
+
+1. Fusibles d'Electron dans la version Windows.
+2. Copie confidentielle dans le presse-papiers (demande un module natif).
+3. Hébergeurs mutualisés absents de la liste des suffixes publics.
+4. Un champ recouvert par un autre élément mais réellement cliqué ouvre la
+   liste à cet endroit : la page choisit où elle apparaît, pas ce qu'elle
+   contient ni ce qui est choisi.
+5. `nodeIntegrationInSubFrames` sur les vues d'onglet.
 6. La valeur réelle de `promptTouchID` comme barrière, et le délai de 90 s.
+7. Pas d'intégrité cryptographique du fichier du coffre.

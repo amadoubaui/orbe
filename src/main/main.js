@@ -23,11 +23,26 @@ const platform = require('./platform');
 
 platform.adaptLocales(locales);
 
-const SELFTEST = process.argv.includes('--selftest');
+// Mode test (--selftest, ORBE_SCENARIO, trousseau factice) : réservé au
+// lancement depuis les sources. L'application fabriquée ne l'accepte qu'avec
+// --orbe-test ET un dossier de données à part (essai de fumée de l'intégration
+// continue) : jamais sur le vrai profil.
+function testModeAllowed() {
+  if (!app.isPackaged) return true;
+  if (!process.argv.includes('--orbe-test') || !process.env.ORBE_USER_DATA) return false;
+  const real = path.resolve(app.getPath('userData'));
+  const asked = path.resolve(process.env.ORBE_USER_DATA);
+  return asked !== real && !asked.startsWith(real + path.sep);
+}
 const pendingUrls = [];
 let settingsWindow = null;
 
 app.setName('Orbe');
+const SELFTEST = process.argv.includes('--selftest') && testModeAllowed();
+if (process.argv.includes('--selftest') && !SELFTEST) {
+  console.error('[orbe] --selftest refusé : application fabriquée, sans --orbe-test ni ORBE_USER_DATA à part');
+  process.exit(2);
+}
 // Profil de données isolé : pour les tests, ou via ORBE_USER_DATA.
 if (process.env.ORBE_USER_DATA) app.setPath('userData', path.resolve(process.env.ORBE_USER_DATA));
 else if (SELFTEST) app.setPath('userData', fs.mkdtempSync(path.join(os.tmpdir(), 'orbe-test-')));

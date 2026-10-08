@@ -49,7 +49,7 @@ jobs:
       - name: L'application fabriquée démarre (Windows)
         if: runner.os == 'Windows'
         shell: bash
-        run: ORBE_SCENARIO=tests/smoke.js "$HOME/.orbe-dev/dist/Orbe-win32-x64/Orbe.exe" --selftest
+        run: ORBE_SCENARIO=tests/smoke.js ORBE_USER_DATA="$RUNNER_TEMP/orbe-smoke" "$HOME/.orbe-dev/dist/Orbe-win32-x64/Orbe.exe" --selftest --orbe-test
 
       - name: Captures d'écran
         if: always()

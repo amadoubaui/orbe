@@ -17,9 +17,17 @@ function start() {
   const send = (msg) => { try { ipcRenderer.send(CHANNEL, msg); } catch {} };
   const TEXT_TYPES = new Set(['', 'text', 'email', 'tel', 'url', 'number']);
   const wasPassword = new WeakSet(); // champs « afficher le mot de passe » passés en type=text
-  // Champs où l'utilisateur a réellement saisi ou collé quelque chose : un
-  // formulaire rempli et envoyé par le script de la page ne propose rien.
-  const typed = new WeakSet();
+  // Ce que l'utilisateur a réellement saisi ou collé, par champ :
+  // { pw : le champ était de type password à la première saisie, v : la valeur
+  // à la dernière saisie }. Un champ rempli par le script de la page, changé de
+  // type après coup ou dont la valeur a été remplacée ne propose rien.
+  const typed = new WeakMap();
+  const userTyped = (el) => { const r = typed.get(el); return !!r && r.v === el.value; };
+  const userTypedPassword = (el) => userTyped(el) && typed.get(el).pw;
+  // Dernier geste réel de l'utilisateur : un champ ne se signale que s'il vient
+  // d'être cliqué, ou atteint au clavier. Un focus() ou un événement fabriqué
+  // par la page n'ouvre jamais la liste.
+  let gesture = { el: null, key: false, at: 0 };
   let current = null; // dernier champ signalé : { el, kind, user, pass, scope }
   let reported = false;
   let lastUsername = '';
@@ -32,12 +40,26 @@ function start() {
   const tokens = (el) => (el.getAttribute('autocomplete') || '').toLowerCase().split(/\s+/);
   const hint = (el) => `${el.getAttribute('name') || ''} ${el.id || ''}`.toLowerCase();
 
+  // Visible pour de bon : ni minuscule, ni transparent (lui ou un ancêtre).
   function visible(el) {
     if (!el.isConnected || el.disabled || typeOf(el) === 'hidden' || !el.getClientRects().length) return false;
     const r = el.getBoundingClientRect();
-    if (r.width < 4 || r.height < 4) return false;
+    if (r.width < 8 || r.height < 8) return false;
     const cs = getComputedStyle(el);
-    return cs.visibility !== 'hidden' && cs.display !== 'none';
+    if (cs.visibility === 'hidden' || cs.display === 'none') return false;
+    let opacity = 1;
+    for (let n = el, depth = 0; n && n.nodeType === 1 && depth < 12; n = n.parentElement, depth++) {
+      opacity *= Number(getComputedStyle(n).opacity);
+      if (!(opacity >= 0.1)) return false;
+    }
+    return true;
+  }
+
+  // Visible et dans la fenêtre : exigé du champ qui ouvre la liste.
+  function onScreen(el) {
+    if (!visible(el)) return false;
+    const r = el.getBoundingClientRect();
+    return r.right > 0 && r.bottom > 0 && r.left < innerWidth && r.top < innerHeight;
   }
 
   // Zone du formulaire : la balise <form>, sinon le plus petit ancêtre qui
@@ -108,7 +130,7 @@ function start() {
 
   // Que représente ce champ ? null : rien qui nous concerne.
   function analyze(el, force) {
-    if (!isInput(el) || el.disabled || el.readOnly) return null;
+    if (!isInput(el) || el.disabled || el.readOnly || !onScreen(el)) return null;
     const scope = scopeOf(el);
     const pws = passwordsIn(scope);
     if (isPassword(el)) {
@@ -148,17 +170,31 @@ function start() {
 
   const target = (e) => (e.composedPath ? e.composedPath()[0] : e.target);
 
+  // Le champ vient-il d'être désigné par l'utilisateur lui-même ?
+  const byUser = (el) => {
+    if (Date.now() - gesture.at > 1000) return false;
+    if (gesture.key || gesture.el === el) return true;
+    // Clic sur le libellé du champ.
+    const label = gesture.el && gesture.el.closest ? gesture.el.closest('label') : null;
+    return !!label && label.control === el;
+  };
   addEventListener('focusin', (e) => {
-    const info = analyze(target(e));
+    const el = target(e);
+    const info = e.isTrusted && byUser(el) ? analyze(el) : null;
     if (info) report(info); else hide();
   }, true);
   addEventListener('focusout', hide, true);
-  // Clic dans le champ déjà actif : la liste se rouvre.
   addEventListener('mousedown', (e) => {
     if (!e.isTrusted || e.button !== 0) return;
     const el = target(e);
+    gesture = { el, key: false, at: Date.now() };
+    // Clic dans le champ déjà actif : la liste se rouvre.
     const info = isInput(el) && el === (el.getRootNode().activeElement) ? analyze(el) : null;
     if (info) report(info);
+  }, true);
+  // Tabulation : le champ suivant est atteint au clavier.
+  addEventListener('keydown', (e) => {
+    if (e.isTrusted && e.key === 'Tab') gesture = { el: null, key: true, at: Date.now() };
   }, true);
   // Clic droit : la cible est retenue pour « Remplir un mot de passe… ».
   addEventListener('contextmenu', (e) => {
@@ -173,10 +209,10 @@ function start() {
   // principal ne propose d'enregistrer qu'une fois l'envoi confirmé (la page
   // navigue, ou le champ du mot de passe disparaît).
   function arm(scope) {
-    const pws = inputs(scope).filter((el) => isPassword(el) && el.value && typed.has(el) && (visible(el) || wasPassword.has(el)));
+    const pws = inputs(scope).filter((el) => isPassword(el) && el.value && userTypedPassword(el) && (visible(el) || wasPassword.has(el)));
     if (!pws.length) {
       // Étape « identifiant seul » : on le retient pour la suivante.
-      const user = inputs(scope).find((el) => isText(el) && visible(el) && el.value && typed.has(el) && usernameOnly(el, scope));
+      const user = inputs(scope).find((el) => isText(el) && visible(el) && el.value && userTyped(el) && usernameOnly(el, scope));
       if (user) { lastUsername = user.value; send({ type: 'username', username: user.value.slice(0, 300) }); }
       return;
     }
@@ -208,9 +244,18 @@ function start() {
 
   addEventListener('input', (e) => {
     const el = target(e);
-    if (isInput(el) && typeOf(el) === 'password') wasPassword.add(el);
+    if (!e.isTrusted) return;
+    if (isInput(el)) {
+      const isPw = typeOf(el) === 'password';
+      const before = typed.get(el);
+      // « Mot de passe » se décide à la première saisie : un champ de texte
+      // changé en password par la page n'en devient pas un. L'inverse (bouton
+      // « afficher ») reste un mot de passe.
+      if (isPw && !before) wasPassword.add(el);
+      typed.set(el, { pw: before ? before.pw : isPw, v: el.value });
+    }
     // L'utilisateur saisit lui-même : la liste se retire.
-    if (e.isTrusted) { if (isInput(el)) typed.add(el); hide(); }
+    hide();
   }, true);
   addEventListener('submit', (e) => {
     if (e.isTrusted && e.target && e.target.localName === 'form') arm(e.target);

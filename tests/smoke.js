@@ -1,6 +1,7 @@
 // Essai de fumée de l'application fabriquée : elle démarre, la coque se charge,
 // une page interne s'affiche. Lancé par l'intégration continue :
-//   ORBE_SCENARIO=tests/smoke.js Orbe.exe --selftest
+//   ORBE_SCENARIO=tests/smoke.js ORBE_USER_DATA=<dossier temporaire> Orbe.exe --selftest --orbe-test
+// (l'application fabriquée refuse le mode test sans ces deux garde-fous)
 // N'utilise que ce que lui passe l'application (aucun module du dépôt).
 module.exports = async function smoke({ first: w, win }) {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

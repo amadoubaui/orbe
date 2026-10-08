@@ -4,6 +4,11 @@
 const $ = (id) => document.getElementById(id);
 let token = null;
 let shownAt = 0;
+let updating = false;
+// Un clic (ou Entrée) tombé au moment où la vue apparaît n'est pas un choix :
+// la page peut prévoir où et quand elle s'ouvre, pas décider à notre place.
+const GUARD = 500;
+const settled = () => Date.now() - shownAt > GUARD;
 
 function icon(name) {
   const span = document.createElement('span');
@@ -37,8 +42,7 @@ function row(item, p) {
   if (sub.textContent) txt.append(sub);
   if (item.kind !== 'manage') b.append(icon(item.kind === 'generate' ? 'spark' : 'key'));
   b.append(txt);
-  // Un clic tombé au moment même où la liste apparaît n'est pas un choix.
-  b.onclick = () => { if (Date.now() - shownAt > 300) O.send('pw:pick', { token, id: item.id }); };
+  b.onclick = () => { if (settled()) O.send('pw:pick', { token, id: item.id }); };
   return b;
 }
 
@@ -53,18 +57,23 @@ function showPick(p) {
 
 function showSave(p) {
   $('pick').hidden = true;
-  $('save-title').textContent = t(p.update ? 'pw.updateAsk' : 'pw.saveAsk', { site: p.site });
+  updating = !!p.update;
+  // Remplacement d'un compte existant : le compte visé est nommé dans la
+  // question, et rien n'est modifiable ni validé d'avance.
+  $('save-title').textContent = p.update ? t('pw.updateAsk', { site: p.site, user: p.username }) : t('pw.saveAsk', { site: p.site });
   $('save-user').value = p.username || '';
-  $('save-user').readOnly = !!p.update;
+  $('save-user').readOnly = updating;
+  $('save-user').hidden = updating;
   $('save-ok').textContent = t(p.update ? 'pw.updateBtn' : 'pw.saveBtn');
   $('save').hidden = false;
 }
 
-const answer = (choice) => O.send('pw:prompt', { token, choice, username: $('save-user').value });
+const answer = (choice) => { if (settled()) O.send('pw:prompt', { token, choice, username: $('save-user').value }); };
 $('save-ok').onclick = () => answer('save');
 $('save-never').onclick = () => answer('never');
 $('save-later').onclick = () => answer('later');
-$('save-user').addEventListener('keydown', (e) => { if (e.key === 'Enter') answer('save'); });
+// Entrée dans le champ valide un nouvel enregistrement, jamais un remplacement.
+$('save-user').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !updating) answer('save'); });
 
 O.on('overlay', (p) => {
   token = p.token || null;
