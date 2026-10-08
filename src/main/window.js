@@ -11,7 +11,8 @@ const adblock = require('./adblock');
 const boosts = require('./boosts');
 const platform = require('./platform');
 
-const PAD = 8;
+// Marge autour de la page : 10 pt, comme mesuré dans Arc.
+const PAD = 10;
 const GAP = 8;
 const RADIUS = 10;
 const TOOLBAR_H = 40;
@@ -417,7 +418,9 @@ class OrbeWindow {
     const from = this.p;
     if (from === target) { this.anim = null; this.layout(); return; }
     const t0 = Date.now();
-    const DUR = 180;
+    // Comme mesuré dans Arc : la barre disparaît d'un coup et revient en 50 ms.
+    const DUR = target === 1 ? 50 : 0;
+    if (!DUR) { this.p = target; this.anim = null; this.layout(); return; }
     this.anim = setInterval(() => {
       const k = Math.min(1, (Date.now() - t0) / DUR);
       this.p = from + (target - from) * (1 - Math.pow(1 - k, 3));

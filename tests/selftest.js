@@ -203,7 +203,7 @@ module.exports = async function selftest(ctx) {
   w.run('toggleSidebar');
   await sleep(320);
   const x1 = win.live.get(w.activeId).view.getBounds().x;
-  check('⌘S masque la barre latérale', !w.sidebarVisible && x1 < x0 && x1 === 8);
+  check('⌘S masque la barre latérale', !w.sidebarVisible && x1 < x0 && x1 === 10);
   w.run('toggleSidebar');
   await sleep(320);
   check('⌘S la réaffiche', w.sidebarVisible && win.live.get(w.activeId).view.getBounds().x === x0);

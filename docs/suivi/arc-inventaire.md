@@ -57,10 +57,10 @@ Règle appliquée pour ✅ : le code existe **et** un test nommé le couvre. Du 
 | BL-4 | Tirer le bord tout à gauche masque la barre | HC 20498293324823 | ⬜ | aucun code | Sous 200 px moins un seuil, masquer |
 | BL-5 | Mode étroit : la barre très resserrée garde précédent/suivant | HC 20498417809815 | ⬜ | minimum 200 px | À étudier, faible priorité |
 | BL-6 | ⌘S masque et réaffiche la barre | menu ; M-3, M-4 | ✅ | W:animate ; self « ⌘S masque… », « ⌘S la réaffiche » | |
-| BL-7 | La bascule ⌘S est quasi instantanée (0 à 50 ms) | M-3, M-4 | 🟡 | Orbe anime sur 180 ms (W:415-428, SC:20) | Orbe est plus lent qu'Arc ici : descendre vers 60-80 ms ou supprimer |
+| BL-7 | La bascule ⌘S est quasi instantanée (0 à 50 ms) | M-3, M-4 | ✅ | Orbe anime sur 180 ms (W:415-428, SC:20) | Fait le 8 oct. (cotes et durées d'Arc) |
 | BL-8 | ⌘S est sans effet quand aucun onglet n'est ouvert | M-5 | 🟡 | non vérifié dans Orbe | Détail, à décider |
 | BL-9 | Barre masquée : approcher le bord gauche la fait apparaître par-dessus la page, y compris en plein écran | howtogeek | ✅ | W:setPeek ; self « survol du bord : la barre flotte, la page ne bouge pas » | Plein écran non testé |
-| BL-10 | Marge de 10 pt autour de la page | M-2 | 🟡 | 8 px (W:14-16) | Passer `PAD` à 10 |
+| BL-10 | Marge de 10 pt autour de la page | M-2 | ✅ | 8 px (W:14-16) | Fait le 8 oct. (cotes et durées d'Arc) |
 | BL-11 | La page est dans un cadre coloré aux coins arrondis, volontairement visible | inverse (entretien) ; observé | ✅ | W:layout, rayon 10 ; ui 02 | Rayon exact d'Arc non mesuré |
 | BL-12 | Zone vide de la barre : sert à déplacer la fenêtre | HC 20498417809815 | 🟡 | zones `drag` dans `#top` et `#empty` ; aucun test | Vérifier sur la zone des onglets |
 | BL-13 | On peut déplacer la fenêtre par le haut de la page (réglage, ⌘ pour neutraliser) | HC 20498377604887 ; binaire « Allow window dragging from the top of webpages » | ⬜ | aucun code | Bande de 8 px au-dessus de la page |
@@ -185,9 +185,9 @@ Règle appliquée pour ✅ : le code existe **et** un test nommé le couvre. Du 
 | CMD-1 | ⌘T ouvre la barre, sans créer d'onglet tant que rien n'est validé | HC 20595231349911 ; menu | ✅ | W:openCommand ; self ; ui 01 | |
 | CMD-2 | ⌘L modifie l'adresse de l'onglet actif | menu ; HC 20498377604887 | ✅ | self « ⌘L remplace l'adresse… » | |
 | CMD-3 | Le même raccourci referme la barre | M-12 | ✅ | ui 01 ; nat | |
-| CMD-4 | Largeur d'environ 763 pt, centrée sur la fenêtre | M-6 | 🟡 | 680 px (OC) | Passer à 760 |
-| CMD-5 | Bord haut à un tiers de la hauteur | M-7 | 🟡 | 19 vh | Passer à environ 34 % |
-| CMD-6 | Lignes de 46 pt | M-8 | 🟡 | 42 px | |
+| CMD-4 | Largeur d'environ 763 pt, centrée sur la fenêtre | M-6 | ✅ | 680 px (OC) | Fait le 8 oct. (cotes et durées d'Arc) |
+| CMD-5 | Bord haut à un tiers de la hauteur | M-7 | ✅ | 19 vh | Fait le 8 oct. (cotes et durées d'Arc) |
+| CMD-6 | Lignes de 46 pt | M-8 | ✅ | 42 px | Fait le 8 oct. (cotes et durées d'Arc) |
 | CMD-7 | Pas d'assombrissement derrière, grande ombre | M-9 | 🟡 | non vérifié côté Orbe | Comparer à l'œil |
 | CMD-8 | Sélection en aplat de couleur, texte blanc | M-10 | ✅ | OC:41-56 ; ui 01 | |
 | CMD-9 | Elle prend les couleurs de l'Espace | HC 20498417809815 | 🟡 | fond neutre `--panel` | |
@@ -396,9 +396,9 @@ Chiffres d'Arc : seuls ANI-1 à ANI-4 ont été mesurés. Pour le reste, l'exist
 
 | Id | Ce que fait Arc | Preuve Arc | État | Preuve Orbe | Note |
 | --- | --- | --- | --- | --- | --- |
-| ANI-1 | Masquer la barre : instantané | M-3 | 🟡 | 180 ms | Raccourcir |
-| ANI-2 | Réafficher la barre : environ 50 ms | M-4 | 🟡 | 180 ms | Raccourcir |
-| ANI-3 | Barre de commande : apparition sans délai perceptible | mesuré (pas d'image intermédiaire à 60 images/s) | 🟡 | `pop` 130 ms | Ramener vers 80 ms |
+| ANI-1 | Masquer la barre : instantané | M-3 | ✅ | 180 ms | Fait le 8 oct. (cotes et durées d'Arc) |
+| ANI-2 | Réafficher la barre : environ 50 ms | M-4 | ✅ | 180 ms | Fait le 8 oct. (cotes et durées d'Arc) |
+| ANI-3 | Barre de commande : apparition sans délai perceptible | mesuré (pas d'image intermédiaire à 60 images/s) | ✅ | `pop` 130 ms | Fait le 8 oct. (cotes et durées d'Arc) |
 | ANI-4 | Vue scindée : ouverture et fermeture immédiates | M-13, M-14 | ✅ | sans animation ; self | Identique |
 | ANI-5 | Miroitement au démarrage | HC 20498417809815 | ⬜ | | |
 | ANI-6 | Animation de fenêtre au redémarrage | HC 20498417809815 | ⬜ | | |

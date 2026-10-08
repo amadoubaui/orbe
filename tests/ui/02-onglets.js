@@ -31,10 +31,10 @@ module.exports = {
       const e = await ctx.etat();
       const sw = (await shell.locator('#sidebar').boundingBox()).width;
       assert.equal(e.vuePage.x, Math.round(sw));
-      assert.equal(e.vuePage.y, 8);
+      assert.equal(e.vuePage.y, 10);
       const taille = await shell.evaluate(() => [innerWidth, innerHeight]);
-      assert.equal(e.vuePage.x + e.vuePage.width, taille[0] - 8);
-      assert.equal(e.vuePage.y + e.vuePage.height, taille[1] - 8);
+      assert.equal(e.vuePage.x + e.vuePage.width, taille[0] - 10);
+      assert.equal(e.vuePage.y + e.vuePage.height, taille[1] - 10);
     });
 
     await t.verifier('le × n’apparaît qu’au survol de la ligne', async () => {

@@ -12,16 +12,19 @@
   backdrop-filter: blur(30px) saturate(1.6);
 }
 
-@keyframes pop { from { opacity: 0; transform: translate(-50%, -6px) scale(0.985); } }
+@keyframes pop { from { opacity: 0; } }
 
 /* Barre de commande */
+/* Cotes mesurées dans Arc : 763 pt de large, bord haut au tiers de la fenêtre,
+   lignes de 46 pt, grande ombre, apparition quasi immédiate, page non assombrie. */
 #command {
-  top: 19vh;
+  top: 33.8vh;
   left: 50%;
   transform: translateX(-50%);
-  width: min(680px, calc(100vw - 48px));
+  width: min(763px, calc(100vw - 48px));
   padding: 6px;
-  animation: pop 130ms var(--ease);
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.36), 0 2px 10px rgba(0, 0, 0, 0.14);
+  animation: pop 45ms linear;
 }
 #cmd-field { display: flex; align-items: center; gap: 12px; height: 50px; padding: 0 14px; }
 #cmd-icon { color: var(--dim); display: grid; }
@@ -42,7 +45,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  height: 42px;
+  height: 46px;
   padding: 0 12px;
   border-radius: 9px;
 }

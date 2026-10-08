@@ -44,7 +44,7 @@ module.exports = {
       assert.equal(e.largeur, 330);
       assert.equal(e.vuePage.x, 330);
       const w = await shell.evaluate(() => innerWidth);
-      assert.equal(e.vuePage.x + e.vuePage.width, w - 8);
+      assert.equal(e.vuePage.x + e.vuePage.width, w - 10);
       assert.equal(await shell.evaluate(() => document.body.classList.contains('no-anim')), false);
     });
 
@@ -106,11 +106,11 @@ module.exports = {
       await ctx.clic(shell, '#b-sidebar');
       await jusqua(async () => !(await shell.evaluate(() => document.body.classList.contains('open'))), 'barre masquée');
       assert.equal(await shell.evaluate(() => document.body.classList.contains('docked')), false);
-      await jusqua(async () => (await ctx.etat()).vuePage.x === 8, 'page à 8 px du bord');
+      await jusqua(async () => (await ctx.etat()).vuePage.x === 10, 'page à 10 px du bord');
       const e = await ctx.etat();
       assert.equal(e.lateraleVisible, false);
       const w = await shell.evaluate(() => innerWidth);
-      assert.equal(e.vuePage.width, w - 16);
+      assert.equal(e.vuePage.width, w - 20);
       await jusqua(async () => (await shell.locator('#sidebar').boundingBox()).x + 250 <= 0, 'barre sortie de la fenêtre');
     });
 
@@ -126,7 +126,7 @@ module.exports = {
       await ctx.menu('Cmd+W');
       await jusqua(async () => shell.evaluate(() => document.body.classList.contains('no-tab')), 'aucun onglet');
       await ctx.clic(shell, '#b-sidebar');
-      await jusqua(async () => (await shell.locator('#empty').boundingBox()).x === 8, 'accueil pleine largeur');
+      await jusqua(async () => (await shell.locator('#empty').boundingBox()).x === 10, 'accueil pleine largeur');
       await ctx.menu('Cmd+S');
       await jusqua(async () => (await shell.locator('#empty').boundingBox()).x === 250, 'accueil à droite de la barre');
     });
@@ -135,16 +135,16 @@ module.exports = {
       await ctx.ouvrir('/b', 'Page B');
       await ctx.menu('Shift+Cmd+D');
       await jusqua(() => shell.locator('#toolbar').isVisible(), 'barre d’outils visible');
-      await jusqua(async () => (await ctx.etat()).vuePage.y === 48, 'page décalée sous la barre d’outils');
+      await jusqua(async () => (await ctx.etat()).vuePage.y === 50, 'page décalée sous la barre d’outils');
       assert.equal(await shell.textContent('#tb-url-text'), ctx.url('/b'));
       const tb = await shell.locator('#toolbar').boundingBox();
-      assert.ok(tb.x >= 250 && tb.y + tb.height <= 48, 'barre d’outils entre la barre latérale et la page');
+      assert.ok(tb.x >= 250 && tb.y + tb.height <= 50, 'barre d’outils entre la barre latérale et la page');
       await ctx.capture('barre-outils');
       await ctx.clic(shell, '#tb-url');
       await jusqua(ctx.commandeOuverte, 'barre de commande ouverte depuis la barre d’outils');
       await ctx.modal.keyboard.press('Escape');
       await ctx.menu('Shift+Cmd+D');
-      await jusqua(async () => (await ctx.etat()).vuePage.y === 8, 'page revenue en haut');
+      await jusqua(async () => (await ctx.etat()).vuePage.y === 10, 'page revenue en haut');
     });
   },
 };

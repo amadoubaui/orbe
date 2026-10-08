@@ -19,7 +19,7 @@ const api = require('./ext-api');
 
 const X = api.internals;
 const GAP = 8; // même écart qu'entre deux volets (window.js)
-const PAD = 8;
+const PAD = 10;
 const RADIUS = 10;
 const HEADER = 34;
 const MIN = 260;
