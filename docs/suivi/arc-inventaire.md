@@ -253,7 +253,7 @@ Actions de la barre de commande relevées dans Arc (libellés du binaire et du c
 | ESP-6 | ⌃1 … ⌃9 | menu | ✅ | self « ⌃2 va au deuxième Espace » ; nat | |
 | ESP-7 | ⌥⌘→ / ⌥⌘← | menu | ✅ | self ; nat | |
 | ESP-8 | Boutons 3 et 4 de la souris | HC 20498417809815 | ⬜ | | `app-command` ou `mouseup` bouton 3/4 |
-| ESP-9 | Le contenu de la barre glisse d'un Espace à l'autre, avec transition de l'icône | HC 20498377604887 | 🟡 | fondu-glissé de 36 px sur 220 ms (SC:103-106) | Vrai glissement côte à côte, voir ANI-10 |
+| ESP-9 | Le contenu de la barre glisse d'un Espace à l'autre, avec transition de l'icône | HC 20498377604887 | ✅ | fondu-glissé de 36 px sur 220 ms (SC:103-106) | deux listes côte à côte qui suivent le doigt, teinte fondue, ressort (SH PAGER) ; l'icône grossit dans sa pastille ; self ; ui 06. Durées à régler face à Arc |
 | ESP-10 | Au-delà du dernier Espace : résistance élastique, puis création d'un Espace | inverse | ⬜ | | |
 | ESP-11 | Revenir dans un Espace réactive son dernier onglet | HC 20498377604887 | ✅ | W:210 ; self « ⌥⌘← revient… avec son onglet » | |
 | ESP-12 | Renommer : clic sur le titre, ou menu Spaces → Rename Space | HC 20498377604887 ; menu | ✅ | ui 03 | |
@@ -338,7 +338,7 @@ Actions de la barre de commande relevées dans Arc (libellés du binaire et du c
 | APE-5 | Fermer : clic à l'extérieur, croix, ⌘W, Échap | HC 20498377604887 | ✅ | self « ⌘W ferme l'aperçu… » | |
 | APE-6 | Geste de fermeture interactif | HC 20498377604887 | ⬜ | | |
 | APE-7 | ⌘Z ou ⇧⌘T rouvre un aperçu fermé | HC 20498377604887 ; menu « Annuler Close Peek » | ⬜ | | |
-| APE-8 | Animation d'ouverture et de fermeture | HC 20498417809815 (existence) ; durée non mesurée | 🟡 | fondu du voile seul, la page apparaît d'un coup | Voir ANI-11 |
+| APE-8 | Animation d'ouverture et de fermeture | HC 20498417809815 (existence) ; durée non mesurée | ✅ | fondu du voile seul, la page apparaît d'un coup | la carte grandit depuis le lien (200 ms), se réduit à la fermeture (150 ms) ; self ; ui 16. Durées d'Arc non mesurées |
 | APE-9 | La barre d'outils s'affiche aussi dans l'aperçu | HC 20498293324823 | ⬜ | | |
 | APE-10 | Les liens de réunion s'ouvrent en onglet, pas en aperçu | HC 20498377604887 | ⬜ | | |
 | APE-11 | L'aperçu respecte les règles d'aiguillage | HC 20498293324823 | 🟡 | non vérifié | |
@@ -405,22 +405,22 @@ Chiffres d'Arc : seuls ANI-1 à ANI-4 ont été mesurés. Pour le reste, l'exist
 | ANI-7 | Boutons plus, fermer, actualiser, précédent, suivant animés | HC 20498417809815 | ⬜ | | Rotation d'actualiser, glissé des flèches |
 | ANI-8 | Indicateur de chargement en lueur en haut de la fenêtre | HC 20498377604887 ; binaire (shader) | 🟡 | balayage dans la pastille | |
 | ANI-9 | Téléchargement : le fichier « saute » dans l'icône de la Bibliothèque ; plusieurs à la fois | HC 20498377604887 | ⬜ | anneau de progression | |
-| ANI-10 | Changement d'Espace : la barre glisse d'un Espace à l'autre en suivant le doigt, l'icône se transforme | HC 20498377604887 ; binaire `space_swiping.mp4` | 🟡 | glissé-fondu de 36 px, 220 ms | Deux listes côte à côte |
-| ANI-11 | Aperçu : ouverture et fermeture animées, fermeture interactive | HC 20498417809815, 20498377604887 | 🟡 | fondu du voile seul | Agrandissement depuis le lien |
+| ANI-10 | Changement d'Espace : la barre glisse d'un Espace à l'autre en suivant le doigt, l'icône se transforme | HC 20498377604887 ; binaire `space_swiping.mp4` | ✅ | glissé-fondu de 36 px, 220 ms | deux listes côte à côte qui suivent le doigt, teinte fondue, ressort (SH PAGER) ; l'icône grossit dans sa pastille ; self ; ui 06. Durées à régler face à Arc |
+| ANI-11 | Aperçu : ouverture et fermeture animées, fermeture interactive | HC 20498417809815, 20498377604887 | 🟡 | la carte grandit depuis le lien (200 ms), se réduit à la fermeture (150 ms), s'étend pour ⌘O (220 ms) ; self, ui 16 | Reste la fermeture interactive (tirer la carte) ; durées d'Arc non mesurées |
 | ANI-12 | Glisser vers une vue scindée : l'onglet devient une bulle, rebond au dépôt | inverse | ⬜ | | |
 | ANI-13 | Dépôt dans un dossier animé | HC 20498377604887 | ⬜ | | |
 | ANI-14 | Effacement des onglets du jour animé | HC 20498377604887 | 🟡 | `row-out` 150 ms par ligne | Cascade |
-| ANI-15 | Messages (toasts) animés, aux couleurs du thème | HC 20498293324823 | 🟡 | `toast` 2,1 s, pilule sombre | |
+| ANI-15 | Messages (toasts) animés, aux couleurs du thème | HC 20498293324823 | 🟡 | entrée au ressort (`--spring-bouncy`), sortie de 180 ms ; pilule sombre | Restent les couleurs du thème |
 | ANI-16 | Petite fenêtre : animation d'ouverture | HC 20498417809815 | ⬜ | | |
 | ANI-17 | Passage en plein écran simplifié | HC 20498417809815 | 🟡 | natif | |
 | ANI-18 | Image dans l'image : élastique sous la taille minimale, lancer vers un coin | inverse ; HC 20498417809815 | ⬜ | fenêtre native de Chromium | |
 | ANI-19 | Le lecteur audio rejoint la position de l'image dans l'image en s'animant | HC 20498377604887 | ⬜ | | |
 | ANI-20 | Pastille d'état du lien : s'étend après 1,5 s, s'écarte de la souris | HC 20498377604887 | ⬜ | | |
-| ANI-21 | Apparition et retrait d'une ligne d'onglet | non vérifié | 🟡 | `row-in` 170 ms, `row-out` 150 ms ; aucun test | |
+| ANI-21 | Apparition et retrait d'une ligne d'onglet | non vérifié | ✅ | `row-in` 170 ms, `row-out` 150 ms ; aucun test | entrée au ressort (--spring-snappy, 240 ms), retrait 150 ms ; état pressé : ui 11 |
 | ANI-22 | Les lignes s'écartent pendant un glisser | non vérifié | ⬜ | | Technique FLIP |
 | ANI-23 | Ouverture d'un dossier : hauteur animée | non vérifié | ⬜ | | |
 | ANI-24 | Changement d'onglet : coupe franche | non vérifié | 🟡 | coupe franche | Sans doute identique |
-| ANI-25 | Sélecteur ⌃⇥ : apparition | non vérifié | ⬜ | sans animation | |
+| ANI-25 | Sélecteur ⌃⇥ : apparition | non vérifié | ✅ | sans animation | apparition au ressort (240 ms, échelle 0,96 → 1) ; durée d'Arc non vérifiée |
 | ANI-26 | Bandeau de mise à jour : replié, s'ouvre au survol, bouton en dégradé ; cœur animé | HC 21489650267031 ; binaire `update-heart-animation.json` | ⬜ | | |
 | ANI-27 | Icônes animées de la Bibliothèque (archive, captures, Espaces, tableaux, téléchargements, Boosts) | binaire `ARC_HomeButton/*.json` (Lottie) | ⬜ | | |
 | ANI-28 | Logo animé (vague) et orbe vidéo | binaire `logo-wave.json`, `orb.mp4`, `background.mp4` | ⬜ | | Accueil |
@@ -450,8 +450,8 @@ Aucun geste n'a été rejoué sur Arc pendant cet inventaire (ils demandent la m
 
 | Id | Ce que fait Arc | Preuve Arc | État | Preuve Orbe | Note |
 | --- | --- | --- | --- | --- | --- |
-| GES-1 | Balayage horizontal à deux doigts sur la barre : change d'Espace, le contenu suit le doigt | HC 19228064149143 | ✅ | SH:378-383 (suit le doigt ×0,7, seuil 70 px) ; ui 06 (trois vérifications, molette simulée) | Seuil et inertie à régler face à Arc, main sur le pavé |
-| GES-2 | Au bout de la liste des Espaces : résistance élastique puis nouvel Espace | inverse | ⬜ | | |
+| GES-1 | Balayage horizontal à deux doigts sur la barre : change d'Espace, le contenu suit le doigt | HC 19228064149143 | ✅ | SH `PAGER` : les deux listes suivent le doigt 1 px pour 1 px, seuil 40 % de la largeur (110 px au plus) ou geste vif, retour au ressort ; self ; ui 06 (sept vérifications, molette simulée) | Seuil, vitesse et inertie à régler face à Arc, main sur le pavé |
+| GES-2 | Au bout de la liste des Espaces : résistance élastique puis nouvel Espace | inverse | 🟡 | résistance élastique et retour au ressort (SH `PAGER`) ; self, ui 06 | Reste la création d'un Espace en tirant plus loin |
 | GES-3 | Balayage à deux doigts sur la page : précédent / suivant | non vérifié (comportement de Chromium) | 🟡 | rien dans le code d'Orbe, comportement d'Electron non testé | Vérifier, puis ajouter la flèche d'indication |
 | GES-4 | Pincer pour zoomer la page | non vérifié | 🟡 | défaut d'Electron, non testé | |
 | GES-5 | Image dans l'image : pincer pour redimensionner, deux doigts pour déplacer, ⌘défilement pour zoomer, double-clic pour revenir à l'onglet | HC 20498417809815 | ⬜ | fenêtre native | |

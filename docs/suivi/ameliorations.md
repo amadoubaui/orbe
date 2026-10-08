@@ -652,9 +652,56 @@ Animation), au rythme de l'écran, sans passer par le JavaScript ni redessiner l
 | Changement d'Espace | synchrone, puis image de la page | 3–4 ms, +2 ms |
 | Première ouverture d'une vue d'appoint | toast / recherche / aperçu | 94–98 / 82–94 / 89–90 ms |
 
+### Réalisé (branche `animations`, 8 oct.) : faits relevés et mesures avant / après
+
+Ce que fait réellement `View.setBounds(rect, { animate })` dans Electron 44.7 sur macOS
+(sondes : capture de la fenêtre pendant des animations de 1 à 2 s, lecture de `getBounds()`
+toutes les 20 ms, compteur de `resize` et traçage `devtools.timeline` dans la page) :
+
+| Question | Relevé |
+| --- | --- |
+| Options | `animate: true` (250 ms, `linear`) ou `{ duration, easing }` ; quatre courbes seulement (`linear`, `ease-in`, `ease-out`, `ease-in-out`), **pas de ressort** ; une durée de 0 ou 1 ms est acceptée et prend effet à l'image suivante |
+| `getBounds()` pendant le trajet | rend l'**ancien** rectangle jusqu'à la fin, puis la cible |
+| Fin du trajet | un événement `bounds-changed` sur la vue, à la durée demandée (1008 ms pour 1000, 257 pour 250, 52 à 60 pour 50) |
+| Nouvel appel animé pendant le trajet | repart de la **position affichée** vers la nouvelle cible : interruption propre, cotes justes à l'arrivée |
+| Appel **non** animé pendant le trajet | la vue saute bien à la nouvelle place, mais `getBounds()` reste ensuite sur la cible de l'animation interrompue (cote fausse) : à ne jamais faire |
+| Largeur ou hauteur animée | la page ne reçoit qu'**un** `resize` et ne fait qu'**une** remise en page : au départ si elle grandit, à l'arrivée si elle rétrécit ; entre-temps son image est rognée par le cadre qui bouge (elle n'est ni étirée ni redessinée). Le relevé « 13 à 18 `resize` » du tableau ci-dessus ne s'est pas reproduit |
+| Vue retirée puis rattachée pendant le trajet | à sa cible, cotes justes |
+| Windows | **non mesuré sur une machine** ; le code ne dépend pas de l'animation (si l'option est ignorée ou refusée, la vue est posée directement) et l'intégration continue vérifie les cotes finales sur Windows |
+
+D'où `place(vue, rect, ms)` dans `window.js` : un seul appel animé par vue ; tant qu'une vue est
+en vol, toute nouvelle cible lui est donnée par un appel animé sur le temps qu'il lui reste.
+
+Mesures (même scénario lancé sur le commit `a9ec705` puis sur la branche ; page de 6 000
+éléments ; médianes de 6 passes, [min–max]) :
+
+| Retour de la barre latérale (⌘S) | Avant (`setInterval` 8 ms) | Après (animation du système) |
+| --- | --- | --- |
+| Appels à `setBounds` sur la page | 7 | **1** |
+| Tours du fil principal consacrés au mouvement | 7 (dernier à 56 ms) | **1** (le premier ; plus aucun ensuite) |
+| Appels à `layout()` | 7 | 1 |
+| Positions de la page | 6 calculées en JavaScript, à ≈ 100 Hz | toutes les images de l'écran, par le système |
+| `resize` reçus par la page | 1 | 1 |
+| Remises en page de la page (trace `Layout`) | 1 (2,8 ms) | 1 (2,9 ms), à l'arrivée |
+| Écart maximal entre deux images de la page | 9,4 ms [9,3–13,3] | 11,9 ms [9,3–15,7] (bruit de la machine, chargée) |
+
+| Autres mouvements | Avant | Après |
+| --- | --- | --- |
+| Aperçu : ouverture | la page est posée d'un coup, voile en fondu de 160 ms | la carte grandit depuis le lien en 200 ms (`ease-out`), 1 appel animé, 0 `resize` pendant le trajet ; page dessous : écart maximal 12,0 ms |
+| Aperçu : fermeture | retrait immédiat | la carte se réduit vers le lien en 150 ms (`ease-in`), 1 appel animé ; écart maximal de ses images 11,7 ms |
+| Aperçu → onglet (⌘O) | remplacement immédiat | la carte s'étend en 220 ms jusqu'à la place de la page, l'ancienne page reste dessous pendant ce temps |
+| Changement d'Espace (raccourci), images de la coque en 450 ms | 57, écart max 9,5 ms, 0 image lente | 57, écart max 11,8 ms, 0 image lente |
+| Changement d'Espace : rendu de la liste | aussitôt (≈ 60 ms), puis glissé-fondu de 36 px | différé à l'arrivée (≈ 265 ms) : pendant le glissement, rien n'est redessiné |
+| `sendState` (3 Espaces × 40 onglets) | 0,021 ms, 12,5 ko | 0,046 ms, 36,6 ko (listes des deux Espaces voisins) |
+
+Ce qui reste à régler la main sur le pavé tactile : seuil (40 % de la largeur, 110 px au
+plus), vitesse d'un geste vif (1,5 px/ms), délai « doigts levés » (90 ms sans événement),
+raideur de l'élastique. Ni le DOM ni `input-event` ne disent quand les doigts quittent le pavé
+quand une inertie suit ; les constantes sont regroupées dans `PAGER` (`shell.js`).
+
 ### Points
 
-- ⬜ **ANIM-1 — Bascule de la barre latérale par l'animation native de `setBounds`.**
+- ✅ **ANIM-1 — Bascule de la barre latérale par l'animation native de `setBounds`.** *(fait le 8 oct., branche animations)*
   *Problème* : minuteur à 100 Hz irrégulier dans le processus principal, désynchronisé de la
   transition CSS de la barre ; à la merci de tout blocage de ce fil (9 à 12 ms à chaque
   sauvegarde, 14 ms à chaque frappe).
@@ -672,6 +719,12 @@ Animation), au rythme de l'écran, sans passer par le JavaScript ni redessiner l
   d'appoint ancrées à la page (recherche, statut) doivent suivre ; vérifier la vue scindée
   (plusieurs vues animées ensemble) et Windows (l'option est-elle animée hors macOS ? **à mesurer**).
   *Effort* : M.
+  *Fait* : `place()` et `animateTo` (`window.js`) ; un seul appel animé de 50 ms par page
+  (position et largeur ensemble : la page n'est remise en page qu'à l'arrivée, mesuré), plus
+  aucun minuteur ; `#sidebar` suit avec la même durée et la même courbe (`--ease-out`).
+  Interruptions, fenêtre redimensionnée en plein mouvement, vue scindée et place réservée à
+  droite vérifiées par les essais de bout en bout (cotes exactes à l'arrivée). « Réduire les
+  animations » coupe aussi ces mouvements (`motion()`).
 
 - ⬜ **ANIM-2 — À défaut d'ANIM-1 : caler le minuteur sur l'écran.**
   *Changement* : remplacer `setInterval(…, 8)` par un pas calculé sur
@@ -688,7 +741,7 @@ Animation), au rythme de l'écran, sans passer par le JavaScript ni redessiner l
   `layout()` + `sendState()` complets au relâchement. *Gain mesuré* : 3 fois moins d'appels
   pour le même rendu (68 images contre 64). *Risque* : faible. *Effort* : S.
 
-- ⬜ **ANIM-4 — Courbes de ressort pour tout ce qui est en CSS.**
+- ✅ **ANIM-4 — Courbes de ressort pour tout ce qui est en CSS.** *(fait le 8 oct., branche animations)*
   *Constat* : toute l'interface utilise une seule courbe, `--ease: cubic-bezier(0.33, 1, 0.68, 1)`
   (décélération simple, sans rebond). Chromium accepte `linear()` depuis la version 113 (Orbe
   est en 152), ce qui permet d'écrire un vrai ressort en CSS.
@@ -705,18 +758,31 @@ Animation), au rythme de l'écran, sans passer par le JavaScript ni redessiner l
   *Gain* : agrément (non mesurable en millisecondes) ; coût nul (les transitions `transform` et
   `opacity` sont composées hors du fil principal). *Risque* : affaire de goût — à régler à l'œil,
   en respectant `prefers-reduced-motion` (ANIM-7). *Effort* : S.
+  *Fait* : trois jetons dans `base.css`, calculés par `scripts/make-springs.js` (durée + courbe
+  `linear()` de 25 points) : `--spring-snappy` (réponse 0,2 s, amortissement 1, 240 ms),
+  `--spring-smooth` (0,3 s, 1, 360 ms), `--spring-bouncy` (0,3 s, 0,7, dépassement 4,6 %,
+  340 ms) ; plus `--ease-out` / `--ease-in` (les courbes du système, pour ce qui accompagne une
+  vue native) et `--press` (enfoncement, 80 ms). Appliqués aux lignes (entrée), tuiles, boutons,
+  pastilles d'Espace, chevron des dossiers, barre flottante, barre de commande ancrée, bascule
+  ⌃Tab, éditeur de thème, messages. Le glissement entre Espaces calcule le même ressort à la
+  volée, avec la vitesse des doigts.
 
-- ⬜ **ANIM-5 — Aperçu (Peek) : faire entrer la page au lieu de la poser.**
+- ✅ **ANIM-5 — Aperçu (Peek) : faire entrer la page au lieu de la poser.** *(fait le 8 oct., branche animations)*
   *Constat* : `openPeek` ajoute la vue à sa taille finale d'un coup ; seul le voile s'anime
   (160 ms). *Changement* : poser la vue 24 points plus bas et légèrement réduite, puis
   `setBounds(final, { animate: { duration: 200, easing: 'ease-out' } })` ; à la fermeture,
   l'inverse sur 120 ms avant `close()`. Animer la position plutôt que la taille pour éviter les
   remises en page (mesuré : 13 à 18 `resize` quand la largeur est animée). *Gain* : agrément ;
   **à mesurer** : images perdues pendant l'entrée sur une page réelle. *Effort* : S.
+  *Fait, autrement* : la taille peut être animée sans coût (une seule remise en page, mesuré) ;
+  la carte grandit donc depuis le lien cliqué (30 % de sa taille, 200 ms), se réduit vers lui à
+  la fermeture (150 ms) et s'étend jusqu'à la place de la page pour ⌘O (220 ms). Fond de la carte
+  aux couleurs du thème sombre jusqu'à `dom-ready` (pas d'éclair blanc).
 
-- ⬜ **ANIM-6 — Apparition de la barre latérale au démarrage.**
+- ✅ **ANIM-6 — Apparition de la barre latérale au démarrage.** *(fait le 8 oct., branche animations)*
   Si DEM-1 est fait, la fenêtre paraît 80 ms avant la barre : faire entrer `#sidebar` en fondu
   (`opacity` 0 → 1, 80–100 ms) au premier rendu plutôt que de la laisser surgir. *Effort* : S.
+  *Fait* : fondu de 90 ms au premier rendu (`body.ready`), sans glissement.
 
 - ✅ **ANIM-7 — Respecter « Réduire les animations ».** *(fait le 8 oct.)*
   *Constat* : aucun `@media (prefers-reduced-motion: reduce)` dans `shell.css` ni `overlay.css` ;
@@ -725,7 +791,7 @@ Animation), au rythme de l'écran, sans passer par le JavaScript ni redessiner l
   `systemPreferences.getAnimationSettings().prefersReducedMotion` (présent dans `electron.d.ts`)
   et passer `DUR` à 0. *Risque* : nul. *Effort* : S.
 
-- ⬜ **ANIM-8 — Changement d'Espace : faire suivre le doigt jusqu'au bout.**
+- ✅ **ANIM-8 — Changement d'Espace : faire suivre le doigt jusqu'au bout.** *(fait le 8 oct. pour la barre latérale ; la page ne glisse pas)*
   *Constat* : le balayage à deux doigts déplace la liste (`#scroll`) puis, passé 70 px, change
   d'Espace d'un coup : la page, elle, est remplacée sans transition (3–4 ms). *Changement* :
   pendant le balayage, déplacer aussi la vue de la page de la même fraction (`setBounds` sur x,
@@ -734,6 +800,11 @@ Animation), au rythme de l'écran, sans passer par le JavaScript ni redessiner l
   aucune remise en page de la page. *Risque* : moyen (deux vues à l'écran pendant 150 ms ;
   l'onglet du nouvel Espace peut être en veille : montrer alors sa vignette ou un fond).
   *Effort* : M à L. À faire après ANIM-1.
+  *Fait pour la barre latérale* : deux listes côte à côte dans `#pager`, qui suivent les doigts
+  (1 px pour 1 px), teinte des deux Espaces fondue au même pas, changement au seuil ou sur un
+  geste vif, retour au ressort, élastique au bout de la rangée ; même glissement pour un clic ou
+  un raccourci. Animation composée (Web Animations), rien n'est redessiné pendant le trajet.
+  *Non fait* : la page, elle, change d'un coup au moment où le geste est validé (elle ne glisse pas).
 
 ## 10. Design et sensations (DESIGN)
 
@@ -817,13 +888,17 @@ Ce chapitre est de la recherche : ce qu'Electron 44 expose réellement (relevé 
   (à étendre au pourcentage de zoom du toast) ; `text-rendering: optimizeLegibility` à éviter
   sur les longues listes (coût de mise en page). *Effort* : S.
 
-- ⬜ **DESIGN-7 — États pressés et survols plus vivants.**
+- ✅ **DESIGN-7 — États pressés et survols plus vivants.** *(fait le 8 oct., branche animations)*
   *Constat* : seules les tuiles de favoris et les boutons d'aperçu ont un état pressé
   (`transform: scale(0.96)`) ; les lignes d'onglet n'en ont pas, et leur survol change en 100 ms
   linéaires. *Changement* : `.row:active { transform: scale(0.985); }` avec `--spring-snappy`
   (ANIM-4) ; sur le survol, entrée immédiate (0 ms) et sortie en 150 ms, comme les listes de
   macOS. *Coût mesuré du survol aujourd'hui* : 0,13 ms de style par déplacement, 0 image perdue
   sur 252 : de la marge. *Effort* : S.
+  *Fait* : lignes (0,985), tuiles (0,95), boutons ronds, pastille d'adresse, bouclier, pastilles
+  d'Espace, boutons des extensions, du lecteur, de l'aperçu, de la recherche et de l'éditeur de
+  thème ; enfoncement en 80 ms, relâchement au ressort ; survol des lignes immédiat à l'entrée,
+  150 ms à la sortie. Vérifié à la souris (essai d'interface « Mise en page »).
 
 - ⬜ **DESIGN-8 — Fermeture d'un onglet : glissement des lignes suivantes.**
   *Constat* : `row-out` anime la hauteur de la ligne supprimée (`height` → 0, 150 ms), ce qui
