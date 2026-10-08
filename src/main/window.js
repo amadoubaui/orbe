@@ -39,6 +39,15 @@ const INTERNAL_PAGES = new Set(['library.html', 'shortcuts.html', 'welcome.html'
 // http et https sont acceptés, jamais file:, orbe: ou chrome:.
 const webUrl = (u) => (/^https?:\/\//i.test(u || '') ? u : null);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+// Nom horodaté d'une capture ; deux captures dans la même seconde ne s'écrasent pas.
+let lastStamp = '';
+let stampCount = 0;
+function captureStamp() {
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  stampCount = stamp === lastStamp ? stampCount + 1 : 0;
+  lastStamp = stamp;
+  return stampCount ? `${stamp} (${stampCount + 1})` : stamp;
+}
 
 function findNode(nodes, id) {
   for (let i = 0; i < nodes.length; i++) {
@@ -1588,7 +1597,7 @@ class OrbeWindow {
     const png = image.toPNG();
     const copy = () => { clipboard.write([new ClipboardItem({ 'image/png': new Blob([png], { type: 'image/png' }) })]).catch(() => {}); };
     const save = () => {
-      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+      const stamp = captureStamp();
       fs.writeFile(path.join(app.getPath('downloads'), `Orbe ${stamp}.png`), png, () => {});
     };
     const done = (what) => {
@@ -1633,7 +1642,7 @@ class OrbeWindow {
       });
       const png = Buffer.from(shot.data, 'base64');
       clipboard.write([new ClipboardItem({ 'image/png': new Blob([png], { type: 'image/png' }) })]).catch(() => {});
-      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+      const stamp = captureStamp();
       fs.writeFile(path.join(app.getPath('downloads'), `Orbe ${stamp}.png`), png, () => {});
       this.toast(t('toast.captured'));
     } catch (err) {
