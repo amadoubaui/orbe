@@ -1331,6 +1331,19 @@ class OrbeWindow {
     this.toast(t(markdown ? 'toast.markdownCopied' : 'toast.urlCopied'));
   }
 
+  // Copie la sélection sous forme de citation Markdown, avec sa source.
+  async copyQuote() {
+    const tab = this.activeId && this.data.tabs[this.activeId];
+    const wc = this.activeRt && this.activeRt.wc;
+    if (!tab || !wc || wc.isDestroyed()) return;
+    const text = String(await wc.executeJavaScript('String(getSelection())').catch(() => '')).trim();
+    if (!text) return this.copyUrl(true);
+    const quote = text.split(/\n+/).map((l) => '> ' + l).join('\n');
+    clipboard.writeText(`${quote}\n>\n> — [${tab.title || tab.url}](${tab.url})`);
+    this.toast(t('toast.quoteCopied'));
+    return undefined;
+  }
+
   zoom(delta) {
     const wc = this.activeWc;
     if (!wc) return;

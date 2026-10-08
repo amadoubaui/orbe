@@ -25,6 +25,7 @@ const COMMANDS = [
   // Édition
   { name: 'copyUrl', label: 'edit.copyUrl', accel: 'Shift+Cmd+C', keys: '⇧⌘C', run: (w) => w.copyUrl(false) },
   { name: 'copyUrlMarkdown', label: 'edit.copyUrlMarkdown', accel: 'Alt+Shift+Cmd+C', keys: '⌥⇧⌘C', run: (w) => w.copyUrl(true) },
+  { name: 'copyUrlQuote', label: 'edit.copyUrlQuote', accel: 'Ctrl+Shift+Cmd+C', keys: '⌃⇧⌘C', run: (w) => w.copyQuote() },
   { name: 'find', label: 'edit.find', accel: 'Cmd+F', keys: '⌘F', run: (w) => w.openFind() },
   { name: 'findNext', label: 'edit.findNext', accel: 'Cmd+G', keys: '⌘G', palette: false, run: (w) => w.findStep(true) },
   { name: 'findPrev', label: 'edit.findPrev', accel: 'Shift+Cmd+G', keys: '⇧⌘G', palette: false, run: (w) => w.findStep(false) },

@@ -73,7 +73,7 @@ function build() {
         sep,
         { label: t('edit.cut'), role: 'cut' },
         { label: t('edit.copy'), role: 'copy' },
-        item('copyUrl'), item('copyUrlMarkdown'),
+        item('copyUrl'), item('copyUrlMarkdown'), item('copyUrlQuote'),
         { label: t('edit.paste'), role: 'paste' },
         { label: t('edit.pasteMatch'), role: 'pasteAndMatchStyle' },
         { label: t('edit.selectAll'), role: 'selectAll' },

@@ -15,11 +15,12 @@ suit. Colonne « Orbe » : ✅ fait, 🟡 partiel, ⏳ à venir.
 | New Little Arc Window | ⌥⌘N | ✅ Petite fenêtre |
 | Restore Last Closed Tab | ⇧⌘T | ✅ |
 | Open Command Bar | ⌘L | ✅ |
-| New Profile | — | ⏳ |
+| New Profile | — | ✅ |
 | New Easel | ⌃⇧E | ⏳ |
 | Close Window | ⇧⌘W | ✅ |
 | Share… | — | ⏳ |
 | Capture… | ⇧⌘2 | 🟡 capture de la page visible |
+| Capture Full Page | — | ✅ |
 | Save Page As | ⇧⌘S | ✅ |
 | Print | ⌘P | ✅ |
 
@@ -29,7 +30,7 @@ suit. Colonne « Orbe » : ✅ fait, 🟡 partiel, ⏳ à venir.
 | --- | --- | --- |
 | Copy URL | ⇧⌘C | ✅ |
 | Copy URL as Markdown | ⌥⇧⌘C | ✅ |
-| Copy URL as Quote | ⌃⇧⌘C | ⏳ |
+| Copy URL as Quote | ⌃⇧⌘C | ✅ |
 | Find… / Next / Previous | ⌘F / ⌘G / ⇧⌘G | ✅ |
 | Annuler « Archive Tab » | ⌘Z | 🟡 via ⇧⌘T |
 
@@ -61,7 +62,7 @@ suit. Colonne « Orbe » : ✅ fait, 🟡 partiel, ⏳ à venir.
 | New Space… | — | ✅ |
 | Edit Theme… | — | ✅ couleur et icône |
 | Rename Space | — | ✅ |
-| Change Profile | — | ⏳ |
+| Change Profile | — | ✅ menu Espaces → Profil |
 | Next / Previous Space | ⌥⌘→ / ⌥⌘← | ✅ |
 | Espace 1…9 | ⌃1 … ⌃9 | ✅ |
 
