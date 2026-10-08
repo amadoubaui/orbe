@@ -222,7 +222,7 @@ body.incognito #incognito { display: flex; }
 #spaces { display: flex; align-items: center; justify-content: center; gap: 2px; overflow: hidden; }
 /* Comme dans Arc : un point par Espace, l'icône pour celui qui est affiché. */
 .sp {
-  width: 16px;
+  width: 14px;
   height: 26px;
   border-radius: 8px;
   display: grid;
@@ -297,8 +297,8 @@ body.toolbar:not(.docked):not(.fullscreen) #toolbar { padding-left: 70px; }
 body.no-tab #empty { display: flex; }
 body.no-tab.docked #empty { left: var(--sw); }
 body.toolbar #empty { top: 48px; }
-#empty .mark { width: 54px; height: 54px; border-radius: 50%; border: 7px solid color-mix(in srgb, var(--accent) 65%, transparent); border-right-color: transparent; transform: rotate(-35deg); }
-#empty p { margin: 0; font-size: 14px; }
+#empty .mark { display: none; }
+#empty p { margin: 0; font-size: 13.5px; color: var(--faint); }
 
 /* Lecteur miniature : un onglet en arrière-plan qui joue du son. */
 #media { display: flex; align-items: center; gap: 2px; height: 44px; padding: 0 6px 0 4px; margin: 4px 0 2px; border-radius: 12px; background: var(--hover); flex: none; }

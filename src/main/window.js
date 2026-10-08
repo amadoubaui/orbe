@@ -152,6 +152,7 @@ class OrbeWindow {
     this.ui.webContents.once('did-finish-load', () => {
       this.layout();
       this.win.show();
+      if (process.env.ORBE_TIMING) console.log(`[orbe] fenêtre affichée en ${Math.round(Date.now() - process.getCreationTime())} ms`);
       this.sendState();
       this.focusContent();
     });
