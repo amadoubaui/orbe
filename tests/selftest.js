@@ -226,6 +226,101 @@ module.exports = async function selftest(ctx) {
   w.toggleSidebar(true);
   await sleep(320);
 
+  // Mouvements des pages : animation du système (View.setBounds animé), sans minuteur
+  {
+    // Les machines d'intégration sous Windows ont les animations coupées : on les
+    // impose pour toute la suite, afin que le chemin animé y soit essayé aussi.
+    const system = win.motion(1) > 0;
+    win.forceMotion(true);
+    const moving = win.motion(1) > 0;
+    const view = () => win.live.get(w.activeId).view;
+    const same = (r1, r2) => r1.x === r2.x && r1.y === r2.y && r1.width === r2.width && r1.height === r2.height;
+    const pane = (i = 0) => { const p = w.paneRects(w.contentRect(), w.visibleIds())[i]; return { x: p.x, y: p.y, width: p.width, height: p.height }; };
+    const docked = pane();
+    w.toggleSidebar(false);
+    await sleep(120);
+    const hidden = pane();
+    check('barre masquée : la page prend la largeur d’un coup', same(view().getBounds(), hidden) && hidden.x === 10);
+    const before = { ...win.motionStats };
+    const t0 = Date.now();
+    let landed = 0;
+    view().once('bounds-changed', () => { landed = Date.now() - t0; });
+    w.toggleSidebar(true);
+    const during = view().getBounds();
+    check('retour de la barre : un seul appel par page, animé par le système, aucun minuteur',
+      win.motionStats.animated - before.animated === (moving ? 1 : 0) && win.motionStats.direct - before.direct === (moving ? 0 : 1) && !w.anim);
+    await sleep(320);
+    check('retour de la barre : la page finit à sa place exacte', same(view().getBounds(), docked) && same(docked, { ...hidden, x: docked.x, width: hidden.width - (docked.x - hidden.x) }));
+    console.log(`  – animation native des vues (${process.platform}, « Réduire les animations » ${system ? 'inactif' : 'actif, ignoré pour l’essai'}) : ${win.MOTION.sidebarIn} ms demandées ; position lue aussitôt après l’appel : x=${during.x} (départ ${hidden.x}, arrivée ${docked.x}) ; arrivée signalée à ${landed} ms`);
+    // Trajet plus long, pour voir si le système anime vraiment : cote lue à mi-course.
+    {
+      const probe = { ...docked, x: docked.x + 120 };
+      const t1 = Date.now();
+      let end = 0;
+      view().once('bounds-changed', () => { end = Date.now() - t1; });
+      view().setBounds(probe, { animate: { duration: 400, easing: 'linear' } });
+      await sleep(200);
+      const mid = view().getBounds().x;
+      await sleep(400);
+      const fin = view().getBounds().x;
+      console.log(`  – trajet d’essai de 400 ms : cote à 200 ms x=${mid}, à 600 ms x=${fin} (départ ${docked.x}, cible ${probe.x}) ; fin signalée à ${end} ms`);
+      check('trajet animé : la vue arrive à sa cible', fin === probe.x);
+      view().setBounds(docked, { animate: { duration: 1 } });
+      await sleep(150);
+      check('retour par un appel animé de 1 ms : cote exacte', same(view().getBounds(), docked));
+    }
+    // Interruptions : la dernière demande l'emporte, les cotes lues sont les bonnes
+    w.toggleSidebar(false);
+    await sleep(100);
+    w.toggleSidebar(true);
+    await sleep(15);
+    w.toggleSidebar(false);
+    await sleep(350);
+    check('barre masquée pendant son retour : la page revient à la pleine largeur', same(view().getBounds(), hidden));
+    w.toggleSidebar(true);
+    w.toggleSidebar(false);
+    w.toggleSidebar(true);
+    await sleep(350);
+    check('bascules coup sur coup : la page finit à la place de la dernière demande', same(view().getBounds(), docked));
+    // Fenêtre redimensionnée pendant le mouvement
+    const [cw, ch] = w.win.getContentSize();
+    w.toggleSidebar(false);
+    await sleep(100);
+    w.toggleSidebar(true);
+    w.win.setContentSize(cw - 60, ch);
+    await until(() => w.win.getContentSize()[0] !== cw, 'fenêtre rétrécie');
+    await sleep(350);
+    const narrow = w.win.getContentSize()[0];
+    check('fenêtre redimensionnée pendant le retour de la barre : la page suit', narrow < cw && same(view().getBounds(), pane()) && pane().width === docked.width - (cw - narrow));
+    w.win.setContentSize(cw, ch);
+    await until(() => w.win.getContentSize()[0] === cw, 'fenêtre rétablie');
+    await sleep(350);
+    // Vue scindée : les deux volets glissent ensemble
+    const solo = w.activeId;
+    const mate = w.orderedIds().find((x) => x !== solo);
+    w.splitWith(solo, mate);
+    w.toggleSidebar(false);
+    await sleep(100);
+    w.toggleSidebar(true);
+    await sleep(350);
+    const ids = w.visibleIds();
+    check('vue scindée : chaque volet à sa place après le retour de la barre', ids.length === 2 && ids.every((x, i) => same(win.live.get(x).view.getBounds(), pane(i))));
+    // Place réservée à droite (panneau latéral d'une extension)
+    const inset = win.hooks.rightInset;
+    win.hooks.rightInset = () => 140;
+    w.toggleSidebar(false);
+    await sleep(100);
+    w.toggleSidebar(true);
+    await sleep(350);
+    const last = pane(1);
+    check('place réservée à droite respectée après le retour de la barre', same(win.live.get(ids[1]).view.getBounds(), last) && last.x + last.width === cw - 10 - 140);
+    win.hooks.rightInset = inset;
+    w.closeSplitPane();
+    w.activate(solo);
+    await sleep(350);
+    check('retour à une seule page, à sa place', w.visibleIds().length === 1 && same(view().getBounds(), docked));
+  }
+
   // Recherche dans la page
   w.activate(a.id);
   w.openFind();
@@ -297,6 +392,55 @@ module.exports = async function selftest(ctx) {
   w.close(pinL.id);
   w.activate(a.id);
 
+  // Aperçu : la carte grandit depuis le lien, se réduit à la fermeture, s'étend en onglet
+  {
+    const same = (r1, r2) => r1.x === r2.x && r1.y === r2.y && r1.width === r2.width && r1.height === r2.height;
+    const kids = () => w.win.contentView.children;
+    const final = w.peekRect();
+    const zone = w.contentRect();
+    const inside = (r) => r.x >= zone.x && r.y >= zone.y && r.x + r.width <= zone.x + zone.width && r.y + r.height <= zone.y + zone.height;
+    const point = { x: final.x + 240, y: final.y + final.height - 30 };
+    const seed = w.peekSeed(final, point);
+    const centre = w.peekSeed(final, null);
+    check('aperçu : départ autour du lien cliqué (sans sortir de la zone des pages), ou du centre à défaut',
+      inside(seed) && seed.width < final.width / 2 && Math.abs(seed.x + seed.width / 2 - point.x) <= 1 && seed.y + seed.height === zone.y + zone.height
+      && inside(centre) && Math.abs((centre.x + centre.width / 2) - (final.x + final.width / 2)) <= 1 && centre.width > final.width * 0.9);
+    const v1 = w.openPeek(base + '/b', a.id, undefined, point);
+    await until(() => w.peekState && w.peekState.title === 'Page B', 'aperçu animé ouvert');
+    await sleep(450);
+    check('aperçu : la carte finit à sa place, au-dessus du voile', same(v1.getBounds(), final) && kids().indexOf(v1) > kids().indexOf(w.peekChrome) && kids().includes(w.peekChrome));
+    await until(() => w.peekChrome.webContents.executeJavaScript('document.body.classList.contains("peek") && !document.getElementById("peek").hidden'), 'voile de l’aperçu');
+    const wc1 = v1.webContents;
+    w.closePeek({ animate: true });
+    const moving = win.motion(1) > 0;
+    check('fermeture animée : l’aperçu n’existe plus pour le reste, sa vue reste le temps du mouvement', !w.peekState && w.activeWc === win.live.get(a.id).wc && kids().includes(v1) === moving);
+    if (moving) await until(() => w.peekChrome.webContents.executeJavaScript('document.body.classList.contains("peek-out")'), 'voile qui s’efface');
+    await sleep(350);
+    check('fermeture animée : vue et voile retirés, page fermée', !kids().includes(v1) && !kids().includes(w.peekChrome) && wc1.isDestroyed());
+    // Interruption : un nouvel aperçu pendant la fermeture du précédent
+    const v2 = w.openPeek(base + '/b', a.id);
+    const wc2 = v2.webContents;
+    await sleep(60);
+    w.closePeek({ animate: true });
+    const v3 = w.openPeek(base + '/c', a.id);
+    check('nouvel aperçu pendant une fermeture : le précédent est retiré aussitôt', !kids().includes(v2) && kids().includes(v3) && w.peekState.view === v3 && kids().filter((k) => k === w.peekChrome).length === 1);
+    await until(() => wc2.isDestroyed(), 'page de l’aperçu précédent fermée');
+    await until(() => w.peekState && w.peekState.title.startsWith('C '), 'troisième aperçu');
+    await sleep(450);
+    check('aperçu rouvert : carte à sa place', same(v3.getBounds(), final));
+    // Passage en onglet : la carte s'étend jusqu'à la place de la page
+    const under = win.live.get(a.id).view;
+    w.expandPeek();
+    const grown = w.activeId;
+    check('aperçu agrandi : onglet créé aussitôt, la page quittée reste dessous pendant le mouvement', win.live.get(grown).view === v3 && !w.peekState && kids().includes(under) === moving);
+    await sleep(500);
+    const rect = w.paneRects(w.contentRect(), w.visibleIds())[0];
+    check('aperçu agrandi : la page occupe toute la zone, au rang des pages ; l’ancienne et le voile sont retirés',
+      same(v3.getBounds(), { x: rect.x, y: rect.y, width: rect.width, height: rect.height }) && kids().indexOf(v3) === 1 && !kids().includes(under) && !kids().includes(w.peekChrome));
+    w.close(grown);
+    w.activate(a.id);
+  }
+
   // Espaces
   w.newSpace();
   const s2 = w.space;
@@ -314,6 +458,50 @@ module.exports = async function selftest(ctx) {
   check('⌥⌘← revient à l’Espace précédent avec son onglet', w.space !== s2 && w.activeId === a.id);
   w.spaceAt(2);
   check('⌃2 va au deuxième Espace', w.space === s2 && w.activeId === c.id);
+
+  // Glissement entre Espaces : les deux listes côte à côte, qui suivent les doigts
+  {
+    const firstSpace = w.data.spaces[0];
+    await until(() => ui(`!slide && S.space.id === ${JSON.stringify(s2.id)}`), 'second Espace affiché');
+    check('l’état donne à la barre la liste des Espaces voisins',
+      await ui(`S.near.next === null && S.near.prev.space.id === ${JSON.stringify(firstSpace.id)} && S.near.prev.today.length === ${firstSpace.today.length} && [...S.near.prev.pinned, ...S.near.prev.today].some((x) => x.active)`));
+    const reduced = await ui('matchMedia("(prefers-reduced-motion: reduce)").matches');
+    // Balayage simulé : une suite d'événements de molette horizontaux sur la barre.
+    const swipe = (dx, n, gap) => ui(`(async () => { for (let i = 0; i < ${n}; i++) { document.getElementById('scroll').dispatchEvent(new WheelEvent('wheel', { deltaX: ${dx}, bubbles: true, cancelable: true })); await new Promise((r) => setTimeout(r, ${gap})); } })()`);
+    const look = () => ui(`(() => { const g = document.querySelector('#pager .ghost'); const W = document.getElementById('pager').clientWidth; const x = (el) => new DOMMatrix(getComputedStyle(el).transform).m41; return { ghost: g ? g.dataset.space : null, rows: g ? g.querySelectorAll('.row.tab').length : 0, live: x(document.getElementById('scroll')), ghostX: g ? x(g) : null, W, tint: Number(getComputedStyle(document.getElementById('tint')).opacity), phase: slide ? slide.phase : null }; })()`);
+    if (reduced) {
+      console.log('  – ignoré : glissement entre Espaces (« Réduire les animations » actif)');
+    } else {
+      await swipe(-12, 4, 30); // lent et court : en dessous du seuil
+      const mid = await look();
+      check('balayage lent : les deux listes suivent les doigts, côte à côte, la teinte se fond au même pas',
+        mid.ghost === firstSpace.id && mid.rows >= firstSpace.today.length && mid.rows > 0 && mid.phase === 'drag'
+        && Math.abs(mid.live - 48) < 1 && Math.abs(mid.ghostX - (48 - mid.W)) < 1 && Math.abs(mid.tint - 48 / mid.W) < 0.02, JSON.stringify(mid));
+      await until(() => ui('!slide'), 'retour de la liste');
+      const back = await look();
+      check('doigts levés avant le seuil : la liste revient, l’Espace ne change pas', w.space === s2 && !back.ghost && back.live === 0 && back.tint === 0);
+      await swipe(14, 5, 30); // vers la droite alors qu'il n'y a plus d'Espace : élastique
+      const edge = await look();
+      check('au bout de la rangée : la liste résiste, sans autre liste à côté', !edge.ghost && edge.live < 0 && edge.live > -70 && edge.tint === 0, JSON.stringify(edge));
+      await until(() => ui('!slide'), 'retour de l’élastique');
+      check('au bout de la rangée : rien ne change', w.space === s2 && (await look()).live === 0);
+    }
+    await sleep(150);
+    await swipe(-30, 6, 16); // franc : au-delà du seuil
+    await until(() => w.space === firstSpace, 'changement d’Espace par balayage');
+    await until(() => ui(`!slide && S.space.id === ${JSON.stringify(firstSpace.id)}`), 'fin du glissement');
+    const done = await look();
+    check('balayage franc : l’Espace change une seule fois, la liste est rendue à l’arrivée', w.space === firstSpace && w.activeId === a.id && !done.ghost && done.live === 0 && done.tint === 0);
+    await sleep(200);
+    w.spaceAt(2);
+    if (!reduced) {
+      await until(() => ui('!!slide'), 'glissement lancé par le raccourci');
+      const fly = await look();
+      check('changement par raccourci : même glissement, dans le bon sens', fly.ghost === s2.id && fly.ghostX >= 0 && fly.live <= 0, JSON.stringify(fly));
+    }
+    await until(() => ui(`!slide && S.space.id === ${JSON.stringify(s2.id)}`), 'second Espace rendu');
+    check('changement par raccourci : arrivée sur le second Espace', w.space === s2 && w.activeId === c.id && await ui('document.getElementById("space-name").textContent === "Projets"'));
+  }
   w.moveToSpace(c.id, w.data.spaces[0].id);
   check('déplacer un onglet vers un autre Espace', w.data.spaces[0].today.includes(c.id) && !s2.today.length);
   w.spaceAt(1);

@@ -100,6 +100,22 @@ module.exports = {
       assert.deepEqual(m2.hors, []);
     });
 
+    await t.verifier('états pressés : une ligne et une tuile s’enfoncent sous le pointeur et reviennent au ressort', async () => {
+      const echelle = (loc) => loc.evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).a);
+      for (const [nom, loc, fond] of [['ligne', shell.locator('#today .row.tab').last(), 0.985], ['tuile', shell.locator('#fav .tile').first(), 0.95]]) {
+        const c = await ctx.centre(loc);
+        await shell.mouse.move(c.x, c.y);
+        assert.equal(await echelle(loc), 1, nom + ' au repos');
+        await shell.mouse.down();
+        await jusqua(async () => Math.abs((await echelle(loc)) - fond) < 0.002, nom + ' enfoncée');
+        // Le retour se fait sur une courbe de ressort (jeton de base.css), pas sur une durée fixe.
+        const retour = await loc.evaluate((el) => getComputedStyle(el).transition);
+        await shell.mouse.up();
+        await jusqua(async () => (await echelle(loc)) === 1, nom + ' revenue');
+        assert.match(await loc.evaluate((el) => getComputedStyle(el).transitionTimingFunction), /linear\(/, nom + ' : courbe de ressort au relâchement (' + retour + ')');
+      }
+    });
+
     await ctx.capture('visuel-defilement');
     console.log(`    captures enregistrées dans ${ctx.captures}`);
   },

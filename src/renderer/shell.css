@@ -17,12 +17,16 @@ body.translucent { background: color-mix(in srgb, var(--bg) 80%, transparent); }
   flex-direction: column;
   padding: 0 8px 0 8px;
   transform: translateX(-102%);
-  /* Arc : disparition immédiate, retour en 50 ms. */
+  /* Arc : disparition immédiate, retour en 50 ms — même durée et même courbe que
+     le glissement des pages, animé par le système (window.js, `place`). */
   transition: none;
   will-change: transform;
 }
-body.open #sidebar { transform: none; transition: transform 50ms var(--ease); }
+body.open #sidebar { transform: none; transition: transform 50ms var(--ease-out); }
 body.no-anim #sidebar { transition: none; }
+/* Au démarrage, la barre paraît en fondu au lieu de surgir dans la fenêtre déjà affichée. */
+body.ready #sidebar { animation: side-in 90ms var(--ease-out); }
+@keyframes side-in { from { opacity: 0; } }
 
 #top {
   height: 46px;
@@ -44,10 +48,10 @@ body.fullscreen #top { padding-left: 0; }
   color: var(--dim);
   position: relative;
   -webkit-app-region: no-drag;
-  transition: background 120ms, color 120ms;
+  transition: background 120ms, color 120ms, transform var(--spring-bouncy);
 }
 .ib:hover { background: var(--hover); color: var(--fg); }
-.ib:active { background: var(--pill); }
+.ib:active { background: var(--pill); transform: scale(0.9); transition: transform var(--press); }
 .ib[disabled] { opacity: 0.35; pointer-events: none; }
 
 #url-row { display: flex; gap: 4px; flex: none; }
@@ -64,10 +68,11 @@ body.fullscreen #top { padding-left: 0; }
   font-size: 11.5px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  transition: background 120ms, color 120ms;
+  transition: background 120ms, color 120ms, transform var(--spring-snappy);
 }
 #shield[hidden] { display: none; }
 #shield:hover { color: var(--fg); }
+#shield:active { transform: scale(0.94); transition: transform var(--press); }
 #shield.on { color: color-mix(in srgb, var(--accent) 55%, var(--fg)); }
 #shield.off svg, #shield.allowed svg { opacity: 0.45; }
 #shield svg { width: 15px; height: 15px; }
@@ -82,29 +87,53 @@ body.fullscreen #top { padding-left: 0; }
   display: flex;
   align-items: center;
   overflow: hidden;
-  transition: background 120ms;
+  transition: background 120ms, transform var(--spring-snappy);
 }
 #url:hover { background: color-mix(in srgb, var(--pill) 100%, var(--hover)); }
+#url:active { transform: scale(0.985); transition: transform var(--press); }
 #url-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--fg); }
 #url-text.placeholder { color: var(--dim); }
 #url.loading { background-image: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 30%, transparent), transparent); background-size: 60% 100%; background-repeat: no-repeat; animation: sweep 1.1s linear infinite; }
 @keyframes sweep { from { background-position: -80% 0; } to { background-position: 220% 0; } }
 
-#scroll {
+/* Listes de l'Espace. Pendant un changement d'Espace, la liste courante (#scroll)
+   et celle de l'autre Espace (.ghost, image fixe) glissent côte à côte dans
+   #pager ; shell.js les déplace (suivi du doigt, puis ressort). */
+#pager {
   flex: 1;
+  min-height: 0;
+  margin: 8px -8px 0;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+}
+#scroll, .ghost {
+  flex: 1;
+  min-width: 0;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  margin: 8px -8px 0;
   padding: 0 8px;
   display: flex;
   flex-direction: column;
 }
-#scroll::-webkit-scrollbar { width: 0; }
-#scroll.slide-next { animation: slide-next 220ms var(--ease); }
-#scroll.slide-prev { animation: slide-prev 220ms var(--ease); }
-@keyframes slide-next { from { transform: translateX(36px); opacity: 0; } }
-@keyframes slide-prev { from { transform: translateX(-36px); opacity: 0; } }
+#scroll::-webkit-scrollbar, .ghost::-webkit-scrollbar { width: 0; }
+.ghost { position: absolute; inset: 0; pointer-events: none; }
+#pager.sliding > * { will-change: transform; pointer-events: none; }
+/* Teinte de l'autre Espace, fondue par-dessus celle de l'Espace courant au même pas que le glissement. */
+#tint {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  --bg: color-mix(in srgb, var(--accent) var(--tint), var(--base));
+  background: var(--bg);
+}
+#tint.gradient {
+  --bg2: color-mix(in srgb, var(--accent2) calc(var(--tint) + 8%), var(--base));
+  background: linear-gradient(160deg, color-mix(in srgb, var(--accent) calc(var(--tint) + 8%), var(--base)), var(--bg2));
+}
+.floating #tint { display: none; }
 
 /* Favoris : grille de tuiles en haut, communes à tous les Espaces. */
 #fav {
@@ -122,17 +151,17 @@ body.dragging #fav:empty { min-height: 40px; border: 1.5px dashed var(--line); b
   display: grid;
   place-items: center;
   position: relative;
-  transition: background 120ms, transform 120ms;
+  transition: background 120ms, transform var(--spring-bouncy);
 }
 .tile:hover { background: var(--pill); }
-.tile:active { transform: scale(0.96); }
+.tile:active { transform: scale(0.95); transition: transform var(--press); }
 .tile.active { background: var(--active); box-shadow: var(--active-shadow); }
 .tile .favicon, .tile .letter { width: 20px; height: 20px; }
 .tile:not(.live) .favicon { opacity: 0.85; }
 .tile .dot { position: absolute; bottom: 5px; width: 4px; height: 4px; border-radius: 2px; background: var(--accent); opacity: 0; }
 .tile.audible .dot { opacity: 1; }
 
-#space-head {
+#space-head, .g-head {
   display: flex;
   align-items: center;
   gap: 7px;
@@ -143,8 +172,8 @@ body.dragging #fav:empty { min-height: 40px; border: 1.5px dashed var(--line); b
   font-size: 12px;
   flex: none;
 }
-#space-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#space-icon { font-size: 13px; }
+#space-name, .g-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#space-icon, .g-icon { font-size: 13px; }
 
 .list { display: flex; flex-direction: column; gap: 4px; flex: none; min-height: 4px; }
 
@@ -162,9 +191,12 @@ body.dragging #fav:empty { min-height: 40px; border: 1.5px dashed var(--line); b
   flex: none;
   width: 100%;
   text-align: left;
-  transition: background 100ms;
+  /* Survol : entrée immédiate, sortie en 150 ms, comme les listes de macOS. */
+  transition: background 150ms, transform var(--spring-snappy);
 }
-.row:hover { background: var(--hover); }
+.row:hover { background: var(--hover); transition: background 0s, transform var(--spring-snappy); }
+/* Ligne pressée (sauf si l'on presse un de ses boutons). */
+.row:active:not(:has(.act:active)) { transform: scale(0.985); transition: background 0s, transform var(--press); }
 .row.active { background: var(--active); box-shadow: var(--active-shadow); }
 .row.shown { background: color-mix(in srgb, var(--active) 55%, transparent); }
 .row .ic { width: 16px; height: 16px; display: grid; place-items: center; flex: none; color: var(--dim); }
@@ -178,9 +210,11 @@ body.dragging #fav:empty { min-height: 40px; border: 1.5px dashed var(--line); b
   place-items: center;
   color: var(--dim);
   flex: none;
+  transition: transform var(--spring-bouncy);
 }
 .row .act svg { width: 14px; height: 14px; }
 .row .act:hover { background: var(--pill); color: var(--fg); }
+.row .act:active { transform: scale(0.86); transition: transform var(--press); }
 .row:hover .act.x, .row.audible .act.snd, .row.muted .act.snd, .row.changed .act.reset { display: grid; }
 .row.changed:not(:hover) .act.reset { display: none; }
 .row .slash { display: none; color: var(--faint); font-weight: 600; margin: 0 -4px 0 -5px; flex: none; }
@@ -190,7 +224,7 @@ body.dragging #fav:empty { min-height: 40px; border: 1.5px dashed var(--line); b
 .row.grouped { display: none; }
 .row .more { display: none; gap: 4px; flex: none; margin-left: -4px; }
 .row.split .more { display: flex; }
-#b-newtab { color: var(--dim); }
+#b-newtab, .g-new { color: var(--dim); }
 #b-newtab:hover { color: var(--fg); }
 /* Glisser : la ligne emportée laisse sa place (elle reste dans la mise en page,
    invisible) et les lignes voisines s'écartent, par transformation seulement,
@@ -241,7 +275,7 @@ body.parting #scroll .row, body.parting #divider { transform: translateY(0); tra
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.folder > .row .chev { transition: transform 140ms var(--ease); color: var(--faint); width: 12px; height: 12px; }
+.folder > .row .chev { transition: transform var(--spring-snappy); color: var(--faint); width: 12px; height: 12px; }
 .folder.open > .row .chev { transform: rotate(90deg); }
 .folder > .children { display: none; flex-direction: column; gap: 3px; padding-left: 16px; padding-top: 4px; min-height: 2px; }
 .folder > .row .title { font-weight: 650; }
@@ -261,12 +295,13 @@ body.parting #scroll .row, body.parting #divider { transform: translateY(0); tra
   user-select: text;
 }
 
-#divider { display: flex; align-items: center; gap: 8px; height: 22px; padding: 0 8px; flex: none; }
-#divider .rule { flex: 1; height: 1px; background: var(--line); }
+#divider, .g-divider { display: flex; align-items: center; gap: 8px; height: 22px; padding: 0 8px; flex: none; }
+#divider .rule, .g-divider .rule { flex: 1; height: 1px; background: var(--line); }
 #b-clear { font-size: 11px; font-weight: 600; color: var(--dim); opacity: 0; transition: opacity 120ms; padding: 2px 4px; border-radius: 5px; }
 #b-clear:not(.can) { display: none; }
 #scroll:hover #b-clear.can { opacity: 1; }
 #b-clear:hover { color: var(--fg); background: var(--hover); }
+#b-clear:active { transform: scale(0.94); }
 
 #blank { flex: 1; min-height: 40px; }
 
@@ -285,12 +320,16 @@ body.incognito #incognito { display: flex; }
   place-items: center;
   font-size: 13px;
   color: var(--faint);
-  transition: color 120ms, width 160ms var(--ease);
+  transition: color 120ms, width var(--spring-bouncy), transform var(--spring-bouncy);
   flex: none;
 }
-.sp::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; transition: transform 120ms; }
+.sp::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; transition: transform var(--spring-bouncy); }
 .sp:hover { color: var(--dim); }
 .sp:hover::before { transform: scale(1.5); }
+.sp:active { transform: scale(0.86); transition: transform var(--press); }
+/* L'icône de l'Espace qui devient courant grossit à sa place. */
+.sp.active .em { animation: sp-in var(--spring-bouncy); }
+@keyframes sp-in { from { transform: scale(0.4); opacity: 0; } }
 .sp.active { width: 26px; color: var(--fg); }
 .sp.active::before { display: none; }
 .sp:not(.active) .em { display: none; }
@@ -324,7 +363,7 @@ body.incognito #incognito { display: flex; }
   align-items: center;
   gap: 2px;
   -webkit-app-region: drag;
-  transition: left 50ms var(--ease);
+  transition: left 50ms var(--ease-out);
 }
 body.toolbar #toolbar { display: flex; }
 body.toolbar.docked #toolbar { left: var(--sw); }
@@ -356,7 +395,7 @@ body.toolbar:not(.docked):not(.fullscreen) #toolbar { padding-left: 70px; }
   color: var(--dim);
   border-radius: 10px;
   background: var(--hover);
-  transition: left 50ms var(--ease);
+  transition: left 50ms var(--ease-out);
   -webkit-app-region: drag;
 }
 body.no-tab #empty { display: flex; }
@@ -368,8 +407,9 @@ body.toolbar #empty { top: 50px; }
 /* Lecteur miniature : un onglet en arrière-plan qui joue du son. */
 #media { display: flex; align-items: center; gap: 2px; height: 44px; padding: 0 6px 0 4px; margin: 4px 0 2px; border-radius: 12px; background: var(--hover); flex: none; }
 #media[hidden] { display: none; }
-#media-open { flex: 1; min-width: 0; height: 36px; display: flex; align-items: center; gap: 10px; padding: 0 6px; border-radius: 9px; text-align: left; }
+#media-open { flex: 1; min-width: 0; height: 36px; display: flex; align-items: center; gap: 10px; padding: 0 6px; border-radius: 9px; text-align: left; transition: transform var(--spring-snappy); }
 #media-open:hover { background: var(--hover); }
+#media-open:active { transform: scale(0.98); transition: transform var(--press); }
 #media-icon { display: grid; flex: none; }
 #media-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12.5px; font-weight: 500; }
 
@@ -392,13 +432,16 @@ body.toolbar #empty { top: 50px; }
   box-shadow: 0 10px 34px rgba(0, 0, 0, 0.3), 0 0 0 0.5px var(--line);
   backdrop-filter: blur(24px);
   transform: translateX(calc(-100% - 14px));
+  /* Elle entre au ressort et repart plus vite qu'elle n'est venue (la vue est retirée 220 ms après). */
+  transition: transform 180ms var(--ease-in);
 }
-.floating body.open #sidebar { transform: none; }
+.floating body.open #sidebar { transform: none; transition: transform var(--spring-smooth); }
+.floating body.ready #sidebar { animation: none; }
 .floating #top { padding-left: 62px; height: 40px; }
 .floating #toolbar, .floating #empty, .floating #dividers, .floating #resize { display: none !important; }
 
 /* Apparition et disparition des lignes. */
-.list > .in, .children > .in { animation: row-in 170ms var(--ease); }
+.list > .in, .children > .in { animation: row-in var(--spring-snappy); }
 .list > .out, .children > .out { animation: row-out 150ms var(--ease) forwards; pointer-events: none; overflow: hidden; }
 @keyframes row-in { from { height: 0; opacity: 0; transform: scale(0.96); } }
 @keyframes row-out { to { height: 0; opacity: 0; margin-bottom: -3px; transform: scale(0.96); } }
@@ -444,8 +487,9 @@ html.win body:not(.toolbar):not(.fullscreen) #empty { top: 32px; }
 /* Boutons des extensions, sous l'adresse. */
 #exts { display: flex; flex-wrap: wrap; gap: 4px; flex: none; }
 #exts:not(:empty) { margin-top: 6px; }
-.ext { width: 30px; height: 28px; border-radius: 8px; display: grid; place-items: center; position: relative; transition: background 120ms; }
+.ext { width: 30px; height: 28px; border-radius: 8px; display: grid; place-items: center; position: relative; transition: background 120ms, transform var(--spring-bouncy); }
 .ext:hover { background: var(--hover); }
+.ext:active { transform: scale(0.9); transition: transform var(--press); }
 .ext img { width: 16px; height: 16px; }
 .ext.off { opacity: 0.45; }
 .ext .badge { position: absolute; right: 0; bottom: 0; min-width: 12px; padding: 0 3px; border-radius: 6px; font-size: 8.5px; font-weight: 700; line-height: 12px; }

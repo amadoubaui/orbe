@@ -15,6 +15,30 @@ module.exports = {
       await shell.mouse.move(c.x, c.y);
       for (let i = 0; i < 4; i++) { await shell.mouse.wheel(dx, dy); await ctx.sleep(16); }
     };
+    // Balayage lent : petits crans espacés, les doigts restent posés.
+    const glisser = async (dx, crans) => {
+      const c = await ctx.centre(shell.locator('#scroll'));
+      await shell.mouse.move(c.x, c.y);
+      for (let i = 0; i < crans; i++) { await shell.mouse.wheel(dx, 0); await ctx.sleep(25); }
+    };
+    // Où en sont les deux listes (celle de l'Espace courant et l'image de l'autre) et la teinte.
+    const listes = () => shell.evaluate(() => {
+      const x = (el) => new DOMMatrix(getComputedStyle(el).transform).m41;
+      const g = document.querySelector('#pager .ghost');
+      /* global slide */
+      return {
+        phase: slide ? slide.phase : null,
+        courante: x(document.getElementById('scroll')),
+        autre: g ? x(g) : null,
+        autreNom: g ? g.querySelector('.g-name').textContent : null,
+        autreTitres: g ? [...g.querySelectorAll('.row.tab .title')].map((el) => el.textContent) : [],
+        largeur: document.getElementById('pager').clientWidth,
+        teinte: Number(getComputedStyle(document.getElementById('tint')).opacity),
+      };
+    });
+    const repos = () => jusqua(async () => { const l = await listes(); return !l.phase && l.autre === null && l.courante === 0 && l.teinte === 0; }, 'listes au repos');
+    const anime = !(await shell.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches));
+    const animer = (titre, fn) => (anime ? t.verifier(titre, fn) : t.ignorer(titre, '« Réduire les animations » est actif'));
 
     await ctx.ouvrir('/a', 'Page A');
 
@@ -68,13 +92,85 @@ module.exports = {
       assert.equal(await ctx.vueAu(e.vuePage.x + 40, e.vuePage.y + 40), ctx.url('/b'), 'la page B est affichée');
     });
 
-    await t.verifier('la liste glisse dans le sens du changement d’Espace', async () => {
+    await animer('clic sur une pastille : les deux listes glissent côte à côte, dans le sens du changement', async () => {
+      await repos();
+      // Vers l'Espace précédent : sa liste entre par la gauche, la liste courante sort par la droite.
       await ctx.clic(shell, pastilles.nth(0));
+      const vers = await jusqua(async () => { const l = await listes(); return l.autre !== null ? l : null; }, 'glissement en cours');
+      assert.equal(vers.autreNom, 'Personnel');
+      assert.deepEqual(vers.autreTitres, ['Page A']);
+      assert.ok(vers.autre <= 0 && vers.courante >= 0, JSON.stringify(vers));
+      assert.ok(Math.abs((vers.courante - vers.autre) - vers.largeur) < 1.5, 'les deux listes se touchent : ' + JSON.stringify(vers));
+      assert.equal(await active(), 0, 'la pastille change dès le départ');
       await jusqua(async () => (await nom()) === 'Personnel', 'Espace Personnel');
-      assert.equal(await shell.evaluate(() => document.getElementById('scroll').classList.contains('slide-prev')), true);
+      await repos();
+      assert.deepEqual(await ctx.titres(), ['Page A']);
+      // Vers l'Espace suivant : l'inverse.
+      await ctx.clic(shell, pastilles.nth(1));
+      const retour = await jusqua(async () => { const l = await listes(); return l.autre !== null ? l : null; }, 'glissement en cours');
+      assert.equal(retour.autreNom, 'Projets');
+      assert.ok(retour.autre >= 0 && retour.courante <= 0, JSON.stringify(retour));
+      await jusqua(async () => (await nom()) === 'Projets', 'Espace Projets');
+      await repos();
+      assert.deepEqual(await ctx.titres(), ['Page B']);
+    });
+
+    await animer('balayage lent : la liste voisine suit les doigts, la teinte se fond ; doigts levés avant le seuil, tout revient', async () => {
+      // Le pilotage peut prendre du retard sur une machine chargée (les doigts
+      // sont alors « levés » trop tôt) : on recommence le geste.
+      let l = null;
+      await jusqua(async () => {
+        await repos();
+        await glisser(-8, 4);
+        l = await listes();
+        if (l.phase === 'drag' && l.courante === 32) return true;
+        await ctx.sleep(500);
+        return false;
+      }, 'balayage lent suivi', 15000);
+      assert.equal(l.autreNom, 'Personnel');
+      assert.deepEqual(l.autreTitres, ['Page A']);
+      assert.equal(l.autre, 32 - l.largeur, 'la liste voisine est collée à la liste courante');
+      assert.ok(Math.abs(l.teinte - 32 / l.largeur) < 0.02, 'teinte au même pas : ' + l.teinte);
+      await repos();
+      assert.equal(await nom(), 'Projets');
+      assert.equal(await active(), 1);
+      assert.deepEqual(await ctx.titres(), ['Page B']);
+    });
+
+    await animer('balayage lent au bout de la rangée : la liste résiste (élastique) puis revient', async () => {
+      let l = null;
+      await jusqua(async () => {
+        await repos();
+        await glisser(10, 6);
+        l = await listes();
+        if (l.phase === 'drag') return true;
+        await ctx.sleep(500);
+        return false;
+      }, 'balayage au bout de la rangée', 15000);
+      assert.equal(l.autre, null, 'aucune liste à côté');
+      assert.ok(l.courante < -5 && l.courante > -45, 'déplacement amorti : ' + l.courante + ' px pour 60 px de geste');
+      assert.equal(l.teinte, 0);
+      await repos();
+      assert.equal(await nom(), 'Projets');
+    });
+
+    await animer('balayage lent poursuivi au-delà du seuil : l’Espace change, une seule fois', async () => {
+      await repos();
+      await jusqua(async () => {
+        await glisser(-10, 14);
+        if ((await ctx.etat()).espace === 'Personnel') return true;
+        await ctx.sleep(500);
+        return false;
+      }, 'changement par balayage lent', 15000);
+      await jusqua(async () => (await nom()) === 'Personnel', 'Espace Personnel');
+      await repos();
+      assert.equal(await active(), 0);
+      assert.deepEqual(await ctx.titres(), ['Page A']);
+      await ctx.sleep(400);
       await ctx.clic(shell, pastilles.nth(1));
       await jusqua(async () => (await nom()) === 'Projets', 'Espace Projets');
-      assert.equal(await shell.evaluate(() => document.getElementById('scroll').classList.contains('slide-next')), true);
+      await repos();
+      await ctx.sleep(300);
     });
 
     await t.verifier('balayage horizontal vers la gauche sur la barre latérale : Espace précédent', async () => {

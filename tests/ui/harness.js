@@ -45,6 +45,8 @@ function servir() {
       case '/a': return res.end(page('Page A', '<h1>Alpha</h1><p>orbe orbe orbe</p><a id="vers-b" href="/b">aller en B</a>'));
       case '/b': return res.end(page('Page B', '<h1>Bravo</h1><a id="vers-a" href="/a">aller en A</a>'));
       case '/c': return res.end(page('Page C', '<h1>Charlie</h1>'));
+      // Lien vers un autre hôte (même serveur, sous le nom « localhost ») : depuis un onglet épinglé, il s'ouvre en aperçu.
+      case '/liens': return res.end(page('Page à liens', `<h1>Liens</h1><p style="margin-top:300px"><a id="dehors" href="http://localhost:${server.address().port}/b">ailleurs</a></p>`));
       case '/d': return res.end(page('Page D', '<h1>Delta</h1>'));
       case '/e': return res.end(page('Page E', '<h1>Echo</h1>'));
       case '/long': return res.end(page('Un titre de page vraiment très long pour vérifier la coupe du texte dans la barre latérale', '<h1>Long</h1>'));

@@ -130,6 +130,17 @@ function reconcile(container, items, tile) {
   }
 }
 
+// Pastilles des Espaces, en bas : un point par Espace, l'icône pour l'Espace courant.
+function drawSpaces(list, current) {
+  const spaces = $('spaces');
+  const sig = list.map((x) => x.id + x.icon + x.name).join('|') + '>' + current;
+  if (spaces._sig === sig) return;
+  spaces._sig = sig;
+  spaces.innerHTML = list.length > 1
+    ? list.map((x) => `<button class="sp${x.id === current ? ' active' : ''}" data-space="${esc(x.id)}" title="${esc(x.name)}"><span class="em">${esc(x.icon) || '•'}</span></button>`).join('')
+    : '';
+}
+
 function render(s) {
   const prev = S;
   // Animations seulement pour un changement dans le même Espace, pas au premier affichage.
@@ -194,14 +205,7 @@ function render(s) {
   reconcile($('today'), s.today);
   $('b-clear').classList.toggle('can', s.today.length > (s.today.some((x) => x.active) ? 1 : 0));
 
-  const spaces = $('spaces');
-  const sig = s.spaces.map((x) => x.id + x.icon + x.name).join('|') + '>' + s.space.id;
-  if (spaces._sig !== sig) {
-    spaces._sig = sig;
-    spaces.innerHTML = s.spaces.length > 1
-      ? s.spaces.map((x) => `<button class="sp${x.id === s.space.id ? ' active' : ''}" data-space="${esc(x.id)}" title="${esc(x.name)}"><span class="em">${esc(x.icon) || '•'}</span></button>`).join('')
-      : '';
-  }
+  drawSpaces(s.spaces, s.space.id);
 
   // Boutons des extensions : icône, pastille, clic = fenêtre de l'extension.
   const exts = $('exts');
@@ -439,37 +443,267 @@ for (const p of ['b', 'tb']) {
   $(p + '-reload').onclick = () => send('command', S && S.nav.loading ? 'stop' : 'reload');
 }
 
-// --- Balayage à deux doigts : changer d'Espace ------------------------------
-// La liste suit le doigt ; passé un seuil, on change d'Espace, sinon elle
-// revient en place. Au bout de la rangée, elle résiste.
-let swipe = 0;
-let swipeLock = false;
-let swipeTimer = null;
+// --- Changement d'Espace : deux listes côte à côte ---------------------------
+// La liste de l'Espace courant (#scroll) et celle de l'autre Espace (une image
+// fixe, `.ghost`) glissent ensemble dans #pager, pendant que la teinte de l'autre
+// Espace (#tint) se fond par-dessus au même pas.
+//  - Balayage à deux doigts : les listes suivent les doigts ; passé un seuil, ou
+//    sur un geste vif, on change d'Espace ; sinon elles reviennent au ressort. Au
+//    bout de la rangée, la liste résiste (élastique) et revient.
+//  - Clic sur une pastille ou raccourci : le même glissement, sans les doigts.
+// Rien n'est redessiné pendant le mouvement : le nouvel état reçu est gardé de
+// côté et rendu à l'arrivée, sous l'image fixe qui montrait déjà la même liste.
+// Le mouvement lui-même est une animation composée (Web Animations) dont la
+// courbe est un ressort calculé avec la vitesse des doigts au lâcher.
+const PAGER = {
+  commit: 0.4, // part de la largeur au-delà de laquelle le balayage change d'Espace…
+  commitMax: 110, // …sans dépasser tant de pixels
+  flick: 1.5, // vitesse (px/ms) d'un geste vif, qui suffit à changer d'Espace
+  flickMin: 40, // déplacement minimal pour qu'un geste vif compte
+  idle: 90, // sans événement pendant ce temps (ms), les doigts sont considérés levés
+  response: 0.2, // ressort du glissement : réponse (s), amortissement critique (≈ 240 ms)
+  elastic: 0.55, // raideur de l'élastique au bout de la rangée
+};
+const pagerEl = $('pager');
 const scroller = $('scroll');
-function swipeReset(animated) {
-  swipe = 0;
-  scroller.style.transition = animated ? 'transform 220ms var(--ease), opacity 220ms' : '';
-  scroller.style.transform = '';
-  scroller.style.opacity = '';
-}
-sidebar.addEventListener('wheel', (e) => {
-  if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
-  e.preventDefault();
-  clearTimeout(swipeTimer);
-  swipeTimer = setTimeout(() => { swipeLock = false; swipeReset(true); }, 160);
-  if (swipeLock || !S) return;
-  swipe += e.deltaX;
-  const i = S.spaces.findIndex((x) => x.id === S.space.id);
-  const edge = (swipe > 0 && i >= S.spaces.length - 1) || (swipe < 0 && i <= 0);
-  const shift = edge ? swipe * 0.15 : swipe * 0.7;
-  scroller.style.transition = '';
-  scroller.style.transform = `translateX(${-shift}px)`;
-  scroller.style.opacity = String(Math.max(0.35, 1 - Math.abs(shift) / 220));
-  if (!edge && Math.abs(swipe) > 70) {
-    swipeLock = true;
-    send('stepSpace', swipe > 0 ? 1 : -1);
-    swipeReset(false);
+const tintEl = $('tint');
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+let slide = null; // glissement en cours
+let wheelIdle = null;
+let wheelLocked = false; // suite (inertie) d'un geste déjà décidé : ignorée
+let lastWheel = 0;
+let swipeSum = 0;
+
+// Image fixe de la liste d'un Espace : mêmes lignes, sans aucune interaction.
+function ghostNode(it) {
+  const el = document.createElement('div');
+  if (it.type === 'folder') {
+    el.className = 'folder' + (it.open ? ' open' : '');
+    el.innerHTML = `<div class="row"><span class="ic">${icon('folder')}</span><span class="title"></span>${icon('chevron', 'i chev')}</div><div class="children"></div>`;
+    el.querySelector('.title').textContent = it.name;
+    for (const child of it.children) el.lastChild.appendChild(ghostNode(child));
+  } else {
+    tabRow(el, it);
+    el.draggable = false;
   }
+  return el;
+}
+
+function ghostPanel(vm) {
+  const el = document.createElement('div');
+  el.className = 'ghost';
+  el.dataset.space = vm.space.id;
+  el.innerHTML = `<div class="g-head"><span class="g-icon"></span><span class="g-name grow"></span></div><div class="list"></div>`
+    + `<div class="g-divider"><span class="rule"></span></div>`
+    + `<div class="row g-new"><span class="ic">${icon('plus')}</span><span class="title"></span></div><div class="list"></div>`;
+  el.querySelector('.g-icon').textContent = vm.space.icon;
+  el.querySelector('.g-name').textContent = vm.space.name;
+  el.querySelector('.g-new .title').textContent = t('side.newTab');
+  const lists = el.querySelectorAll('.list');
+  for (const it of vm.pinned) lists[0].appendChild(ghostNode(it));
+  for (const it of vm.today) lists[1].appendChild(ghostNode(it));
+  return el;
+}
+
+// Ressort amorti (amortissement critique) de 0 vers 1, parti à la vitesse v0
+// (en parts du trajet par seconde). Rend la position à l'instant t (s).
+function springAt(t, v0, response = PAGER.response) {
+  const w = (2 * Math.PI) / response;
+  return 1 + (-1 + (v0 - w) * t) * Math.exp(-w * t);
+}
+// Durée (ms) et courbe `linear()` de ce ressort, pour une animation composée.
+function springTiming(v0, response = PAGER.response) {
+  let end = 0.12;
+  for (let t = 0.6; t > 0.12; t -= 0.01) if (Math.abs(1 - springAt(t, v0, response)) > 0.004) { end = t + 0.01; break; }
+  const pts = [];
+  // Jamais au-delà de la cible : un dépassement montrerait un vide entre les listes.
+  for (let i = 0; i <= 24; i++) pts.push(i === 24 ? 1 : Math.min(1, Math.max(0, springAt((end * i) / 24, v0, response))).toFixed(3));
+  return { duration: Math.round(end * 1000), easing: `linear(${pts.join(', ')})`, at: (ms) => (ms >= end * 1000 ? 1 : Math.min(1, Math.max(0, springAt(ms / 1000, v0, response)))) };
+}
+
+const pagerWidth = () => pagerEl.clientWidth || 1;
+// Au bout de la rangée : la liste suit de moins en moins (élastique).
+const elastic = (x, W) => Math.sign(x) * W * (1 - 1 / ((Math.abs(x) * PAGER.elastic) / W + 1));
+
+// Place les deux listes : `x` > 0 découvre l'Espace suivant (à droite), < 0 le précédent.
+function slideSet(x) {
+  const W = pagerWidth();
+  slide.x = x;
+  scroller.style.transform = `translateX(${-x}px)`;
+  if (slide.ghost) slide.ghost.style.transform = `translateX(${slide.dir * W - x}px)`;
+  tintEl.style.opacity = slide.ghost ? String(Math.min(1, Math.abs(x) / W)) : '0';
+}
+
+// Prépare l'image fixe et la teinte de l'Espace `vm`, du côté `dir` (+1 : à droite).
+function slideGhost(vm, dir) {
+  if (slide.ghost) slide.ghost.remove();
+  slide.dir = dir;
+  slide.ghost = null;
+  if (!vm) return;
+  slide.ghost = ghostPanel(vm);
+  slide.targetId = vm.space.id;
+  pagerEl.appendChild(slide.ghost);
+  tintEl.style.setProperty('--accent', vm.space.color);
+  tintEl.style.setProperty('--accent2', vm.space.color2 || vm.space.color);
+  tintEl.classList.toggle('gradient', !!vm.space.color2);
+}
+
+function slideBegin() {
+  slide = { x: 0, dir: 0, ghost: null, v: 0, phase: 'drag', commit: false, anims: [], after: [] };
+  pagerEl.classList.add('sliding');
+}
+
+// Position affichée en ce moment, y compris au milieu d'une animation.
+function slideNow() {
+  if (!slide.fly) return slide.x;
+  const f = slide.fly;
+  return f.from + (f.to - f.from) * f.timing.at(performance.now() - f.t0);
+}
+
+function slideStop() {
+  for (const a of slide.anims) a.cancel();
+  slide.anims = [];
+  slide.fly = null;
+  clearTimeout(slide.timer);
+}
+
+// Lance les listes vers `to` (0 : retour ; ±largeur : l'autre Espace) au ressort.
+function slideFly(to, done) {
+  const W = pagerWidth();
+  const from = slideNow();
+  slideStop();
+  const dist = to - from;
+  // Vitesse des doigts, en parts du trajet restant par seconde.
+  const v0 = Math.abs(dist) > 1 ? Math.max(0, Math.min(40, (slide.v * 1000) / dist)) : 0;
+  const timing = springTiming(v0);
+  const opts = { duration: timing.duration, easing: timing.easing, fill: 'forwards' };
+  slide.phase = 'settle';
+  slide.fly = { from, to, t0: performance.now(), timing };
+  slide.x = to;
+  const move = (el, a, b) => slide.anims.push(el.animate({ transform: [`translateX(${a}px)`, `translateX(${b}px)`] }, opts));
+  move(scroller, -from, -to);
+  if (slide.ghost) {
+    move(slide.ghost, slide.dir * W - from, slide.dir * W - to);
+    slide.anims.push(tintEl.animate({ opacity: [Math.min(1, Math.abs(from) / W), Math.min(1, Math.abs(to) / W)] }, opts));
+  }
+  // La fin est donnée par une minuterie plutôt que par l'animation : celle-ci ne
+  // « finit » pas dans une vue qui n'est pas affichée.
+  slide.timer = setTimeout(done, timing.duration);
+}
+
+// Fin du glissement : tout revient à sa place, puis l'état gardé de côté est rendu.
+function slideEnd() {
+  if (!slide) return;
+  const { pending, other, after, ghost } = slide;
+  slideStop();
+  slide = null;
+  if (ghost) ghost.remove();
+  scroller.style.transform = '';
+  tintEl.style.opacity = '';
+  pagerEl.classList.remove('sliding');
+  const next = pending || other;
+  if (next) render(next);
+  for (const fn of after) fn();
+}
+
+// Le balayage a franchi le seuil : on change d'Espace et les listes finissent leur course.
+function slideCommit() {
+  const W = pagerWidth();
+  slide.commit = true;
+  wheelLocked = true;
+  drawSpaces(S.spaces, slide.targetId); // la pastille change tout de suite
+  send('switchSpace', slide.targetId);
+  slideFly(slide.dir * W, () => {
+    // L'état du nouvel Espace arrive d'ordinaire bien avant ; sinon on l'attend un peu.
+    if (slide.pending) return slideEnd();
+    slide.waiting = true;
+    slide.timer = setTimeout(slideEnd, 600);
+    return undefined;
+  });
+}
+
+// Les doigts sont levés (ou le geste s'est arrêté) : retour à l'Espace courant.
+function slideRelease() {
+  if (!slide || slide.phase !== 'drag') return;
+  slideFly(0, slideEnd);
+}
+
+// Changement d'Espace décidé ailleurs (pastille, raccourci, menu) : même glissement.
+function slideTo(s) {
+  const from = s.spaces.findIndex((x) => x.id === S.space.id);
+  const to = s.spaces.findIndex((x) => x.id === s.space.id);
+  slideBegin();
+  slideGhost({ space: s.space, pinned: s.pinned, today: s.today }, from >= 0 && to < from ? -1 : 1);
+  slide.commit = true;
+  slide.pending = s;
+  slideSet(0);
+  drawSpaces(s.spaces, s.space.id);
+  slideFly(slide.dir * pagerWidth(), slideEnd);
+}
+
+// Tout état reçu passe par ici : pendant un glissement, il attend la fin.
+function onState(s) {
+  if (slide && slide.commit) {
+    if (s.space.id === slide.targetId) {
+      slide.pending = s;
+      if (slide.waiting) slideEnd();
+      return;
+    }
+    if (S && s.space.id === S.space.id) { slide.other = s; return; }
+    slideEnd(); // un troisième Espace : on termine d'abord celui-ci
+  } else if (slide && S && s.space.id !== S.space.id) {
+    slideEnd(); // changement venu d'ailleurs pendant un balayage : le balayage est abandonné
+  }
+  const visible = FLOATING ? s.sidebar.peek && !s.sidebar.visible : s.sidebar.visible;
+  if (S && !slide && s.space.id !== S.space.id && visible && document.body.classList.contains('open') && !reducedMotion.matches && !drag) return slideTo(s);
+  const first = !S;
+  render(s);
+  // Premier affichage : la barre paraît en fondu, sans glisser.
+  if (first && !FLOATING) {
+    const b = document.body;
+    b.classList.add('ready', 'no-anim');
+    requestAnimationFrame(() => requestAnimationFrame(() => b.classList.remove('no-anim')));
+  }
+  return undefined;
+}
+
+sidebar.addEventListener('wheel', (e) => {
+  const dragging = slide && slide.phase === 'drag';
+  if (!dragging && Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
+  e.preventDefault();
+  const now = performance.now();
+  const dt = Math.max(4, Math.min(64, lastWheel ? now - lastWheel : 16));
+  lastWheel = now;
+  clearTimeout(wheelIdle);
+  wheelIdle = setTimeout(() => { wheelLocked = false; lastWheel = 0; slideRelease(); }, PAGER.idle);
+  if (wheelLocked || !S || drag || editing) return;
+  if (reducedMotion.matches) {
+    // Sans animation : un geste franc change d'Espace, rien ne glisse.
+    swipeSum += e.deltaX;
+    if (Math.abs(swipeSum) > 70) { wheelLocked = true; send('stepSpace', swipeSum > 0 ? 1 : -1); swipeSum = 0; }
+    return;
+  }
+  if (slide && slide.commit) return; // un glissement décidé va à son terme
+  let x = e.deltaX;
+  if (!slide) slideBegin();
+  else { x += slideNow(); slideStop(); slide.phase = 'drag'; } // reprise en plein retour
+  const W = pagerWidth();
+  const v = e.deltaX / dt;
+  slide.v = slide.v ? slide.v * 0.6 + v * 0.4 : v;
+  const dir = Math.sign(x) || slide.dir || 1;
+  const vm = S.near && (dir > 0 ? S.near.next : S.near.prev);
+  if (dir !== slide.dir || !!vm !== !!slide.ghost) slideGhost(vm, dir);
+  if (!vm) {
+    // Bout de la rangée : la liste résiste, et ce qui a été tiré se relâche peu à peu.
+    slide.raw = (slide.raw || 0) * 0.92 + e.deltaX;
+    slideSet(elastic(slide.raw, W));
+    return;
+  }
+  slide.raw = 0;
+  slideSet(Math.max(-W, Math.min(W, x)));
+  const far = Math.abs(slide.x) >= Math.min(W * PAGER.commit, PAGER.commitMax);
+  const brisk = Math.abs(slide.v) >= PAGER.flick && Math.abs(slide.x) >= PAGER.flickMin && Math.sign(slide.v) === dir;
+  if (far || brisk) slideCommit();
 }, { passive: false });
 
 // --- Redimensionnement ------------------------------------------------------
@@ -870,8 +1104,9 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-O.on('state', render);
-O.on('edit', startRename);
+O.on('state', onState);
+// Renommer pendant un glissement (nouvel Espace) : après l'arrivée.
+O.on('edit', (id) => (slide && slide.commit ? slide.after.push(() => startRename(id)) : startRename(id)));
 // Sons d'interface (fichiers originaux, src/renderer/sons).
 const sounds = {};
 O.on('sound', (name) => {
