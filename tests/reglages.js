@@ -121,6 +121,23 @@ module.exports = async function reglagesTests(ctx) {
     info.settings === s() && Array.isArray(info.spaces) && Array.isArray(info.profiles) && Array.isArray(info.engines) && typeof info.version === 'string'
     && info.panes.length === 9 && info.panes.includes('shortcuts') && typeof info.isDefault === 'boolean' && typeof info.downloads === 'string', JSON.stringify(Object.keys(info)));
 
+  // Profils : renommer, supprimer
+  store.state.profiles.push({ id: 'p-tmp', name: 'Temporaire' });
+  store.state.favs['p-tmp'] = [];
+  const renamed = await globalAction('settings:renameProfile', { id: 'p-tmp', name: '  Renommé  ' }, null);
+  await globalAction('settings:setProfile', { id: 'p-tmp', key: 'searchEngine', value: 'bing' }, null);
+  const keptProfile = await globalAction('settings:deleteProfile', pid, null);
+  const afterDelete = await globalAction('settings:deleteProfile', 'p-tmp', null);
+  check('profils : renommer ; supprimer seulement si aucun Espace ne l’utilise, ses réglages propres partent avec lui',
+    renamed.find((x) => x.id === 'p-tmp').name === 'Renommé' && keptProfile.some((x) => x.id === pid) && !afterDelete.some((x) => x.id === 'p-tmp') && !s().profileSettings['p-tmp']);
+
+  // Exceptions du bloqueur
+  const adblock = require('../src/main/adblock');
+  adblock.allowSite('exemple-reglages.org');
+  const listed = (await globalAction('settings:get', null, null)).allow.includes('exemple-reglages.org');
+  const left = await globalAction('settings:allowRemove', 'exemple-reglages.org', null);
+  check('exceptions du bloqueur : listées dans les réglages, retirées une à une', listed && !left.includes('exemple-reglages.org') && !adblock.isSiteAllowed('exemple-reglages.org'));
+
   // --- Effets -------------------------------------------------------------------
   // Liens des autres applications vers un Espace précis
   openUrl(base + '/?externe');
@@ -279,6 +296,16 @@ module.exports = async function reglagesTests(ctx) {
   boosts.set(bh, { css: '', zaps: [] });
   await boosts.apply(wc);
 
+  // Image dans l'image
+  const rtx = win.live.get(ext);
+  s().autoPip = false;
+  delete rtx.pip;
+  w.pip(rtx, true);
+  const pipOff = !('pip' in rtx);
+  s().autoPip = true;
+  w.pip(rtx, false);
+  check('image dans l’image : rien n’est demandé à la page quand le réglage est coupé', pipOff && rtx.pip === false);
+
   // Lecteur réduit
   const other = w.newTab(base + '/?autre');
   await until(() => win.live.get(other.id) && !win.live.get(other.id).loading, 'second onglet');
@@ -348,6 +375,15 @@ module.exports = async function reglagesTests(ctx) {
   check('page des raccourcis, barre de commande et pages de l’interface : même nouveau raccourci',
     shownKeys && shownKeys.keys === shortcuts.display(freeA) && w.commandList().find((c) => c.command === 'reload').shortcut === shortcuts.display(freeA)
     && shortcuts.keysMap().reload === shortcuts.display(freeA) && shortcuts.display(freeA) === (platform.isMac ? '⌃⌥R' : 'Ctrl+Alt+R'), JSON.stringify(shownKeys));
+
+  // Page « Raccourcis clavier essentiels » (menu Aide)
+  commands.run(w, 'shortcuts');
+  const helpId = w.activeId;
+  await until(async () => (await win.live.get(helpId).wc.executeJavaScript('[...document.querySelectorAll(".line")].map((l) => l.textContent).join("|")')).includes(label('reload') + shortcuts.display(freeA)), 'page des raccourcis');
+  const helpRows = await win.live.get(helpId).wc.executeJavaScript('[document.querySelectorAll("h2").length, document.querySelectorAll(".line kbd").length]');
+  check('page des raccourcis essentiels : cinq rubriques, chaque ligne avec son raccourci en vigueur', helpRows[0] === 5 && helpRows[1] > 40, JSON.stringify(helpRows));
+  w.close(helpId, { silent: true });
+  w.activate(ext);
 
   r = shortcuts.assign('forceReload', tDefault);
   check('conflit : signalé, rien n’est changé', r.conflict === 'newTab' && !!r.label && accelIn('newTab') === tDefault && !('forceReload' in s().shortcuts));
@@ -504,13 +540,19 @@ module.exports = async function reglagesTests(ctx) {
     missing: FIELDS.filter((f) => !document.getElementById(f)),
     ghosts: [...document.querySelectorAll('[hidden]')].filter((e) => e.getClientRects().length).map((e) => e.id),
     overflow: document.documentElement.scrollWidth > innerWidth,
+    defaut: [document.getElementById('defaultState').textContent, document.getElementById('makeDefault').hidden],
     scroll: document.getElementById('panes').scrollHeight - document.getElementById('panes').clientHeight,
   })`).then(JSON.parse);
   check('fenêtre des réglages : neuf volets, un seul affiché, tous les réglages présents',
     struct.tabs.length === 9 && struct.tabs[0] === 'general:Général' && struct.tabs[3] === 'shortcuts:Raccourcis' && struct.shown.join() === 'pane-general' && struct.selected === 'general'
     && !struct.missing.length && !struct.ghosts.length && !struct.overflow, JSON.stringify(struct));
+  const isDefault = panes.isDefaultBrowser();
+  check('navigateur par défaut : l’état est affiché, le bouton n’apparaît que s’il reste à faire',
+    struct.defaut[0] === store.t(isDefault ? 'set.defaultYes' : 'set.defaultNo') && struct.defaut[1] === isDefault, JSON.stringify(struct.defaut));
   const hGeneral = sw.getContentSize();
-  check('la fenêtre a la hauteur de son volet : rien à faire défiler', hGeneral[0] === panes.WIDTH && struct.scroll <= 0, JSON.stringify([hGeneral, struct.scroll]));
+  // Petit écran (machines d'intégration) : la fenêtre s'arrête au bord de l'écran, le volet défile.
+  const roomy = require('electron').screen.getDisplayMatching(sw.getBounds()).workAreaSize.height - 60 > hGeneral[1];
+  check('la fenêtre a la hauteur de son volet : rien à faire défiler', hGeneral[0] === panes.WIDTH && (roomy ? struct.scroll <= 0 : struct.scroll > 0), JSON.stringify([hGeneral, struct.scroll, roomy]));
   await js('document.querySelector(\'#tabs [data-pane="extensions"]\').click()');
   await until(() => sw.getContentSize()[1] < hGeneral[1] - 100, 'fenêtre réduite au volet Extensions');
   await until(async () => (await js('document.getElementById("panes").scrollHeight - document.getElementById("panes").clientHeight')) <= 0, 'hauteur ajustée');

@@ -673,7 +673,7 @@ class OrbeWindow {
       wc.on('before-mouse-event', (e, mouse) => {
         if (mouse.type !== 'mouseUp' || mouse.button !== 'left') return;
         lastClick = Date.now();
-        rt.click = { x: mouse.x, y: mouse.y, at: lastClick, mods: mouse.modifiers || [] }; // d'où partira un éventuel aperçu
+        rt.click = { x: mouse.x, y: mouse.y, at: lastClick }; // d'où partira un éventuel aperçu
       });
       wc.on('will-navigate', (e, url) => {
         if (!e.isMainFrame || e.defaultPrevented || !store.state.settings.peekLinks) return;
@@ -729,6 +729,10 @@ class OrbeWindow {
     });
     wc.on('context-menu', (e, params) => rt.owner.pageMenu(rt, params));
     wc.on('before-input-event', (e, input) => rt.owner.onInput(e, input));
+    // ⌥ tenue pendant un clic : les événements de souris ne disent pas les touches
+    // de modification, on suit donc la touche elle-même.
+    wc.on('before-input-event', (e, input) => { rt.alt = !!input.alt; });
+    wc.on('blur', () => { rt.alt = false; });
     wc.on('found-in-page', (e, result) => rt.owner.sendFind(result));
     wc.on('focus', () => rt.owner.paneFocused(rt.id));
     wc.on('enter-html-full-screen', () => { rt.owner.htmlFullscreen = true; rt.fullscreen = true; rt.owner.layout(); });
@@ -746,19 +750,25 @@ class OrbeWindow {
       if (!/^(https?|about|blob|data):/i.test(details.url) && details.url !== '') return { action: 'deny' };
       if (details.disposition === 'background-tab') {
         // ⌥⌘clic (Alt+Ctrl+clic ailleurs) : petite fenêtre, comme dans Arc.
-        const mods = rt.click && Date.now() - rt.click.at < 1500 ? rt.click.mods : [];
-        if (store.state.settings.littleAltClick !== false && mods.includes('alt') && /^https?:/i.test(details.url) && !owner.incognito) {
+        if (store.state.settings.littleAltClick !== false && rt.alt && /^https?:/i.test(details.url) && !owner.incognito) {
           hooks.openLittle(details.url);
           return { action: 'deny' };
         }
         owner.newTab(details.url, { background: true, after: rt.id });
         return { action: 'deny' };
       }
-      // Aperçu : lien sortant d'un onglet épinglé ou d'un favori, ou ⇧clic.
+      // Aperçu : lien sortant d'un onglet épinglé ou d'un favori.
       const from = data.tabs[rt.id];
       const outside = from && from.homeUrl && !sameHost(details.url, from.url);
-      const shiftClick = details.disposition === 'new-window' && !details.features && store.state.settings.peekShift !== false;
-      if (/^https?:/i.test(details.url) && (outside || shiftClick)) {
+      // ⇧clic : la page ne garde aucun lien avec la nouvelle (pas de window.opener),
+      // et Electron ne fournit alors pas de contenu à adopter : on ouvre nous-mêmes.
+      const shifted = details.disposition === 'new-window' && !details.features;
+      if (shifted && /^https?:/i.test(details.url)) {
+        if (store.state.settings.peekShift !== false) owner.openPeek(details.url, rt.id);
+        else owner.newTab(details.url, { after: rt.id });
+        return { action: 'deny' };
+      }
+      if (/^https?:/i.test(details.url) && outside) {
         return { action: 'allow', createWindow: (options) => owner.openPeek(details.url, rt.id, options).webContents };
       }
       // Conserve window.opener (connexions OAuth, paiements…).
