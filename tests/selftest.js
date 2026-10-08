@@ -453,6 +453,13 @@ module.exports = async function selftest({ first: w, OrbeWindow, store, win, lit
   check('mise en veille au-delà de la limite', win.live.size <= 2 && win.live.has(w.activeId));
   store.state.settings.maxLiveTabs = 14;
 
+  // Thème clair (le menu Présentation → Apparence applique le thème)
+  commands.setSetting('appearance', 'light');
+  check('le thème clair s’applique', require('electron').nativeTheme.themeSource === 'light');
+  await until(() => ui('matchMedia("(prefers-color-scheme: light)").matches'), 'interface en clair');
+  await shot('clair');
+  commands.setSetting('appearance', 'auto');
+
   // Persistance
   await shot('final');
   w.remember();
