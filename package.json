@@ -11,7 +11,8 @@
     "start": "node scripts/dev.js",
     "test": "node scripts/dev.js --selftest",
     "test:ui": "node scripts/test-ui.js",
-    "build": "node scripts/build-mac.js"
+    "build": "node scripts/build-mac.js",
+    "build:win": "node scripts/build-win.js"
   },
   "orbe": {
     "electron": "44.7.0"

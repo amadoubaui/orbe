@@ -320,6 +320,7 @@ $('media-open').onclick = () => S && S.media && send('activate', S.media.id);
 $('media-play').onclick = () => send('mediaToggle');
 $('media-mute').onclick = () => S && S.media && send('toggleMute', S.media.id);
 $('b-sidebar').onclick = () => send('toggleSidebar');
+$('b-menu').onclick = () => send('command', 'appMenu');
 $('url').onclick = () => send('openCommand', 'edit');
 $('shield').onclick = () => send('shieldMenu');
 $('tb-url').onclick = () => send('openCommand', 'edit');

@@ -378,3 +378,16 @@ body::after {
 .folder:not(.open) > .children:has(.row.active) { display: flex; }
 .folder:not(.open) > .children > :not(.active):not(.folder) { display: none; }
 .folder:not(.open) > .children > .folder:not(:has(.row.active)) { display: none; }
+
+/* ==== Plateformes (html.mac / html.win, classe posée par common.js) ==========
+   Tout ce qui dépend du système est dans ce bloc. */
+/* Bouton « ⋯ » : ouvre le menu de l'application là où il n'y a pas de barre de menus. */
+#b-menu { display: none; }
+html.win #b-menu { display: grid; }
+/* Windows : pas de feux tricolores à gauche ; les boutons de fenêtre sont en
+   haut à droite (140 px), au-dessus de la page ou à droite de la barre d'outils. */
+html.win #top, html.win.floating #top { padding-left: 0; }
+html.win body.toolbar:not(.fullscreen) #toolbar { right: 146px; }
+html.win body.toolbar:not(.docked) #toolbar { padding-left: 0; }
+html.win body:not(.toolbar):not(.fullscreen) #empty { top: 32px; }
+/* ==== Fin du bloc plateformes ============================================== */

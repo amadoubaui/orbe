@@ -1,8 +1,9 @@
 // Toutes les actions d'Orbe, au même endroit : le menu, la barre de commande
 // et la barre latérale appellent les mêmes fonctions.
 // `accel` reprend les raccourcis d'Arc ; `keys` est leur affichage.
-const { app, dialog } = require('electron');
+const { dialog } = require('electron');
 const { store } = require('./store');
+const platform = require('./platform');
 
 const hooks = { newWindow: () => {}, newLittle: () => {}, openSettings: () => {}, settingsChanged: null, openBoost: () => {} };
 
@@ -86,14 +87,16 @@ const COMMANDS = [
   { name: 'newProfile', label: 'spaces.newProfile', palette: false, run: (w) => w.newProfile() },
   { name: 'welcome', label: 'help.welcome', run: (w) => w.openInternal('welcome.html') },
   { name: 'shortcuts', label: 'help.shortcuts', run: (w) => w.openInternal('shortcuts.html') },
+  // Menu de l'application, ouvert depuis la barre latérale (Windows : pas de barre de menus).
+  { name: 'appMenu', label: 'side.menu', palette: false, run: (w) => platform.popupAppMenu(w.win) },
   { name: 'github', label: 'help.github', run: (w) => w.newTab('https://github.com/amadoubaui/orbe') },
 ];
+platform.adaptCommands(COMMANDS);
 
 const byName = new Map(COMMANDS.map((c) => [c.name, c]));
 
 function makeDefault() {
-  app.setAsDefaultProtocolClient('http');
-  app.setAsDefaultProtocolClient('https');
+  platform.makeDefault();
 }
 
 async function undo(w) {

@@ -5,7 +5,8 @@ const os = require('os');
 const path = require('path');
 const { store, uid, SPACE_COLORS } = require('./store');
 
-const ARC_FILE = path.join(os.homedir(), 'Library', 'Application Support', 'Arc', 'StorableSidebar.json');
+// macOS : ~/Library/Application Support/Arc ; Windows : dossier du paquet Arc (voir platform.js).
+const ARC_FILE = require('./platform').arcSidebarFile();
 
 // Arc enregistre ses listes sous la forme [id, objet, id, objet, …].
 const objects = (list) => (Array.isArray(list) ? list.filter((x) => x && typeof x === 'object') : []);
@@ -160,4 +161,4 @@ function merge(data, state = store.state) {
   return added;
 }
 
-module.exports = { ARC_FILE, read, count, merge, available: () => fs.existsSync(ARC_FILE) };
+module.exports = { ARC_FILE, read, count, merge, available: () => !!ARC_FILE && fs.existsSync(ARC_FILE) };

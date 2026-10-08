@@ -12,7 +12,13 @@ const K = { 1: 18, 2: 19, 3: 20, 9: 25, t: 17, d: 2, s: 1, w: 13, z: 6, l: 37, c
 
 module.exports = async ({ first: w, win }) => {
   let failed = 0;
-  const press = async (key, ...mods) => { execFileSync(process.env.TOUCHE, [String(K[key]), ...mods]); await sleep(450); };
+  // Sécurité : les touches partent vers l'application au premier plan. Si la
+  // fenêtre de test ne l'est plus (quelqu'un utilise la machine), on arrête.
+  const press = async (key, ...mods) => {
+    if (!w.win.isFocused()) throw new Error('la fenêtre de test n’est plus au premier plan : test interrompu, aucune touche envoyée');
+    execFileSync(process.env.TOUCHE, [String(K[key]), ...mods]);
+    await sleep(450);
+  };
   const check = (name, ok, detail = '') => { if (!ok) failed += 1; console.log(`${ok ? '  ✓' : '  ✗'} ${name}${ok ? '' : ' — ' + detail}`); };
   const title = () => (w.activeId ? w.data.tabs[w.activeId].title : null);
   const page = (t) => `data:text/html,<title>${t}</title><h1>${t}</h1><p>texte</p>`;

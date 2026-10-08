@@ -17,9 +17,11 @@ module.exports = async ({ first: w }) => {
   w.focusContent();
   await sleep(800);
   const check = (name, ok) => { console.log(`${ok ? '  ✓' : '  ✗'} ${name}`); if (!ok) throw new Error(name); };
+  if (!w.win.isFocused()) throw new Error('la fenêtre de test n’est pas au premier plan : test interrompu');
   execFileSync(process.env.CTRLTAB, ['1']);
   await sleep(600);
   check('⌃Tab puis relâchement de ⌃ : retour à l’onglet précédent', w.activeId === b.id && !w.modalMode);
+  if (!w.win.isFocused()) throw new Error('la fenêtre de test n’est pas au premier plan : test interrompu');
   execFileSync(process.env.CTRLTAB, ['2']);
   await sleep(600);
   check('⌃Tab deux fois : deux onglets en arrière', w.activeId === a.id && !w.modalMode);

@@ -14,6 +14,8 @@ body { background: color-mix(in srgb, color-mix(in srgb, var(--accent) var(--tin
 #open[disabled] { opacity: 0.4; }
 #open { border-radius: 8px 0 0 8px; margin-right: -7px; }
 #open-in { height: 28px; width: 24px; border-radius: 0 8px 8px 0; background: color-mix(in srgb, var(--accent) 82%, #000); color: #fff; -webkit-app-region: no-drag; }
+/* Windows : boutons de fenêtre à droite, rien à gauche. */
+html.win #bar { padding: 0 146px 0 8px; }
 </style>
 </head>
 <body>
