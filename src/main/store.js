@@ -13,6 +13,9 @@ const DOWNLOADS_MAX = 300;
 const SPACE_COLORS = ['#7c6cf0', '#3b82f6', '#06b6d4', '#10b981', '#84cc16', '#f59e0b', '#f97316', '#ef4444', '#ec4899', '#a855f7', '#64748b', '#78716c'];
 
 const uid = () => crypto.randomBytes(6).toString('base64url');
+// Une icône « data: » volumineuse n'a pas sa place dans l'historique.
+const lightIcon = (u) => !!u && !(u.startsWith('data:') && u.length > 2048);
+const INTERNAL_PAGE = /^orbe:\/\/app\/(library|shortcuts)\.html/;
 
 const DEFAULT_SETTINGS = {
   lang: 'fr',
@@ -49,7 +52,8 @@ class Store {
   }
 
   normalize(s) {
-    s.version = 1;
+    const from = s.version || 0;
+    s.version = 2;
     s.settings = { ...DEFAULT_SETTINGS, ...(s.settings || {}) };
     s.tabs = s.tabs || {};
     // Profils : chacun a ses cookies, ses connexions et ses favoris.
@@ -64,6 +68,10 @@ class Store {
     s.archive = s.archive || [];
     s.history = s.history || {};
     s.downloads = s.downloads || [];
+    // Un téléchargement interrompu par la fermeture ne reprendra pas.
+    for (const d of s.downloads) if (d.state === 'progressing') d.state = 'interrupted';
+    // Version 2 : l'accès des pages internes repose sur un drapeau explicite.
+    if (from < 2) for (const tab of Object.values(s.tabs)) if (INTERNAL_PAGE.test(tab.url || '')) tab.internal = true;
     s.permissions = s.permissions || {};
     s.window = s.window || {};
     if (!Array.isArray(s.spaces) || !s.spaces.length) {
@@ -97,19 +105,36 @@ class Store {
     return str;
   }
 
-  // Écriture différée : plusieurs modifications rapprochées = une seule écriture.
+  // Écriture différée et asynchrone : plusieurs modifications rapprochées
+  // donnent une seule écriture, qui ne bloque pas l'interface.
   save() {
     if (!this.file || this.timer) return;
-    this.timer = setTimeout(() => { this.timer = null; this.flush(); }, 500);
+    this.timer = setTimeout(() => { this.timer = null; this.write(); }, 1500);
   }
 
+  async write() {
+    if (this.writing) { this.dirty = true; return; }
+    this.writing = true;
+    const tmp = this.file + '.tmp';
+    try {
+      await fs.promises.writeFile(tmp, JSON.stringify(this.state));
+      await fs.promises.copyFile(this.file, this.file + '.bak').catch(() => {});
+      await fs.promises.rename(tmp, this.file);
+    } catch (err) {
+      console.error('[orbe] sauvegarde impossible', err);
+    }
+    this.writing = false;
+    if (this.dirty) { this.dirty = false; this.save(); }
+  }
+
+  // Écriture immédiate, à la fermeture de l'application.
   flush() {
     if (!this.file) return;
     if (this.timer) { clearTimeout(this.timer); this.timer = null; }
-    const tmp = this.file + '.tmp';
+    this.dirty = false;
+    const tmp = this.file + '.sync.tmp';
     try {
       fs.writeFileSync(tmp, JSON.stringify(this.state));
-      if (fs.existsSync(this.file)) fs.copyFileSync(this.file, this.file + '.bak');
       fs.renameSync(tmp, this.file);
     } catch (err) {
       console.error('[orbe] sauvegarde impossible', err);
@@ -124,8 +149,8 @@ class Store {
     const e = h[url] || (h[url] = { url, visits: 0 });
     e.visits += 1;
     e.last = Date.now();
-    if (title) e.title = title;
-    if (favicon) e.favicon = favicon;
+    if (title) e.title = String(title).slice(0, 300);
+    if (lightIcon(favicon)) e.favicon = favicon;
     if (this.historyCount == null) this.historyCount = Object.keys(h).length;
     else if (isNew) this.historyCount += 1;
     if (this.historyCount > HISTORY_MAX + 500) {
@@ -138,7 +163,10 @@ class Store {
 
   touchHistory(url, patch) {
     const e = this.state.history[url];
-    if (e) { Object.assign(e, patch); this.save(); }
+    if (!e) return;
+    if (patch.title) e.title = String(patch.title).slice(0, 300);
+    if (lightIcon(patch.favicon)) e.favicon = patch.favicon;
+    this.save();
   }
 
   archive(entry) {

@@ -26,6 +26,12 @@ const hooks = { changed: () => {}, openLittle: () => {}, openSettings: () => {} 
 
 const t = (key, vars) => store.t(key, null, vars);
 const isInternal = (url) => (url || '').startsWith(INTERNAL);
+const isErrorPage = (url) => (url || '').startsWith(INTERNAL + 'error.html');
+// Pages internes pouvant s'ouvrir dans un onglet, avec accès à l'interface.
+const INTERNAL_PAGES = new Set(['library.html', 'shortcuts.html']);
+// Adresse fournie par une page web (lien, image, glisser-déposer) : seuls
+// http et https sont acceptés, jamais file:, orbe: ou chrome:.
+const webUrl = (u) => (/^https?:\/\//i.test(u || '') ? u : null);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 function findNode(nodes, id) {
@@ -99,12 +105,12 @@ class OrbeWindow {
       ? { spaces: [store.makeSpace(t('incognito.title'), '🕶️', '#52525b')], tabs: {}, favs: { default: [] }, profiles: [{ id: 'default', name: '' }] }
       : store.state;
     this.session = incognito ? sessions.incognitoSession() : sessions.mainSession();
-    this.persistent = !incognito && first;
-    this.spaceId = (this.persistent && this.data.spaces.some((s) => s.id === saved.spaceId)) ? saved.spaceId : this.data.spaces[0].id;
-    this.activeBySpace = this.persistent ? { ...(saved.activeBySpace || {}) } : {};
+    const restore = !incognito && first;
+    this.spaceId = (restore && this.data.spaces.some((s) => s.id === saved.spaceId)) ? saved.spaceId : this.data.spaces[0].id;
+    this.activeBySpace = restore ? { ...(saved.activeBySpace || {}) } : {};
     this.splits = [];
     this.closed = [];
-    this.sidebarVisible = this.persistent ? saved.sidebarVisible !== false : true;
+    this.sidebarVisible = restore ? saved.sidebarVisible !== false : true;
     this.p = this.sidebarVisible ? 1 : 0; // ouverture de la barre latérale, 0..1
     this.peek = false;
     this.htmlFullscreen = false;
@@ -112,7 +118,7 @@ class OrbeWindow {
     this.findOpen = false;
     this.switcher = null;
 
-    const b = (this.persistent && saved.bounds) || {};
+    const b = (restore && saved.bounds) || {};
     const offset = first ? 0 : 28 * (OrbeWindow.all.length % 6);
     this.win = new BaseWindow({
       width: b.width || 1360,
@@ -178,6 +184,22 @@ class OrbeWindow {
     wc.setWindowOpenHandler(() => ({ action: 'deny' }));
     wc.loadURL(INTERNAL + page);
     return view;
+  }
+
+  // La plus ancienne fenêtre normale encore ouverte mémorise son état.
+  get persistent() {
+    return !this.incognito && OrbeWindow.all.find((w) => !w.incognito) === this;
+  }
+
+  // Retire toute trace d'un onglet (actif, vue scindée, lecteur) dans les
+  // fenêtres qui partagent les mêmes données.
+  static forget(id, data) {
+    for (const w of windows.values()) {
+      if (w.data !== data) continue;
+      w.leaveSplit(id);
+      for (const sid of Object.keys(w.activeBySpace)) if (w.activeBySpace[sid] === id) delete w.activeBySpace[sid];
+      if (w.mediaId === id) w.mediaId = null;
+    }
   }
 
   // --- Accès aux données ----------------------------------------------------
@@ -248,7 +270,8 @@ class OrbeWindow {
   visibleIds() {
     const id = this.activeId;
     if (!id) return [];
-    return this.groupOf(id) || [id];
+    const group = this.groupOf(id);
+    return group ? group.filter((x) => this.data.tabs[x]) : [id];
   }
 
   changed() {
@@ -405,11 +428,17 @@ class OrbeWindow {
         try { prev.win.contentView.removeChildView(rt.view); } catch {}
         if (prev.attached) prev.attached.delete(rt.view);
         rt.owner = this;
+        // L'ancienne fenêtre ne doit plus le croire affiché chez elle.
+        prev.leaveSplit(id);
+        for (const sid of Object.keys(prev.activeBySpace)) if (prev.activeBySpace[sid] === id) delete prev.activeBySpace[sid];
+        setImmediate(() => { if (!prev.win.isDestroyed()) { prev.layout(); OrbeWindow.pushAll(); } });
       }
       return rt;
     }
     const tab = this.data.tabs[id];
-    const internal = isInternal(tab.url);
+    // L'accès à l'interface dépend d'un drapeau posé par Orbe, jamais de
+    // l'adresse, qu'une page web peut changer.
+    const internal = tab.internal === true && isInternal(tab.url);
     const view = existing || new WebContentsView(viewOptions || {
       webPreferences: { session: this.sessionFor(id), sandbox: true, contextIsolation: true, preload: internal ? UI_PRELOAD : undefined },
     });
@@ -434,11 +463,24 @@ class OrbeWindow {
         rt.owner.newTab(url);
       });
     }
+    if (!rt.internal) {
+      const guard = (e, url) => { if (isInternal(url)) e.preventDefault(); };
+      wc.on('will-navigate', guard);
+      wc.on('will-redirect', guard);
+    }
+    // Page fermée par elle-même (window.close) ou processus disparu.
+    wc.once('destroyed', () => {
+      if (live.get(rt.id) !== rt) return;
+      const owner = rt.owner;
+      if (owner.htmlFullscreen) owner.htmlFullscreen = false;
+      if (!owner.win.isDestroyed()) owner.close(rt.id);
+      else live.delete(rt.id);
+    });
     wc.on('did-start-loading', () => { rt.loading = true; OrbeWindow.pushAll(); });
     wc.on('did-stop-loading', () => { rt.loading = false; OrbeWindow.pushAll(); });
     wc.on('page-title-updated', (e, title) => {
-      if (isInternal(wc.getURL()) && wc.getURL().includes('error.html')) return;
-      tab.title = title;
+      if (isErrorPage(wc.getURL())) return;
+      tab.title = String(title).slice(0, 300);
       if (!incognito) store.touchHistory(tab.url, { title });
       touch();
     });
@@ -448,7 +490,8 @@ class OrbeWindow {
       touch();
     });
     const navigated = (url) => {
-      if (url.startsWith(INTERNAL + 'error.html')) return;
+      if (isErrorPage(url)) return;
+      if (isInternal(url) && !rt.internal) return;
       let hostChanged = true;
       try { hostChanged = new URL(url).host !== new URL(tab.url).host; } catch {}
       if (hostChanged) tab.favicon = '';
@@ -467,11 +510,12 @@ class OrbeWindow {
     wc.on('before-input-event', (e, input) => rt.owner.onInput(e, input));
     wc.on('found-in-page', (e, result) => rt.owner.sendFind(result));
     wc.on('focus', () => rt.owner.paneFocused(rt.id));
-    wc.on('enter-html-full-screen', () => { rt.owner.htmlFullscreen = true; rt.owner.layout(); });
-    wc.on('leave-html-full-screen', () => { rt.owner.htmlFullscreen = false; rt.owner.layout(); });
+    wc.on('enter-html-full-screen', () => { rt.owner.htmlFullscreen = true; rt.fullscreen = true; rt.owner.layout(); });
+    wc.on('leave-html-full-screen', () => { rt.owner.htmlFullscreen = false; rt.fullscreen = false; rt.owner.layout(); });
     wc.on('will-prevent-unload', (e) => e.preventDefault());
     wc.on('did-fail-load', (e, code, desc, url, isMainFrame) => {
       if (!isMainFrame || code === -3 || isInternal(url)) return;
+      tab.url = url;
       const q = new URLSearchParams({ url, desc, code: String(code), title: t('err.title'), retry: t('err.retry') });
       wc.loadURL(INTERNAL + 'error.html?' + q).catch(() => {});
     });
@@ -509,6 +553,7 @@ class OrbeWindow {
     if (!rt) return;
     live.delete(id);
     const owner = rt.owner;
+    if (rt.fullscreen) owner.htmlFullscreen = false;
     try { owner.win.contentView.removeChildView(rt.view); } catch {}
     if (owner.attached) owner.attached.delete(rt.view);
     if (!rt.wc.isDestroyed()) rt.wc.close({ waitForBeforeUnload: false });
@@ -540,6 +585,7 @@ class OrbeWindow {
 
   newTab(input, { background = false, after, split = false } = {}) {
     const url = suggest.resolve(input);
+    if (isInternal(url)) return this.openInternal(url.slice(INTERNAL.length));
     const previous = this.activeId;
     const tab = this.createTab(url, { after });
     if (split && previous) this.splitWith(previous, tab.id, true);
@@ -602,7 +648,7 @@ class OrbeWindow {
     if (!id) return this.newTab(input);
     const rt = this.ensureView(id);
     const url = suggest.resolve(input);
-    if (rt.internal !== isInternal(url)) return this.newTab(url);
+    if (rt.internal || isInternal(url)) return this.newTab(url);
     rt.wc.loadURL(url).catch(() => {});
     this.focusContent();
   }
@@ -656,10 +702,7 @@ class OrbeWindow {
       tab.url = tab.homeUrl;
     }
     OrbeWindow.destroyView(id);
-    for (const w of windows.values()) {
-      if (w.data !== this.data) continue;
-      for (const sid of Object.keys(w.activeBySpace)) if (w.activeBySpace[sid] === id) delete w.activeBySpace[sid];
-    }
+    OrbeWindow.forget(id, this.data);
     if (wasActive && next) this.activeBySpace[space.id] = next;
     if (silent) return;
     this.layout();
@@ -824,17 +867,14 @@ class OrbeWindow {
     if (!loc || !target || loc.space === target) return;
     const wasActive = this.activeId === id;
     const next = wasActive ? this.nextActiveAfter(id, this.space) : null;
-    this.leaveSplit(id);
+    OrbeWindow.forget(id, this.data);
     // Changer de profil change de cookies : la page sera rechargée.
     if (loc.space && loc.space.profileId !== target.profileId) OrbeWindow.destroyView(id);
     loc.arr.splice(loc.index, 1);
     if (loc.list === 'pinned') target.pinned.push(loc.node);
     else { target.today.unshift(id); delete this.data.tabs[id].homeUrl; }
-    if (wasActive) {
-      if (next) this.activeBySpace[this.space.id] = next;
-      else delete this.activeBySpace[this.space.id];
-    }
-    this.layout();
+    if (wasActive && next) this.activeBySpace[this.space.id] = next;
+    for (const w of windows.values()) if (w.data === this.data) w.layout();
     this.changed();
   }
 
@@ -862,7 +902,11 @@ class OrbeWindow {
 
   askRename(id) {
     if (!this.sidebarVisible && !this.peek) this.toggleSidebar(true);
-    setTimeout(() => { if (!this.ui.webContents.isDestroyed()) this.ui.webContents.send('edit', id); }, 60);
+    setTimeout(() => {
+      if (this.ui.webContents.isDestroyed()) return;
+      this.ui.webContents.focus();
+      this.ui.webContents.send('edit', id);
+    }, 60);
   }
 
   rename(id, name) {
@@ -884,6 +928,8 @@ class OrbeWindow {
     if (i < 0 || id === this.spaceId) return;
     const from = this.data.spaces.findIndex((s) => s.id === this.spaceId);
     this.spaceDir = i > from ? 1 : -1;
+    this.closePeek();
+    this.htmlFullscreen = false;
     this.spaceId = id;
     if (this.findOpen) this.closeFind();
     this.layout();
@@ -933,6 +979,7 @@ class OrbeWindow {
       const tab = this.data.tabs[tid];
       if (space.today.includes(tid)) store.archive({ ...tab, spaceId: space.id });
       OrbeWindow.destroyView(tid);
+      OrbeWindow.forget(tid, this.data);
       delete this.data.tabs[tid];
     }
     spaces.splice(i, 1);
@@ -1016,6 +1063,10 @@ class OrbeWindow {
     on('did-navigate', (e, u) => { state.url = u; });
     on('did-navigate-in-page', (e, u, main) => { if (main) state.url = u; });
     on('will-prevent-unload', (e) => e.preventDefault());
+    on('destroyed', () => { if (this.peekState === state) this.closePeek(); });
+    const guard = (e, u) => { if (isInternal(u)) e.preventDefault(); };
+    on('will-navigate', guard);
+    on('will-redirect', guard);
     on('context-menu', (e, params) => this.pageMenu({ wc, id: fromId }, params));
     on('before-input-event', (e, input) => {
       if (input.type === 'keyDown' && input.key === 'Escape') { e.preventDefault(); return this.closePeek(); }
@@ -1175,7 +1226,7 @@ class OrbeWindow {
     s.index = (s.index + delta + s.ids.length) % s.ids.length;
     const items = s.ids.map((id) => {
       const tab = this.data.tabs[id];
-      return { id, title: tab.customTitle || tab.title || suggest.strip(tab.url), favicon: tab.favicon };
+      return { id, title: tab.customTitle || tab.title || suggest.strip(tab.url), favicon: this.incognito ? '' : tab.favicon };
     });
     this.showModal('switcher', { items, index: s.index }, false);
   }
@@ -1345,17 +1396,51 @@ class OrbeWindow {
   }
 
   openInternal(page) {
+    if (!INTERNAL_PAGES.has(String(page).split(/[#?]/)[0])) return undefined;
     const url = INTERNAL + page;
     const base = url.split('#')[0];
     for (const id of Object.keys(this.data.tabs)) {
-      if (this.data.tabs[id].url.split('#')[0] === base && this.locate(id)) {
+      if (this.data.tabs[id].internal && this.data.tabs[id].url.split('#')[0] === base && this.locate(id)) {
         this.activate(id);
         const rt = live.get(id);
         if (rt) rt.wc.loadURL(url).catch(() => {});
-        return;
+        return this.data.tabs[id];
       }
     }
-    this.newTab(url);
+    const tab = this.createTab(url);
+    tab.internal = true;
+    this.activate(tab.id);
+    return tab;
+  }
+
+  // Actualiser : depuis la page d'erreur, on retente l'adresse d'origine.
+  reload(ignoreCache) {
+    const wc = this.activeWc;
+    if (!wc) return;
+    const tab = this.activeId && this.data.tabs[this.activeId];
+    if (tab && this.activeRt && wc === this.activeRt.wc && isErrorPage(wc.getURL())) wc.loadURL(tab.url).catch(() => {});
+    else if (ignoreCache) wc.reloadIgnoringCache();
+    else wc.reload();
+  }
+
+  static deleteProfile(profileId) {
+    const s = store.state;
+    const i = s.profiles.findIndex((x) => x.id === profileId);
+    if (i < 0 || profileId === 'default' || s.spaces.some((sp) => sp.profileId === profileId)) return false;
+    // Les favoris du profil rejoignent l'archive ; ses cookies sont effacés.
+    for (const id of s.favs[profileId] || []) {
+      OrbeWindow.destroyView(id);
+      OrbeWindow.forget(id, s);
+      store.archive(s.tabs[id]);
+      delete s.tabs[id];
+    }
+    delete s.favs[profileId];
+    s.profiles.splice(i, 1);
+    sessions.profileSession(profileId).clearStorageData().catch(() => {});
+    store.save();
+    for (const w of windows.values()) w.layout();
+    OrbeWindow.pushAll();
+    return true;
   }
 
   // --- Menus contextuels ----------------------------------------------------
@@ -1437,22 +1522,25 @@ class OrbeWindow {
     const wc = rt.wc;
     const tpl = [];
     const sep = () => { if (tpl.length && tpl[tpl.length - 1].type !== 'separator') tpl.push({ type: 'separator' }); };
-    if (p.linkURL) {
+    const link = webUrl(p.linkURL);
+    const src = webUrl(p.srcURL);
+    if (link) {
       tpl.push(
-        { label: t('ctx.openNewTab'), click: () => this.newTab(p.linkURL, { background: true, after: rt.id }) },
-        { label: t('ctx.openSplit'), click: () => { this.activate(rt.id); this.newTab(p.linkURL, { split: true }); } },
-        { label: t('ctx.openPeek'), click: () => this.openPeek(p.linkURL, rt.id) },
-        { label: t('ctx.openLittle'), click: () => hooks.openLittle(p.linkURL) },
-        { label: t('ctx.copyLink'), click: () => clipboard.writeText(p.linkURL) },
+        { label: t('ctx.openNewTab'), click: () => this.newTab(link, { background: true, after: rt.id }) },
+        { label: t('ctx.openSplit'), click: () => { this.activate(rt.id); this.newTab(link, { split: true }); } },
+        { label: t('ctx.openPeek'), click: () => this.openPeek(link, rt.id) },
+        // Une petite fenêtre utilise le profil principal : pas depuis la navigation privée.
+        { label: t('ctx.openLittle'), visible: !this.incognito, click: () => hooks.openLittle(link) },
       );
     }
+    if (p.linkURL) tpl.push({ label: t('ctx.copyLink'), click: () => clipboard.writeText(p.linkURL) });
     if (p.mediaType === 'image' && p.srcURL) {
       sep();
       tpl.push(
-        { label: t('ctx.openImage'), click: () => this.newTab(p.srcURL, { after: rt.id }) },
+        { label: t('ctx.openImage'), visible: !!src, click: () => this.newTab(src, { after: rt.id }) },
         { label: t('ctx.copyImage'), click: () => wc.copyImageAt(p.x, p.y) },
         { label: t('ctx.copyImageUrl'), click: () => clipboard.writeText(p.srcURL) },
-        { label: t('ctx.saveImage'), click: () => wc.downloadURL(p.srcURL) },
+        { label: t('ctx.saveImage'), visible: !!src, click: () => wc.downloadURL(src) },
       );
     }
     if (p.isEditable) {
@@ -1473,7 +1561,7 @@ class OrbeWindow {
       tpl.push(
         { label: t('ctx.back'), enabled: nav.canGoBack(), click: () => nav.goBack() },
         { label: t('ctx.forward'), enabled: nav.canGoForward(), click: () => nav.goForward() },
-        { label: t('ctx.reload'), click: () => wc.reload() },
+        { label: t('ctx.reload'), click: () => { this.activate(rt.id); this.reload(); } },
         { type: 'separator' },
         { label: t('edit.copyUrl'), click: () => clipboard.writeText(wc.getURL()) },
         { label: t('file.savePage'), click: () => { this.activate(rt.id); this.savePage(); } },
@@ -1583,7 +1671,13 @@ class OrbeWindow {
       case 'mediaToggle': return this.mediaToggle();
       case 'resetPinned': return this.resetPinned(a);
       case 'command': return this.run(a);
-      case 'dropUrl': return this.newTab(String(a));
+      case 'dropUrl': {
+        // Texte déposé : une adresse web, ou sinon une recherche — jamais file: ou orbe:.
+        const text = String(a || '').trim().slice(0, 2000);
+        if (!text) return undefined;
+        if (/^[a-z][a-z0-9+.-]*:/i.test(text) && !webUrl(text)) return undefined;
+        return this.newTab(webUrl(text) || suggest.searchUrl(text));
+      }
       case 'suggest': return this.suggest(String(a || ''));
       case 'run': return this.runItem(a.item, { background: !!a.background });
       case 'closeOverlay': return this.hideModal();
@@ -1593,7 +1687,7 @@ class OrbeWindow {
       case 'peekClose': return this.closePeek();
       case 'peekExpand': return this.expandPeek();
       case 'peekSplit': return this.expandPeek({ split: true });
-      case 'open': return this.newTab(String(a));
+      case 'open': return webUrl(String(a)) ? this.newTab(String(a)) : undefined;
       default: return undefined;
     }
   }

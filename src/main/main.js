@@ -1,5 +1,6 @@
 // Point d'entrée d'Orbe.
 const { app, ipcMain, BrowserWindow, nativeTheme, shell, webContents, dialog } = require('electron');
+const { pathToFileURL } = require('url');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
@@ -154,7 +155,7 @@ async function globalAction(action, a, sender) {
     case 'settings:get':
       return { settings: s.settings, profiles: profileList(), engines: Object.entries(suggest.ENGINES).map(([id, e]) => ({ id, name: e.name })), version: app.getVersion(), chrome: process.versions.chrome };
     case 'settings:set':
-      for (const [k, v] of Object.entries(a || {})) if (SETTABLE[k] && SETTABLE[k](v)) s.settings[k] = v;
+      for (const [k, v] of Object.entries(a || {})) if (Object.hasOwn(SETTABLE, k) && SETTABLE[k](v)) s.settings[k] = v;
       store.save();
       broadcastSettings();
       return s.settings;
@@ -164,23 +165,14 @@ async function globalAction(action, a, sender) {
       if (p && name) { p.name = name; store.save(); menu.refresh(true); }
       return profileList();
     }
-    case 'settings:deleteProfile': {
-      const i = s.profiles.findIndex((x) => x.id === a);
-      if (i < 0 || a === 'default' || s.spaces.some((sp) => sp.profileId === a)) return profileList();
-      // Les favoris du profil rejoignent l'archive ; ses cookies sont effacés.
-      for (const id of s.favs[a] || []) { store.archive(s.tabs[id]); delete s.tabs[id]; }
-      delete s.favs[a];
-      s.profiles.splice(i, 1);
-      sessions.profileSession(a).clearStorageData().catch(() => {});
-      store.save();
-      menu.refresh(true);
+    case 'settings:deleteProfile':
+      if (OrbeWindow.deleteProfile(String(a))) menu.refresh(true);
       return profileList();
-    }
     case 'settings:makeDefault':
       commands.makeDefault();
       return true;
     case 'settings:resetPerms':
-      s.permissions = {};
+      for (const k of Object.keys(s.permissions)) delete s.permissions[k];
       store.save();
       return true;
     case 'settings:clearData': {
@@ -223,7 +215,7 @@ function setupIpc() {
 }
 
 app.on('open-url', (e, url) => { e.preventDefault(); openUrl(url); });
-app.on('open-file', (e, file) => { e.preventDefault(); openUrl('file://' + file); });
+app.on('open-file', (e, file) => { e.preventDefault(); openUrl(pathToFileURL(file).href); });
 app.on('second-instance', (e, argv) => {
   const url = argv.find((x) => /^https?:\/\//i.test(x));
   if (url) openUrl(url);
@@ -240,6 +232,7 @@ app.whenReady().then(async () => {
   commands.hooks.newWindow = newWindow;
   commands.hooks.newLittle = (url) => new little.LittleWindow(url);
   commands.hooks.openSettings = openSettings;
+  commands.hooks.settingsChanged = broadcastSettings;
   win.hooks.openLittle = (url) => new little.LittleWindow(url);
   win.hooks.changed = () => menu.refresh();
   little.hooks.openInOrbe = (url) => { openUrl.direct = true; try { openUrl(url); } finally { openUrl.direct = false; } };
@@ -256,7 +249,7 @@ app.whenReady().then(async () => {
   menu.build();
 
   const first = newWindow();
-  if (firstRun && !SELFTEST && !process.env.ORBE_NO_WELCOME) first.newTab(INTERNAL + 'shortcuts.html');
+  if (firstRun && !SELFTEST && !process.env.ORBE_NO_WELCOME) first.openInternal('shortcuts.html');
   for (const url of pendingUrls.splice(0)) openUrl(url);
 
   setTimeout(win.archiveStale, 30e3);

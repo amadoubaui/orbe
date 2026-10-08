@@ -359,6 +359,53 @@ module.exports = async function selftest({ first: w, OrbeWindow, store, win, lit
   check('page d’erreur en cas d’échec, adresse conservée', tabs()[bad.id].url === 'http://127.0.0.1:1/');
   w.close(bad.id);
 
+  // Robustesse (défauts trouvés en relecture)
+  const pop = w.newTab(base + '/b');
+  await until(() => titleOf(pop.id) === 'Page B', 'onglet à fermer');
+  await win.live.get(pop.id).wc.executeJavaScript('window.close(); 1', true).catch(() => {});
+  win.live.get(pop.id) && win.live.get(pop.id).wc.close();
+  await until(() => !tabs()[pop.id] && !win.live.has(pop.id), 'onglet retiré');
+  check('une page qui se ferme elle-même ne laisse pas d’onglet fantôme', w.activeId !== pop.id && !w.space.today.includes(pop.id));
+
+  const sv1 = w.newTab(base + '/a');
+  const sv2 = w.newTab(base + '/b');
+  await until(() => titleOf(sv2.id) === 'Page B', 'onglets pour la vue scindée');
+  w.splitWith(sv1.id, sv2.id);
+  const w2 = new OrbeWindow();
+  w2.close(sv2.id);
+  let layoutError = null;
+  try { w.layout(); } catch (err) { layoutError = err; }
+  check('fermer depuis une autre fenêtre un onglet en vue scindée ne casse rien', !layoutError && !w.splits.length && w.visibleIds().every((id) => tabs()[id]));
+  w2.activate(sv1.id);
+  await sleep(60);
+  check('un onglet n’est actif que dans une seule fenêtre', w2.activeId === sv1.id && w.activeId !== sv1.id && win.live.get(sv1.id).owner === w2);
+  w2.win.close();
+  await sleep(150);
+  check('la fenêtre restante continue de mémoriser son état', w.persistent === true);
+  w.close(sv1.id);
+
+  const trap = w.newTab(base + '/a');
+  await until(() => titleOf(trap.id) === 'Page A', 'page de test');
+  await win.live.get(trap.id).wc.executeJavaScript('location.href = "orbe://app/library.html"; 1', true).catch(() => {});
+  await sleep(500);
+  check('une page web ne peut pas se rendre sur une page interne', tabs()[trap.id].url === base + '/a' && !tabs()[trap.id].internal && win.live.get(trap.id).wc.getURL() === base + '/a');
+  const before2 = Object.keys(tabs()).length;
+  w.handle('dropUrl', 'file:///etc/hosts');
+  w.handle('dropUrl', 'orbe://app/shell.html');
+  w.handle('open', 'file:///etc/hosts');
+  check('les adresses file: et orbe: venant d’une page sont refusées', Object.keys(tabs()).length === before2);
+  w.close(trap.id);
+
+  const retry = w.newTab('http://127.0.0.1:1/x');
+  await until(() => win.live.get(retry.id).wc.getURL().includes('error.html'), 'page d’erreur');
+  let reloaded = '';
+  win.live.get(retry.id).wc.once('did-start-navigation', (e, u) => { reloaded = u; });
+  w.run('reload');
+  await until(() => reloaded, 'nouvelle tentative');
+  check('⌘R sur la page d’erreur retente l’adresse d’origine', reloaded === 'http://127.0.0.1:1/x');
+  w.close(retry.id);
+  w.activate(a.id);
+
   // Navigation privée
   const inc = new OrbeWindow({ incognito: true });
   const it = inc.newTab(base + '/b');

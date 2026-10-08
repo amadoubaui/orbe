@@ -4,7 +4,7 @@
 const { app, dialog } = require('electron');
 const { store } = require('./store');
 
-const hooks = { newWindow: () => {}, newLittle: () => {}, openSettings: () => {} };
+const hooks = { newWindow: () => {}, newLittle: () => {}, openSettings: () => {}, settingsChanged: null };
 
 const wc = (w) => w.activeWc;
 
@@ -32,8 +32,8 @@ const COMMANDS = [
   { name: 'toggleSidebar', label: 'view.hideSidebar', accel: 'Cmd+S', keys: '⌘S', run: (w) => w.toggleSidebar() },
   { name: 'toggleToolbar', label: 'view.showToolbar', accel: 'Shift+Cmd+D', keys: '⇧⌘D', run: () => setSetting('showToolbar', !store.state.settings.showToolbar) },
   { name: 'stop', label: 'view.stop', accel: 'Cmd+.', keys: '⌘.', palette: false, run: (w) => wc(w) && wc(w).stop() },
-  { name: 'reload', label: 'view.reload', accel: 'Cmd+R', keys: '⌘R', run: (w) => wc(w) && wc(w).reload() },
-  { name: 'forceReload', label: 'view.forceReload', accel: 'Shift+Cmd+R', keys: '⇧⌘R', run: (w) => wc(w) && wc(w).reloadIgnoringCache() },
+  { name: 'reload', label: 'view.reload', accel: 'Cmd+R', keys: '⌘R', run: (w) => w.reload(false) },
+  { name: 'forceReload', label: 'view.forceReload', accel: 'Shift+Cmd+R', keys: '⇧⌘R', run: (w) => w.reload(true) },
   { name: 'clearCookies', label: 'view.clearCookies', run: (w) => w.clearAndReload('cookies') },
   { name: 'clearCache', label: 'view.clearCache', run: (w) => w.clearAndReload('cache') },
   { name: 'addSplit', label: 'view.addSplit', accel: 'Ctrl+Shift+=', keys: '⌃⇧=', run: (w) => w.addSplit() },
@@ -127,6 +127,8 @@ function setSetting(key, value) {
   const { OrbeWindow } = require('./window');
   store.state.settings[key] = value;
   store.save();
+  // Passe par la même porte que la fenêtre des réglages (thème, menu, pages).
+  if (hooks.settingsChanged) return hooks.settingsChanged();
   for (const w of OrbeWindow.all) w.layout();
   OrbeWindow.pushAll();
 }

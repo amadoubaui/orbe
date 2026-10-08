@@ -65,23 +65,30 @@ function configure(ses, { persist }) {
   ses.setUserAgent(cleanUserAgent(ses));
   if (ses !== session.defaultSession) ses.protocol.handle('orbe', serveInternal);
 
-  const remembered = persist ? store.state.permissions : {};
+  // Lu à chaque demande : « réinitialiser les autorisations » agit tout de suite.
+  const volatile = {};
+  const memory = () => (persist ? store.state.permissions : volatile);
 
   ses.setPermissionRequestHandler(async (wc, permission, callback, details) => {
     const origin = originOf(details.requestingUrl || (wc && wc.getURL()) || '');
     if (origin.startsWith('orbe://') || AUTO_ALLOW.has(permission)) return callback(true);
     if (!ASKABLE.has(permission) || !origin) return callback(false);
+    const remembered = memory();
     const known = remembered[origin] && remembered[origin][permission];
     if (typeof known === 'boolean') return callback(known);
     const ok = await askPermission(wc, origin, permission);
-    (remembered[origin] || (remembered[origin] = {}))[permission] = ok;
-    if (persist) store.save();
+    // Une origine opaque (file:, data:) vaut « null » : on ne retient rien pour elle.
+    if (origin !== 'null') {
+      (remembered[origin] || (remembered[origin] = {}))[permission] = ok;
+      if (persist) store.save();
+    }
     callback(ok);
   });
 
   ses.setPermissionCheckHandler((wc, permission, requestingOrigin) => {
     if (AUTO_ALLOW.has(permission) || (requestingOrigin || '').startsWith('orbe://')) return true;
     const origin = originOf(requestingOrigin || '');
+    const remembered = memory();
     return !!(remembered[origin] && remembered[origin][permission]);
   });
 
