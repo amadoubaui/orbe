@@ -5,6 +5,10 @@ const send = O.send;
 let S = null; // dernier état reçu
 let editing = null; // id en cours de renommage
 let drag = null;
+let animate = false;
+let present = new Set();
+const FLOATING = location.hash === '#flottant';
+if (FLOATING) document.documentElement.classList.add('floating');
 
 const icon = (name, cls = 'i') => `<svg class="${cls}"><use href="#i-${name}"/></svg>`;
 
@@ -81,6 +85,7 @@ function reconcile(container, items, tile) {
   const old = new Map();
   for (const el of container.children) old.set(el.dataset.key, el);
   let prev = null;
+  let fresh = null;
   for (const it of items) {
     const key = it.id;
     let el = old.get(key);
@@ -89,23 +94,40 @@ function reconcile(container, items, tile) {
       el = document.createElement('div');
       el.dataset.key = key;
       if (it.type !== 'folder') el.dataset.id = it.id;
+      fresh = animate ? el : null;
     }
     if (tile) tileEl(el, it);
     else if (it.type === 'folder') folderRow(el, it);
     else tabRow(el, it);
+    if (fresh === el) { el.classList.add('in'); fresh = null; }
     const ref = prev ? prev.nextSibling : container.firstChild;
     if (el !== ref) container.insertBefore(el, ref);
     prev = el;
   }
-  for (const el of old.values()) el.remove();
+  // Disparition : la ligne se replie avant d'être retirée.
+  for (const el of old.values()) {
+    // Une ligne seulement déplacée (encore présente ailleurs) part sans délai.
+    if (!animate || !el.dataset.key || tile || present.has(el.dataset.key)) { el.remove(); continue; }
+    el.dataset.key = '';
+    el.removeAttribute('data-id');
+    el.classList.add('out');
+    setTimeout(() => el.remove(), 150);
+  }
 }
 
 function render(s) {
   const prev = S;
+  // Animations seulement pour un changement dans le même Espace, pas au premier affichage.
+  animate = !!prev && prev.space.id === s.space.id && !drag;
+  present = new Set();
+  const collect = (list) => { for (const it of list) { present.add(it.id); if (it.children) collect(it.children); } };
+  collect(s.favorites); collect(s.pinned); collect(s.today);
   S = s;
   setLang(s.lang);
   const b = document.body;
-  const open = s.sidebar.visible || s.sidebar.peek;
+  // Vue flottante : la barre n'y apparaît qu'au survol du bord, barre masquée.
+  const open = FLOATING ? s.sidebar.peek && !s.sidebar.visible : s.sidebar.visible;
+  if (FLOATING && !open && prev && !(prev.sidebar.peek && !prev.sidebar.visible)) { S = s; b.classList.remove('open'); return; }
   b.style.setProperty('--accent', s.space.color);
   b.style.setProperty('--sw', s.sidebar.width + 'px');
   b.classList.toggle('open', open);
@@ -114,7 +136,7 @@ function render(s) {
   b.classList.toggle('incognito', s.incognito);
   b.classList.toggle('toolbar', s.toolbar);
   b.classList.toggle('fullscreen', s.fullScreen);
-  b.classList.toggle('no-tab', !s.activeId);
+  b.classList.toggle('no-tab', !s.activeId && !FLOATING);
 
   const label = s.nav.internal ? (s.nav.title || 'Orbe') : host(s.nav.url);
   $('url-text').textContent = label || t('side.search');

@@ -342,3 +342,25 @@ body.toolbar #empty { top: 48px; }
 .divider { position: absolute; width: 8px; cursor: col-resize; display: grid; place-items: center; -webkit-app-region: no-drag; }
 .divider::after { content: ''; width: 3px; height: 34px; border-radius: 2px; background: var(--faint); opacity: 0; transition: opacity 120ms; }
 .divider:hover::after, .divider.on::after { opacity: 1; }
+
+/* Barre latérale flottante (barre masquée, survol du bord gauche) : une carte
+   posée sur la page, qui ne déplace rien. */
+.floating body { background: transparent !important; }
+.floating #sidebar {
+  inset: 6px auto 6px 6px;
+  width: calc(var(--sw) - 2px);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg) 96%, transparent);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.3), 0 0 0 0.5px var(--line);
+  backdrop-filter: blur(24px);
+  transform: translateX(calc(-100% - 14px));
+}
+.floating body.open #sidebar { transform: none; }
+.floating #top { padding-left: 62px; height: 40px; }
+.floating #toolbar, .floating #empty, .floating #dividers, .floating #resize { display: none !important; }
+
+/* Apparition et disparition des lignes. */
+.list > .in, .children > .in { animation: row-in 170ms var(--ease); }
+.list > .out, .children > .out { animation: row-out 150ms var(--ease) forwards; pointer-events: none; overflow: hidden; }
+@keyframes row-in { from { height: 0; opacity: 0; transform: scale(0.96); } }
+@keyframes row-out { to { height: 0; opacity: 0; margin-bottom: -3px; transform: scale(0.96); } }

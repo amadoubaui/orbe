@@ -363,6 +363,7 @@ class OrbeWindow {
       this.peekChrome.setBorderRadius(this.htmlFullscreen ? 0 : RADIUS);
       this.peekState.view.setBounds({ x: rect.x + m, y: rect.y + 16, width: Math.max(200, rect.width - 2 * m), height: Math.max(120, rect.height - 16) });
     }
+    if (this.floatView && this.peek) this.floatView.setBounds({ x: 0, y: 0, width: Math.min(W, this.sidebarWidth + 24), height: H });
     if (this.modalMode) this.modal.setBounds(full);
     if (this.findOpen && this.findView) {
       const i = Math.max(0, ids.indexOf(this.activeId));
@@ -393,7 +394,8 @@ class OrbeWindow {
 
   toggleSidebar(force) {
     this.sidebarVisible = typeof force === 'boolean' ? force : !this.sidebarVisible;
-    this.peek = false;
+    if (this.peek) this.setPeek(false);
+    if (this.floatView) { this.floatView.setVisible(false); try { this.win.contentView.removeChildView(this.floatView); } catch {} }
     this.setButtons(this.sidebarVisible);
     this.animateTo(this.sidebarVisible ? 1 : 0);
     this.syncPeekTimer();
@@ -412,8 +414,28 @@ class OrbeWindow {
     if (this.peek === on || this.sidebarVisible) return;
     this.peek = on;
     this.setButtons(on);
-    this.animateTo(on ? 1 : 0);
+    // Comme dans Arc : la barre revient en flottant par-dessus la page, qui ne
+    // bouge pas. Elle vit dans sa propre vue, posée au-dessus des onglets.
+    clearTimeout(this.floatTimer);
+    if (on) {
+      if (!this.floatView) this.floatView = this.makeUiView('shell.html#flottant');
+      this.win.contentView.addChildView(this.floatView);
+      this.layout();
+      this.floatView.setVisible(true);
+    } else if (this.floatView) {
+      // Le temps que la barre glisse hors de l'écran.
+      this.floatTimer = setTimeout(() => {
+        if (this.win.isDestroyed() || this.peek || !this.floatView) return;
+        this.floatView.setVisible(false);
+        try { this.win.contentView.removeChildView(this.floatView); } catch {}
+      }, 220);
+    }
     OrbeWindow.pushAll();
+  }
+
+  // Vue qui affiche la barre latérale en ce moment (ancrée ou flottante).
+  get shellView() {
+    return this.peek && this.floatView ? this.floatView : this.ui;
   }
 
   pollPeek() {
@@ -451,7 +473,8 @@ class OrbeWindow {
     windows.delete(this.id);
     for (const [id, rt] of [...live]) if (rt.owner === this) OrbeWindow.destroyView(id);
     this.closePeek();
-    for (const v of [this.ui, this.modal, this.findView, this.toastView, this.peekChrome]) {
+    clearTimeout(this.floatTimer);
+    for (const v of [this.ui, this.modal, this.findView, this.toastView, this.peekChrome, this.floatView]) {
       if (v && !v.webContents.isDestroyed()) { wcOwner.delete(v.webContents.id); v.webContents.close(); }
     }
     if (this.incognito) this.session.clearStorageData().catch(() => {});
@@ -955,9 +978,10 @@ class OrbeWindow {
   askRename(id) {
     if (!this.sidebarVisible && !this.peek) this.toggleSidebar(true);
     setTimeout(() => {
-      if (this.ui.webContents.isDestroyed()) return;
-      this.ui.webContents.focus();
-      this.ui.webContents.send('edit', id);
+      const view = this.shellView;
+      if (view.webContents.isDestroyed()) return;
+      view.webContents.focus();
+      view.webContents.send('edit', id);
     }, 60);
   }
 
@@ -1716,7 +1740,7 @@ class OrbeWindow {
     const mediaRt = this.mediaId && live.get(this.mediaId);
     const mediaTab = mediaRt && !mediaRt.wc.isDestroyed() && d.tabs[this.mediaId];
     if (!mediaTab || this.visibleIds().includes(this.mediaId)) this.mediaId = null;
-    this.ui.webContents.send('state', {
+    const payload = {
       lang: settings.lang,
       appearance: settings.appearance,
       translucent: settings.translucent,
@@ -1759,7 +1783,9 @@ class OrbeWindow {
       downloads: downloads.length
         ? { count: downloads.length, progress: downloads.reduce((a, x) => a + (x.total ? x.received / x.total : 0), 0) / downloads.length }
         : null,
-    });
+    };
+    this.ui.webContents.send('state', payload);
+    if (this.floatView && !this.floatView.webContents.isDestroyed()) this.floatView.webContents.send('state', payload);
   }
 
   // --- Messages venant de l'interface ---------------------------------------

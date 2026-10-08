@@ -186,6 +186,23 @@ module.exports = async function selftest({ first: w, OrbeWindow, store, win, lit
   await sleep(320);
   check('⌘S la réaffiche', w.sidebarVisible && win.live.get(w.activeId).view.getBounds().x === x0);
 
+  // Barre masquée : au survol du bord, elle flotte par-dessus la page sans la déplacer
+  w.toggleSidebar(false);
+  await sleep(320);
+  const hiddenX = win.live.get(w.activeId).view.getBounds();
+  clearInterval(w.peekTimer); // le test remplace la souris
+  w.peekTimer = null;
+  w.setPeek(true);
+  await until(() => w.floatView && w.floatView.webContents.executeJavaScript('document.body.classList.contains("open") && document.querySelectorAll(".row.tab").length > 0'), 'barre flottante affichée');
+  await sleep(260);
+  const peekX = win.live.get(w.activeId).view.getBounds();
+  check('survol du bord : la barre flotte, la page ne bouge pas', peekX.x === hiddenX.x && peekX.width === hiddenX.width && w.floatView.getBounds().width > 200);
+  await shot('flottante');
+  w.setPeek(false);
+  await sleep(300);
+  w.toggleSidebar(true);
+  await sleep(320);
+
   // Recherche dans la page
   w.activate(a.id);
   w.openFind();
