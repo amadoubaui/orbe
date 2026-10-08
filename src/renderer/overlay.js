@@ -241,8 +241,13 @@ O.on('overlay', (p) => {
     findInput.select();
     if (findInput.value) send('find', { text: findInput.value });
   } else if (p.mode === 'peek') {
+    // Ouverture : le voile et les boutons paraissent en fondu ; `leaving` : ils s'effacent
+    // pendant que la carte se réduit ou s'étend (durée donnée par le processus principal).
     show('peek');
-    document.body.classList.add('peek');
+    document.body.style.setProperty('--peek-ms', (p.ms || 0) + 'ms');
+    document.body.classList.remove('peek', 'peek-out');
+    void document.body.offsetWidth;
+    document.body.classList.add(p.leaving ? 'peek-out' : 'peek');
   } else if (p.mode === 'drop') {
     show('drop');
     $('drop-label').textContent = p.label;

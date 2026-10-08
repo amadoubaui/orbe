@@ -1,7 +1,7 @@
 // Une fenêtre Orbe : une vue « coque » (barre latérale) qui occupe toute la
 // fenêtre, les vues web des onglets posées par-dessus dans la zone de contenu,
 // et des vues flottantes (barre de commande, recherche, notifications).
-const { app, BaseWindow, WebContentsView, Menu, clipboard, ClipboardItem, screen, dialog, nativeTheme } = require('electron');
+const { app, BaseWindow, WebContentsView, Menu, clipboard, ClipboardItem, screen, dialog, nativeTheme, systemPreferences } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { store, uid, SPACE_COLORS } = require('./store');
@@ -39,6 +39,54 @@ const INTERNAL_PAGES = new Set(['library.html', 'shortcuts.html', 'welcome.html'
 // http et https sont acceptés, jamais file:, orbe: ou chrome:.
 const webUrl = (u) => (/^https?:\/\//i.test(u || '') ? u : null);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+// --- Mouvements des vues ------------------------------------------------------
+// Durées en millisecondes. Barre latérale : cotes relevées dans Arc (elle revient
+// en 50 ms et disparaît d'un coup). Aperçu : ouverture 200 ms, fermeture 150 ms.
+const MOTION = { sidebarIn: 50, peekIn: 200, peekOut: 150, peekExpand: 220 };
+// Marge après la fin théorique d'une animation pendant laquelle on la croit encore en cours.
+const ANIM_GUARD = 250;
+const flights = new WeakMap(); // vue -> instant de fin de son animation en cours
+const stats = { animated: 0, direct: 0 }; // appels à setBounds, pour les mesures
+let nativeAnim = true;
+
+// « Réduire les animations » (réglage du système) : toutes les durées passent à 0.
+function motion(ms) {
+  if (process.env.ORBE_NO_MOTION) return 0;
+  try { if (systemPreferences.getAnimationSettings().prefersReducedMotion) return 0; } catch {}
+  return ms;
+}
+
+// Pose une vue dans son rectangle. Avec `ms`, le trajet est animé par le système
+// (`View.setBounds(rect, { animate })`, Core Animation sur macOS) : un seul appel,
+// au rythme de l'écran, sans un seul tic du fil principal.
+// Relevé sur Electron 44 (macOS) :
+//  - durée libre, quatre courbes seulement (linear, ease-in, ease-out, ease-in-out) ;
+//  - pendant le trajet, getBounds() rend encore l'ancien rectangle ;
+//  - un nouvel appel animé repart de la position affichée (interruption propre) ;
+//  - un appel NON animé pendant le trajet déplace bien la vue, mais getBounds()
+//    reste ensuite sur la cible de l'animation interrompue ;
+//  - la page n'est remise en page qu'une fois : au départ si elle grandit, à
+//    l'arrivée si elle rétrécit ; entre-temps son image est seulement rognée.
+// D'où la règle : tant qu'une vue est en vol, toute nouvelle cible lui est donnée
+// par un appel animé, sur le temps qu'il lui reste (1 ms au moins).
+// Là où l'option n'existe pas, la vue est posée directement.
+function place(view, rect, ms = 0, easing = 'ease-out') {
+  const now = Date.now();
+  const end = flights.get(view) || 0;
+  if (nativeAnim && (ms > 0 || now < end + ANIM_GUARD)) {
+    const duration = Math.max(1, Math.round(ms > 0 ? ms : end - now));
+    try {
+      view.setBounds(rect, { animate: { duration, easing } });
+      flights.set(view, ms > 0 ? now + duration : Math.min(end, now + duration));
+      stats.animated += 1;
+      return;
+    } catch { nativeAnim = false; }
+  }
+  flights.delete(view);
+  view.setBounds(rect);
+  stats.direct += 1;
+}
 // Nom horodaté d'une capture ; deux captures dans la même seconde ne s'écrasent pas.
 let lastStamp = '';
 let stampCount = 0;
@@ -304,7 +352,7 @@ class OrbeWindow {
     const [W, H] = this.win.getContentSize();
     if (this.htmlFullscreen) return { x: 0, y: 0, width: W, height: H };
     const sw = this.sidebarWidth;
-    const docked = this.sidebarVisible && this.p === 1 && !this.anim;
+    const docked = this.sidebarVisible && this.p === 1;
     const top = platform.topInset(this.win, PAD, store.state.settings.showToolbar) + (store.state.settings.showToolbar ? TOOLBAR_H : 0);
     return {
       x: Math.round(PAD + (sw - PAD) * this.p),
@@ -379,7 +427,8 @@ class OrbeWindow {
     this.sendState();
   }
 
-  layout() {
+  // `slide` : durée du trajet des pages (retour de la barre latérale), 0 = immédiat.
+  layout({ slide = 0 } = {}) {
     if (this.win.isDestroyed()) return;
     const [W, H] = this.win.getContentSize();
     const full = { x: 0, y: 0, width: W, height: H };
@@ -393,22 +442,27 @@ class OrbeWindow {
     ids.forEach((id, i) => {
       const rt = this.ensureView(id);
       shown.add(rt.view);
-      if (!this.attached || !this.attached.has(rt.view)) this.win.contentView.addChildView(rt.view, 1);
+      // Aperçu qui devient un onglet : la carte grandit jusqu'à sa place, par-dessus le reste.
+      const grow = this.growing && this.growing.view === rt.view ? this.growing : null;
+      if (grow && !grow.started) this.win.contentView.addChildView(rt.view);
+      else if (!this.attached || !this.attached.has(rt.view)) this.win.contentView.addChildView(rt.view, 1);
       rt.view.setBorderRadius(this.htmlFullscreen ? 0 : RADIUS);
-      rt.view.setBounds({ x: panes[i].x, y: panes[i].y, width: panes[i].width, height: panes[i].height });
+      const ms = grow && !grow.started ? grow.ms : slide;
+      if (grow) grow.started = true;
+      place(rt.view, { x: panes[i].x, y: panes[i].y, width: panes[i].width, height: panes[i].height }, ms);
     });
     for (const view of this.attached || []) {
-      if (!shown.has(view)) {
-        try { this.win.contentView.removeChildView(view); } catch {}
-      }
+      if (shown.has(view)) continue;
+      // Page quittée pour un aperçu agrandi : elle reste dessous jusqu'à la fin du mouvement.
+      if (this.growing && this.growing.under.has(view)) { shown.add(view); continue; }
+      try { this.win.contentView.removeChildView(view); } catch {}
     }
     this.attached = shown;
-    if (this.peekState) {
-      const m = Math.round(Math.min(90, Math.max(44, rect.width * 0.07)));
-      this.peekChrome.setBounds(rect);
+    if (this.peekChrome && (this.peekState || this.peekJob)) {
+      place(this.peekChrome, rect);
       this.peekChrome.setBorderRadius(this.htmlFullscreen ? 0 : RADIUS);
-      this.peekState.view.setBounds({ x: rect.x + m, y: rect.y + 16, width: Math.max(200, rect.width - 2 * m), height: Math.max(120, rect.height - 16) });
     }
+    if (this.peekState) place(this.peekState.view, this.peekRect(rect));
     if (this.floatView && this.peek) this.floatView.setBounds({ x: 0, y: 0, width: Math.min(W, this.sidebarWidth + 24), height: H });
     if (this.modalMode) this.modal.setBounds(full);
     if (this.findOpen && this.findView) {
@@ -422,23 +476,15 @@ class OrbeWindow {
     hooks.layout(this);
   }
 
-  // Anime l'ouverture de la barre latérale en ne déplaçant que la position des
-  // pages : leur largeur ne change qu'une fois, donc une seule remise en page.
+  // Retour de la barre latérale : les pages glissent à leur place par une
+  // animation du système (voir `place`) : un appel par page, aucun minuteur. La
+  // largeur de la page rétrécit dans le même mouvement, mais la page n'est remise
+  // en page qu'une fois, à l'arrivée (mesuré). Comme dans Arc, la barre revient en
+  // 50 ms et disparaît d'un coup.
   animateTo(target) {
-    clearInterval(this.anim);
     const from = this.p;
-    if (from === target) { this.anim = null; this.layout(); return; }
-    const t0 = Date.now();
-    // Comme mesuré dans Arc : la barre disparaît d'un coup et revient en 50 ms.
-    const DUR = target === 1 ? 50 : 0;
-    if (!DUR) { this.p = target; this.anim = null; this.layout(); return; }
-    this.anim = setInterval(() => {
-      const k = Math.min(1, (Date.now() - t0) / DUR);
-      this.p = from + (target - from) * (1 - Math.pow(1 - k, 3));
-      if (k === 1) { clearInterval(this.anim); this.anim = null; this.p = target; }
-      if (!this.win.isDestroyed()) this.layout();
-    }, 8);
-    this.layout();
+    this.p = target;
+    this.layout({ slide: target === 1 && from !== 1 && !this.htmlFullscreen ? motion(MOTION.sidebarIn) : 0 });
   }
 
   toggleSidebar(force) {
@@ -517,11 +563,11 @@ class OrbeWindow {
 
   dispose() {
     clearInterval(this.peekTimer);
-    clearInterval(this.anim);
     clearTimeout(this.toastTimer);
     windows.delete(this.id);
     for (const [id, rt] of [...live]) if (rt.owner === this) OrbeWindow.destroyView(id);
     this.closePeek();
+    this.growing = null;
     clearTimeout(this.floatTimer);
     clearTimeout(this.statusTimer);
     for (const v of [this.ui, this.modal, this.findView, this.toastView, this.peekChrome, this.floatView, this.statusView, this.dropView]) {
@@ -583,7 +629,11 @@ class OrbeWindow {
       // Comme dans Arc : depuis un onglet épinglé ou un favori, un lien cliqué
       // vers un autre site s'ouvre en aperçu, sans quitter la page épinglée.
       let lastClick = 0;
-      wc.on('before-mouse-event', (e, mouse) => { if (mouse.type === 'mouseUp' && mouse.button === 'left') lastClick = Date.now(); });
+      wc.on('before-mouse-event', (e, mouse) => {
+        if (mouse.type !== 'mouseUp' || mouse.button !== 'left') return;
+        lastClick = Date.now();
+        rt.click = { x: mouse.x, y: mouse.y, at: lastClick }; // d'où partira un éventuel aperçu
+      });
       wc.on('will-navigate', (e, url) => {
         if (!e.isMainFrame || e.defaultPrevented || !store.state.settings.peekLinks) return;
         if (!tab.homeUrl || Date.now() - lastClick > 1200 || !webUrl(url) || sameHost(url, tab.url)) return;
@@ -1211,16 +1261,68 @@ class OrbeWindow {
   // --- Aperçu (Peek) --------------------------------------------------------
   // Une page ouverte par-dessus l'onglet courant, sans quitter celui-ci.
   // Elle se ferme d'un geste ou devient un vrai onglet.
-  openPeek(url, fromId, options) {
+  // Mouvements (animation du système, voir `place`) : la carte grandit depuis le
+  // lien cliqué (ou depuis le centre), se réduit vers lui à la fermeture, et
+  // s'étend jusqu'à la place de l'onglet quand elle en devient un.
+
+  // Place de la carte dans la zone des pages.
+  peekRect(rect = this.contentRect()) {
+    const m = Math.round(Math.min(90, Math.max(44, rect.width * 0.07)));
+    return { x: rect.x + m, y: rect.y + 16, width: Math.max(200, rect.width - 2 * m), height: Math.max(120, rect.height - 16) };
+  }
+
+  // Rectangle de départ (et de retour) : une petite carte autour du point cliqué,
+  // ou la carte à peine réduite, centrée, quand ce point n'est pas connu.
+  peekSeed(final, point) {
+    const k = point ? 0.3 : 0.94;
+    const width = Math.round(final.width * k);
+    const height = Math.round(final.height * k);
+    const cx = point ? point.x : final.x + final.width / 2;
+    const cy = point ? point.y : final.y + final.height / 2;
+    return {
+      x: clamp(Math.round(cx - width / 2), final.x, final.x + final.width - width),
+      y: clamp(Math.round(cy - height / 2), final.y, final.y + final.height - height),
+      width,
+      height,
+    };
+  }
+
+  // Termine sur-le-champ le mouvement de l'aperçu encore en cours (fermeture ou
+  // passage en onglet), pour qu'il n'y en ait jamais deux à la fois.
+  flushPeek() {
+    const job = this.peekJob;
+    if (!job) return;
+    this.peekJob = null;
+    clearTimeout(job.timer);
+    job.done();
+  }
+
+  peekOverlay(payload) {
+    const wc = this.peekChrome && this.peekChrome.webContents;
+    if (wc && !wc.isDestroyed()) wc.send('overlay', { mode: 'peek', ...payload });
+  }
+
+  // `point` : d'où part la carte (coordonnées de la fenêtre) ; à défaut, le
+  // dernier clic dans la page d'origine s'il vient d'avoir lieu.
+  openPeek(url, fromId, options, point) {
     this.closePeek();
     const view = new WebContentsView(options || {
       webPreferences: { session: this.sessionFor(fromId), sandbox: true, contextIsolation: true, nodeIntegrationInSubFrames: true },
     });
-    view.setBackgroundColor('#ffffff');
+    // Pas d'éclair blanc en thème sombre : la carte prend la teinte du thème
+    // jusqu'à ce que la page ait de quoi s'afficher, puis le blanc habituel des pages.
+    const dark = nativeTheme.shouldUseDarkColors;
+    view.setBackgroundColor(dark ? '#1c1c1f' : '#ffffff');
     view.setBorderRadius(12);
     const wc = view.webContents;
-    const state = (this.peekState = { view, from: fromId, url, title: '', handlers: [] });
+    const src = live.get(fromId);
+    if (!point && src && src.click && Date.now() - src.click.at < 1500 && src.owner === this) {
+      const b = src.view.getBounds();
+      point = { x: b.x + src.click.x, y: b.y + src.click.y };
+    }
+    const state = (this.peekState = { view, from: fromId, url, title: '', handlers: [], point: point || null });
     const on = (event, fn) => { wc.on(event, fn); state.handlers.push([event, fn]); };
+    if (dark) wc.once('dom-ready', () => { try { view.setBackgroundColor('#ffffff'); } catch {} });
     on('page-title-updated', (e, title) => { state.title = title; });
     on('page-favicon-updated', (e, icons) => { state.favicon = icons[0] || ''; });
     on('did-navigate', (e, u) => { state.url = u; });
@@ -1232,26 +1334,33 @@ class OrbeWindow {
     on('will-redirect', guard);
     on('context-menu', (e, params) => this.pageMenu({ wc, id: fromId }, params));
     on('before-input-event', (e, input) => {
-      if (input.type === 'keyDown' && input.key === 'Escape') { e.preventDefault(); return this.closePeek(); }
+      if (input.type === 'keyDown' && input.key === 'Escape') { e.preventDefault(); return this.closePeek({ animate: true }); }
       return this.onInput(e, input);
     });
     wc.setWindowOpenHandler((d) => { if (/^https?:/i.test(d.url)) this.newTab(d.url); return { action: 'deny' }; });
+    const ms = motion(MOTION.peekIn);
     if (!this.peekChrome) {
       this.peekChrome = this.makeUiView('overlay.html#peek');
-      this.peekChrome.webContents.once('did-finish-load', () => this.peekChrome.webContents.send('overlay', { mode: 'peek' }));
+      this.peekChrome.webContents.once('did-finish-load', () => { if (this.peekState) this.peekOverlay({ ms }); });
     } else {
-      this.peekChrome.webContents.send('overlay', { mode: 'peek' });
+      this.peekOverlay({ ms });
     }
     this.win.contentView.addChildView(this.peekChrome);
     this.win.contentView.addChildView(view);
     if (this.findOpen) this.closeFind();
     this.layout();
+    if (ms) {
+      const final = this.peekRect();
+      place(view, this.peekSeed(final, state.point));
+      place(view, final, ms);
+    }
     if (!options) wc.loadURL(url).catch(() => {});
     wc.focus();
     return view;
   }
 
   detachPeek() {
+    this.flushPeek();
     const state = this.peekState;
     if (!state) return null;
     this.peekState = null;
@@ -1260,20 +1369,47 @@ class OrbeWindow {
     return state;
   }
 
-  closePeek() {
-    const state = this.detachPeek();
-    if (!state) return;
-    if (!state.view.webContents.isDestroyed()) state.view.webContents.close({ waitForBeforeUnload: false });
-    if (!this.win.isDestroyed()) this.focusContent();
+  // `animate` : fermeture demandée par l'utilisateur (Échap, ⌘W, clic à côté) :
+  // la carte se réduit vers son point de départ et le voile s'efface. L'aperçu
+  // n'existe plus pour le reste du code dès l'appel ; seule sa vue reste à
+  // l'écran le temps du mouvement.
+  closePeek({ animate = false } = {}) {
+    const ms = animate && this.peekState && !this.win.isDestroyed() ? motion(MOTION.peekOut) : 0;
+    if (!ms) {
+      const state = this.detachPeek();
+      if (!state) return;
+      if (!state.view.webContents.isDestroyed()) state.view.webContents.close({ waitForBeforeUnload: false });
+      if (!this.win.isDestroyed()) this.focusContent();
+      return;
+    }
+    this.flushPeek();
+    const state = this.peekState;
+    this.peekState = null;
+    place(state.view, this.peekSeed(this.peekRect(), state.point), ms, 'ease-in');
+    this.peekOverlay({ leaving: true, ms });
+    const done = () => {
+      if (!this.win.isDestroyed()) {
+        try { this.win.contentView.removeChildView(state.view); } catch {}
+        if (!this.peekState) { try { this.win.contentView.removeChildView(this.peekChrome); } catch {} }
+      }
+      if (!state.view.webContents.isDestroyed()) state.view.webContents.close({ waitForBeforeUnload: false });
+    };
+    this.peekJob = { done, timer: setTimeout(() => this.flushPeek(), ms) };
+    this.focusContent();
   }
 
-  // Transforme l'aperçu en onglet sans recharger la page.
+  // Transforme l'aperçu en onglet sans recharger la page : la carte s'étend
+  // jusqu'à la place de l'onglet, la page quittée reste dessous pendant ce temps.
   expandPeek({ split = false } = {}) {
-    const state = this.detachPeek();
+    this.flushPeek();
+    const state = this.peekState;
     if (!state) return;
     const wc = state.view.webContents;
+    const ms = wc.isDestroyed() || this.win.isDestroyed() ? 0 : motion(MOTION.peekExpand);
+    if (!ms) this.detachPeek(); else this.peekState = null;
     if (wc.isDestroyed()) return;
     for (const [event, fn] of state.handlers) wc.off(event, fn);
+    state.view.setBackgroundColor('#ffffff');
     const from = this.locate(state.from) ? state.from : null;
     const tab = this.createTab(wc.getURL() || state.url, { after: from });
     tab.title = state.title;
@@ -1281,6 +1417,20 @@ class OrbeWindow {
     state.view.setBorderRadius(RADIUS);
     this.ensureView(tab.id, null, state.view);
     if (!this.incognito) store.visit(tab.url, tab.title, tab.favicon);
+    if (ms) {
+      this.growing = { view: state.view, ms, under: new Set(this.attached || []), started: false };
+      this.peekOverlay({ leaving: true, ms });
+      const done = () => {
+        const grow = this.growing;
+        this.growing = null;
+        if (this.win.isDestroyed()) return;
+        if (!this.peekState) { try { this.win.contentView.removeChildView(this.peekChrome); } catch {} }
+        // La carte était au premier plan pour le mouvement : elle reprend le rang des pages.
+        if (grow && this.attached && this.attached.has(grow.view)) this.win.contentView.addChildView(grow.view, 1);
+        this.layout();
+      };
+      this.peekJob = { done, timer: setTimeout(() => this.flushPeek(), ms) };
+    }
     if (split && from && this.activeId === from) this.splitWith(from, tab.id);
     else this.activate(tab.id);
   }
@@ -1853,7 +2003,7 @@ class OrbeWindow {
       tpl.push(
         { label: t('ctx.openNewTab'), click: () => this.newTab(link, { background: true, after: rt.id }) },
         { label: t('ctx.openSplit'), click: () => { this.activate(rt.id); this.newTab(link, { split: true }); } },
-        { label: t('ctx.openPeek'), click: () => this.openPeek(link, rt.id) },
+        { label: t('ctx.openPeek'), click: () => { const b = rt.view ? rt.view.getBounds() : null; this.openPeek(link, rt.id, undefined, b ? { x: b.x + p.x, y: b.y + p.y } : undefined); } },
         // Une petite fenêtre utilise le profil principal : pas depuis la navigation privée.
         { label: t('ctx.openLittle'), visible: !this.incognito, click: () => hooks.openLittle(link) },
       );
@@ -1935,6 +2085,23 @@ class OrbeWindow {
     const nodeVM = (n) => (n.type === 'folder'
       ? { type: 'folder', id: n.id, name: n.name, open: n.open !== false, children: n.children.map(nodeVM) }
       : tabVM(n.id));
+    // Listes des Espaces voisins : la barre latérale les fait glisser à côté de la
+    // liste courante pendant le balayage à deux doigts, avant tout changement.
+    const near = (s) => {
+      if (!s) return null;
+      const act = this.activeBySpace[s.id];
+      const mark = (vm) => {
+        if (vm.type === 'folder') vm.children.forEach(mark);
+        else { const g = this.groupOf(vm.id); vm.active = g && g[0] === vm.id ? g.includes(act) : vm.id === act; }
+        return vm;
+      };
+      return {
+        space: { id: s.id, name: s.name, icon: s.icon, color: s.color, color2: s.color2 || '', grain: s.grain || 0 },
+        pinned: s.pinned.map(nodeVM).map(mark),
+        today: s.today.map(tabVM).map(mark),
+      };
+    };
+    const spaceIndex = d.spaces.indexOf(space);
     const wc = this.activeWc;
     const tab = activeId && d.tabs[activeId];
     const settings = store.state.settings;
@@ -1956,6 +2123,7 @@ class OrbeWindow {
       spaceDir: dir,
       space: { id: space.id, name: space.name, icon: space.icon, color: space.color, color2: space.color2 || '', grain: space.grain || 0 },
       spaces: d.spaces.map((s) => ({ id: s.id, name: s.name, icon: s.icon, color: s.color })),
+      near: { prev: near(d.spaces[spaceIndex - 1]), next: near(d.spaces[spaceIndex + 1]) },
       favorites: this.favorites.map(tabVM),
       pinned: space.pinned.map(nodeVM),
       today: space.today.map(tabVM),
@@ -2042,7 +2210,7 @@ class OrbeWindow {
       case 'dragZoneOver': if (this.dropView && !this.dropView.webContents.isDestroyed()) this.dropView.webContents.send('overlay', { mode: 'drop', label: t('view.addSplit'), over: !!a }); return undefined;
       case 'dropSplit': return this.dropSplit(String(a));
       case 'splitResize': return this.resizeSplit(Number(a.i), Number(a.at != null ? a.at : a.x));
-      case 'peekClose': return this.closePeek();
+      case 'peekClose': return this.closePeek({ animate: true });
       case 'peekExpand': return this.expandPeek();
       case 'peekSplit': return this.expandPeek({ split: true });
       case 'open': return webUrl(String(a)) ? this.newTab(String(a)) : undefined;
@@ -2077,4 +2245,4 @@ function archiveStale() {
   if (count) { store.save(); for (const w of windows.values()) w.layout(); OrbeWindow.pushAll(); }
 }
 
-module.exports = { OrbeWindow, windows, live, trusted, hooks, archiveStale, INTERNAL, UI_PRELOAD, isInternal };
+module.exports = { OrbeWindow, windows, live, trusted, hooks, archiveStale, INTERNAL, UI_PRELOAD, isInternal, MOTION, motion, motionStats: stats };

@@ -67,7 +67,9 @@
   gap: 6px;
   padding: 10px;
   max-width: calc(100vw - 40px);
+  animation: switcher-in var(--spring-snappy);
 }
+@keyframes switcher-in { from { opacity: 0; transform: translate(-50%, -50%) scale(0.96); } }
 .sw {
   width: 112px;
   height: 96px;
@@ -85,11 +87,13 @@
 .sw.sel span.name { color: var(--fg); }
 
 /* Thème de l'Espace */
-#theme { bottom: 54px; width: 252px; padding: 14px; }
+#theme { bottom: 54px; width: 252px; padding: 14px; transform-origin: 20% 100%; animation: panel-in var(--spring-snappy); }
+@keyframes panel-in { from { opacity: 0; transform: translateY(8px) scale(0.97); } }
 #theme h3 { margin: 0 0 10px; font-size: 13px; }
 #theme label { display: block; font-size: 11px; font-weight: 600; color: var(--dim); margin: 10px 0 6px; }
 #theme-colors { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
-.sw-color { aspect-ratio: 1; border-radius: 50%; border: 0; outline-offset: 2px; }
+.sw-color { aspect-ratio: 1; border-radius: 50%; border: 0; outline-offset: 2px; transition: transform var(--spring-bouncy); }
+.sw-color:active { transform: scale(0.86); transition: transform var(--press); }
 .sw-color.sel { outline: 2px solid var(--fg); }
 #theme-hue {
   width: 100%;
@@ -101,16 +105,19 @@
 }
 #theme-hue::-webkit-slider-thumb { appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4); }
 #theme-icons { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; }
-.sw-icon { height: 26px; border-radius: 7px; font-size: 15px; }
+.sw-icon { height: 26px; border-radius: 7px; font-size: 15px; transition: transform var(--spring-bouncy); }
+.sw-icon:active { transform: scale(0.86); transition: transform var(--press); }
 .sw-icon:hover { background: var(--hover); }
 .sw-icon.sel { background: var(--pill); }
-#theme-done { margin-top: 12px; width: 100%; height: 30px; border-radius: 8px; background: var(--accent); color: #fff; font-weight: 600; }
+#theme-done { margin-top: 12px; width: 100%; height: 30px; border-radius: 8px; background: var(--accent); color: #fff; font-weight: 600; transition: transform var(--spring-snappy); }
+#theme-done:active { transform: scale(0.97); transition: transform var(--press); }
 
 /* Recherche dans la page */
 #find { inset: 4px; display: flex; align-items: center; gap: 4px; padding: 0 6px 0 12px; border-radius: 11px; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.22); }
 #find-input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font-size: 13.5px; user-select: text; }
 #find-count { color: var(--dim); font-size: 11.5px; white-space: nowrap; padding: 0 4px; font-variant-numeric: tabular-nums; }
-.fb { width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; color: var(--dim); }
+.fb { width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; color: var(--dim); transition: transform var(--spring-bouncy); }
+.fb:active { transform: scale(0.88); transition: transform var(--press); }
 .fb:hover { background: var(--hover); color: var(--fg); }
 
 /* Notification */
@@ -131,19 +138,24 @@
   text-overflow: ellipsis;
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
 }
-#toast.in { animation: toast 2100ms var(--ease) both; }
-@keyframes toast { 0% { opacity: 0; transform: translate(-50%, -8px); } 7%, 86% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; transform: translate(-50%, -4px); } }
+/* Entrée au ressort, sortie brève ; la vue est retirée au bout de 2,1 s (window.js). */
+#toast.in { animation: toast-in var(--spring-bouncy) both, toast-out 180ms var(--ease-in) 1900ms forwards; }
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, -10px) scale(0.96); } }
+@keyframes toast-out { to { opacity: 0; transform: translate(-50%, -4px); } }
 
 /* Aperçu (Peek) : voile sombre derrière la page et boutons sur le côté. */
-body.peek #backdrop { background: rgba(0, 0, 0, 0.42); animation: fade 160ms var(--ease); }
+body.peek #backdrop, body.peek-out #backdrop { background: rgba(0, 0, 0, 0.42); }
+body.peek #backdrop, body.peek #peek { animation: fade var(--peek-ms, 200ms) var(--ease-out) both; }
+body.peek-out #backdrop, body.peek-out #peek { animation: fade-out var(--peek-ms, 150ms) var(--ease-in) both; pointer-events: none; }
 @keyframes fade { from { opacity: 0; } }
+@keyframes fade-out { to { opacity: 0; } }
 #peek { position: fixed; top: 22px; right: 8px; display: flex; flex-direction: column; gap: 8px; }
-.pk { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, 0.16); color: #fff; transition: background 120ms, transform 120ms; }
+.pk { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, 0.16); color: #fff; transition: background 120ms, transform var(--spring-bouncy); }
 .pk:hover { background: rgba(255, 255, 255, 0.3); }
-.pk:active { transform: scale(0.94); }
+.pk:active { transform: scale(0.9); transition: transform var(--press); }
 
 /* ⌘L : la barre de commande s'ouvre sous la pastille d'adresse. */
-#command.anchored { transform: none; animation: drop 130ms var(--ease); }
+#command.anchored { transform: none; animation: drop var(--spring-snappy); }
 #command.anchored #cmd-field { height: 42px; }
 #command.anchored #cmd-input { font-size: 15px; }
 @keyframes drop { from { opacity: 0; transform: translateY(-6px); } }
