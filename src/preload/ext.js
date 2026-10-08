@@ -108,7 +108,11 @@ function install(invoke, listen) {
   const menuClicks = new Map();
   let menuSeq = 0;
 
+  // Changements de stockage relayés par les pages de l'extension (voir plus bas).
+  const relays = [];
+
   listen((name, args) => {
+    if (name === 'storage.relay') { for (const fn of relays) fn(args[0], args[1]); return; }
     if (name === 'contextMenus.onClicked') {
       const fn = menuClicks.get(String(args[0] && args[0].menuItemId));
       if (fn) { try { fn(...args); } catch (err) { console.error(err); } }
@@ -116,6 +120,7 @@ function install(invoke, listen) {
     fire(name, args);
   });
 
+  const wrappedStorage = new WeakSet();
   // Complète un objet racine (`chrome`, puis `browser` s'il existe).
   const equip = (c) => {
     // Ajoute méthodes, événements et constantes à un espace de noms, en gardant
@@ -216,16 +221,25 @@ function install(invoke, listen) {
       };
     }
 
-    // chrome.storage.sync : Electron l'annonce mais le refuse (« not available
-    // in this instance »). Orbe n'a pas de compte : `sync` devient une zone
-    // locale à part, rangée dans `storage.local` sous un préfixe. `local` et
-    // `onChanged` sont enveloppés pour que ce préfixe ne se voie pas.
+    // chrome.storage. Deux manques d'Electron sont comblés ici :
+    //   - `sync` est annoncé mais refusé (« not available in this instance »).
+    //     Orbe n'a pas de compte : `sync` devient une zone locale à part, rangée
+    //     dans `storage.local` sous un préfixe que `local` ne laisse pas voir ;
+    //   - `onChanged` n'arrive jamais dans un service worker (il arrive bien
+    //     dans les pages et les scripts de contenu). Le service worker calcule
+    //     donc lui-même les changements qu'il écrit, et reçoit ceux des pages
+    //     de l'extension, qui les lui relaient par le processus principal.
     const storage = c.storage;
-    if (storage && storage.local && typeof storage.local.get === 'function') {
+    // `chrome.storage` et `browser.storage` sont le même objet : une seule fois.
+    if (storage && storage.local && typeof storage.local.get === 'function' && !wrappedStorage.has(storage)) {
+      wrappedStorage.add(storage);
       const PREFIX = '__orbe_sync__/';
+      const worker = typeof window === 'undefined';
       const native = storage.local;
+      const nativeSession = storage.session;
       const nativeChanged = storage.onChanged;
       const isSync = (k) => k.startsWith(PREFIX);
+      const copy = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
       const withCallback = (fn) => function (...args) {
         const cb = typeof args[args.length - 1] === 'function' ? args.pop() : null;
         const p = fn(...args);
@@ -236,6 +250,8 @@ function install(invoke, listen) {
         });
         return undefined;
       };
+
+      // Événements : `storage.onChanged` et celui de chaque zone.
       const localEvent = () => {
         const set = new Set();
         return {
@@ -244,87 +260,135 @@ function install(invoke, listen) {
         };
       };
       const any = localEvent();
-      const onLocal = localEvent();
-      const onSync = localEvent();
+      const byArea = { local: localEvent(), sync: localEvent(), session: localEvent() };
       const run = (set, ...args) => { for (const fn of [...set]) { try { fn(...args); } catch (err) { console.error(err); } } };
-      let hooked = false;
-      // Un seul écouteur natif, posé au premier abonnement.
-      function hook() {
-        if (hooked || !nativeChanged) return;
-        hooked = true;
-        nativeChanged.addListener((changes, areaName) => {
-          if (areaName !== 'local') { run(any.set, changes, areaName); return; }
-          const local = {};
-          const sync = {};
-          for (const k of Object.keys(changes)) {
-            if (isSync(k)) sync[k.slice(PREFIX.length)] = changes[k]; else local[k] = changes[k];
-          }
-          if (Object.keys(local).length) { run(any.set, local, 'local'); run(onLocal.set, local); }
-          if (Object.keys(sync).length) { run(any.set, sync, 'sync'); run(onSync.set, sync); }
-        });
-      }
-      const allOf = async (sync) => {
-        const raw = await native.get(null);
-        const out = {};
-        for (const k of Object.keys(raw)) if (isSync(k) === sync) out[sync ? k.slice(PREFIX.length) : k] = raw[k];
-        return out;
+      const deliver = (changes, area) => {
+        if (!Object.keys(changes).length) return;
+        run(any.set, changes, area);
+        if (byArea[area]) run(byArea[area].set, changes);
       };
-      const syncArea = {
-        get: withCallback(async (keys) => {
-          if (keys == null) return allOf(true);
+      // Changements tels que Chromium les annonce : la zone « local » y contient aussi « sync ».
+      const split = (changes, area) => {
+        if (area !== 'local') return [[changes, area]];
+        const local = {};
+        const sync = {};
+        for (const k of Object.keys(changes)) {
+          if (isSync(k)) sync[k.slice(PREFIX.length)] = changes[k]; else local[k] = changes[k];
+        }
+        return [[local, 'local'], [sync, 'sync']];
+      };
+      const signature = (changes, area) => area + '|' + Object.keys(changes).sort().map((k) => k + '=' + JSON.stringify(changes[k].newValue)).join('&');
+      const own = []; // écritures récentes du service worker, pour ne pas les recevoir deux fois
+      let hooked = false;
+      function hook() {
+        if (hooked) return;
+        hooked = true;
+        if (worker) invoke('_listen', ['storage.relay', true]);
+        else if (nativeChanged) nativeChanged.addListener((changes, area) => { for (const [part, name] of split(changes, area)) deliver(part, name); });
+      }
+      if (worker) {
+        relays.push((changes, area) => {
+          for (const [part, name] of split(changes || {}, area)) {
+            if (!Object.keys(part).length) continue;
+            const sig = signature(part, name);
+            const now = Date.now();
+            const at = own.findIndex((o) => o.sig === sig && now - o.at < 5000);
+            if (at >= 0) own.splice(at, 1); else deliver(part, name);
+          }
+        });
+      } else if (nativeChanged) {
+        // Page d'extension : ce qu'elle voit changer est relayé au service worker.
+        nativeChanged.addListener((changes, area) => { invoke('_storageRelay', [copy(changes), area]); });
+      }
+
+      // Une zone : lectures et écritures sous forme de promesses, sur les clés
+      // « logiques » (sans préfixe).
+      const zone = (area, raw) => {
+        const toRaw = area === 'sync' ? (k) => PREFIX + k : (k) => k;
+        const mine = area === 'session' ? () => true : (k) => isSync(k) === (area === 'sync');
+        const all = async () => {
+          const found = await raw.get(null);
+          const out = {};
+          for (const k of Object.keys(found)) if (mine(k)) out[area === 'sync' ? k.slice(PREFIX.length) : k] = found[k];
+          return out;
+        };
+        const get = async (keys) => {
+          if (keys == null) return all();
+          if (area !== 'sync') return raw.get(keys);
           const defaults = typeof keys === 'object' && !Array.isArray(keys) ? keys : null;
           const names = defaults ? Object.keys(defaults) : [].concat(keys);
-          const raw = await native.get(names.map((k) => PREFIX + k));
+          const found = await raw.get(names.map(toRaw));
           const out = {};
           for (const k of names) {
-            if (Object.prototype.hasOwnProperty.call(raw, PREFIX + k)) out[k] = raw[PREFIX + k];
+            if (Object.prototype.hasOwnProperty.call(found, toRaw(k))) out[k] = found[toRaw(k)];
             else if (defaults && defaults[k] !== undefined) out[k] = defaults[k];
           }
           return out;
-        }),
-        set: withCallback(async (items) => {
-          const raw = {};
-          for (const k of Object.keys(items || {})) raw[PREFIX + k] = items[k];
-          await native.set(raw);
-        }),
-        remove: withCallback(async (keys) => { await native.remove([].concat(keys).map((k) => PREFIX + k)); }),
-        clear: withCallback(async () => { await native.remove(Object.keys(await allOf(true)).map((k) => PREFIX + k)); }),
-        getKeys: withCallback(async () => Object.keys(await allOf(true))),
-        getBytesInUse: withCallback(async (keys) => {
-          const all = await allOf(true);
-          const names = keys == null ? Object.keys(all) : [].concat(keys);
-          return names.reduce((n, k) => n + (k in all ? k.length + JSON.stringify(all[k]).length : 0), 0);
-        }),
-        setAccessLevel: withCallback(async () => {}),
-        onChanged: onSync.api,
-        QUOTA_BYTES: 102400,
-        QUOTA_BYTES_PER_ITEM: 8192,
-        MAX_ITEMS: 512,
-        MAX_WRITE_OPERATIONS_PER_HOUR: 1800,
-        MAX_WRITE_OPERATIONS_PER_MINUTE: 120,
-      };
-      const localArea = {
-        // Tout lire ou tout effacer ne doit pas toucher à la zone « sync ».
-        get: function (...args) {
-          const first = typeof args[0] === 'function' ? undefined : args[0];
-          if (first != null) return native.get(...args);
-          return withCallback(() => allOf(false))(...args.filter((x) => typeof x === 'function'));
-        },
-        set: (...args) => native.set(...args),
-        remove: (...args) => native.remove(...args),
-        clear: withCallback(async () => { await native.remove(Object.keys(await allOf(false))); }),
-        getKeys: withCallback(async () => Object.keys(await allOf(false))),
-        getBytesInUse: (...args) => native.getBytesInUse(...args),
-        setAccessLevel: (...args) => native.setAccessLevel(...args),
-        onChanged: onLocal.api,
-        QUOTA_BYTES: native.QUOTA_BYTES || 10485760,
+        };
+        // Dans le service worker, chaque écriture annonce elle-même ses changements.
+        const announce = async (names, write) => {
+          if (!worker) return write();
+          const before = names ? await get(names) : await all();
+          await write();
+          const after = names ? await get(names) : {};
+          const changes = {};
+          for (const k of names || Object.keys(before)) {
+            const had = Object.prototype.hasOwnProperty.call(before, k);
+            const has = Object.prototype.hasOwnProperty.call(after, k);
+            if (!had && !has) continue;
+            if (had && has && JSON.stringify(before[k]) === JSON.stringify(after[k])) continue;
+            changes[k] = {};
+            if (had) changes[k].oldValue = before[k];
+            if (has) changes[k].newValue = after[k];
+          }
+          if (Object.keys(changes).length) {
+            own.push({ sig: signature(changes, area), at: Date.now() });
+            if (own.length > 50) own.shift();
+            deliver(changes, area);
+          }
+          return undefined;
+        };
+        const api = {
+          get: withCallback((keys) => get(keys)),
+          set: withCallback((items) => {
+            const names = Object.keys(items || {});
+            const rawItems = {};
+            for (const k of names) rawItems[toRaw(k)] = items[k];
+            return announce(names, () => raw.set(rawItems));
+          }),
+          remove: withCallback((keys) => {
+            const names = [].concat(keys);
+            return announce(names, () => raw.remove(names.map(toRaw)));
+          }),
+          clear: withCallback(() => announce(null, async () => {
+            if (area === 'session') await raw.clear();
+            else await raw.remove(Object.keys(await all()).map(toRaw));
+          })),
+          getKeys: withCallback(async () => Object.keys(await all())),
+          getBytesInUse: withCallback(async (keys) => {
+            if (area !== 'sync' && typeof raw.getBytesInUse === 'function') return raw.getBytesInUse(keys == null ? null : keys);
+            const found = await all();
+            const names = keys == null ? Object.keys(found) : [].concat(keys);
+            return names.reduce((n, k) => n + (k in found ? k.length + JSON.stringify(found[k]).length : 0), 0);
+          }),
+          setAccessLevel: withCallback(async (level) => { if (area !== 'sync' && typeof raw.setAccessLevel === 'function') await raw.setAccessLevel(level); }),
+          onChanged: byArea[area].api,
+        };
+        if (area === 'sync') Object.assign(api, { QUOTA_BYTES: 102400, QUOTA_BYTES_PER_ITEM: 8192, MAX_ITEMS: 512, MAX_WRITE_OPERATIONS_PER_HOUR: 1800, MAX_WRITE_OPERATIONS_PER_MINUTE: 120 });
+        else if (raw.QUOTA_BYTES) api.QUOTA_BYTES = raw.QUOTA_BYTES;
+        return api;
       };
       const put = (key, value) => {
         try { Object.defineProperty(storage, key, { value, configurable: true, enumerable: true, writable: true }); } catch { try { storage[key] = value; } catch {} }
         return storage[key] === value;
       };
-      // Les trois ensemble, ou rien : sinon le préfixe deviendrait visible.
-      if (put('sync', syncArea)) { put('local', localArea); put('onChanged', any.api); }
+      // Tout ensemble, ou rien : sinon le préfixe deviendrait visible.
+      if (put('sync', zone('sync', native))) {
+        put('local', zone('local', native));
+        put('onChanged', any.api);
+        // `session` n'est enveloppé que là où ses événements manquent.
+        if (worker && nativeSession && typeof nativeSession.get === 'function') put('session', zone('session', nativeSession));
+      }
     }
 
     // Compléments à des espaces de noms qu'Electron fournit en partie.

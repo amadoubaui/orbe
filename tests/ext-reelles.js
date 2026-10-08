@@ -60,6 +60,8 @@ module.exports = async function realExtensions({ first: w, win, extensions, extA
   const js = (wc, code) => Promise.race([wc.executeJavaScript(code).catch((err) => 'ERREUR ' + err.message), sleep(8000).then(() => 'ERREUR délai dépassé')]);
   const swErrors = (id) => (consoleOf[id] || []).filter((m) => /^\[(error|3)\]|Uncaught|is not a function|Cannot read|undefined/i.test(m));
 
+  // Sans cela, Electron affiche une boîte d'erreur bloquante et l'essai ne se termine jamais.
+  process.on('uncaughtException', (err) => { failed += 1; console.error('  ✗ exception dans le processus principal\n', err); });
   console.log('\nOrbe — vraies extensions\n');
   for (const key of wanted) {
     const id = IDS[key] || key;
@@ -128,7 +130,9 @@ module.exports = async function realExtensions({ first: w, win, extensions, extA
       // Second passage sur le même profil (ORBE_EXT_KEEP) : le réglage a survécu au redémarrage.
       if (process.env.ORBE_EXT_KEEP) check('réglage conservé après redémarrage', Number(b0) > 100, { luminosite: b0 });
       await js(pop.webContents, '(() => { const up = [...document.querySelectorAll(".updown__button")][1]; for (let i = 0; i < 3; i++) up.click(); })()');
-      await sleep(3000);
+      // Dark Reader regroupe ses écritures : le réglage arrive dans le stockage après un délai.
+      await until(async () => { const b = await brightness(); return b !== b0 && Number(b) > 100; }, 20000);
+      await sleep(1500);
       const b1 = await brightness();
       const lit = await js(rt.wc, probe);
       check('la luminosité se règle et s’enregistre', b1 !== b0 && Number(b1) > 100, { avant: b0, apres: b1 });

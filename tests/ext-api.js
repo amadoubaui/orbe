@@ -36,6 +36,9 @@ module.exports = async function extApiTest({ first: w, OrbeWindow, win, extApi, 
     if (!ok) failed += 1;
     console.log(`${ok ? '  ✓' : '  ✗'} ${name}${ok || !detail ? '' : ' — ' + (typeof detail === 'string' ? detail : JSON.stringify(detail))}`);
   };
+  // Une exception non rattrapée ferait apparaître une boîte d'erreur bloquante.
+  const uncaught = [];
+  process.on('uncaughtException', (err) => { uncaught.push(String((err && err.stack) || err)); });
   console.log('\nOrbe — API des extensions\n');
 
   const server = await serve();
@@ -213,11 +216,39 @@ module.exports = async function extApiTest({ first: w, OrbeWindow, win, extApi, 
   await until(async () => (await events('action.onClicked')).length === 1, 'action.onClicked');
   check('action.onClicked reçoit l’onglet actif', (await events('action.onClicked'))[0].args[0].id === rtA.wc.id);
 
+  // Fenêtre d'Orbe fermée alors que la fenêtre surgissante est ouverte.
+  await call('action.setPopup', { popup: 'popup.html' });
+  const w2 = new OrbeWindow();
+  await until(() => w2.win.isVisible(), 'seconde fenêtre');
+  const pop2 = extHost.openPopup(w2, ext.id, null, { keepOpen: true });
+  await until(() => pop2.webContents.executeJavaScript('document.readyState === "complete"'), 'seconde fenêtre surgissante');
+  w2.win.close();
+  await until(() => pop2.isDestroyed() && OrbeWindow.all.length === 1, 'fermeture de la seconde fenêtre');
+  await sleep(300);
+  check('fermer la fenêtre d’Orbe ferme sa fenêtre surgissante, sans erreur', extHost.popups.size === 0 && uncaught.length === 0, uncaught.join(' | '));
+  await until(async () => (await call('windows.getAll')).length === 1, 'windows.getAll');
+  w.win.focus();
+
   // divers
   check('fontSettings.getFontList', (await call('fontSettings.getFontList')).some((f) => f.fontId === 'Arial'));
   check('commands.getAll lit le manifeste', (await call('commands.getAll')).map((c) => c.name).join() === 'essai');
   await call('storage.sync.set', { cle: 'valeur' });
-  check('storage.sync (Electron) garde les valeurs', (await call('storage.sync.get', 'cle')).cle === 'valeur');
+  await call('storage.local.set', { ici: 1 });
+  const syncAll = await call('storage.sync.get', null);
+  const localAll = await call('storage.local.get', null);
+  check('storage.sync garde ses valeurs, à part de storage.local', (await call('storage.sync.get', 'cle')).cle === 'valeur' && Object.keys(syncAll).join() === 'cle' && Object.keys(localAll).join() === 'ici'
+    && (await call('storage.sync.get', { cle: 0, absente: 5 })).absente === 5 && (await call('storage.local.get', 'cle')).cle === undefined, { syncAll, localAll });
+  // Electron n'annonce pas les changements de stockage au service worker : il
+  // les calcule pour ses propres écritures, et reçoit ceux des pages par relais.
+  await page('chrome.storage.local.set({ page: 2 })');
+  await until(async () => (await events('storage.onChanged')).length >= 3, 'storage.onChanged', 4000).catch(() => {});
+  await sleep(600);
+  const changed = await events('storage.onChanged');
+  check('storage.onChanged arrive au service worker, une seule fois, avec la bonne zone', changed.map((e) => e.args[0].join() + ':' + e.args[1]).join(' ') === 'cle:sync ici:local page:local', changed.map((e) => e.args));
+  check('…et dans les pages de l’extension', await page('new Promise((r) => { chrome.storage.onChanged.addListener((c, a) => r(Object.keys(c).join() + ":" + a)); chrome.storage.sync.set({ vu: 1 }); })') === 'vu:sync');
+  await call('storage.sync.remove', 'vu');
+  await call('storage.sync.clear');
+  check('storage.sync.clear ne touche pas à storage.local', Object.keys(await call('storage.sync.get', null)).length === 0 && (await call('storage.local.get', 'ici')).ici === 1);
   await call('runtime.openOptionsPage');
   const optRt = await until(() => win.live.get(w.activeId) && win.live.get(w.activeId).wc.getURL() === ext.url + 'options.html' && win.live.get(w.activeId), 'page d’options');
   await until(() => optRt.wc.executeJavaScript('typeof window.call === "function"'), 'page d’options chargée');
@@ -242,6 +273,7 @@ module.exports = async function extApiTest({ first: w, OrbeWindow, win, extApi, 
   const errors = swLogs.filter((m) => /error|not a function|undefined/i.test(m));
   check('aucune erreur dans la console du service worker', errors.length === 0, errors.join(' | '));
 
+  check('aucune exception dans le processus principal', uncaught.length === 0, uncaught.join(' | '));
   server.close();
   console.log(`\n${results.length - failed}/${results.length} vérifications réussies\n`);
   if (failed) throw new Error(`${failed} vérification(s) en échec`);

@@ -127,8 +127,17 @@ function frameFrom(processId, routingId) {
 }
 
 // Compare le modèle d'Orbe à ce que les extensions savent déjà, et envoie les
-// événements correspondants. Appelé à chaque changement d'état des fenêtres.
+// événements correspondants. Appelé à chaque changement d'état des fenêtres :
+// une erreur ici ne doit jamais interrompre Orbe (fermeture d'une fenêtre…).
 function sync() {
+  try {
+    compare();
+  } catch (err) {
+    console.error('[orbe] extensions : synchronisation des onglets', err);
+  }
+}
+
+function compare() {
   const { OrbeWindow } = W();
   const now = tabs();
   const seen = new Set();
@@ -155,6 +164,7 @@ function sync() {
   for (const id of [...knownWindows]) if (!list.some((w) => w.id === id)) { knownWindows.delete(id); api.notify.windowRemoved(id); }
   const f = OrbeWindow.focused;
   if (f) lastFocused = f;
+  if (lastFocused && lastFocused.win.isDestroyed()) lastFocused = null;
   // Une fenêtre surgissante au premier plan ne retire pas le « focus » à sa fenêtre.
   const popupFocused = [...popups.values()].some((p) => !p.win.isDestroyed() && p.win.isFocused());
   const id = f ? f.win.id : popupFocused && lastFocused ? lastFocused.win.id : -1;
@@ -298,7 +308,9 @@ function openPopup(w, id, anchor, options = {}) {
   });
   wc.on('before-input-event', (e, input) => { if (input.type === 'keyDown' && input.key === 'Escape') pop.close(); });
   pop.on('blur', () => { if (options.keepOpen) return; if (!wc.isDestroyed() && !wc.isDevToolsOpened()) pop.close(); });
-  pop.on('closed', () => { popups.delete(wcId); sync(); });
+  const ownerClosed = () => { if (!pop.isDestroyed()) pop.destroy(); };
+  w.win.once('closed', ownerClosed);
+  pop.on('closed', () => { popups.delete(wcId); if (!w.win.isDestroyed()) w.win.removeListener('closed', ownerClosed); sync(); });
   place(320, 200);
   wc.loadURL(url).catch(() => { if (!pop.isDestroyed()) pop.close(); });
   return pop;

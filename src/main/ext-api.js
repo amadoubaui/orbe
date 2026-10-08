@@ -507,6 +507,20 @@ const METHODS = {
     if (on) set.add(name); else set.delete(name);
   },
 
+  // Changement de stockage vu par une page de l'extension : Electron ne
+  // l'annonce pas au service worker, on le lui relaie. Plusieurs pages ouvertes
+  // voient le même changement : il ne part qu'une fois.
+  _storageRelay(ctx, [changes, area], origin) {
+    if (!origin.frame || !ctx.st.worker.has('storage.relay') || !changes || typeof changes !== 'object' || typeof area !== 'string') return;
+    const sig = area + JSON.stringify(changes);
+    const now = Date.now();
+    const seen = ctx.st.relayed || (ctx.st.relayed = new Map());
+    for (const [k, at] of seen) if (now - at > 2000) seen.delete(k);
+    if (seen.has(sig)) return;
+    seen.set(sig, now);
+    emit(ctx.ses, ctx.id, 'storage.relay', [changes, area]);
+  },
+
   // permissions ---------------------------------------------------------------
   'permissions.getAll': (ctx) => ({
     permissions: [...requiredPermissions(ctx.manifest), ...optionalPermissions(ctx.manifest).filter((p) => diskOf(ctx.id).granted.includes(p))],

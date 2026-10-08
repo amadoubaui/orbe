@@ -184,7 +184,9 @@ Tests : `npm run test:ext` (extension `tests/ext-fixture`, sans réseau) et
 
 Ce qui ne marche pas : un script de préchargement n'atteint pas le monde isolé
 des **scripts de contenu**. Ils gardent les API d'Electron (`runtime`,
-`storage.local`, `i18n`) ; `storage.sync` n'y est donc pas corrigé.
+`storage.local`, `i18n`) ; `storage.sync` n'y est donc pas corrigé, et une
+écriture faite par un script de contenu n'est annoncée au service worker que si
+une page de l'extension est ouverte.
 
 ### API fournies
 
@@ -196,7 +198,7 @@ des **scripts de contenu**. Ils gardent les API d'Electron (`runtime`,
 | `cookies` | `get`, `getAll`, `set`, `remove`, `getAllCookieStores`, `onChanged`, limités aux sites du manifeste. |
 | `contextMenus` | `create`, `update`, `remove`, `removeAll`, `onClicked` (et `onclick` en Manifest V2). Les éléments s'ajoutent au menu contextuel des pages. |
 | `action` (`browserAction`, `pageAction`) | titre, pastille, couleurs, icône, fenêtre surgissante, activation, par onglet ou globalement ; `openPopup`, `onClicked`. |
-| `storage.sync` | zone locale à part (Electron la refuse) ; `local` et `onChanged` sont enveloppés pour que les deux zones restent séparées. |
+| `storage` | `sync` devient une zone locale à part (Electron la refuse), séparée de `local`. `onChanged`, qu'Electron n'envoie jamais à un service worker, y est reconstitué : le service worker annonce ses propres écritures et reçoit celles des pages de l'extension. |
 | `webNavigation` | `onBeforeNavigate`, `onCommitted`, `onDOMContentLoaded`, `onCompleted`, `onHistoryStateUpdated`, `getFrame`, `getAllFrames`. |
 | `notifications`, `downloads` | minimum : `create`/`clear`/`onClicked`, `download`. |
 | `fontSettings`, `commands` | `getFontList` (liste fixe), `commands.getAll` ; aucun raccourci n'est attribué, `onCommand` n'est jamais émis. |
@@ -235,7 +237,7 @@ Installation réelle depuis le Store dans un profil jetable d'Orbe, pages
 | Service worker | démarre, sans erreur | démarre, sans erreur | démarre, sans erreur |
 | Scripts de contenu | s'exécutent | s'exécutent | s'exécutent |
 | Fenêtre surgissante | réglages affichés, 276 × 580 | technologies de l'onglet actif, 496 × 544 | site de l'onglet actif, mode de filtrage |
-| Rechargement au démarrage suivant | oui, réglages conservés | oui | non vérifié |
+| Rechargement au démarrage suivant | oui, réglages conservés | oui | oui |
 
 Avant la couche d'API (Electron seul) :
 

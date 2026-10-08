@@ -24,6 +24,8 @@ for (const name of EVENTS) {
   if (ev) ev.addListener((...args) => log.push({ name, args }));
 }
 
+chrome.storage.onChanged.addListener((changes, area) => log.push({ name: 'storage.onChanged', args: [Object.keys(changes), area] }));
+
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   if (!msg || typeof msg !== 'object') return undefined;
   if (msg.type === 'early') reply(early);
