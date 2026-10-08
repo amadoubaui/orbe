@@ -50,7 +50,15 @@ class Store {
     s.version = 1;
     s.settings = { ...DEFAULT_SETTINGS, ...(s.settings || {}) };
     s.tabs = s.tabs || {};
-    s.favorites = (s.favorites || []).filter((id) => s.tabs[id]);
+    // Profils : chacun a ses cookies, ses connexions et ses favoris.
+    if (!Array.isArray(s.profiles) || !s.profiles.length) s.profiles = [{ id: 'default', name: this.t('profiles.default', s.settings.lang) }];
+    if (!s.profiles.some((p) => p.id === 'default')) s.profiles.unshift({ id: 'default', name: this.t('profiles.default', s.settings.lang) });
+    const profileIds = new Set(s.profiles.map((p) => p.id));
+    s.favs = s.favs || {};
+    if (Array.isArray(s.favorites)) { s.favs.default = s.favorites; delete s.favorites; }
+    const favSeen = new Set();
+    for (const id of Object.keys(s.favs)) if (!profileIds.has(id)) delete s.favs[id];
+    for (const id of profileIds) s.favs[id] = (s.favs[id] || []).filter((tid) => s.tabs[tid] && !favSeen.has(tid) && favSeen.add(tid));
     s.archive = s.archive || [];
     s.history = s.history || {};
     s.downloads = s.downloads || [];
@@ -60,7 +68,7 @@ class Store {
       s.spaces = [this.makeSpace(this.t('spaces.firstName', s.settings.lang), '🏠', SPACE_COLORS[0])];
     }
     // Répare les références orphelines (fichier modifié à la main, crash…).
-    const seen = new Set(s.favorites);
+    const seen = favSeen;
     const clean = (nodes) => nodes.filter((n) => {
       if (n.type === 'folder') { n.children = clean(n.children || []); return true; }
       if (!s.tabs[n.id] || seen.has(n.id)) return false;
@@ -68,6 +76,7 @@ class Store {
       return true;
     });
     for (const sp of s.spaces) {
+      if (!profileIds.has(sp.profileId)) sp.profileId = 'default';
       sp.pinned = clean(sp.pinned || []);
       sp.today = (sp.today || []).filter((id) => s.tabs[id] && !seen.has(id) && seen.add(id));
     }
@@ -76,7 +85,7 @@ class Store {
   }
 
   makeSpace(name, icon, color) {
-    return { id: uid(), name, icon: icon || '✨', color: color || SPACE_COLORS[Math.floor(Math.random() * SPACE_COLORS.length)], pinned: [], today: [] };
+    return { id: uid(), name, icon: icon || '✨', color: color || SPACE_COLORS[Math.floor(Math.random() * SPACE_COLORS.length)], profileId: 'default', pinned: [], today: [] };
   }
 
   t(key, lang, vars) {

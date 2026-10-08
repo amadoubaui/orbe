@@ -89,9 +89,9 @@ module.exports = async function selftest({ first: w, OrbeWindow, store, win, lit
   check('⌘D désépingle l’onglet', w.space.today[0] === a.id && !tabs()[a.id].homeUrl);
   w.toggleFavorite(a.id);
   await until(() => ui('document.querySelectorAll("#fav .tile").length === 1'), 'tuile favori');
-  check('ajout aux favoris (tuile en haut)', w.data.favorites[0] === a.id);
+  check('ajout aux favoris (tuile en haut)', w.favorites[0] === a.id);
   w.toggleFavorite(a.id);
-  check('retrait des favoris', !w.data.favorites.length && w.space.today[0] === a.id);
+  check('retrait des favoris', !w.favorites.length && w.space.today[0] === a.id);
 
   // Dossiers et déplacements
   w.newFolder();
@@ -209,6 +209,50 @@ module.exports = async function selftest({ first: w, OrbeWindow, store, win, lit
   w.moveToSpace(c.id, w.data.spaces[0].id);
   check('déplacer un onglet vers un autre Espace', w.data.spaces[0].today.includes(c.id) && !s2.today.length);
   w.spaceAt(1);
+
+  // Profils : cookies séparés par profil
+  const sesBefore = win.live.get(a.id).wc.session;
+  w.newProfile();
+  check('nouveau profil attribué à l’Espace', w.data.profiles.length === 2 && w.space.profileId !== 'default');
+  w.activate(a.id);
+  await until(() => win.live.has(a.id), 'onglet rechargé dans le nouveau profil');
+  check('le profil a sa propre session', win.live.get(a.id).wc.session !== sesBefore);
+  w.setProfile('default');
+  w.activate(a.id);
+
+  // Import depuis Arc (fichier d'exemple, jamais les vraies données)
+  const arc = require('../src/main/import-arc');
+  const sample = path.join(require('os').tmpdir(), `orbe-arc-${Date.now()}.json`);
+  const tabItem = (id, url, title, parent) => [id, { id, title: null, parentID: parent, childrenIds: [], data: { tab: { savedURL: url, savedTitle: title } } }];
+  fs.writeFileSync(sample, JSON.stringify({ sidebar: { containers: [{ global: {} }, {
+    items: [
+      'pin', { id: 'pin', childrenIds: ['t1', 'f1'], data: { itemContainer: {} } },
+      ...tabItem('t1', 'https://exemple.org/un', 'Un', 'pin'),
+      'f1', { id: 'f1', title: 'Dossier Arc', parentID: 'pin', childrenIds: ['t2'], data: { list: {} } },
+      ...tabItem('t2', 'https://exemple.org/deux', 'Deux', 'f1'),
+      'unp', { id: 'unp', childrenIds: ['t3'], data: { itemContainer: {} } },
+      ...tabItem('t3', 'https://exemple.org/trois', 'Trois', 'unp'),
+      'top', { id: 'top', childrenIds: ['t4'], data: { itemContainer: {} } },
+      ...tabItem('t4', 'https://exemple.org/favori', 'Favori', 'top'),
+    ],
+    spaces: ['s1', { id: 's1', title: 'Espace Arc', customInfo: { iconType: { emoji_v2: '🌾' } }, profile: { custom: { _0: { directoryBasename: 'Profile 3' } } }, containerIDs: ['pinned', 'pin', 'unpinned', 'unp'] }],
+    topAppsContainerIDs: [{ custom: { _0: { directoryBasename: 'Profile 3' } } }, 'top'],
+  }] } }));
+  const arcData = arc.read(sample);
+  const spacesBefore = w.data.spaces.length;
+  arc.merge(arcData);
+  const imported = w.data.spaces.find((x) => x.arcId === 's1');
+  const importedFolder = imported && imported.pinned.find((n) => n.type === 'folder');
+  check('import Arc : Espace, épinglés, dossier, onglet du jour',
+    w.data.spaces.length === spacesBefore + 1 && imported.name === 'Espace Arc' && imported.icon === '🌾'
+    && imported.pinned.length === 2 && importedFolder.name === 'Dossier Arc' && importedFolder.children.length === 1 && imported.today.length === 1);
+  check('import Arc : profil et favoris du profil', imported.profileId !== 'default' && w.data.favs[imported.profileId].length === 1);
+  check('import Arc : pas de doublon au second import', arc.merge(arcData) === 0);
+  fs.unlinkSync(sample);
+  w.data.spaces.splice(w.data.spaces.indexOf(imported), 1);
+  for (const id of [...imported.today, ...w.data.favs[imported.profileId], imported.pinned[0].id, importedFolder.children[0].id]) delete w.data.tabs[id];
+  w.data.favs[imported.profileId] = [];
+  OrbeWindow.pushAll();
 
   // Langue
   await until(() => ui('document.querySelector("#b-newtab .title").textContent === "Nouvel onglet"'), 'libellé français');

@@ -160,9 +160,11 @@ async function globalAction(action, a, sender) {
         cancelId: 1,
       });
       if (r.response !== 0) return false;
-      const ses = sessions.mainSession();
-      await ses.clearStorageData();
-      await ses.clearCache();
+      for (const p of s.profiles) {
+        const ses = sessions.profileSession(p.id);
+        await ses.clearStorageData();
+        await ses.clearCache();
+      }
       s.history = {};
       store.historyCount = 0;
       store.save();

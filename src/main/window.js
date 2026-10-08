@@ -92,7 +92,7 @@ class OrbeWindow {
     const saved = incognito ? {} : store.state.window;
     const first = !OrbeWindow.all.some((w) => !w.incognito);
     this.data = incognito
-      ? { spaces: [store.makeSpace(t('incognito.title'), '🕶️', '#52525b')], tabs: {}, favorites: [] }
+      ? { spaces: [store.makeSpace(t('incognito.title'), '🕶️', '#52525b')], tabs: {}, favs: { default: [] }, profiles: [{ id: 'default', name: '' }] }
       : store.state;
     this.session = incognito ? sessions.incognitoSession() : sessions.mainSession();
     this.persistent = !incognito && first;
@@ -195,14 +195,30 @@ class OrbeWindow {
     return rt && !rt.wc.isDestroyed() ? rt.wc : null;
   }
 
+  // Favoris du profil de l'Espace affiché.
+  get favorites() {
+    const favs = this.data.favs;
+    const id = this.space.profileId || 'default';
+    return favs[id] || (favs[id] = []);
+  }
+
+  sessionFor(id) {
+    if (this.incognito) return this.session;
+    const loc = this.locate(id);
+    return sessions.profileSession(loc ? (loc.space ? loc.space.profileId : loc.profileId) : 'default');
+  }
+
   get sidebarWidth() {
     return clamp(store.state.settings.sidebarWidth, SIDEBAR_MIN, SIDEBAR_MAX);
   }
 
   locate(id) {
     const d = this.data;
-    let i = d.favorites.indexOf(id);
-    if (i >= 0) return { list: 'favorites', arr: d.favorites, index: i, space: null, node: { type: 'tab', id } };
+    let i;
+    for (const profileId of Object.keys(d.favs)) {
+      i = d.favs[profileId].indexOf(id);
+      if (i >= 0) return { list: 'favorites', arr: d.favs[profileId], index: i, space: null, profileId, node: { type: 'tab', id } };
+    }
     for (const space of d.spaces) {
       i = space.today.indexOf(id);
       if (i >= 0) return { list: 'today', arr: space.today, index: i, space, node: { type: 'tab', id } };
@@ -214,7 +230,7 @@ class OrbeWindow {
 
   // Ordre d'affichage : favoris, épinglés, puis Aujourd'hui.
   orderedIds(space = this.space) {
-    return [...this.data.favorites, ...walk(space.pinned), ...space.today];
+    return [...(this.data.favs[space.profileId] || []), ...walk(space.pinned), ...space.today];
   }
 
   groupOf(id) {
@@ -372,7 +388,7 @@ class OrbeWindow {
     const tab = this.data.tabs[id];
     const internal = isInternal(tab.url);
     const view = new WebContentsView(viewOptions || {
-      webPreferences: { session: this.session, sandbox: true, contextIsolation: true, preload: internal ? UI_PRELOAD : undefined },
+      webPreferences: { session: this.sessionFor(id), sandbox: true, contextIsolation: true, preload: internal ? UI_PRELOAD : undefined },
     });
     view.setBackgroundColor('#ffffff');
     rt = { id, view, wc: view.webContents, owner: this, loading: false, lastUsed: Date.now(), internal };
@@ -662,7 +678,7 @@ class OrbeWindow {
       this.space.today.unshift(id);
       delete tab.homeUrl;
     } else {
-      this.data.favorites.push(id);
+      this.favorites.push(id);
       tab.homeUrl = tab.homeUrl || tab.url;
     }
     this.changed();
@@ -703,7 +719,7 @@ class OrbeWindow {
     const node = loc.node;
     const isFolder = node.type === 'folder';
     let dest;
-    if (to === 'favorites') dest = this.data.favorites;
+    if (to === 'favorites') dest = this.favorites;
     else if (to === 'today') dest = this.space.today;
     else if (to === 'pinned') dest = this.space.pinned;
     else if (to === 'folder') {
@@ -732,6 +748,8 @@ class OrbeWindow {
     const wasActive = this.activeId === id;
     const next = wasActive ? this.nextActiveAfter(id, this.space) : null;
     this.leaveSplit(id);
+    // Changer de profil change de cookies : la page sera rechargée.
+    if (loc.space && loc.space.profileId !== target.profileId) OrbeWindow.destroyView(id);
     loc.arr.splice(loc.index, 1);
     if (loc.list === 'pinned') target.pinned.push(loc.node);
     else { target.today.unshift(id); delete this.data.tabs[id].homeUrl; }
@@ -851,6 +869,23 @@ class OrbeWindow {
     this.changed();
   }
 
+  // --- Profils --------------------------------------------------------------
+  setProfile(profileId, space = this.space) {
+    if (this.incognito || space.profileId === profileId || !this.data.profiles.some((p) => p.id === profileId)) return;
+    for (const id of [...walk(space.pinned), ...space.today]) OrbeWindow.destroyView(id);
+    space.profileId = profileId;
+    for (const w of windows.values()) w.layout();
+    this.changed();
+  }
+
+  newProfile() {
+    if (this.incognito) return;
+    const profile = { id: uid(), name: t('profiles.name', { n: this.data.profiles.length + 1 }) };
+    this.data.profiles.push(profile);
+    this.data.favs[profile.id] = [];
+    this.setProfile(profile.id);
+  }
+
   setTheme({ color, icon }) {
     const space = this.space;
     if (typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color)) space.color = color;
@@ -932,7 +967,7 @@ class OrbeWindow {
     for (const sp of this.data.spaces) {
       for (const id of [...walk(sp.pinned), ...sp.today]) tabs.push(this.data.tabs[id]);
     }
-    for (const id of this.data.favorites) tabs.push(this.data.tabs[id]);
+    for (const list of Object.values(this.data.favs)) for (const id of list) tabs.push(this.data.tabs[id]);
     const items = suggest.local(q, { tabs, commands: this.commandList(), activeId: this.commandMode === 'edit' ? this.activeId : null });
     return this.incognito ? items.filter((i) => i.kind !== 'history') : items;
   }
@@ -1122,11 +1157,11 @@ class OrbeWindow {
   async clearAndReload(what) {
     const wc = this.activeWc;
     if (!wc) return;
-    if (what === 'cache') await this.session.clearCache();
+    if (what === 'cache') await wc.session.clearCache();
     else {
       let origin = '';
       try { origin = new URL(wc.getURL()).origin; } catch {}
-      if (origin) await this.session.clearStorageData({ origin, storages: ['cookies', 'localstorage', 'indexdb', 'serviceworkers', 'cachestorage'] });
+      if (origin) await wc.session.clearStorageData({ origin, storages: ['cookies', 'localstorage', 'indexdb', 'serviceworkers', 'cachestorage'] });
     }
     wc.reloadIgnoringCache();
   }
@@ -1319,7 +1354,7 @@ class OrbeWindow {
       spaceDir: dir,
       space: { id: space.id, name: space.name, icon: space.icon, color: space.color },
       spaces: d.spaces.map((s) => ({ id: s.id, name: s.name, icon: s.icon, color: s.color })),
-      favorites: d.favorites.map(tabVM),
+      favorites: this.favorites.map(tabVM),
       pinned: space.pinned.map(nodeVM),
       today: space.today.map(tabVM),
       activeId,

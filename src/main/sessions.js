@@ -109,9 +109,13 @@ function configure(ses, { persist }) {
   return ses;
 }
 
-function mainSession() {
-  return configure(session.fromPartition('persist:orbe'), { persist: true });
+// Une session Chromium par profil : cookies et connexions séparés.
+function profileSession(id) {
+  const partition = !id || id === 'default' ? 'persist:orbe' : 'persist:orbe-' + id;
+  return configure(session.fromPartition(partition), { persist: true });
 }
+
+const mainSession = () => profileSession('default');
 
 let incognitoCount = 0;
 function incognitoSession() {
@@ -124,4 +128,4 @@ function setupDefaultSession() {
   session.defaultSession.setPermissionRequestHandler((wc, p, cb) => cb(false));
 }
 
-module.exports = { registerScheme, setupDefaultSession, mainSession, incognitoSession, hooks, originOf };
+module.exports = { registerScheme, setupDefaultSession, mainSession, profileSession, incognitoSession, hooks, originOf };

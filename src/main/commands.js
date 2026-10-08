@@ -1,7 +1,7 @@
 // Toutes les actions d'Orbe, au même endroit : le menu, la barre de commande
 // et la barre latérale appellent les mêmes fonctions.
 // `accel` reprend les raccourcis d'Arc ; `keys` est leur affichage.
-const { app, shell } = require('electron');
+const { app, dialog } = require('electron');
 const { store } = require('./store');
 
 const hooks = { newWindow: () => {}, newLittle: () => {}, openSettings: () => {} };
@@ -72,6 +72,8 @@ const COMMANDS = [
   // Application
   { name: 'settings', label: 'app.settings', accel: 'Cmd+,', keys: '⌘,', global: true, run: () => hooks.openSettings() },
   { name: 'defaultBrowser', label: 'app.defaultBrowser', global: true, run: (w) => { makeDefault(); if (w) w.toast(store.t('toast.defaultBrowser')); } },
+  { name: 'importArc', label: 'app.importArc', run: (w) => importArc(w) },
+  { name: 'newProfile', label: 'spaces.newProfile', palette: false, run: (w) => w.newProfile() },
   { name: 'shortcuts', label: 'help.shortcuts', run: (w) => w.openInternal('shortcuts.html') },
   { name: 'github', label: 'help.github', run: (w) => w.newTab('https://github.com/amadoubaui/orbe') },
 ];
@@ -81,6 +83,42 @@ const byName = new Map(COMMANDS.map((c) => [c.name, c]));
 function makeDefault() {
   app.setAsDefaultProtocolClient('http');
   app.setAsDefaultProtocolClient('https');
+}
+
+async function importArc(w) {
+  const arc = require('./import-arc');
+  const t = (k, v) => store.t(k, null, v);
+  if (w.incognito) return;
+  let data;
+  try { data = arc.read(); } catch { data = null; }
+  if (!data || !data.spaces.length) {
+    await dialog.showMessageBox(w.win, { type: 'info', message: t('import.none') });
+    return;
+  }
+  const n = arc.count(data);
+  const r = await dialog.showMessageBox(w.win, {
+    type: 'question',
+    message: t('import.title'),
+    detail: t('import.detail', { spaces: n.spaces, pinned: n.pinned, folders: n.folders, favorites: n.favorites, today: n.today }) + '\n\n' + t('import.note'),
+    buttons: [t('import.go'), t('edit.undo')],
+    defaultId: 0,
+    cancelId: 1,
+  });
+  if (r.response !== 0) return;
+  const before = store.state.spaces.length;
+  const added = arc.merge(data);
+  store.save();
+  const { OrbeWindow } = require('./window');
+  for (const win of OrbeWindow.all) { win.layout(); }
+  if (added) {
+    const firstNew = store.state.spaces[Math.min(before, store.state.spaces.length - 1)];
+    const target = store.state.spaces.find((s) => s.arcId) || firstNew;
+    w.spaceId = target.id;
+    w.layout();
+    w.remember();
+  }
+  OrbeWindow.pushAll();
+  w.toast(t(added ? 'import.done' : 'import.already', { n: added }));
 }
 
 function setSetting(key, value) {

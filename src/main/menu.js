@@ -45,6 +45,8 @@ function build() {
         item('settings'),
         item('defaultBrowser'),
         sep,
+        item('importArc'),
+        sep,
         { label: t('app.services'), role: 'services' },
         sep,
         { label: t('app.hide'), role: 'hide' },
@@ -108,7 +110,22 @@ function build() {
     {
       label: t('menu.spaces'),
       submenu: [
-        item('newSpace'), item('editTheme'), item('renameSpace'), item('deleteSpace', { enabled: spaces.length > 1 }),
+        item('newSpace'), item('editTheme'), item('renameSpace'),
+        {
+          label: t('spaces.profile'),
+          enabled: !!w && !w.incognito,
+          submenu: [
+            ...(w ? w.data.profiles : []).map((p) => ({
+              label: p.name,
+              type: 'radio',
+              checked: !!w && w.space.profileId === p.id,
+              click: () => { const win = OrbeWindow.focused || OrbeWindow.primary; if (win) win.setProfile(p.id); },
+            })),
+            sep,
+            item('newProfile'),
+          ],
+        },
+        item('deleteSpace', { enabled: spaces.length > 1 }),
         sep, item('nextSpace'), item('prevSpace'),
         sep,
         ...spaces.map((sp, i) => ({
@@ -177,6 +194,7 @@ function refresh(force) {
     const sig = JSON.stringify([
       s.lang, s.appearance, s.showToolbar, w && w.id, w && w.sidebarVisible, w && w.spaceId,
       loc && loc.list, tab && tab.muted, w ? w.data.spaces.map((x) => x.icon + x.name) : 0,
+      w && w.space.profileId, w ? w.data.profiles.length : 0,
     ]);
     if (!force && sig === lastSignature) return;
     lastSignature = sig;
