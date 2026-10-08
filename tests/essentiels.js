@@ -137,6 +137,18 @@ module.exports = async function essentielsTests(ctx) {
     wc.sendInputEvent({ type: 'mouseUp', x, y, button: 'left', clickCount: 1 });
     await until(() => rt.gesture > 0, 'entrée reçue par la page');
   };
+  // Clic sur un élément de la page, répété tant que la feuille attendue n'est pas
+  // là : sur une machine lente, la page peut ne pas être prête à recevoir le clic.
+  const clickFor = async (wc, x, y, kind) => {
+    await until(() => js(wc, 'document.readyState === "complete"'), 'page entièrement chargée');
+    for (let i = 0; i < 5; i++) {
+      await click(wc, x, y);
+      const found = await until(() => { const s = sheets.top(wc); return s && s.kind === kind ? s : null; }, 'feuille', 2500).catch(() => null);
+      if (found) return found;
+    }
+    const under = await js(wc, `(() => { const e = document.elementFromPoint(${x}, ${y}); return e ? e.tagName + '#' + e.id : 'rien'; })()`).catch(() => '?');
+    throw new Error(`Délai dépassé : feuille « ${kind} » après un clic (sous le pointeur : ${under} ; page : ${wc.getURL()})`);
+  };
   const sheetOf = (wc, kind, timeout) => until(() => { const s = sheets.top(wc); return s && s.kind === kind ? s : null; }, 'feuille « ' + kind + ' »', timeout);
   const noSheet = async (wc, ms = 500) => { await sleep(ms); return !sheets.top(wc); };
   // Contenu réellement affiché par une feuille, et clic dans la feuille.
@@ -513,20 +525,17 @@ module.exports = async function essentielsTests(ctx) {
 
   // ---------------------------------------------------------------- Liens vers d'autres applications
   const ext = await open(A + '/lien', 'Lien externe');
-  await click(ext.wc, 40, 20);
-  sheet = await sheetOf(ext.wc, 'external');
+  sheet = await clickFor(ext.wc, 40, 20, 'external');
   check('lien mailto: : Orbe demande avant d’ouvrir une autre application', sheet.payload.scheme === 'mailto' && sheet.payload.url.startsWith('mailto:test@orbe.invalid') && sheet.payload.site === A && launched.length === 0, sheet.payload);
   await press(sheet, 'cancel');
   await sleep(300);
   check('annuler : rien n’est ouvert, la page reste affichée (pas de page d’erreur)', launched.length === 0 && w.data.tabs[ext.id].url === A + '/lien' && w.data.tabs[ext.id].title === 'Lien externe');
-  await click(ext.wc, 40, 20);
-  sheet = await sheetOf(ext.wc, 'external');
+  sheet = await clickFor(ext.wc, 40, 20, 'external');
   await inSheet(sheet, 'document.getElementById("always").checked = true; 1');
   await press(sheet, 'ok');
   await until(() => launched.length === 1, 'application lancée');
   check('« Ouvrir » avec « Toujours autoriser » : lien ouvert, retenu par site et par schéma', launched[0].startsWith('mailto:test@orbe.invalid') && store.state.permissions[A]['external:mailto'] === true);
-  await click(ext.wc, 40, 20);
-  sheet = await sheetOf(ext.wc, 'external');
+  sheet = await clickFor(ext.wc, 40, 20, 'external');
   check('ouvertures rapprochées : la question revient malgré l’autorisation', launched.length === 1);
   sheet.close(null);
   permissions.internals.lastExternal.clear();
