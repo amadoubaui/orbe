@@ -110,7 +110,8 @@ class LittleWindow {
       case 'zoomOut': if (wc) wc.setZoomLevel(wc.getZoomLevel() - 0.5); return true;
       case 'actualSize': if (wc) wc.setZoomLevel(0); return true;
       case 'print': if (wc) wc.print(); return true;
-      case 'togglePin': this.openInOrbe(); return true;
+      // Comme dans Arc : ⌘O envoie la page dans la fenêtre principale.
+      case 'expandPeek': case 'togglePin': this.openInOrbe(); return true;
       default: return false;
     }
   }

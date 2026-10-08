@@ -16,6 +16,26 @@ Barre latérale, Espaces, épinglés, dossiers, favoris, barre de commande, vue
 scindée, archive, petite fenêtre, navigation privée, bibliothèque, réglages,
 français et anglais, raccourcis d'Arc.
 
+## 0.5 — fait
+
+Fidélité à Arc, d'après un audit des écarts : aperçu sur clic depuis un onglet
+épinglé, barre latérale flottante au survol, favoris pleine largeur, « / » des
+épinglés, ⌘L à l'emplacement de l'adresse, ⌘Z, volets réglables et enregistrés,
+animations des onglets, Boosts et Zap, extensions Chrome (expérimental).
+
+## Écarts avec Arc encore ouverts
+
+- Vue scindée affichée comme une seule ligne dans la barre latérale ; scission
+  verticale ; glisser un onglet sur la page pour scinder.
+- Balayage entre Espaces qui suit le doigt ; thème d'Espace en dégradé avec grain.
+- Dossiers imbriqués ; dossier replié qui montre encore l'onglet actif.
+- Petite fenêtre : choix de l'Espace de destination ; règles d'aiguillage des
+  liens (Air Traffic Control).
+- Bibliothèque : médias et Espaces ; aperçu des fichiers récents au survol.
+- Adresse du lien survolé ; centre de contrôle du site ; vignettes dans la
+  bascule ⌃Tab.
+- Easels et notes.
+
 ## Ensuite, par ordre de priorité
 
 1. **Application installable** : icône, signature, image disque, mises à jour.

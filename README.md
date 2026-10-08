@@ -9,7 +9,7 @@ interface entièrement en français (anglais disponible dans les réglages).
 > Projet libre et indépendant, sans lien avec The Browser Company. Orbe ne
 > contient aucun code ni aucune ressource d'Arc : tout est réécrit.
 
-État : **version 0.4, macOS**. Windows viendra ensuite.
+État : **version 0.5, macOS**. Windows viendra ensuite.
 
 ![Orbe : barre latérale, favoris, onglets épinglés et barre de commande](docs/captures/barre-de-commande.png)
 
@@ -39,6 +39,7 @@ interface entièrement en français (anglais disponible dans les réglages).
 - **Extensions Chrome (expérimental)** : installation depuis le Chrome Web
   Store, signature vérifiée (Réglages → Extensions). Seules les extensions
   simples fonctionnent, et en partie.
+- **Boosts** : CSS personnalisé par site et « Zap » pour masquer un élément.
 - **Archive** : ⌘W archive l'onglet, ⇧⌘T le rouvre, les onglets inactifs sont
   archivés automatiquement (12 h par défaut).
 - **Petite fenêtre** (⌥⌘N), **navigation privée** (⇧⌘N), plusieurs fenêtres
