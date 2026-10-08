@@ -330,3 +330,6 @@ body.toolbar #empty { top: 48px; }
 #media-open:hover { background: var(--hover); }
 #media-icon { display: grid; flex: none; }
 #media-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12.5px; font-weight: 500; }
+
+/* Longues listes : les lignes hors écran ne sont ni mises en page ni peintes. */
+.list > .row, .children > .row { content-visibility: auto; contain-intrinsic-size: auto 36px; }
