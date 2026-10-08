@@ -166,6 +166,11 @@ module.exports = async function selftest({ first: w, OrbeWindow, store, win, lit
   const ba = win.live.get(a.id).view.getBounds();
   const bb = win.live.get(b.id).view.getBounds();
   check('vue scindée : deux volets côte à côte', w.visibleIds().length === 2 && bb.x > ba.x && Math.abs(ba.width - bb.width) <= 1 && ba.y === bb.y);
+  w.resizeSplit(0, ba.x + ba.width + 4 + 120);
+  const ra = win.live.get(a.id).view.getBounds();
+  const rb = win.live.get(b.id).view.getBounds();
+  check('vue scindée : la séparation se déplace à la souris', ra.width > ba.width + 100 && rb.width < bb.width - 100 && rb.x + rb.width === bb.x + bb.width, JSON.stringify([ra, rb]));
+  await until(() => ui('document.querySelectorAll("#dividers .divider").length === 1'), 'poignée de séparation');
   await shot('scinde');
   w.run('closeSplit');
   check('⌃⇧- ferme le volet', w.visibleIds().length === 1 && w.splits.length === 0);

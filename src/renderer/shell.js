@@ -163,6 +163,18 @@ function render(s) {
     $('media-mute-icon').setAttribute('href', s.media.muted ? '#i-mute' : '#i-sound');
   }
 
+  // Poignées entre les volets d'une vue scindée (dans l'espace qui les sépare).
+  const dv = $('dividers');
+  const list = splitDrag ? null : (s.dividers || []);
+  if (list) {
+    while (dv.children.length > list.length) dv.lastChild.remove();
+    list.forEach((d, i) => {
+      let h = dv.children[i];
+      if (!h) { h = document.createElement('div'); h.className = 'divider'; h.dataset.i = i; dv.appendChild(h); }
+      h.style.cssText = `left:${d.x}px;top:${d.y}px;height:${d.h}px`;
+    });
+  }
+
   const lib = $('b-library');
   lib.classList.toggle('downloading', !!s.downloads);
   if (s.downloads) lib.querySelector('circle').style.strokeDashoffset = String(75.4 * (1 - s.downloads.progress));
@@ -320,6 +332,33 @@ $('resize').addEventListener('pointerdown', (e) => {
   };
   el.addEventListener('pointermove', move);
   el.addEventListener('pointerup', up);
+});
+
+// --- Largeur des volets d'une vue scindée -----------------------------------
+let splitDrag = false;
+$('dividers').addEventListener('pointerdown', (e) => {
+  const h = e.target.closest('.divider');
+  if (!h) return;
+  h.setPointerCapture(e.pointerId);
+  splitDrag = true;
+  h.classList.add('on');
+  const i = Number(h.dataset.i);
+  let frame = 0;
+  let x = e.clientX;
+  const move = (ev) => {
+    x = ev.clientX;
+    h.style.left = (x - 4) + 'px';
+    if (!frame) frame = requestAnimationFrame(() => { frame = 0; send('splitResize', { i, x }); });
+  };
+  const up = () => {
+    h.removeEventListener('pointermove', move);
+    h.removeEventListener('pointerup', up);
+    h.classList.remove('on');
+    splitDrag = false;
+    send('splitResize', { i, x });
+  };
+  h.addEventListener('pointermove', move);
+  h.addEventListener('pointerup', up);
 });
 
 // --- Glisser-déposer --------------------------------------------------------

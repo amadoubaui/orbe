@@ -333,3 +333,8 @@ body.toolbar #empty { top: 48px; }
 
 /* Longues listes : les lignes hors écran ne sont ni mises en page ni peintes. */
 .list > .row, .children > .row { content-visibility: auto; contain-intrinsic-size: auto 36px; }
+
+/* Séparation des volets : une poignée discrète dans l'interstice. */
+.divider { position: absolute; width: 8px; cursor: col-resize; display: grid; place-items: center; -webkit-app-region: no-drag; }
+.divider::after { content: ''; width: 3px; height: 34px; border-radius: 2px; background: var(--faint); opacity: 0; transition: opacity 120ms; }
+.divider:hover::after, .divider.on::after { opacity: 1; }

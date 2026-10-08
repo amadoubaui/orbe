@@ -295,6 +295,43 @@ class OrbeWindow {
     };
   }
 
+  // Largeur de chaque volet : parts égales, ou celles réglées à la souris.
+  paneRects(rect, ids) {
+    const n = ids.length;
+    if (!n) return [];
+    const group = n > 1 ? this.groupOf(ids[0]) : null;
+    let ratios = group && group.ratios && group.ratios.length === n ? group.ratios : null;
+    if (!ratios) ratios = ids.map(() => 1 / n);
+    const usable = rect.width - GAP * (n - 1);
+    const out = [];
+    let x = rect.x;
+    ratios.forEach((r, i) => {
+      const width = i === n - 1 ? rect.x + rect.width - x : Math.round(usable * r);
+      out.push({ x: Math.round(x), width: Math.max(60, width) });
+      x += width + GAP;
+    });
+    return out;
+  }
+
+  // Déplace la séparation entre les volets i et i+1 jusqu'à l'abscisse x.
+  resizeSplit(i, x) {
+    const ids = this.visibleIds();
+    const group = ids.length > 1 ? this.groupOf(ids[0]) : null;
+    if (!group || !(i >= 0 && i < ids.length - 1)) return;
+    const rect = this.contentRect();
+    const panes = this.paneRects(rect, ids);
+    const usable = rect.width - GAP * (ids.length - 1);
+    const ratios = panes.map((p) => p.width / usable);
+    const pair = ratios[i] + ratios[i + 1];
+    const min = Math.min(0.15, pair / 2);
+    const left = clamp((x - GAP / 2 - panes[i].x) / usable, min, pair - min);
+    ratios[i] = left;
+    ratios[i + 1] = pair - left;
+    group.ratios = ratios;
+    this.layout();
+    this.sendState();
+  }
+
   layout() {
     if (this.win.isDestroyed()) return;
     const [W, H] = this.win.getContentSize();
@@ -304,13 +341,14 @@ class OrbeWindow {
     const ids = this.visibleIds();
     const shown = new Set();
     const n = ids.length;
-    const paneW = n ? (rect.width - GAP * (n - 1)) / n : 0;
+    const panes = this.paneRects(rect, ids);
+    const paneW = n ? panes[Math.max(0, ids.indexOf(this.activeId))].width : 0;
     ids.forEach((id, i) => {
       const rt = this.ensureView(id);
       shown.add(rt.view);
       if (!this.attached || !this.attached.has(rt.view)) this.win.contentView.addChildView(rt.view, 1);
       rt.view.setBorderRadius(this.htmlFullscreen ? 0 : RADIUS);
-      rt.view.setBounds({ x: Math.round(rect.x + i * (paneW + GAP)), y: rect.y, width: Math.round(paneW), height: rect.height });
+      rt.view.setBounds({ x: panes[i].x, y: rect.y, width: panes[i].width, height: rect.height });
     });
     for (const view of this.attached || []) {
       if (!shown.has(view)) {
@@ -327,7 +365,7 @@ class OrbeWindow {
     if (this.modalMode) this.modal.setBounds(full);
     if (this.findOpen && this.findView) {
       const i = Math.max(0, ids.indexOf(this.activeId));
-      const right = rect.x + (i + 1) * paneW + i * GAP;
+      const right = panes[i] ? panes[i].x + panes[i].width : rect.x + paneW;
       this.findView.setBounds({ x: Math.round(right - 372), y: rect.y + 10, width: 360, height: 50 });
     }
     if (this.toastView) {
@@ -680,6 +718,7 @@ class OrbeWindow {
     const g = this.groupOf(id);
     if (!g) return;
     g.splice(g.indexOf(id), 1);
+    delete g.ratios;
     if (g.length < 2) this.splits.splice(this.splits.indexOf(g), 1);
   }
 
@@ -1027,6 +1066,7 @@ class OrbeWindow {
     g = this.groupOf(a);
     if (!g) { g = [a]; this.splits.push(g); }
     g.splice(g.indexOf(a) + 1, 0, b);
+    delete g.ratios;
     if (!quiet) this.activate(b);
   }
 
@@ -1684,6 +1724,12 @@ class OrbeWindow {
         blocked: wc && settings.adblock ? (adblock.stats().blockedByTab.get(wc.id) || 0) : 0,
         shield: !settings.adblock ? 'off' : (tab && adblock.isSiteAllowed(tab.url) ? 'allowed' : 'on'),
       },
+      dividers: (() => {
+        const ids = this.visibleIds();
+        if (ids.length < 2 || this.htmlFullscreen) return [];
+        const rect = this.contentRect();
+        return this.paneRects(rect, ids).slice(0, -1).map((p) => ({ x: p.x + p.width, y: rect.y, h: rect.height }));
+      })(),
       media: this.mediaId ? {
         id: this.mediaId,
         title: mediaTab.customTitle || mediaTab.title || suggest.strip(mediaTab.url),
@@ -1736,6 +1782,7 @@ class OrbeWindow {
       case 'find': return this.find(String(a.text || ''), a);
       case 'findClose': return this.closeFind();
       case 'theme': return this.setTheme(a);
+      case 'splitResize': return this.resizeSplit(Number(a.i), Number(a.x));
       case 'peekClose': return this.closePeek();
       case 'peekExpand': return this.expandPeek();
       case 'peekSplit': return this.expandPeek({ split: true });
