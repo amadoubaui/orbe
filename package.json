@@ -11,6 +11,7 @@
     "start": "node scripts/dev.js",
     "test": "node scripts/dev.js --selftest",
     "test:ui": "node scripts/test-ui.js",
+    "test:ext": "node scripts/test-ext.js",
     "build": "node scripts/build-mac.js",
     "build:win": "node scripts/build-win.js"
   },

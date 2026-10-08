@@ -1,8 +1,8 @@
 # Extensions Chrome
 
 Module : `src/main/extensions.js` — tests : `node --test tests/extensions.test.js`
-(Node seul, sans réseau). Aucune dépendance npm. Le module n'est **pas encore
-branché** dans Orbe : voir « Branchement ».
+(Node seul, sans réseau). Aucune dépendance npm. Les API `chrome.*` qu'Electron
+n'a pas sont décrites plus bas : « Couche d'API ».
 
 ## Principe
 
@@ -145,37 +145,121 @@ Interface à écrire :
 le stockage des extensions. Les requêtes `chrome-extension://` ne passent pas
 par le bloqueur.
 
+## Couche d'API `chrome.*`
+
+Electron ne fournit qu'une partie des API de Chrome. Orbe ajoute le reste avec
+sa propre couche, écrite à partir de la documentation publique de Chrome et
+d'Electron (licence MIT, aucun code tiers, aucune dépendance) :
+
+| Fichier | Rôle |
+| --- | --- |
+| `src/preload/ext.js` | complète `chrome` (et `browser`) dans les pages d'extension et les service workers |
+| `src/main/ext-api.js` | les API elles-mêmes, les autorisations, les événements |
+| `src/main/ext-host.js` | onglets et fenêtres d'Orbe vus comme ceux de Chrome, fenêtre surgissante |
+
+Tests : `npm run test:ext` (extension `tests/ext-fixture`, sans réseau) et
+`node scripts/test-ext.js reelles` (vraies extensions, demande Internet).
+
+### Mécanisme
+
+- `session.registerPreloadScript` enregistre `ext.js` sur chaque session de
+  profil, pour les types `frame` et `service-worker`. Le script s'exécute
+  **avant** le code de l'extension ; `contextBridge.executeInMainWorld` lui
+  permet de compléter l'objet `chrome` du monde principal. Dans un service
+  worker d'un site web ou une page ordinaire, il ne fait rien.
+- Chaque appel part par IPC (`ipcMain` pour les pages, `ServiceWorkerMain.ipc`
+  pour les service workers). L'extension appelante est déduite de l'émetteur
+  — origine du cadre ou portée du service worker —, jamais de ce que le script
+  affirme, puis les autorisations du manifeste sont vérifiées.
+- Les événements ne sont envoyés qu'aux contextes qui les écoutent. Un service
+  worker endormi est réveillé (`startWorkerForScope`) et gardé éveillé quelques
+  secondes (`startTask`).
+- Identifiant d'onglet = identifiant du `webContents` : c'est déjà celui
+  qu'Electron donne dans `sender.tab.id` et attend dans `tabs.sendMessage` et
+  `scripting.executeScript`. Seuls les onglets vivants existent pour une
+  extension ; un onglet en veille, une page interne ou la fenêtre surgissante
+  n'en sont pas.
+- Chromium expose aussi `browser`, objet distinct de `chrome` : les deux sont
+  complétés (uBlock Origin Lite utilise `self.browser || self.chrome`).
+
+Ce qui ne marche pas : un script de préchargement n'atteint pas le monde isolé
+des **scripts de contenu**. Ils gardent les API d'Electron (`runtime`,
+`storage.local`, `i18n`) ; `storage.sync` n'y est donc pas corrigé, et une
+écriture faite par un script de contenu n'est annoncée au service worker que si
+une page de l'extension est ouverte.
+
+### API fournies
+
+| Espace | Ce qui est fait |
+| --- | --- |
+| `permissions` | `contains`, `getAll`, `request`, `remove`, `onAdded`, `onRemoved`. Une autorisation optionnelle est demandée à l'utilisateur, puis retenue (`Extensions/api-state.json`). Une **origine** hors du manifeste est refusée : Electron ne sait pas l'accorder après coup. |
+| `tabs` | `query` (onglet actif, fenêtre courante, motifs d'URL…), `get`, `getCurrent`, `create`, `remove`, `update`, `reload`, `duplicate`, `goBack`, `goForward`, `captureVisibleTab`, `onCreated`, `onUpdated`, `onActivated`, `onRemoved`. `url` et `title` ne sont donnés qu'avec `tabs`, un accès au site ou `activeTab`. Le reste (`sendMessage`, `connect`, zoom) est celui d'Electron. |
+| `windows` | `get`, `getCurrent`, `getLastFocused`, `getAll`, `update` (premier plan), `onFocusChanged`, `onCreated`, `onRemoved`. `create` ouvre les adresses en onglets ; `remove` est refusé. |
+| `cookies` | `get`, `getAll`, `set`, `remove`, `getAllCookieStores`, `onChanged`, limités aux sites du manifeste. |
+| `contextMenus` | `create`, `update`, `remove`, `removeAll`, `onClicked` (et `onclick` en Manifest V2). Les éléments s'ajoutent au menu contextuel des pages. |
+| `action` (`browserAction`, `pageAction`) | titre, pastille, couleurs, icône, fenêtre surgissante, activation, par onglet ou globalement ; `openPopup`, `onClicked`. |
+| `storage` | `sync` devient une zone locale à part (Electron la refuse), séparée de `local`. `onChanged`, qu'Electron n'envoie jamais à un service worker, y est reconstitué : le service worker annonce ses propres écritures et reçoit celles des pages de l'extension. |
+| `webNavigation` | `onBeforeNavigate`, `onCommitted`, `onDOMContentLoaded`, `onCompleted`, `onHistoryStateUpdated`, `getFrame`, `getAllFrames`. |
+| `notifications`, `downloads` | minimum : `create`/`clear`/`onClicked`, `download`. |
+| `fontSettings`, `commands` | `getFontList` (liste fixe), `commands.getAll` ; aucun raccourci n'est attribué, `onCommand` n'est jamais émis. |
+| `runtime`, `extension` | `openOptionsPage` (dans un onglet), `isAllowedIncognitoAccess`, `isAllowedFileSchemeAccess`. |
+
+Un espace de noms n'apparaît que si le manifeste déclare l'autorisation
+correspondante. Absents : `sidePanel`, `debugger`, `identity`, messagerie
+native, `tts`, `tabGroups`, `history`, `bookmarks`, `management` complet.
+
+### Bouton et fenêtre surgissante
+
+```js
+const extHost = require('./ext-host');
+extHost.actionsFor(orbeWindow)                 // [{ id, name, title, icon, badgeText, badgeColor, badgeTextColor, popup, enabled }]
+extHost.openPopup(orbeWindow, id, { x, y })    // fenêtre ancrée, ou action.onClicked s'il n'y a pas de fenêtre
+extHost.closePopup(orbeWindow)
+```
+
+Depuis l'interface : `O.send('ext:actions')` et
+`O.send('ext:popup', { id, x, y })` (`x`, `y` : point dans la fenêtre). L'état
+envoyé à la coque est rafraîchi quand une extension change son bouton
+(`extApi.hooks.actionChanged`). La fenêtre surgissante est une fenêtre sans
+cadre, enfant de la fenêtre d'Orbe, dans la session du profil de l'onglet
+actif ; elle prend la taille de son contenu (800 × 600 au plus) et se ferme en
+perdant le focus ou avec Échap. Le bouton lui-même reste à dessiner dans la
+barre latérale ; en attendant, Réglages → Extensions → « Ouvrir ».
+
 ## Relevé sur Electron 44.7.0 (Chromium 152)
 
-Installation réelle depuis le Store, session `persist:test-ext`, pages
-`example.com` et `fr.wikipedia.org`.
+Installation réelle depuis le Store dans un profil jetable d'Orbe, pages
+`fr.wikipedia.org`, `wordpress.org` et `www.lemonde.fr`.
 
-| | Dark Reader 4.9.133 | Wappalyzer 6.12.7 |
-| --- | --- | --- |
-| Signatures (développeur, Store) | valides, 3 preuves | valides, 3 preuves |
-| Identifiant après chargement | celui du Store | celui du Store |
-| Service worker | démarre | démarre |
-| Scripts de contenu | s'exécutent | s'exécutent |
-| Fenêtre surgissante | se charge, reste sur « Loading, please wait » | se charge, « This page cannot be scanned » |
-| Rechargement au démarrage suivant | oui | oui |
+| | Dark Reader 4.9.133 | Wappalyzer 6.12.7 | uBlock Origin Lite 2026.1006 |
+| --- | --- | --- | --- |
+| Signatures (développeur, Store) | valides | valides | valides |
+| Service worker | démarre, sans erreur | démarre, sans erreur | démarre, sans erreur |
+| Scripts de contenu | s'exécutent | s'exécutent | s'exécutent |
+| Fenêtre surgissante | réglages affichés, 276 × 580 | technologies de l'onglet actif, 496 × 544 | site de l'onglet actif, mode de filtrage |
+| Rechargement au démarrage suivant | oui, réglages conservés | oui | oui |
 
-- **Dark Reader** : les pages sont sombres, mais par la seule feuille de
-  secours (`<style class="darkreader darkreader--fallback">`, fond
-  `rgb(24, 26, 27)`). Le thème dynamique n'arrive jamais : le service worker
-  s'arrête à l'initialisation sur `chrome.permissions.onRemoved`
-  (`chrome.permissions` n'existe pas dans Electron), donc ni les pages ni la
-  fenêtre surgissante ne reçoivent les réglages. Images non adaptées, icônes
-  de Wikipédia absentes, aucun réglage possible.
-- **Wappalyzer** : erreurs `chrome.tabs.create is not a function` et
-  `chrome.cookies` absent ; la fenêtre surgissante ne trouve pas d'« onglet
-  actif » (`getDetections: no active tab found`), donc aucune technologie
-  n'est affichée.
-- Avertissements au chargement : autorisations inconnues (`fontSettings`,
-  `contextMenus`, `cookies`, `downloads`).
-- Désactiver, réactiver, retirer et recharger dans une même session
-  fonctionnent (service worker arrêté puis relancé, styles retirés puis remis).
+Avant la couche d'API (Electron seul) :
 
-Conclusion : l'installation et le chargement sont au point ; l'usage réel de
-ces deux extensions demande la couche d'API manquante décrite dans
-`etude-extensions-et-distribution.md` (`permissions`, `tabs` avec onglet actif,
-`cookies`, `contextMenus`).
+- **Dark Reader** : service worker arrêté sur `chrome.permissions.onRemoved`,
+  feuille de secours seule, fenêtre bloquée sur « Loading, please wait ».
+- **Wappalyzer** : `chrome.tabs.create is not a function`, `chrome.cookies`
+  absent, « getDetections: no active tab found ».
+- **uBlock Origin Lite** : tant que `browser.permissions` manque, `Cannot read
+  properties of undefined (reading 'onRemoved')` et fenêtre surgissante vide.
+
+Avec elle (`tests/ext-reelles.js`) :
+
+- **Dark Reader** : thème dynamique sur `fr.wikipedia.org` (11 feuilles
+  `darkreader--sync`, feuille de secours vidée, liens `rgb(92, 152, 214)`) ;
+  le bouton du site rend la page claire (`rgb(248, 249, 250)`) puis sombre ;
+  la luminosité passe de 100 à 105, s'applique (`rgb(24, 26, 27)` →
+  `rgb(25, 27, 28)`) et se retrouve après redémarrage.
+- **Wappalyzer** : sur `wordpress.org`, la fenêtre liste WordPress, PHP, MySQL,
+  Gutenberg, Google Tag Manager… ; pastille « 10 » ; page d'accueil ouverte par
+  `tabs.create` dans un onglet d'Orbe.
+- **uBlock Origin Lite** : fenêtre « www.lemonde.fr — filtering mode optimal ».
+
+Reste à faire : dessiner les boutons dans la barre latérale, raccourcis des
+commandes d'extension, accès aux sites accordé après coup (modes « complet »
+d'uBlock Origin Lite), `storage.sync` dans les scripts de contenu.

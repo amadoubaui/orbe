@@ -15,6 +15,8 @@ const commands = require('./commands');
 const menu = require('./menu');
 const adblock = require('./adblock');
 const extensions = require('./extensions');
+const extApi = require('./ext-api');
+const extHost = require('./ext-host');
 const boosts = require('./boosts');
 const platform = require('./platform');
 
@@ -231,16 +233,18 @@ async function globalAction(action, a, sender) {
     }
     case 'ext:remove':
       await extensions.remove(String(a)).catch(() => {});
+      extApi.forget(String(a));
       return extensionList();
     case 'ext:toggle':
       extensions.setEnabled(String(a.id), !!a.enabled);
       return extensionList();
+    // Boutons des extensions pour l'onglet actif : [{ id, name, title, icon, badgeText, badgeColor, badgeTextColor, popup, enabled }].
+    case 'ext:actions':
+      return extHost.actionsFor(OrbeWindow.ownerOf(sender) || OrbeWindow.primary);
+    // Clic sur un bouton : `a` est l'identifiant, ou { id, x, y } pour ancrer la fenêtre surgissante.
     case 'ext:popup': {
-      const p = extensions.popupFor(String(a));
-      if (!p) return false;
-      const w = new BrowserWindow({ width: 400, height: 600, title: p.title, autoHideMenuBar: true, webPreferences: { session: sessions.mainSession(), sandbox: true, contextIsolation: true } });
-      w.loadURL(p.url).catch(() => {});
-      return true;
+      const o = a && typeof a === 'object' ? a : { id: a };
+      return !!extHost.openPopup(OrbeWindow.ownerOf(sender) || OrbeWindow.primary, String(o.id), { x: Number(o.x), y: Number(o.y) });
     }
     case 'shortcuts:get':
       return shortcutGroups();
@@ -325,6 +329,8 @@ app.whenReady().then(async () => {
   if (components) components.whenReady().catch((err) => console.error('[orbe] widevine', err.message));
   applyAppearance();
   extensions.configure({ dir: path.join(app.getPath('userData'), 'Extensions'), fetch: (u, o) => net.fetch(u, o), lang: store.state.settings.lang });
+  extApi.configure({ dir: path.join(app.getPath('userData'), 'Extensions') });
+  extHost.setup();
   adblock.configure({
     enabled: store.state.settings.adblock,
     allowlist: store.state.settings.adblockAllow,
@@ -346,7 +352,9 @@ app.whenReady().then(async () => {
   commands.hooks.openBoost = openBoost;
   commands.hooks.settingsChanged = broadcastSettings;
   win.hooks.openLittle = (url) => new little.LittleWindow(url);
-  win.hooks.changed = () => menu.refresh();
+  win.hooks.changed = () => { menu.refresh(); extHost.sync(); };
+  win.hooks.extensionMenu = (wc, params) => extApi.contextMenuItems(wc, params);
+  extApi.hooks.actionChanged = () => OrbeWindow.pushAll();
   little.hooks.openInOrbe = (url, spaceId) => {
     openUrl.direct = true;
     try {
@@ -379,7 +387,7 @@ app.whenReady().then(async () => {
   if (SELFTEST) {
     try {
       // ORBE_SCENARIO : autre scénario de test (ex. tests/sites.js, sites réels).
-      await require(process.env.ORBE_SCENARIO ? path.resolve(process.env.ORBE_SCENARIO) : '../../tests/selftest')({ first, OrbeWindow, store, win, little, commands, menu, openSettings, openUrl });
+      await require(process.env.ORBE_SCENARIO ? path.resolve(process.env.ORBE_SCENARIO) : '../../tests/selftest')({ first, OrbeWindow, store, win, little, commands, menu, openSettings, openUrl, extensions, extApi, extHost });
       store.flush();
       app.exit(0);
     } catch (err) {

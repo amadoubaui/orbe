@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Orbe — extension d'essai",
+  "version": "1.0.0",
+  "description": "Exerce la couche d'API chrome.* d'Orbe (tests/ext-api.js).",
+  "permissions": ["storage", "tabs", "cookies", "scripting", "fontSettings", "webNavigation", "alarms"],
+  "optional_permissions": ["contextMenus"],
+  "host_permissions": ["http://127.0.0.1/*"],
+  "background": { "service_worker": "sw.js" },
+  "action": { "default_popup": "popup.html", "default_title": "Essai" },
+  "options_page": "options.html",
+  "commands": { "essai": { "description": "Commande d'essai" } },
+  "content_scripts": [{ "matches": ["http://127.0.0.1/*"], "js": ["content.js"], "run_at": "document_start" }]
+}

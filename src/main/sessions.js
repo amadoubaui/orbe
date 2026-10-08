@@ -7,6 +7,7 @@ const { pathToFileURL } = require('url');
 const { store, uid } = require('./store');
 const adblock = require('./adblock');
 const extensions = require('./extensions');
+const extApi = require('./ext-api');
 
 const RENDERER_DIR = path.join(__dirname, '../renderer');
 const configured = new WeakSet();
@@ -119,6 +120,7 @@ function configure(ses, { persist }) {
   });
   // Extensions installées : rechargées dans chaque profil à chaque démarrage.
   if (persist) {
+    extApi.attach(ses); // API chrome.* manquantes, avant le premier chargement
     extensions.loadInto(ses).then((r) => {
       for (const f of (r && r.failed) || []) console.error('[orbe] extension', f.id, f.error);
     }).catch((err) => console.error('[orbe] extensions', err));
