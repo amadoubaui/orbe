@@ -389,6 +389,16 @@ module.exports = async function selftest({ first: w, OrbeWindow, store, win, lit
     }, 'Ctrl+T', 5000).catch(() => false);
     check('Windows : Ctrl+T frappé dans la page ouvre la barre de commande (menu masqué)', opened === true);
     if (w.modalMode) w.hideModal();
+    // Barre d'outils : elle s'arrête avant les boutons de fenêtre.
+    commands.setSetting('showToolbar', true);
+    await until(() => ui('document.body.classList.contains("toolbar")'), 'barre d’outils affichée');
+    await sleep(250);
+    const tb = JSON.parse(await ui('JSON.stringify([document.getElementById("toolbar").getBoundingClientRect().right, innerWidth])'));
+    const vt = win.live.get(w.activeId).view.getBounds();
+    check('Windows : la barre d’outils s’arrête avant les boutons de fenêtre', tb[0] <= tb[1] - 138 && vt.y === 48, JSON.stringify([tb, vt]));
+    await shot('win-barre-outils');
+    commands.setSetting('showToolbar', false);
+    await until(() => ui('!document.body.classList.contains("toolbar")'), 'barre d’outils masquée');
   }
 
   // Téléchargement
@@ -551,6 +561,7 @@ module.exports = async function selftest({ first: w, OrbeWindow, store, win, lit
   const lw = new little.LittleWindow(base + '/a');
   await until(() => lw.title === 'Page A', 'petite fenêtre chargée');
   check('⌥⌘N ouvre une petite fenêtre', !!lw.view);
+  if (shots && platform.isWin) { await sleep(400); await require('./capture').shoot(lw.win, shots, 'win-petite-fenetre', platform.tint('', require('electron').nativeTheme.shouldUseDarkColors)); }
   const count = w.space.today.length;
   lw.openInOrbe();
   await until(() => w.space.today.length === count + 1, 'ouverture dans Orbe');

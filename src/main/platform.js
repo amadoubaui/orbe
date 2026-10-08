@@ -112,7 +112,9 @@ function tint(color, dark) {
   return '#' + base.map((b, i) => Math.round(c[i] * k + b * (1 - k)).toString(16).padStart(2, '0')).join('');
 }
 
-const overlay = (color, dark, height) => ({ color: tint(color, dark), symbolColor: dark ? '#f3f3f5' : '#1d1d1f', height });
+// Boutons de fenêtre : fond transparent (ils se posent sur le fond de la coque,
+// dégradé compris), seuls les symboles suivent le thème.
+const overlay = (color, dark, height) => ({ color: '#00000000', symbolColor: dark ? '#f3f3f5' : '#1d1d1f', height });
 
 // Mica : Windows 11 22H2 ou plus récent.
 function materialSupported() {
