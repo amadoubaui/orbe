@@ -264,12 +264,6 @@ function render(s) {
   // Dépôt en attente : les listes viennent de prendre leur ordre définitif.
   if (drag && drag.settling && drag.settling !== structSig(s)) endDrag();
 
-  if (s.spaceDir && prev) {
-    const sc = $('scroll');
-    sc.classList.remove('slide-next', 'slide-prev');
-    void sc.offsetWidth;
-    sc.classList.add(s.spaceDir > 0 ? 'slide-next' : 'slide-prev');
-  }
 }
 
 // --- Renommage sur place ----------------------------------------------------
@@ -791,7 +785,10 @@ function measure() {
   const add = (el, gap, origin) => {
     const r = el.getBoundingClientRect();
     if (!r.height) return false;
-    flow.push({ el, top: r.top - base, h: r.height, size: r.height + gap, origin, off: 0 });
+    // Hauteur de mise en page, pas la hauteur affichée : la ligne qu'on saisit
+    // est légèrement rétrécie (état pressé), ce qui fausserait la place à ouvrir.
+    const h = el.offsetHeight || r.height;
+    flow.push({ el, top: r.top - (h - r.height) / 2 - base, h, size: h + gap, origin, off: 0 });
     return true;
   };
   const scan = (el, to, folderId, inOrigin) => {

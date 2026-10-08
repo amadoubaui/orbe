@@ -1,7 +1,7 @@
 {
   "name": "orbe",
   "productName": "Orbe",
-  "version": "0.9.1",
+  "version": "0.10.0",
   "description": "Orbe — un navigateur Chromium à barre latérale, en français, inspiré d'Arc.",
   "main": "src/main/main.js",
   "license": "MIT",
