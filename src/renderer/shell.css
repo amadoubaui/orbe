@@ -145,7 +145,7 @@ body.dragging #fav:empty { min-height: 40px; border: 1.5px dashed var(--line); b
 #space-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #space-icon { font-size: 13px; }
 
-.list { display: flex; flex-direction: column; gap: 3px; flex: none; min-height: 4px; }
+.list { display: flex; flex-direction: column; gap: 4px; flex: none; min-height: 4px; }
 body.dragging .list:empty { min-height: 30px; }
 
 .row {

@@ -464,6 +464,20 @@ function stateOf(wc) {
         if (o.pending && o.pending.wc === wc) closePrompt(o);
       }
     });
+    // Liste ouverte : ↑ ↓ pour choisir, Entrée pour remplir, Échap pour fermer.
+    // Le clavier reste dans la page ; ces touches sont relayées à la liste.
+    wc.on('before-input-event', (e, input) => {
+      if (input.type !== 'keyDown' || input.meta || input.control || input.alt) return;
+      if (!['ArrowDown', 'ArrowUp', 'Enter', 'Escape'].includes(input.key)) return;
+      const o = [...overlays.values()].find((x) => x.pick && x.pick.wc === wc && x.picker && !x.picker.webContents.isDestroyed());
+      if (!o) return;
+      if (input.key === 'Escape') { hidePicker(o); return; }
+      // Entrée ne vaut choix que si une ligne a été désignée aux flèches.
+      if (input.key === 'Enter' && !o.pick.keyed) return;
+      o.pick.keyed = true;
+      e.preventDefault();
+      o.picker.webContents.send('overlay', { key: input.key });
+    });
     // Un envoi de formulaire est confirmé par la navigation qui le suit.
     wc.on('did-start-navigation', (details) => {
       if (details.isSameDocument) return;

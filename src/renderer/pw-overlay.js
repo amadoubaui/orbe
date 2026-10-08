@@ -75,7 +75,20 @@ $('save-later').onclick = () => answer('later');
 // Entrée dans le champ valide un nouvel enregistrement, jamais un remplacement.
 $('save-user').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !updating) answer('save'); });
 
+// Choix au clavier, relayé par Orbe depuis la page.
+let keyIndex = -1;
+function onKey(key) {
+  const rows = [...document.querySelectorAll('#pick .acc')];
+  if (!rows.length) return;
+  if (key === 'Enter') { if (rows[keyIndex]) rows[keyIndex].click(); return; }
+  keyIndex = (keyIndex + (key === 'ArrowDown' ? 1 : -1) + rows.length) % rows.length;
+  rows.forEach((r, i) => r.classList.toggle('key-sel', i === keyIndex));
+  rows[keyIndex].scrollIntoView({ block: 'nearest' });
+}
+
 O.on('overlay', (p) => {
+  if (p.key) return onKey(p.key);
+  keyIndex = -1;
   token = p.token || null;
   shownAt = Date.now();
   if (p.mode === 'pw-pick') showPick(p);

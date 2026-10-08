@@ -255,8 +255,18 @@ module.exports = async function passwordTests(ctx) {
     !before.includes(P1) && !before.includes(P2) && !before.includes('alice') && !/\bbob\b/.test(before)
     && JSON.parse(before).probe.keys.length === 0 && JSON.parse(before).probe.req === 'undefined' && JSON.parse(before).probe.orbe === 'undefined');
   await js(wc, 'window.postMessage({ type: "fill" }, "*"); window.postMessage({ channel: "orbe-pw", type: "focus" }, "*"); document.dispatchEvent(new CustomEvent("orbe-pw", { detail: { type: "fill" } })); 1');
-  await choose('.acc.exact[data-id="' + entries().find((e) => e.username === 'alice').id + '"]');
+  // Choix au clavier : ↓ jusqu'au compte voulu, puis Entrée (touches de confiance,
+  // relayées par Orbe ; la page ne les reçoit pas).
+  const aliceKeyId = entries().find((e) => e.username === 'alice').id;
+  const key = (keyCode) => { for (const type of ['keyDown', 'keyUp']) wc.sendInputEvent({ type, keyCode }); };
+  const designated = () => ov().picker.webContents.executeJavaScript('(document.querySelector("#pick .acc.key-sel") || { dataset: {} }).dataset.id || ""');
+  await sleep(GUARD);
+  wc.focus();
+  for (let i = 0; i < 6 && (await designated()) !== aliceKeyId; i++) { key('Down'); await sleep(120); }
+  check('liste des comptes : ↓ désigne un compte au clavier', (await designated()) === aliceKeyId);
+  key('Enter');
   await until(async () => (await value(wc, '#pass')) === P1, 'remplissage');
+  check('Entrée remplit le compte désigné sans envoyer le formulaire', wc.getURL() === (await js(wc, 'location.href')) && !(await js(wc, 'JSON.stringify(window.__log || [])')).includes('keydown:Enter'));
   check('choisir un compte remplit l’identifiant et le mot de passe', (await value(wc, '#user')) === 'alice' && !ov().pick);
   const after = JSON.parse(await js(wc, 'JSON.stringify(window.__log)'));
   check('après le choix, la page ne connaît que le compte choisi', !after.some((l) => l.includes(P2) || /\bbob\b/.test(l)));
