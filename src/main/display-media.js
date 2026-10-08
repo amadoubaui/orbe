@@ -71,8 +71,11 @@ async function handle(request, callback) {
   });
   // Page qui n'est pas un onglet (aperçu, petite fenêtre) : pas de sélecteur, donc pas de partage.
   if (!sheet) { env.toast(wc, t('share.onlyTabs')); return deny(); }
-  fill();
+  const filling = fill().catch(() => {});
   const choice = await sheet.result;
+  // La vignette de l'onglet est une capture de la page : on la laisse finir (un
+  // instant au plus) avant de lancer le partage du même onglet.
+  await Promise.race([filling, new Promise((r) => setTimeout(r, 1200))]);
   const picked = choice && typeof choice === 'object' ? list.find((s) => s.id === choice.id) : null;
   if (!picked || wc.isDestroyed()) return deny();
   const wantAudio = choice.audio === true && !!request.audioRequested;
