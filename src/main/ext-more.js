@@ -79,7 +79,10 @@ function reserved() {
   if (reservedSet) return reservedSet;
   reservedSet = new Set();
   const add = (accel) => { const id = accel && parseAccelerator(accel); if (id) reservedSet.add(id); };
-  for (const c of require('./commands').COMMANDS) add(c.accel);
+  // Raccourcis d'Orbe en vigueur : ceux que l'utilisateur a changés ou retirés comptent.
+  const current = require('./shortcuts');
+  for (const c of require('./commands').COMMANDS) add(current.accelOf(c.name));
+  add(require('./store').store.state.settings.littleShortcut);
   for (const k of ['C', 'V', 'X', 'A', 'Z', 'Q', 'H', 'M', 'W', 'T', 'N', 'L', 'R', 'F', 'P', 'S']) add(platform.accel(`Cmd+${k}`));
   add(platform.accel('Shift+Cmd+Z'));
   for (let n = 1; n <= 9; n++) { add(platform.accel(`Ctrl+${n}`)); add(platform.accel(`Cmd+${n}`)); }
@@ -475,4 +478,7 @@ function setup(options = {}) {
   watchKeys();
 }
 
-module.exports = { setup, onKey, shortcuts, shortcutOf, parseShortcut, parseAccelerator, comboOf, groups };
+// Les raccourcis d'Orbe ont changé : la liste réservée est à recalculer.
+function forgetReserved() { reservedSet = null; }
+
+module.exports = { forgetReserved, reserved, setup, onKey, shortcuts, shortcutOf, parseShortcut, parseAccelerator, comboOf, groups };

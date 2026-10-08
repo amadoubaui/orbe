@@ -5,6 +5,7 @@ const { store } = require('./store');
 const { OrbeWindow } = require('./window');
 const commands = require('./commands');
 const platform = require('./platform');
+const shortcuts = require('./shortcuts');
 
 const t = (k, v) => store.t(k, null, v);
 let lastSignature = '';
@@ -24,7 +25,7 @@ function dispatch(name, arg) {
 
 function item(name, extra = {}) {
   const c = commands.byName.get(name);
-  return { label: t(extra.labelKey || c.label), accelerator: c.accel, click: () => dispatch(name), ...extra, labelKey: undefined };
+  return { label: t(extra.labelKey || c.label), accelerator: shortcuts.accelOf(name), click: () => dispatch(name), ...extra, labelKey: undefined };
 }
 
 function build() {
@@ -48,7 +49,9 @@ function build() {
         item('defaultBrowser'),
         ...(platform.isWin ? [item('undoDefaultBrowser')] : []),
         sep,
-        ...(platform.arcSidebarFile() || platform.isMac ? [item('importArc'), sep] : []),
+        ...(platform.arcSidebarFile() || platform.isMac ? [item('importArc')] : []),
+        item('importBookmarks'),
+        sep,
         { label: t('app.services'), role: 'services' },
         sep,
         { label: t('app.hide'), role: 'hide' },
@@ -108,7 +111,7 @@ function build() {
         sep,
         item('actualSize'), item('zoomIn'), item('zoomOut'),
         sep,
-        { label: t('view.developer'), submenu: [item('source'), item('devtools'), item('inspect'), item('console')] },
+        { label: t('view.developer'), submenu: [item('source'), item('devtools'), item('inspect'), item('console'), sep, item('toggleDevMode', { type: 'checkbox', checked: !!tab && require('./prefs').devMode(tab.url), enabled: !!tab && !!require('./prefs').hostOf(tab.url) && !w.incognito })] },
         sep,
         item('fullscreen'),
       ],
@@ -204,6 +207,7 @@ function refresh(force) {
       loc && loc.list, tab && tab.muted, w ? w.data.spaces.map((x) => x.icon + x.name) : 0,
       w && w.space.profileId, w ? w.data.profiles.length : 0, !!(w && w.peekState),
       w && w.pendingLabel('undo'), w && w.pendingLabel('redo'),
+      s.shortcuts, s.devSites, tab && tab.url && require('./prefs').hostOf(tab.url),
     ]);
     if (!force && sig === lastSignature) return;
     lastSignature = sig;

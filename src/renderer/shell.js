@@ -185,7 +185,8 @@ function render(s) {
   shield.hidden = !s.activeId || s.nav.internal || false;
   shield.className = s.nav.shield;
   $('shield-n').textContent = s.nav.shield === 'on' && s.nav.blocked ? (s.nav.blocked > 99 ? '99+' : String(s.nav.blocked)) : '';
-  $('tb-url-text').textContent = s.nav.internal ? label : (s.nav.url || t('side.search'));
+  // Adresse entière, ou seulement le site (réglage « Afficher l'adresse entière »).
+  $('tb-url-text').textContent = s.nav.internal ? label : ((s.fullUrl === false ? label : s.nav.url) || t('side.search'));
   for (const p of ['b', 'tb']) {
     $(p + '-back').disabled = !s.nav.canBack;
     $(p + '-forward').disabled = !s.nav.canForward;
