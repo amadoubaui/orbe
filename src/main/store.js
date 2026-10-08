@@ -31,6 +31,7 @@ const DEFAULT_SETTINGS = {
   routes: [],
   externalLinks: 'window',
   autoPip: true,
+  sounds: true,
   adblock: true,
   adblockAllow: [],
   passwordSave: true,

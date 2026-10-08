@@ -159,6 +159,7 @@ const SETTABLE = {
   maxLiveTabs: (v) => Number.isInteger(v) && v >= 4 && v <= 60,
   externalLinks: (v) => v === 'window' || v === 'little',
   autoPip: (v) => typeof v === 'boolean',
+  sounds: (v) => typeof v === 'boolean',
   adblock: (v) => typeof v === 'boolean',
   peekLinks: (v) => typeof v === 'boolean',
   passwordSave: (v) => typeof v === 'boolean',

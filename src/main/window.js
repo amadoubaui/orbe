@@ -1567,15 +1567,53 @@ class OrbeWindow {
     this.toast(`Zoom ${Math.round(wc.getZoomFactor() * 100)} %`);
   }
 
-  async capture() {
+  // Son d'interface, joué par la coque (réglage « Sons »).
+  sound(name) {
+    if (!store.state.settings.sounds || this.ui.webContents.isDestroyed()) return;
+    this.ui.webContents.send('sound', name);
+  }
+
+  // ⇧⌘2, comme dans Arc : on choisit une zone (Entrée ou un clic = la page
+  // visible, Échap annule), puis ce qu'on en fait.
+  async capture(opts = {}) {
     const wc = this.activeWc;
-    if (!wc) return;
-    const image = await wc.capturePage();
+    if (!wc) return undefined;
+    const easels = require('./easels');
+    const area = opts.area !== undefined ? opts.area : await easels.pickArea(wc, t('capture.hint'));
+    if (!area || wc.isDestroyed()) return undefined;
+    const rect = area === 'full' ? undefined : area;
+    const image = await wc.capturePage(rect).catch(() => null);
+    if (!image || image.isEmpty()) return undefined;
+    this.sound('capture');
     const png = image.toPNG();
-    clipboard.write([new ClipboardItem({ 'image/png': new Blob([png], { type: 'image/png' }) })]).catch(() => {});
-    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
-    fs.writeFile(path.join(app.getPath('downloads'), `Orbe ${stamp}.png`), png, () => {});
-    this.toast(t('toast.captured'));
+    const copy = () => { clipboard.write([new ClipboardItem({ 'image/png': new Blob([png], { type: 'image/png' }) })]).catch(() => {}); };
+    const save = () => {
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+      fs.writeFile(path.join(app.getPath('downloads'), `Orbe ${stamp}.png`), png, () => {});
+    };
+    const done = (what) => {
+      if (what === 'copy') { copy(); this.toast(t('capture.copied')); }
+      else if (what === 'save') { save(); this.toast(t('capture.saved')); }
+      else if (what === 'easel') {
+        // Le tableau attend la zone en pixels de la page (avant zoom).
+        const k = wc.getZoomFactor() || 1;
+        easels.capture(this, rect ? { rect: { x: rect.x / k, y: rect.y / k, width: rect.width / k, height: rect.height / k } } : { full: true });
+      }
+      else { copy(); save(); this.toast(t('toast.captured')); }
+      return what;
+    };
+    if (opts.then) return done(opts.then);
+    // Zone choisie : petit menu à l'endroit de la sélection.
+    const b = this.activeRt && this.activeRt.wc === wc ? this.activeRt.view.getBounds() : { x: 0, y: 0 };
+    this.menuOpen = true;
+    Menu.buildFromTemplate([
+      { label: t('capture.copy'), click: () => done('copy') },
+      { label: t('capture.save'), click: () => done('save') },
+      { label: t('capture.both'), click: () => done('both') },
+      { type: 'separator' },
+      { label: t('easel.capture'), enabled: !this.incognito, click: () => done('easel') },
+    ]).popup({ window: this.win, x: Math.round(b.x + (rect ? rect.x + rect.width / 2 : 40)), y: Math.round(b.y + (rect ? rect.y + rect.height : 40) + 6), callback: () => { this.menuOpen = false; } });
+    return 'menu';
   }
 
   // Capture de la page entière, au-delà de la zone visible.

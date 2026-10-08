@@ -599,4 +599,13 @@ document.addEventListener('keydown', (e) => {
 
 O.on('state', render);
 O.on('edit', startRename);
+// Sons d'interface (fichiers originaux, src/renderer/sons).
+const sounds = {};
+O.on('sound', (name) => {
+  if (!/^[a-z-]+$/.test(String(name))) return;
+  const a = sounds[name] || (sounds[name] = new Audio(`sons/${name}.wav`));
+  a.volume = 0.5;
+  a.currentTime = 0;
+  a.play().catch(() => {});
+});
 send('ready');

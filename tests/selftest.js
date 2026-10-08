@@ -442,6 +442,29 @@ module.exports = async function selftest(ctx) {
   check('téléchargement enregistré', fs.existsSync(dl.path) && fs.readFileSync(dl.path, 'utf8') === 'bonjour');
   fs.unlinkSync(dl.path);
 
+  // Capture d'une zone (⇧⌘2) : zone choisie, puis action
+  w.activate(a.id);
+  const dlDir0 = require('electron').app.getPath('downloads');
+  const pngs0 = fs.readdirSync(dlDir0).filter((f) => f.endsWith('.png')).length;
+  let played = '';
+  const sendOrig = w.ui.webContents.send.bind(w.ui.webContents);
+  w.ui.webContents.send = (ch, ...rest) => { if (ch === 'sound') played = rest[0]; return sendOrig(ch, ...rest); };
+  // La page vient d'être réaffichée : la capture peut être vide tant qu'elle n'a pas été peinte.
+  const zoneSaved = await until(async () => (await w.capture({ area: { x: 10, y: 10, width: 200, height: 120 }, then: 'save' })) === 'save', 'capture d’une zone').catch((e) => e.message);
+  check('capture d’une zone : enregistrée', zoneSaved === true, String(zoneSaved));
+  await until(() => fs.readdirSync(dlDir0).filter((f) => f.endsWith('.png')).length >= pngs0 + 1, 'zone enregistrée');
+  const zone = fs.readdirSync(dlDir0).filter((f) => f.endsWith('.png')).map((f) => path.join(dlDir0, f)).sort().pop();
+  const zoneSize = await until(() => { const sz = require('electron').nativeImage.createFromPath(zone).getSize(); return sz.width ? sz : null; }, 'zone lisible');
+  check('capture d’une zone : l’image a les proportions de la zone', Math.abs(zoneSize.width / zoneSize.height - 200 / 120) < 0.02, JSON.stringify(zoneSize));
+  check('capture : le son de capture est demandé', played === 'capture');
+  store.state.settings.sounds = false;
+  played = '';
+  await w.capture({ area: 'full', then: 'copy' });
+  check('réglage « Sons » coupé : aucun son', played === '');
+  store.state.settings.sounds = true;
+  w.ui.webContents.send = sendOrig;
+  check('le fichier du son existe et se charge', await ui('fetch("sons/capture.wav").then((r) => r.ok && r.headers.get("content-type"))').then((x) => !!x).catch(() => false));
+
   // Capture de la page entière
   const tall = w.newTab(base + '/long');
   await until(() => titleOf(tall.id) === 'Page longue', 'page longue chargée');

@@ -408,6 +408,19 @@ const pickCode = (hint) => `new Promise((resolve) => {
 // Capture la page active (zone choisie, ou partie visible) et l'ajoute comme
 // image au tableau le plus récent — créé au besoin — avec l'adresse et le titre
 // de la page d'origine. `opts.full` ou `opts.rect` évitent le choix à la souris.
+// Laisse choisir une zone de la page à la souris. Renvoie le rectangle en
+// points de la vue, 'full' (Entrée ou simple clic) ou null (Échap).
+async function pickArea(wc, hint) {
+  if (!wc || wc.isDestroyed()) return null;
+  if (!/^https?:/i.test(wc.getURL())) return 'full';
+  wc.focus();
+  const area = await wc.executeJavaScriptInIsolatedWorld(PICK_WORLD, [{ code: pickCode(hint || t('easel.pickHint')) }], true).catch(() => null);
+  if (!area || wc.isDestroyed()) return null;
+  if (area === 'full') return 'full';
+  const k = wc.getZoomFactor();
+  return { x: Math.round(num(area.x, 0, 1e5) * k), y: Math.round(num(area.y, 0, 1e5) * k), width: Math.round(num(area.width, 1, 1e5, 1) * k), height: Math.round(num(area.height, 1, 1e5, 1) * k) };
+}
+
 async function capture(w, opts = {}) {
   const wc = w && w.activeWc;
   // Jamais depuis la navigation privée : un tableau garde l'adresse de la page.
@@ -482,4 +495,4 @@ function flush() {
 }
 app.on('before-quit', flush);
 
-module.exports = { action, list, create, open, capture, history, remove, flush, readDoc, cleanDoc, sniff, root, PAGE };
+module.exports = { action, list, create, open, capture, pickArea, history, remove, flush, readDoc, cleanDoc, sniff, root, PAGE };
