@@ -481,7 +481,8 @@ class OrbeWindow {
     for (const [id, rt] of [...live]) if (rt.owner === this) OrbeWindow.destroyView(id);
     this.closePeek();
     clearTimeout(this.floatTimer);
-    for (const v of [this.ui, this.modal, this.findView, this.toastView, this.peekChrome, this.floatView]) {
+    clearTimeout(this.statusTimer);
+    for (const v of [this.ui, this.modal, this.findView, this.toastView, this.peekChrome, this.floatView, this.statusView]) {
       if (v && !v.webContents.isDestroyed()) { wcOwner.delete(v.webContents.id); v.webContents.close(); }
     }
     if (this.incognito) this.session.clearStorageData().catch(() => {});
@@ -585,6 +586,7 @@ class OrbeWindow {
     wc.on('did-navigate', (e, url) => navigated(url));
     if (!incognito) wc.on('dom-ready', () => boosts.apply(wc));
     wc.on('did-navigate-in-page', (e, url, isMainFrame) => { if (isMainFrame) navigated(url); });
+    wc.on('update-target-url', (e, url) => rt.owner.linkStatus(rt, url));
     wc.on('audio-state-changed', () => {
       const owner = rt.owner;
       if (wc.isCurrentlyAudible()) { rt.playing = true; if (!owner.visibleIds().includes(rt.id)) owner.mediaId = rt.id; }
@@ -934,7 +936,10 @@ class OrbeWindow {
       if (!f || f.node.type !== 'folder') return;
       dest = f.node.children;
     } else return;
-    if (isFolder && to !== 'pinned') return;
+    // Un dossier va dans les épinglés ou dans un autre dossier, jamais dans
+    // lui-même ni dans l'un de ses propres sous-dossiers.
+    if (isFolder && to !== 'pinned' && to !== 'folder') return;
+    if (isFolder && to === 'folder' && (folderId === id || findNode(node.children, folderId))) return;
     let at = typeof index === 'number' ? index : dest.length;
     if (dest === loc.arr && loc.index < at) at -= 1;
     loc.arr.splice(loc.index, 1);
@@ -1102,6 +1107,14 @@ class OrbeWindow {
     const space = this.space;
     if (typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color)) space.color = color;
     if (typeof icon === 'string' && icon.length <= 8) space.icon = icon;
+    this.changed();
+  }
+
+  // Dégradé (seconde couleur) et grain du fond de l'Espace.
+  setThemeExtra({ color2, grain }) {
+    const space = this.space;
+    if (color2 === '' || (typeof color2 === 'string' && /^#[0-9a-f]{6}$/i.test(color2))) space.color2 = color2;
+    if (typeof grain === 'number' && grain >= 0 && grain <= 1) space.grain = Math.round(grain * 100) / 100;
     this.changed();
   }
 
@@ -1311,7 +1324,7 @@ class OrbeWindow {
   openTheme() {
     if (!this.sidebarVisible) this.toggleSidebar(true);
     const s = this.space;
-    this.showModal('theme', { color: s.color, icon: s.icon, colors: SPACE_COLORS, x: this.sidebarWidth + 10 });
+    this.showModal('theme', { color: s.color, icon: s.icon, color2: s.color2 || '', grain: s.grain || 0, colors: SPACE_COLORS, x: this.sidebarWidth + 10 });
   }
 
   // Bascule ⌃Tab : ordre d'utilisation récente, validée au relâchement de ⌃.
@@ -1402,6 +1415,32 @@ class OrbeWindow {
       if (rt && !rt.wc.isDestroyed()) rt.wc.stopFindInPage('clearSelection');
     }
     this.focusContent();
+  }
+
+  // Adresse du lien survolé, en bas à gauche de la page.
+  linkStatus(rt, url) {
+    if (this.win.isDestroyed() || !this.visibleIds().includes(rt.id)) return;
+    clearTimeout(this.statusTimer);
+    const hide = () => {
+      if (!this.statusView || this.win.isDestroyed()) return;
+      this.statusView.setVisible(false);
+      try { this.win.contentView.removeChildView(this.statusView); } catch {}
+    };
+    if (!url) { this.statusTimer = setTimeout(hide, 120); return; }
+    const show = () => {
+      if (this.win.isDestroyed() || this.statusView.webContents.isDestroyed()) return;
+      const b = rt.view.getBounds();
+      const width = Math.min(b.width - 16, Math.max(120, 14 + url.length * 6.6));
+      this.statusView.setBounds({ x: b.x + 6, y: b.y + b.height - 30, width: Math.round(width), height: 26 });
+      this.win.contentView.addChildView(this.statusView);
+      this.statusView.setVisible(true);
+      this.statusView.webContents.send('overlay', { mode: 'status', text: url });
+    };
+    if (!this.statusView) {
+      this.statusView = this.makeUiView('overlay.html#status');
+      this.statusView.setVisible(false);
+      this.statusView.webContents.once('did-finish-load', show);
+    } else if (!this.statusView.webContents.isLoading()) show();
   }
 
   toast(text) {
@@ -1767,7 +1806,7 @@ class OrbeWindow {
       toolbar: settings.showToolbar,
       fullScreen: this.win.isFullScreen(),
       spaceDir: dir,
-      space: { id: space.id, name: space.name, icon: space.icon, color: space.color },
+      space: { id: space.id, name: space.name, icon: space.icon, color: space.color, color2: space.color2 || '', grain: space.grain || 0 },
       spaces: d.spaces.map((s) => ({ id: s.id, name: s.name, icon: s.icon, color: s.color })),
       favorites: this.favorites.map(tabVM),
       pinned: space.pinned.map(nodeVM),
@@ -1843,6 +1882,7 @@ class OrbeWindow {
       case 'find': return this.find(String(a.text || ''), a);
       case 'findClose': return this.closeFind();
       case 'theme': return this.setTheme(a);
+      case 'themeExtra': return this.setThemeExtra(a || {});
       case 'splitResize': return this.resizeSplit(Number(a.i), Number(a.x));
       case 'peekClose': return this.closePeek();
       case 'peekExpand': return this.expandPeek();

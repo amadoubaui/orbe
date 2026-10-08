@@ -129,6 +129,9 @@ function render(s) {
   const open = FLOATING ? s.sidebar.peek && !s.sidebar.visible : s.sidebar.visible;
   if (FLOATING && !open && prev && !(prev.sidebar.peek && !prev.sidebar.visible)) { S = s; b.classList.remove('open'); return; }
   b.style.setProperty('--accent', s.space.color);
+  b.style.setProperty('--accent2', s.space.color2 || s.space.color);
+  b.style.setProperty('--grain', String(s.space.grain || 0));
+  b.classList.toggle('gradient', !!s.space.color2);
   b.style.setProperty('--sw', s.sidebar.width + 'px');
   b.classList.toggle('open', open);
   b.classList.toggle('docked', s.sidebar.visible);
@@ -431,20 +434,17 @@ function dropTarget(e) {
   let to = zone.dataset.drop;
   let folderId = null;
   if (to.startsWith('folder:')) { folderId = to.slice(7); to = 'folder'; }
-  if (drag && drag.folder && to !== 'pinned') {
-    if (to !== 'folder') return null;
-    zone = $('pinned');
-    to = 'pinned';
-    folderId = null;
-  }
+  // Un dossier se dépose dans les épinglés ou dans un autre dossier, pas dans lui-même.
+  if (drag && drag.folder && to !== 'pinned' && to !== 'folder') return null;
+  if (drag && drag.folder && zone.closest(`[data-key="${CSS.escape(drag.id)}"]`)) return null;
   const kids = [...zone.children];
   const grid = to === 'favorites';
   if (grid && drag && drag.folder) return null;
 
   // Sur l'en-tête d'un dossier : dépose dedans.
-  if (!grid && !(drag && drag.folder)) {
+  if (!grid) {
     const head = e.target.closest('.folder > .row');
-    if (head) {
+    if (head && !(drag && drag.folder && head.closest(`[data-key="${CSS.escape(drag.id)}"]`))) {
       const r = head.getBoundingClientRect();
       if (e.clientY > r.top + r.height * 0.25 && e.clientY < r.bottom - r.height * 0.25) {
         return { to: 'folder', folderId: head.dataset.id, into: head.parentElement };

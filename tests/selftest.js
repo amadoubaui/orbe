@@ -120,6 +120,13 @@ module.exports = async function selftest({ first: w, OrbeWindow, store, win, lit
   await sleep(150);
   w.move({ id: a.id, to: 'today', index: 1 });
   check('onglet ressorti vers Aujourd’hui', w.space.today[1] === a.id && !folder.children.length);
+  w.newFolder();
+  const inner = w.space.pinned.find((n) => n.type === 'folder' && n.id !== folder.id);
+  w.move({ id: inner.id, to: 'folder', folderId: folder.id, index: 0 });
+  check('dossier imbriqué dans un dossier', folder.children[0] === inner && !w.space.pinned.includes(inner));
+  w.move({ id: folder.id, to: 'folder', folderId: inner.id, index: 0 });
+  check('un dossier ne peut pas entrer dans son propre sous-dossier', w.space.pinned.includes(folder) && !inner.children.length);
+  w.deleteFolder(inner.id);
   w.deleteFolder(folder.id);
   check('dossier supprimé', !w.space.pinned.length);
 
@@ -279,6 +286,9 @@ module.exports = async function selftest({ first: w, OrbeWindow, store, win, lit
   const c = w.newTab(base + '/b');
   await until(() => titleOf(c.id) === 'Page B', 'page dans le second Espace');
   await until(() => ui('S.space.name === "Projets" && S.today.length === 1'), 'barre latérale du second Espace');
+  w.setThemeExtra({ color2: '#3b82f6', grain: 0.3 });
+  await until(() => ui('document.body.classList.contains("gradient") && getComputedStyle(document.body).backgroundImage.includes("gradient")'), 'thème en dégradé');
+  check('thème d’Espace en dégradé avec grain', w.space.color2 === '#3b82f6' && w.space.grain === 0.3);
   await shot('espace-2');
   w.run('prevSpace');
   check('⌥⌘← revient à l’Espace précédent avec son onglet', w.space !== s2 && w.activeId === a.id);

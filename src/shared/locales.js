@@ -195,6 +195,8 @@ const fr = {
 
   'theme.title': 'Thème de l’Espace',
   'theme.color': 'Couleur',
+  'theme.gradient': 'Dégradé vers',
+  'theme.grain': 'Grain',
   'theme.icon': 'Icône',
   'theme.done': 'Terminé',
 
@@ -479,6 +481,8 @@ const en = {
   'toast.unmuted': 'Unmuted',
   'theme.title': 'Space Theme',
   'theme.color': 'Color',
+  'theme.gradient': 'Gradient to',
+  'theme.grain': 'Grain',
   'theme.icon': 'Icon',
   'theme.done': 'Done',
   'lib.title': 'Library',

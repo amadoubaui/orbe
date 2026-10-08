@@ -2,7 +2,7 @@
 // bascule d'onglets, thème), de barre de recherche ou de notification.
 const $ = (id) => document.getElementById(id);
 const send = O.send;
-const panels = ['command', 'switcher', 'theme', 'find', 'toast', 'peek'];
+const panels = ['command', 'switcher', 'theme', 'find', 'toast', 'peek', 'status'];
 let mode = null;
 
 function show(name) {
@@ -159,11 +159,14 @@ function drawTheme() {
   document.body.style.setProperty('--accent', theme.color);
   for (const b of $('theme-colors').children) b.classList.toggle('sel', b.dataset.c === theme.color);
   for (const b of $('theme-icons').children) b.classList.toggle('sel', b.textContent === theme.icon);
+  for (const b of $('theme-colors2').children) b.classList.toggle('sel', b.dataset.c === (theme.color2 || ''));
 }
 
 function openTheme(p) {
   show('theme');
-  theme = { color: p.color, icon: p.icon };
+  theme = { color: p.color, icon: p.icon, color2: p.color2 || '' };
+  $('theme-grain').value = String(Math.round((p.grain || 0) * 100));
+  $('theme-colors2').innerHTML = `<button class="sw-color none" data-c="">∅</button>` + p.colors.slice(0, 11).map((c) => `<button class="sw-color" data-c="${esc(c)}" style="background:${esc(c)}"></button>`).join('');
   $('theme').style.left = (p.x || 260) + 'px';
   $('theme-colors').innerHTML = p.colors.map((c) => `<button class="sw-color" data-c="${esc(c)}" style="background:${esc(c)}"></button>`).join('');
   $('theme-icons').innerHTML = ICONS.map((e) => `<button class="sw-icon">${e}</button>`).join('');
@@ -189,6 +192,14 @@ $('theme-icons').addEventListener('click', (e) => {
   drawTheme();
   send('theme', { icon: theme.icon });
 });
+$('theme-colors2').addEventListener('click', (e) => {
+  const b = e.target.closest('.sw-color');
+  if (!b) return;
+  theme.color2 = b.dataset.c;
+  drawTheme();
+  send('themeExtra', { color2: theme.color2 });
+});
+$('theme-grain').addEventListener('input', (e) => send('themeExtra', { grain: Number(e.target.value) / 100 }));
 $('theme-done').onclick = () => send('closeOverlay');
 
 // --- Recherche dans la page -------------------------------------------------
@@ -220,6 +231,9 @@ O.on('overlay', (p) => {
   } else if (p.mode === 'peek') {
     show('peek');
     document.body.classList.add('peek');
+  } else if (p.mode === 'status') {
+    show('status');
+    $('status').textContent = p.text;
   } else if (p.mode === 'toast') {
     show('toast');
     const el = $('toast');

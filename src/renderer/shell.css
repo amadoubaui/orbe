@@ -364,3 +364,25 @@ body.toolbar #empty { top: 48px; }
 .list > .out, .children > .out { animation: row-out 150ms var(--ease) forwards; pointer-events: none; overflow: hidden; }
 @keyframes row-in { from { height: 0; opacity: 0; transform: scale(0.96); } }
 @keyframes row-out { to { height: 0; opacity: 0; margin-bottom: -3px; transform: scale(0.96); } }
+
+/* Thème d'Espace : dégradé de deux couleurs et grain. */
+body.gradient {
+  --bg2: color-mix(in srgb, var(--accent2) calc(var(--tint) + 8%), var(--base));
+  background: linear-gradient(160deg, color-mix(in srgb, var(--accent) calc(var(--tint) + 8%), var(--base)), var(--bg2));
+}
+body.gradient.translucent {
+  background: linear-gradient(160deg, color-mix(in srgb, color-mix(in srgb, var(--accent) calc(var(--tint) + 8%), var(--base)) 82%, transparent), color-mix(in srgb, var(--bg2) 82%, transparent));
+}
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: var(--grain, 0);
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+/* Dossier replié : l'onglet actif qu'il contient reste visible. */
+.folder:not(.open) > .children:has(.row.active) { display: flex; }
+.folder:not(.open) > .children > :not(.active):not(.folder) { display: none; }
+.folder:not(.open) > .children > .folder:not(:has(.row.active)) { display: none; }
