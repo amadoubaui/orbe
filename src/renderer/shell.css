@@ -147,7 +147,6 @@ body.dragging #fav:empty { min-height: 40px; border: 1.5px dashed var(--line); b
 #space-icon { font-size: 13px; }
 
 .list { display: flex; flex-direction: column; gap: 4px; flex: none; min-height: 4px; }
-body.dragging .list:empty { min-height: 30px; }
 
 .row {
   height: 37px;
@@ -193,7 +192,14 @@ body.dragging .list:empty { min-height: 30px; }
 .row.split .more { display: flex; }
 #b-newtab { color: var(--dim); }
 #b-newtab:hover { color: var(--fg); }
-.row.dragging-self, .tile.dragging-self, .folder.dragging-self { opacity: 0.35; }
+/* Glisser : la ligne emportée laisse sa place (elle reste dans la mise en page,
+   invisible) et les lignes voisines s'écartent, par transformation seulement,
+   pour ouvrir la place où elle tombera. */
+.row.dragging-self, .folder.dragging-self { opacity: 0; }
+.tile.dragging-self { opacity: 0.35; }
+/* Une transformation neutre dès le départ : passer de « aucune » à un décalage
+   relancerait la mise en page à chaque ligne touchée. */
+body.parting #scroll .row, body.parting #divider { transform: translateY(0); transition: transform 140ms var(--ease), background 100ms; }
 
 /* Sélection multiple (⌘clic, ⇧clic) : teinte de l'Espace et liseré, pour ne pas
    la confondre avec la ligne active (fond clair et ombre). */
@@ -297,6 +303,15 @@ body.incognito #incognito { display: flex; }
 
 #drop-line { position: absolute; height: 2px; border-radius: 1px; background: var(--accent); pointer-events: none; display: none; z-index: 5; }
 #drop-line.v { width: 2px; }
+/* Place libre entre les lignes écartées. */
+#drop-line.slot {
+  left: 0;
+  top: 0;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 38%, transparent);
+  transition: transform 140ms var(--ease);
+}
 
 /* Barre d'outils optionnelle (⇧⌘D), au-dessus de la page. */
 #toolbar {

@@ -16,7 +16,8 @@ const total = { ok: 0, ko: 0, bogues: 0, corriges: 0, ignores: 0 };
 const echecs = [];
 const bogues = [];
 
-const court = (err) => String((err && err.message) || err).split('\n')[0].slice(0, 300);
+// ORBE_UI_DETAIL=1 : message d'erreur entier (différences comprises).
+const court = (err) => (process.env.ORBE_UI_DETAIL ? String((err && err.message) || err) : String((err && err.message) || err).split('\n')[0].slice(0, 300));
 
 function rapport(groupe, ctx) {
   const essai = async (fn) => {
