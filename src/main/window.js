@@ -482,7 +482,7 @@ class OrbeWindow {
     this.closePeek();
     clearTimeout(this.floatTimer);
     clearTimeout(this.statusTimer);
-    for (const v of [this.ui, this.modal, this.findView, this.toastView, this.peekChrome, this.floatView, this.statusView]) {
+    for (const v of [this.ui, this.modal, this.findView, this.toastView, this.peekChrome, this.floatView, this.statusView, this.dropView]) {
       if (v && !v.webContents.isDestroyed()) { wcOwner.delete(v.webContents.id); v.webContents.close(); }
     }
     if (this.incognito) this.session.clearStorageData().catch(() => {});
@@ -1424,6 +1424,37 @@ class OrbeWindow {
     this.focusContent();
   }
 
+  // Pendant qu'on glisse un onglet de la barre latérale, une zone de dépôt
+  // couvre la page : y lâcher l'onglet crée une vue scindée.
+  dragZone(on) {
+    if (this.win.isDestroyed()) return;
+    if (!on) {
+      if (this.dropView) { this.dropView.setVisible(false); try { this.win.contentView.removeChildView(this.dropView); } catch {} }
+      return;
+    }
+    if (!this.activeId || this.peekState || this.modalMode) return;
+    const show = () => {
+      if (this.win.isDestroyed() || this.dropView.webContents.isDestroyed()) return;
+      this.dropView.setBounds(this.contentRect());
+      this.dropView.setBorderRadius(RADIUS);
+      this.win.contentView.addChildView(this.dropView);
+      this.dropView.setVisible(true);
+      this.dropView.webContents.send('overlay', { mode: 'drop', label: t('view.addSplit') });
+    };
+    if (!this.dropView) {
+      this.dropView = this.makeUiView('overlay.html#drop');
+      this.dropView.setVisible(false);
+      this.dropView.webContents.once('did-finish-load', show);
+    } else show();
+  }
+
+  dropSplit(id) {
+    this.dragZone(false);
+    const loc = this.locate(id);
+    if (!loc || loc.node.type === 'folder' || !this.activeId || id === this.activeId) return;
+    this.splitWith(this.activeId, id);
+  }
+
   // Adresse du lien survolé, en bas à gauche de la page.
   linkStatus(rt, url) {
     if (this.win.isDestroyed() || !this.visibleIds().includes(rt.id)) return;
@@ -1601,6 +1632,16 @@ class OrbeWindow {
       { type: 'separator' },
       { label: t('adblock.thisSite'), type: 'checkbox', checked: on && web && !adblock.isSiteAllowed(tab.url), enabled: on && web, click: () => this.toggleSiteBlocking() },
       { label: t('adblock.everywhere'), type: 'checkbox', checked: on, click: () => require('./commands').setSetting('adblock', !on) },
+      { type: 'separator' },
+      { label: t('edit.copyUrl'), enabled: !!tab, click: () => this.copyUrl(false) },
+      { label: t('file.capture').replace('…', ''), enabled: !!tab, click: () => this.capture() },
+      { label: t('boost.edit'), enabled: web && !this.incognito, click: () => this.run('boost') },
+      { label: t('boost.zapCmd'), enabled: web && !this.incognito, click: () => this.run('zap') },
+      { type: 'separator' },
+      { label: t('view.clearCookies'), enabled: web, click: () => this.clearAndReload('cookies') },
+      { label: t('site.resetPerms'), enabled: web, click: () => {
+        try { delete store.state.permissions[new URL(tab.url).origin]; store.save(); } catch {}
+      } },
     ]);
   }
 
@@ -1894,6 +1935,9 @@ class OrbeWindow {
       case 'findClose': return this.closeFind();
       case 'theme': return this.setTheme(a);
       case 'themeExtra': return this.setThemeExtra(a || {});
+      case 'dragZone': return this.dragZone(!!a);
+      case 'dragZoneOver': if (this.dropView && !this.dropView.webContents.isDestroyed()) this.dropView.webContents.send('overlay', { mode: 'drop', label: t('view.addSplit'), over: !!a }); return undefined;
+      case 'dropSplit': return this.dropSplit(String(a));
       case 'splitResize': return this.resizeSplit(Number(a.i), Number(a.x));
       case 'peekClose': return this.closePeek();
       case 'peekExpand': return this.expandPeek();

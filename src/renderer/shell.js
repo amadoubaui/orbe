@@ -422,6 +422,8 @@ function clearDrop() {
 }
 
 function endDrag() {
+  if (drag) send('dragZone', false);
+  zoneOn = false;
   clearDrop();
   document.body.classList.remove('dragging');
   for (const el of document.querySelectorAll('.dragging-self')) el.classList.remove('dragging-self');
@@ -442,6 +444,7 @@ sidebar.addEventListener('dragstart', (e) => {
     if (!drag) return;
     item.classList.add('dragging-self');
     document.body.classList.add('dragging');
+    if (!drag.folder) send('dragZone', true);
   });
   return undefined;
 });
@@ -496,7 +499,33 @@ function dropTarget(e) {
   return { to, folderId, index, pos };
 }
 
+// Au-dessus de la page : lâcher l'onglet crée une vue scindée. Pendant un
+// glisser, c'est la coque qui reçoit les événements, même au-dessus des pages.
+const overPage = (e) => !!drag && !drag.folder && !!S && S.sidebar.visible && !!S.activeId && e.clientX > S.sidebar.width + 12;
+let zoneOn = false;
+function setZone(on) {
+  if (on === zoneOn) return;
+  zoneOn = on;
+  send('dragZoneOver', on);
+}
+document.addEventListener('dragover', (e) => {
+  if (!overPage(e)) return setZone(false);
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  clearDrop();
+  setZone(true);
+}, true);
+document.addEventListener('drop', (e) => {
+  if (!overPage(e)) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const id = drag.id;
+  endDrag();
+  send('dropSplit', id);
+}, true);
+
 sidebar.addEventListener('dragover', (e) => {
+  if (overPage(e)) return;
   const types = [...e.dataTransfer.types];
   const external = !drag && !types.includes('application/x-orbe-item') && types.some((x) => x === 'text/uri-list' || x === 'text/plain');
   if (!drag && !external) return;
@@ -514,6 +543,7 @@ sidebar.addEventListener('dragover', (e) => {
 });
 
 sidebar.addEventListener('drop', (e) => {
+  if (overPage(e)) return;
   e.preventDefault();
   if (!drag) {
     // Ligne venue d'une autre fenêtre Orbe : ce n'est pas une adresse.

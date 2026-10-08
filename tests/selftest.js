@@ -183,6 +183,11 @@ module.exports = async function selftest({ first: w, OrbeWindow, store, win, lit
   check('vue scindée : enregistrée avec l’Espace (retrouvée au redémarrage)', reread.spaces[0].splits.length === 1 && reread.spaces[0].splits[0].join() === [a.id, b.id].join());
   await shot('scinde');
   w.run('closeSplit');
+  w.dragZone(true);
+  await until(() => w.dropView && w.dropView.webContents.executeJavaScript('!document.getElementById("drop").hidden'), 'zone de dépôt');
+  w.handle('dropSplit', w.activeId === a.id ? b.id : a.id);
+  check('lâcher un onglet sur la page crée une vue scindée', w.visibleIds().length === 2);
+  w.run('closeSplit');
   check('⌃⇧- ferme le volet', w.visibleIds().length === 1 && w.splits.length === 0);
 
   // Barre latérale

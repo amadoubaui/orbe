@@ -156,3 +156,9 @@ body.peek #backdrop { background: rgba(0, 0, 0, 0.42); animation: fade 160ms var
 .sw .shot { width: 152px; height: 92px; object-fit: cover; object-position: top; border-radius: 7px; box-shadow: 0 0 0 0.5px var(--panel-line); }
 .sw .cap { display: flex; align-items: center; gap: 6px; max-width: 100%; }
 .sw .cap .favicon, .sw .cap .letter { width: 14px; height: 14px; border-radius: 4px; font-size: 9px; }
+
+/* Zone de dépôt pour créer une vue scindée en glissant un onglet sur la page. */
+#drop { position: fixed; inset: 0; display: flex; justify-content: flex-end; }
+#drop::before { content: ''; position: absolute; inset: 0; }
+#drop-label { width: 50%; margin: 10px; border-radius: 12px; border: 2px dashed transparent; display: grid; place-items: center; color: transparent; font-size: 15px; font-weight: 600; transition: all 120ms; }
+#drop.over #drop-label { background: color-mix(in srgb, var(--accent) 30%, rgba(0, 0, 0, 0.35)); border-color: var(--accent); color: #fff; backdrop-filter: blur(2px); }

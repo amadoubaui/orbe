@@ -2,7 +2,7 @@
 // bascule d'onglets, thème), de barre de recherche ou de notification.
 const $ = (id) => document.getElementById(id);
 const send = O.send;
-const panels = ['command', 'switcher', 'theme', 'find', 'toast', 'peek', 'status'];
+const panels = ['command', 'switcher', 'theme', 'find', 'toast', 'peek', 'status', 'drop'];
 let mode = null;
 
 function show(name) {
@@ -243,6 +243,10 @@ O.on('overlay', (p) => {
   } else if (p.mode === 'peek') {
     show('peek');
     document.body.classList.add('peek');
+  } else if (p.mode === 'drop') {
+    show('drop');
+    $('drop-label').textContent = p.label;
+    $('drop').classList.toggle('over', !!p.over);
   } else if (p.mode === 'status') {
     show('status');
     $('status').textContent = p.text;
@@ -258,6 +262,22 @@ O.on('overlay', (p) => {
   }
 });
 O.on('settings', (s) => setLang(s.lang));
+
+// Zone de dépôt : un onglet de la barre latérale lâché ici crée une vue scindée.
+const dropBox = $('drop');
+dropBox.addEventListener('dragover', (e) => {
+  if (![...e.dataTransfer.types].includes('application/x-orbe-item')) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  dropBox.classList.add('over');
+});
+dropBox.addEventListener('dragleave', () => dropBox.classList.remove('over'));
+dropBox.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropBox.classList.remove('over');
+  const id = e.dataTransfer.getData('application/x-orbe-item');
+  if (id) send('dropSplit', id);
+});
 
 $('peek-close').onclick = () => send('peekClose');
 $('peek-expand').onclick = () => send('peekExpand');
