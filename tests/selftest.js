@@ -53,7 +53,8 @@ function serve() {
   return new Promise((resolve) => server.listen(0, () => resolve(server)));
 }
 
-module.exports = async function selftest({ first: w, OrbeWindow, store, win, little, commands, openSettings, openUrl }) {
+module.exports = async function selftest(ctx) {
+  const { first: w, OrbeWindow, store, win, little, commands, openSettings, openUrl } = ctx;
   const results = [];
   let failed = 0;
   const check = (name, ok, detail = '') => {
@@ -616,6 +617,9 @@ module.exports = async function selftest({ first: w, OrbeWindow, store, win, lit
   await until(() => ui('matchMedia("(prefers-color-scheme: light)").matches'), 'interface en clair');
   await shot('clair');
   commands.setSetting('appearance', 'auto');
+
+  // Mots de passe (tests/passwords.js)
+  await require('./passwords')({ ...ctx, check });
 
   // Persistance
   await shot('final');

@@ -44,6 +44,7 @@ function build() {
         { label: t('app.about'), role: 'about' },
         sep,
         item('settings'),
+        item('passwords'),
         item('defaultBrowser'),
         sep,
         ...(platform.arcSidebarFile() || platform.isMac ? [item('importArc'), sep] : []),

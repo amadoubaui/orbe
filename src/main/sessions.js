@@ -8,6 +8,7 @@ const { store, uid } = require('./store');
 const adblock = require('./adblock');
 const extensions = require('./extensions');
 const extApi = require('./ext-api');
+const passwords = require('./passwords');
 
 const RENDERER_DIR = path.join(__dirname, '../renderer');
 const configured = new WeakSet();
@@ -131,7 +132,10 @@ function configure(ses, { persist }) {
 // Une session Chromium par profil : cookies et connexions séparés.
 function profileSession(id) {
   const partition = !id || id === 'default' ? 'persist:orbe' : 'persist:orbe-' + id;
-  return configure(session.fromPartition(partition), { persist: true });
+  const ses = configure(session.fromPartition(partition), { persist: true });
+  // Mots de passe : rattachés au profil ; jamais en navigation privée.
+  passwords.attach(ses, id || 'default');
+  return ses;
 }
 
 const mainSession = () => profileSession('default');

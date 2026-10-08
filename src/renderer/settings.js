@@ -1,5 +1,5 @@
 // Réglages : chaque changement est appliqué immédiatement.
-const FIELDS = ['lang', 'searchEngine', 'suggestions', 'archiveAfterHours', 'maxLiveTabs', 'appearance', 'translucent', 'externalLinks', 'autoPip', 'adblock', 'peekLinks'];
+const FIELDS = ['lang', 'searchEngine', 'suggestions', 'archiveAfterHours', 'maxLiveTabs', 'appearance', 'translucent', 'externalLinks', 'autoPip', 'adblock', 'peekLinks', 'passwordSave', 'passwordFill'];
 const NUMERIC = new Set(['archiveAfterHours', 'maxLiveTabs']);
 const el = (id) => document.getElementById(id);
 
@@ -145,6 +145,7 @@ for (const f of FIELDS) {
 }
 
 const flash = (btn) => { const old = btn.textContent; btn.textContent = '✓'; setTimeout(() => { btn.textContent = old; }, 1200); };
+el('passwordManage').onclick = () => O.send('pw:open');
 el('makeDefault').onclick = async (e) => { await O.send('settings:makeDefault'); flash(e.target); };
 el('resetPerms').onclick = async (e) => { await O.send('settings:resetPerms'); flash(e.target); };
 el('clearData').onclick = async (e) => { if (await O.send('settings:clearData')) flash(e.target); };

@@ -5,7 +5,7 @@ const { dialog } = require('electron');
 const { store } = require('./store');
 const platform = require('./platform');
 
-const hooks = { newWindow: () => {}, newLittle: () => {}, openSettings: () => {}, settingsChanged: null, openBoost: () => {} };
+const hooks = { newWindow: () => {}, newLittle: () => {}, openSettings: () => {}, settingsChanged: null, openBoost: () => {}, openPasswords: () => {} };
 
 const wc = (w) => w.activeWc;
 
@@ -83,6 +83,7 @@ const COMMANDS = [
   { name: 'downloads', label: 'window.downloads', accel: 'Shift+Cmd+J', keys: '⇧⌘J', run: (w) => w.openInternal('library.html#downloads') },
   // Application
   { name: 'settings', label: 'app.settings', accel: 'Cmd+,', keys: '⌘,', global: true, run: () => hooks.openSettings() },
+  { name: 'passwords', label: 'pw.title', global: true, run: () => hooks.openPasswords() },
   { name: 'defaultBrowser', label: 'app.defaultBrowser', global: true, run: (w) => { makeDefault(); if (w) w.toast(store.t('toast.defaultBrowser')); } },
   { name: 'toggleSiteBlocking', label: 'adblock.toggleSite', run: (w) => w.toggleSiteBlocking() },
   { name: 'boost', label: 'boost.edit', run: (w) => hooks.openBoost(w) },
