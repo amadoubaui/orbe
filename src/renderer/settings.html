@@ -50,6 +50,13 @@ h1 { font-size: 20px; }
   <div class="card" id="profiles"></div>
   <p class="muted" style="margin:8px 4px 0;font-size:12px" data-t="set.profilesHint"></p>
 
+  <h2 data-t="ext.title"></h2>
+  <div class="card">
+    <div class="line"><input class="search" id="ext-url" style="margin:0" spellcheck="false" data-t-ph="ext.placeholder"><button class="btn primary" id="ext-add" data-t="ext.install"></button></div>
+    <div id="ext-list"></div>
+  </div>
+  <p class="muted" style="margin:8px 4px 0;font-size:12px" id="ext-msg" data-t="ext.hint"></p>
+
   <h2 data-t="set.privacy"></h2>
   <div class="card">
     <div class="line"><div class="grow"><div data-t="set.adblock"></div><div class="sub" data-t="set.adblockHint"></div></div><input type="checkbox" id="adblock"></div>

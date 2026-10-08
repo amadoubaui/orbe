@@ -43,7 +43,57 @@ function drawProfiles(list) {
   }
 }
 
+// Extensions Chrome (expérimental)
+function drawExtensions(list) {
+  const box = el('ext-list');
+  box.textContent = '';
+  for (const x of list || []) {
+    const line = document.createElement('div');
+    line.className = 'line';
+    line.style.borderTop = '0.5px solid var(--line)';
+    const body = document.createElement('div');
+    body.className = 'grow';
+    const name = document.createElement('div');
+    name.className = 'name';
+    name.textContent = `${x.name} ${x.version}`;
+    const sub = document.createElement('div');
+    sub.className = 'sub';
+    sub.textContent = x.description;
+    body.append(name, sub);
+    line.appendChild(body);
+    if (x.popup) {
+      const open = document.createElement('button');
+      open.className = 'btn';
+      open.textContent = t('lib.open');
+      open.onclick = () => O.send('ext:popup', x.id);
+      line.appendChild(open);
+    }
+    const on = document.createElement('input');
+    on.type = 'checkbox';
+    on.checked = x.enabled;
+    on.onchange = async () => drawExtensions(await O.send('ext:toggle', { id: x.id, enabled: on.checked }));
+    const del = document.createElement('button');
+    del.className = 'btn';
+    del.textContent = t('set.profileDelete');
+    del.onclick = async () => drawExtensions(await O.send('ext:remove', x.id));
+    line.append(on, del);
+    box.appendChild(line);
+  }
+}
+
+el('ext-add').onclick = async () => {
+  const input = el('ext-url');
+  if (!input.value.trim()) return;
+  el('ext-add').disabled = true;
+  el('ext-msg').textContent = t('ext.installing');
+  const r = await O.send('ext:install', input.value.trim());
+  el('ext-add').disabled = false;
+  el('ext-msg').textContent = r && r.error ? r.error : t('ext.hint');
+  if (r && r.list) { input.value = ''; drawExtensions(r.list); }
+};
+
 async function init() {
+  drawExtensions(await O.send('ext:list'));
   const data = await O.send('settings:get');
   drawProfiles(data.profiles);
   el('searchEngine').innerHTML = data.engines.map((e) => `<option value="${esc(e.id)}">${esc(e.name)}</option>`).join('');

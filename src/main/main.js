@@ -1,5 +1,5 @@
 // Point d'entrée d'Orbe.
-const { app, ipcMain, BrowserWindow, nativeTheme, shell, webContents, dialog } = require('electron');
+const { app, ipcMain, BrowserWindow, nativeTheme, shell, webContents, dialog, net } = require('electron');
 const { pathToFileURL } = require('url');
 const path = require('path');
 const os = require('os');
@@ -14,6 +14,7 @@ const little = require('./little');
 const commands = require('./commands');
 const menu = require('./menu');
 const adblock = require('./adblock');
+const extensions = require('./extensions');
 
 const SELFTEST = process.argv.includes('--selftest');
 const pendingUrls = [];
@@ -105,6 +106,13 @@ function profileList() {
   return s.profiles.map((p) => ({ id: p.id, name: p.name, spaces: s.spaces.filter((sp) => sp.profileId === p.id).map((sp) => `${sp.icon} ${sp.name}`) }));
 }
 
+function extensionList() {
+  return extensions.list().map((x) => ({
+    id: x.id, name: x.name, version: x.version, description: (x.description || '').slice(0, 160),
+    enabled: extensions.isEnabled(x.id), popup: !!extensions.popupFor(x.id),
+  }));
+}
+
 function shortcutGroups() {
   const t = (k) => store.t(k);
   const group = (title, names, extra = []) => ({
@@ -151,6 +159,27 @@ async function globalAction(action, a, sender) {
     case 'lib:openFile': {
       const d = s.downloads.find((x) => x.id === a);
       if (d) shell.openPath(d.path);
+      return true;
+    }
+    case 'ext:list':
+      return extensionList();
+    case 'ext:install': {
+      const id = extensions.parseStoreInput(String(a || ''));
+      if (!id) return { error: store.t('ext.badUrl') };
+      try { await extensions.install(id); } catch (err) { return { error: `${store.t('ext.failed')} (${err.code || err.message})` }; }
+      return { list: extensionList() };
+    }
+    case 'ext:remove':
+      await extensions.remove(String(a)).catch(() => {});
+      return extensionList();
+    case 'ext:toggle':
+      extensions.setEnabled(String(a.id), !!a.enabled);
+      return extensionList();
+    case 'ext:popup': {
+      const p = extensions.popupFor(String(a));
+      if (!p) return false;
+      const w = new BrowserWindow({ width: 400, height: 600, title: p.title, webPreferences: { session: sessions.mainSession(), sandbox: true, contextIsolation: true } });
+      w.loadURL(p.url).catch(() => {});
       return true;
     }
     case 'shortcuts:get':
@@ -212,7 +241,7 @@ function setupIpc() {
   ipcMain.handle('orbe', async (e, action, payload) => {
     if (!ok(e) || typeof action !== 'string') return undefined;
     if (action === 'welcome:info') return { arc: require('./import-arc').available() };
-    if (/^(lib|settings|shortcuts):/.test(action)) return globalAction(action, payload, e.sender);
+    if (/^(lib|settings|shortcuts|ext):/.test(action)) return globalAction(action, payload, e.sender);
     const owner = OrbeWindow.ownerOf(e.sender) || little.LittleWindow.ownerOf(e.sender) || OrbeWindow.primary;
     return owner ? owner.handle(action, payload) : undefined;
   });
@@ -230,6 +259,7 @@ app.whenReady().then(async () => {
   store.load(app.getPath('userData'));
   const firstRun = !Object.keys(store.state.tabs).length && !Object.keys(store.state.history).length;
   applyAppearance();
+  extensions.configure({ dir: path.join(app.getPath('userData'), 'Extensions'), fetch: (u, o) => net.fetch(u, o), lang: store.state.settings.lang });
   adblock.configure({
     enabled: store.state.settings.adblock,
     allowlist: store.state.settings.adblockAllow,

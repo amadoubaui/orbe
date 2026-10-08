@@ -36,6 +36,9 @@ interface entièrement en français (anglais disponible dans les réglages).
   changes d'onglet ; un lecteur miniature dans la barre latérale pilote le son.
 - **Bloqueur de publicités et de traqueurs** intégré (24 000 domaines, moins
   d'une microseconde par requête), avec exception par site depuis le bouclier.
+- **Extensions Chrome (expérimental)** : installation depuis le Chrome Web
+  Store, signature vérifiée (Réglages → Extensions). Seules les extensions
+  simples fonctionnent, et en partie.
 - **Archive** : ⌘W archive l'onglet, ⇧⌘T le rouvre, les onglets inactifs sont
   archivés automatiquement (12 h par défaut).
 - **Petite fenêtre** (⌥⌘N), **navigation privée** (⇧⌘N), plusieurs fenêtres
