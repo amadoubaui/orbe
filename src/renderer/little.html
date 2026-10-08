@@ -1,0 +1,25 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">
+<title>Orbe</title>
+<link rel="stylesheet" href="base.css">
+<style>
+body { background: color-mix(in srgb, color-mix(in srgb, var(--accent) var(--tint), var(--base)) 80%, transparent); }
+#bar { height: 42px; display: flex; align-items: center; gap: 8px; padding: 0 8px 0 76px; -webkit-app-region: drag; }
+#u { flex: 1; min-width: 0; height: 28px; border-radius: 8px; border: 0; outline: 0; background: var(--pill); padding: 0 10px; text-align: center; -webkit-app-region: no-drag; user-select: text; }
+#u:focus { text-align: left; outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent); }
+#open { height: 28px; padding: 0 12px; border-radius: 8px; background: var(--accent); color: #fff; font-weight: 600; -webkit-app-region: no-drag; white-space: nowrap; }
+#open[disabled] { opacity: 0.4; }
+</style>
+</head>
+<body>
+<div id="bar">
+  <input id="u" spellcheck="false" autocomplete="off" data-t-ph="cmd.placeholder">
+  <button id="open" data-t="little.open"></button>
+</div>
+<script src="common.js"></script>
+<script src="little.js"></script>
+</body>
+</html>

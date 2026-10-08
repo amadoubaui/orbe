@@ -1,0 +1,127 @@
+// Sessions Chromium : protocole interne orbe://, agent utilisateur,
+// autorisations des sites et téléchargements.
+const { app, session, protocol, net, dialog, BaseWindow } = require('electron');
+const path = require('path');
+const fs = require('fs');
+const { pathToFileURL } = require('url');
+const { store, uid } = require('./store');
+
+const RENDERER_DIR = path.join(__dirname, '../renderer');
+const configured = new WeakSet();
+const hooks = { onDownload: () => {}, ownerWindow: () => null };
+
+// À appeler avant app.ready.
+function registerScheme() {
+  protocol.registerSchemesAsPrivileged([
+    { scheme: 'orbe', privileges: { standard: true, secure: true, supportFetchAPI: true } },
+  ]);
+}
+
+function serveInternal(request) {
+  const url = new URL(request.url);
+  if (url.host !== 'app') return new Response('Introuvable', { status: 404 });
+  const file = path.normalize(path.join(RENDERER_DIR, decodeURIComponent(url.pathname)));
+  if (!file.startsWith(RENDERER_DIR + path.sep)) return new Response('Interdit', { status: 403 });
+  return net.fetch(pathToFileURL(file).toString());
+}
+
+// Les sites (Google, banques…) refusent parfois les agents « Electron ».
+function cleanUserAgent(ses) {
+  return ses.getUserAgent().replace(/\sElectron\/\S+/, '').replace(/\s(Orbe|orbe)\/\S+/, '');
+}
+
+const AUTO_ALLOW = new Set(['fullscreen', 'pointerLock', 'clipboard-sanitized-write', 'keyboardLock', 'window-management', 'speaker-selection']);
+const ASKABLE = new Set(['media', 'geolocation', 'notifications', 'midi', 'midiSysex', 'clipboard-read']);
+const pending = new Map();
+
+function originOf(url) {
+  try { return new URL(url).origin; } catch { return ''; }
+}
+
+async function askPermission(wc, origin, permission) {
+  const key = origin + '|' + permission;
+  if (pending.has(key)) return pending.get(key);
+  const labelKey = 'perm.' + (permission === 'midiSysex' ? 'midi' : permission);
+  let label = store.t(labelKey);
+  if (label === labelKey) label = store.t('perm.other', null, { name: permission });
+  const parent = hooks.ownerWindow(wc) || BaseWindow.getFocusedWindow();
+  const opts = {
+    type: 'question',
+    message: store.t('perm.title', null, { origin }),
+    detail: label,
+    buttons: [store.t('perm.allow'), store.t('perm.deny')],
+    defaultId: 1,
+    cancelId: 1,
+  };
+  const p = (parent ? dialog.showMessageBox(parent, opts) : dialog.showMessageBox(opts)).then((r) => r.response === 0);
+  pending.set(key, p);
+  p.finally(() => pending.delete(key));
+  return p;
+}
+
+function configure(ses, { persist }) {
+  if (configured.has(ses)) return ses;
+  configured.add(ses);
+  ses.setUserAgent(cleanUserAgent(ses));
+  if (ses !== session.defaultSession) ses.protocol.handle('orbe', serveInternal);
+
+  const remembered = persist ? store.state.permissions : {};
+
+  ses.setPermissionRequestHandler(async (wc, permission, callback, details) => {
+    const origin = originOf(details.requestingUrl || (wc && wc.getURL()) || '');
+    if (origin.startsWith('orbe://') || AUTO_ALLOW.has(permission)) return callback(true);
+    if (!ASKABLE.has(permission) || !origin) return callback(false);
+    const known = remembered[origin] && remembered[origin][permission];
+    if (typeof known === 'boolean') return callback(known);
+    const ok = await askPermission(wc, origin, permission);
+    (remembered[origin] || (remembered[origin] = {}))[permission] = ok;
+    if (persist) store.save();
+    callback(ok);
+  });
+
+  ses.setPermissionCheckHandler((wc, permission, requestingOrigin) => {
+    if (AUTO_ALLOW.has(permission) || (requestingOrigin || '').startsWith('orbe://')) return true;
+    const origin = originOf(requestingOrigin || '');
+    return !!(remembered[origin] && remembered[origin][permission]);
+  });
+
+  ses.on('will-download', (event, item, wc) => {
+    const dir = app.getPath('downloads');
+    const parsed = path.parse(item.getFilename());
+    let target = path.join(dir, parsed.base);
+    for (let i = 1; fs.existsSync(target); i++) target = path.join(dir, `${parsed.name} (${i})${parsed.ext}`);
+    item.setSavePath(target);
+    const d = { id: uid(), name: path.basename(target), path: target, url: item.getURL(), total: item.getTotalBytes(), received: 0, state: 'progressing', at: Date.now() };
+    if (persist) store.addDownload(d);
+    hooks.onDownload('start', d, wc, item);
+    item.on('updated', () => {
+      d.received = item.getReceivedBytes();
+      d.total = item.getTotalBytes();
+      hooks.onDownload('progress', d, wc, item);
+    });
+    item.once('done', (e, state) => {
+      d.state = state;
+      d.received = item.getReceivedBytes();
+      if (persist) store.save();
+      hooks.onDownload('done', d, wc, item);
+    });
+  });
+  return ses;
+}
+
+function mainSession() {
+  return configure(session.fromPartition('persist:orbe'), { persist: true });
+}
+
+let incognitoCount = 0;
+function incognitoSession() {
+  return configure(session.fromPartition('incognito-' + Date.now() + '-' + ++incognitoCount), { persist: false });
+}
+
+function setupDefaultSession() {
+  protocol.handle('orbe', serveInternal);
+  // La session par défaut ne sert qu'à l'interface : aucune autorisation web.
+  session.defaultSession.setPermissionRequestHandler((wc, p, cb) => cb(false));
+}
+
+module.exports = { registerScheme, setupDefaultSession, mainSession, incognitoSession, hooks, originOf };

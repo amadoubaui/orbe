@@ -1,0 +1,58 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">
+<title>Orbe</title>
+<link rel="stylesheet" href="base.css">
+<link rel="stylesheet" href="page.css">
+<style>
+html, body { background: transparent; }
+body { background: color-mix(in srgb, var(--base) 82%, transparent); }
+#drag { position: fixed; inset: 0 0 auto 0; height: 38px; -webkit-app-region: drag; }
+main { padding: 46px 26px 30px; }
+h1 { font-size: 20px; }
+</style>
+</head>
+<body>
+<div id="drag"></div>
+<main>
+  <h1 data-t="set.title"></h1>
+
+  <h2 data-t="set.general"></h2>
+  <div class="card">
+    <div class="line"><div class="grow"><div data-t="set.language"></div><div class="sub" data-t="set.languageHint"></div></div>
+      <select id="lang"><option value="fr">Français</option><option value="en">English</option></select></div>
+    <div class="line"><span class="grow" data-t="set.search"></span><select id="searchEngine"></select></div>
+    <div class="line"><span class="grow" data-t="set.suggestions"></span><input type="checkbox" id="suggestions"></div>
+    <div class="line"><span class="grow" data-t="set.archiveAfter"></span>
+      <select id="archiveAfterHours">
+        <option value="12" data-t="set.h12"></option><option value="24" data-t="set.h24"></option>
+        <option value="168" data-t="set.d7"></option><option value="720" data-t="set.d30"></option>
+        <option value="0" data-t="set.never"></option>
+      </select></div>
+    <div class="line"><div class="grow"><div data-t="set.memory"></div><div class="sub" data-t="set.memoryHint"></div></div>
+      <select id="maxLiveTabs"><option>6</option><option>10</option><option>14</option><option>20</option><option>30</option><option>50</option></select></div>
+    <div class="line"><span class="grow" data-t="set.default"></span><button class="btn" id="makeDefault" data-t="set.makeDefault"></button></div>
+  </div>
+
+  <h2 data-t="set.appearance"></h2>
+  <div class="card">
+    <div class="line"><span class="grow" data-t="set.appearance"></span>
+      <select id="appearance"><option value="auto" data-t="view.auto"></option><option value="light" data-t="view.light"></option><option value="dark" data-t="view.dark"></option></select></div>
+    <div class="line"><span class="grow" data-t="set.translucent"></span><input type="checkbox" id="translucent"></div>
+  </div>
+
+  <h2 data-t="set.privacy"></h2>
+  <div class="card">
+    <div class="line"><div class="grow"><div data-t="set.clearData"></div><div class="sub" data-t="set.clearDataHint"></div></div>
+      <button class="btn" id="clearData" data-t="set.clearBtn"></button></div>
+    <div class="line"><span class="grow" data-t="set.sitePerms"></span><button class="btn" id="resetPerms">↺</button></div>
+  </div>
+
+  <p class="muted" style="margin-top:22px;text-align:center"><span data-t="set.about"></span> <span id="version"></span></p>
+</main>
+<script src="common.js"></script>
+<script src="settings.js"></script>
+</body>
+</html>
