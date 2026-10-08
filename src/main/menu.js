@@ -100,6 +100,8 @@ function build() {
         sep,
         item('addSplit'), item('closeSplit'),
         sep,
+        item('boost'), item('zap'),
+        sep,
         item('actualSize'), item('zoomIn'), item('zoomOut'),
         sep,
         { label: t('view.developer'), submenu: [item('source'), item('devtools'), item('inspect'), item('console')] },

@@ -8,6 +8,7 @@ const { store, uid, SPACE_COLORS } = require('./store');
 const sessions = require('./sessions');
 const suggest = require('./suggest');
 const adblock = require('./adblock');
+const boosts = require('./boosts');
 
 const PAD = 8;
 const GAP = 8;
@@ -539,6 +540,7 @@ class OrbeWindow {
       touch();
     };
     wc.on('did-navigate', (e, url) => navigated(url));
+    if (!incognito) wc.on('dom-ready', () => boosts.apply(wc));
     wc.on('did-navigate-in-page', (e, url, isMainFrame) => { if (isMainFrame) navigated(url); });
     wc.on('audio-state-changed', () => {
       const owner = rt.owner;

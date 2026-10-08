@@ -442,6 +442,23 @@ module.exports = async function selftest({ first: w, OrbeWindow, store, win, lit
   w.close(pub.id);
   w.activate(a.id);
 
+  // Boosts : CSS par site et Zap
+  const boostsMod = require('../src/main/boosts');
+  const bt = w.newTab(base + '/a');
+  await until(() => titleOf(bt.id) === 'Page A' && !win.live.get(bt.id).loading, 'page pour le Boost');
+  const bwc = win.live.get(bt.id).wc;
+  boostsMod.set(boostsMod.hostOf(base), { css: 'h1 { color: rgb(1, 2, 3) !important; }', zaps: ['p'] });
+  await boostsMod.apply(bwc);
+  check('Boost : le CSS du site et le Zap s’appliquent', await bwc.executeJavaScript('getComputedStyle(document.querySelector("h1")).color + "|" + getComputedStyle(document.querySelector("p")).display') === 'rgb(1, 2, 3)|none');
+  bwc.reload();
+  await until(async () => (await bwc.executeJavaScript('document.readyState === "complete" && getComputedStyle(document.querySelector("h1")).color').catch(() => '')) === 'rgb(1, 2, 3)', 'Boost réappliqué au rechargement');
+  check('Boost : réappliqué à chaque chargement', true);
+  boostsMod.set(boostsMod.hostOf(base), { css: '', zaps: [] });
+  await boostsMod.apply(bwc);
+  check('Boost : retiré quand il est vidé', await bwc.executeJavaScript('getComputedStyle(document.querySelector("p")).display') !== 'none' && !store.state.boosts[boostsMod.hostOf(base)], JSON.stringify([await bwc.executeJavaScript('getComputedStyle(document.querySelector("p")).display'), store.state.boosts]));
+  w.close(bt.id);
+  w.activate(a.id);
+
   // Navigation privée
   const inc = new OrbeWindow({ incognito: true });
   const it = inc.newTab(base + '/b');

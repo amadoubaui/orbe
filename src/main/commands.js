@@ -4,7 +4,7 @@
 const { app, dialog } = require('electron');
 const { store } = require('./store');
 
-const hooks = { newWindow: () => {}, newLittle: () => {}, openSettings: () => {}, settingsChanged: null };
+const hooks = { newWindow: () => {}, newLittle: () => {}, openSettings: () => {}, settingsChanged: null, openBoost: () => {} };
 
 const wc = (w) => w.activeWc;
 
@@ -76,6 +76,8 @@ const COMMANDS = [
   { name: 'settings', label: 'app.settings', accel: 'Cmd+,', keys: '⌘,', global: true, run: () => hooks.openSettings() },
   { name: 'defaultBrowser', label: 'app.defaultBrowser', global: true, run: (w) => { makeDefault(); if (w) w.toast(store.t('toast.defaultBrowser')); } },
   { name: 'toggleSiteBlocking', label: 'adblock.toggleSite', run: (w) => w.toggleSiteBlocking() },
+  { name: 'boost', label: 'boost.edit', run: (w) => hooks.openBoost(w) },
+  { name: 'zap', label: 'boost.zapCmd', run: (w) => { const p = w.activeRt; if (p && !w.incognito) require('./boosts').zap(p.wc); } },
   { name: 'importArc', label: 'app.importArc', run: (w) => importArc(w) },
   { name: 'newProfile', label: 'spaces.newProfile', palette: false, run: (w) => w.newProfile() },
   { name: 'welcome', label: 'help.welcome', run: (w) => w.openInternal('welcome.html') },

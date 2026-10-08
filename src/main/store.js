@@ -75,6 +75,7 @@ class Store {
     // Version 2 : l'accès des pages internes repose sur un drapeau explicite.
     if (from < 2) for (const tab of Object.values(s.tabs)) if (INTERNAL_PAGE.test(tab.url || '')) tab.internal = true;
     s.permissions = s.permissions || {};
+    s.boosts = s.boosts || {};
     s.window = s.window || {};
     if (!Array.isArray(s.spaces) || !s.spaces.length) {
       s.spaces = [this.makeSpace(this.t('spaces.firstName', s.settings.lang), '🏠', SPACE_COLORS[0])];
