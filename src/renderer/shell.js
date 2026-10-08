@@ -7,6 +7,11 @@ let editing = null; // id en cours de renommage
 let drag = null;
 let animate = false;
 let present = new Set();
+// Sélection multiple (⌘clic, ⇧clic) : identifiants d'onglets ; `anchor` est le
+// point de départ d'une plage ⇧clic.
+const sel = new Set();
+let anchor = null;
+let selRev = 0;
 const FLOATING = location.hash === '#flottant';
 if (FLOATING) document.documentElement.classList.add('floating');
 
@@ -44,7 +49,8 @@ function tabRow(el, it) {
     el.draggable = true;
   }
   el.className = 'row tab' + (it.active ? ' active' : '') + (it.shown ? ' shown' : '') + (it.live ? ' live' : '')
-    + (it.audible ? ' audible' : '') + (it.muted ? ' muted' : '') + (it.changed ? ' changed' : '') + (it.partners ? ' split' : '') + (it.grouped ? ' grouped' : '');
+    + (it.audible ? ' audible' : '') + (it.muted ? ' muted' : '') + (it.changed ? ' changed' : '') + (it.partners ? ' split' : '') + (it.grouped ? ' grouped' : '')
+    + (sel.has(it.id) ? ' sel' : '');
   // Vue scindée : une seule ligne, avec les icônes et les titres de chaque volet.
   const label = it.partners ? [it.title, ...it.partners.map((p) => p.title)].join('  |  ') : it.title;
   if (editing !== it.id && el._t !== label) {
@@ -84,7 +90,7 @@ function tileEl(el, it) {
     el._ic = el.firstChild;
     el.draggable = true;
   }
-  el.className = 'tile' + (it.active ? ' active' : '') + (it.live ? ' live' : '') + (it.audible ? ' audible' : '');
+  el.className = 'tile' + (it.active ? ' active' : '') + (it.live ? ' live' : '') + (it.audible ? ' audible' : '') + (sel.has(it.id) ? ' sel' : '');
   el.title = it.title;
   setIcon(el, it);
 }
@@ -131,6 +137,13 @@ function render(s) {
   present = new Set();
   const collect = (list) => { for (const it of list) { present.add(it.id); if (it.children) collect(it.children); } };
   collect(s.favorites); collect(s.pinned); collect(s.today);
+  // La sélection ne garde que les onglets encore affichés ; elle tombe quand une
+  // action l'a consommée (selRev) ou quand un autre onglet passe au premier plan.
+  if (sel.size) {
+    const kept = (s.selRev || 0) !== selRev || (prev && prev.activeId !== s.activeId) ? [] : [...sel].filter((id) => present.has(id));
+    if (kept.length !== sel.size) setSel(kept);
+  }
+  selRev = s.selRev || 0;
   S = s;
   setLang(s.lang);
   const b = document.body;
@@ -295,12 +308,60 @@ function startRename(id) {
   for (const ev of ['click', 'dblclick', 'mousedown']) input.addEventListener(ev, (e) => e.stopPropagation());
 }
 
+// --- Sélection multiple -----------------------------------------------------
+const rowOf = (id) => document.querySelector(`#sidebar [data-id="${CSS.escape(id)}"]`);
+// Onglets dans l'ordre où on les voit : favoris, épinglés, Aujourd'hui (les
+// lignes masquées — dossier replié, volet d'une vue scindée — n'en font pas partie).
+const visibleTabIds = () => [...document.querySelectorAll('#fav .tile, #pinned .row.tab, #today .row.tab')]
+  .filter((el) => el.dataset.id && el.offsetParent !== null).map((el) => el.dataset.id);
+// Ligne de l'onglet affiché (pour une vue scindée : la ligne du groupe).
+const activeRowId = () => { const el = document.querySelector('#sidebar .row.tab.active, #sidebar .tile.active'); return el ? el.dataset.id : null; };
+
+function setSel(ids) {
+  sel.clear();
+  for (const id of ids) sel.add(id);
+  if (!sel.size) anchor = null;
+  for (const el of document.querySelectorAll('#sidebar .sel')) if (!sel.has(el.dataset.id)) el.classList.remove('sel');
+  for (const id of sel) { const el = rowOf(id); if (el) el.classList.add('sel'); }
+  send('select', [...sel]);
+}
+
+// ⌘clic : ajoute ou retire un onglet. Comme dans Arc, la sélection part de
+// l'onglet affiché : le premier ⌘clic sur un autre onglet les réunit.
+function toggleSel(id) {
+  const next = new Set(sel);
+  const current = activeRowId();
+  if (!next.size && current && current !== id) next.add(current);
+  if (next.has(id)) next.delete(id); else next.add(id);
+  setSel(next);
+  anchor = sel.size ? id : null;
+}
+
+// ⇧clic : tout ce qui se trouve entre le point de départ et la ligne cliquée.
+function rangeSel(id) {
+  const order = visibleTabIds();
+  const from = anchor && order.includes(anchor) ? anchor : (activeRowId() || id);
+  const a = order.indexOf(from);
+  const b = order.indexOf(id);
+  if (a < 0 || b < 0) return setSel([id]);
+  setSel(order.slice(Math.min(a, b), Math.max(a, b) + 1));
+  anchor = from;
+  return undefined;
+}
+
 // --- Clics ------------------------------------------------------------------
 const sidebar = $('sidebar');
 
 sidebar.addEventListener('click', (e) => {
   const act = e.target.closest('[data-act]');
   const row = e.target.closest('[data-id]');
+  // ⌘clic (Ctrl hors macOS) ou ⇧clic sur un onglet : sélection, sans l'afficher.
+  if (row && !row.dataset.folder && (modKey(e) || e.shiftKey) && !(act && act.dataset.act !== 'icon')) {
+    e.stopPropagation();
+    return modKey(e) ? toggleSel(row.dataset.id) : rangeSel(row.dataset.id);
+  }
+  // Tout autre clic dans la barre abandonne la sélection.
+  if (sel.size) setSel([]);
   if (act && row) {
     e.stopPropagation();
     const id = row.dataset.id;
@@ -309,15 +370,16 @@ sidebar.addEventListener('click', (e) => {
     else if (act.dataset.act === 'reset') send('resetPinned', id);
     // Clic sur l'icône d'un épinglé sorti de son adresse : retour à celle-ci.
     else if (act.dataset.act === 'icon') send(row.classList.contains('changed') ? 'resetPinned' : (row.dataset.folder ? 'toggleFolder' : 'activate'), id);
-    return;
+    return undefined;
   }
   if (row) {
     if (row.dataset.folder) send('toggleFolder', row.dataset.id);
     else send('activate', row.dataset.id);
-    return;
+    return undefined;
   }
   const sp = e.target.closest('[data-space]');
   if (sp) send('switchSpace', sp.dataset.space);
+  return undefined;
 });
 
 // Clic molette : archive l'onglet.
@@ -338,8 +400,12 @@ sidebar.addEventListener('contextmenu', (e) => {
   e.preventDefault();
   const row = e.target.closest('[data-id]');
   const sp = e.target.closest('[data-space]');
-  if (row) send('tabMenu', row.dataset.id);
-  else if (sp) send('spaceMenu', sp.dataset.space);
+  if (row) {
+    // Clic droit hors de la sélection : elle tombe, le menu est celui de la ligne.
+    const id = row.dataset.id;
+    if (sel.size && !sel.has(id)) setSel([]);
+    send('tabMenu', sel.size > 1 ? { id, ids: [...sel] } : id);
+  } else if (sp) send('spaceMenu', sp.dataset.space);
   else if (e.target.closest('#space-head')) send('spaceMenu', null);
   else send('sidebarMenu');
 });
@@ -471,7 +537,12 @@ sidebar.addEventListener('dragstart', (e) => {
   const row = e.target.closest('[data-id]');
   if (!row || editing) return e.preventDefault();
   const item = row.dataset.folder ? row.parentElement : row;
-  drag = { id: row.dataset.id, folder: !!row.dataset.folder };
+  // Glisser une ligne sélectionnée emporte toute la sélection, dans l'ordre affiché ;
+  // glisser une autre ligne abandonne la sélection.
+  const many = !row.dataset.folder && sel.size > 1 && sel.has(row.dataset.id) ? visibleTabIds().filter((id) => sel.has(id)) : null;
+  if (sel.size && !many) setSel([]);
+  drag = { id: row.dataset.id, folder: !!row.dataset.folder, ids: many && many.length > 1 ? many : null };
+  if (drag.ids) dragGhost(e, row, drag.ids.length);
   e.dataTransfer.effectAllowed = 'move';
   e.dataTransfer.setData('text/plain', row.dataset.id);
   e.dataTransfer.setData('application/x-orbe-item', row.dataset.id);
@@ -479,6 +550,7 @@ sidebar.addEventListener('dragstart', (e) => {
   // déplacer la ligne saisie pendant « dragstart » annule le geste.
   requestAnimationFrame(() => {
     if (!drag) return;
+    if (drag.ids) for (const id of drag.ids) { const el = rowOf(id); if (el) el.classList.add('dragging-self'); }
     item.classList.add('dragging-self');
     document.body.classList.add('dragging');
     if (!drag.folder) send('dragZone', true);
@@ -486,6 +558,27 @@ sidebar.addEventListener('dragstart', (e) => {
   return undefined;
 });
 sidebar.addEventListener('dragend', endDrag);
+
+// Image du glisser pour une sélection : la ligne saisie, une carte derrière
+// elle et le nombre d'onglets emportés. Posée hors de l'écran, le temps que le
+// système en prenne une copie.
+function dragGhost(e, row, n) {
+  const r = row.getBoundingClientRect();
+  const ghost = document.createElement('div');
+  ghost.className = 'drag-ghost';
+  ghost.style.width = (r.width + 10) + 'px';
+  const copy = row.cloneNode(true);
+  copy.removeAttribute('data-id');
+  copy.removeAttribute('data-key');
+  copy.classList.remove('sel', 'active', 'shown');
+  const badge = document.createElement('span');
+  badge.className = 'count';
+  badge.textContent = String(n);
+  ghost.append(copy, badge);
+  document.body.appendChild(ghost);
+  e.dataTransfer.setDragImage(ghost, e.clientX - r.left, e.clientY - r.top + 8);
+  setTimeout(() => ghost.remove(), 0);
+}
 
 // Calcule la destination sous le pointeur : liste, position et repère visuel.
 function dropTarget(e) {
@@ -590,12 +683,18 @@ sidebar.addEventListener('drop', (e) => {
     return endDrag();
   }
   const target = dropTarget(e);
-  if (target) send('move', { id: drag.id, to: target.to, folderId: target.folderId, index: target.index });
+  if (target) send('move', { ...(drag.ids ? { ids: drag.ids } : { id: drag.id }), to: target.to, folderId: target.folderId, index: target.index });
   return endDrag();
 });
 
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && drag) endDrag();
+  else if (e.key === 'Escape' && sel.size) setSel([]);
+  // Suppr ou Retour arrière, la barre latérale ayant le clavier : archive la sélection.
+  else if ((e.key === 'Delete' || e.key === 'Backspace') && sel.size && !editing) {
+    e.preventDefault();
+    send('close', { ids: [...sel] });
+  }
 });
 
 O.on('state', render);

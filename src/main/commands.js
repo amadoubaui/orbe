@@ -24,7 +24,7 @@ const COMMANDS = [
   { name: 'redo', label: 'edit.redo', accel: 'Shift+Cmd+Z', keys: '⇧⌘Z', palette: false, run: () => redo() },
   { name: 'reopen', label: 'file.reopen', accel: 'Shift+Cmd+T', keys: '⇧⌘T', run: (w) => w.reopenClosed() },
   { name: 'commandBar', label: 'file.commandBar', accel: 'Cmd+L', keys: '⌘L', palette: false, run: (w) => w.openCommand('edit') },
-  { name: 'closeTab', label: 'file.closeTab', accel: 'Cmd+W', keys: '⌘W', run: (w) => (w.peekState ? w.closePeek() : (w.activeId ? w.close() : w.win.close())) },
+  { name: 'closeTab', label: 'file.closeTab', accel: 'Cmd+W', keys: '⌘W', run: (w) => (w.peekState ? w.closePeek() : (w.selected().length ? w.closeMany(w.selected()) : (w.activeId ? w.close() : w.win.close()))) },
   { name: 'closeWindow', label: 'file.closeWindow', accel: 'Shift+Cmd+W', keys: '⇧⌘W', run: (w) => w.win.close() },
   { name: 'capture', label: 'file.capture', accel: 'Shift+Cmd+2', keys: '⇧⌘2', run: (w) => w.capture() },
   { name: 'captureFull', label: 'file.captureFull', run: (w) => w.captureFull() },
@@ -32,7 +32,7 @@ const COMMANDS = [
   { name: 'savePage', label: 'file.savePage', accel: 'Shift+Cmd+S', keys: '⇧⌘S', run: (w) => w.savePage() },
   { name: 'print', label: 'file.print', accel: 'Cmd+P', keys: '⌘P', run: (w) => wc(w) && wc(w).print() },
   // Édition
-  { name: 'copyUrl', label: 'edit.copyUrl', accel: 'Shift+Cmd+C', keys: '⇧⌘C', run: (w) => w.copyUrl(false) },
+  { name: 'copyUrl', label: 'edit.copyUrl', accel: 'Shift+Cmd+C', keys: '⇧⌘C', run: (w) => (w.selected().length > 1 ? w.copyLinks(w.selected()) : w.copyUrl(false)) },
   { name: 'copyUrlMarkdown', label: 'edit.copyUrlMarkdown', accel: 'Alt+Shift+Cmd+C', keys: '⌥⇧⌘C', run: (w) => w.copyUrl(true) },
   { name: 'copyUrlQuote', label: 'edit.copyUrlQuote', accel: 'Ctrl+Shift+Cmd+C', keys: '⌃⇧⌘C', run: (w) => w.copyQuote() },
   { name: 'find', label: 'edit.find', accel: 'Cmd+F', keys: '⌘F', run: (w) => w.openFind() },
@@ -66,7 +66,7 @@ const COMMANDS = [
   { name: 'nextSpace', label: 'spaces.next', accel: 'Alt+Cmd+Right', keys: '⌥⌘→', run: (w) => w.stepSpace(1) },
   { name: 'prevSpace', label: 'spaces.prev', accel: 'Alt+Cmd+Left', keys: '⌥⌘←', run: (w) => w.stepSpace(-1) },
   // Onglets
-  { name: 'togglePin', label: 'tabs.pin', accel: 'Cmd+D', keys: '⌘D', run: (w) => w.togglePin() },
+  { name: 'togglePin', label: 'tabs.pin', accel: 'Cmd+D', keys: '⌘D', run: (w) => (w.selected().length > 1 ? w.pinMany(w.selected()) : w.togglePin()) },
   { name: 'newFolder', label: 'tabs.newFolder', run: (w) => w.newFolder() },
   { name: 'openInSpace', label: 'little.openIn', accel: 'Alt+Cmd+O', keys: '⌥⌘O', palette: false, run: () => {} },
   { name: 'expandPeek', label: 'peek.expand', accel: 'Cmd+O', keys: '⌘O', palette: false, run: (w) => w.expandPeek() },

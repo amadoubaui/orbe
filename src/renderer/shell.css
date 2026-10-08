@@ -195,6 +195,36 @@ body.dragging .list:empty { min-height: 30px; }
 #b-newtab:hover { color: var(--fg); }
 .row.dragging-self, .tile.dragging-self, .folder.dragging-self { opacity: 0.35; }
 
+/* Sélection multiple (⌘clic, ⇧clic) : teinte de l'Espace et liseré, pour ne pas
+   la confondre avec la ligne active (fond clair et ombre). */
+.row.sel, .tile.sel {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 62%, transparent);
+}
+.row.sel:hover, .tile.sel:hover { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+.row.sel.active, .tile.sel.active { background: color-mix(in srgb, var(--accent) 22%, var(--active)); }
+.row.tab.sel .title { color: var(--fg); }
+/* Image du glisser d'une sélection : la ligne, une carte derrière, le compte. */
+.drag-ghost { position: fixed; left: -2000px; top: 0; padding: 8px 10px 8px 0; pointer-events: none; }
+.drag-ghost .row, .drag-ghost .tile { background: var(--active); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18), 5px 5px 0 -1px color-mix(in srgb, var(--accent) 35%, var(--active)); opacity: 1; }
+.drag-ghost .tile { width: 56px; }
+.drag-ghost .row .act { display: none; }
+.drag-ghost .count {
+  position: absolute;
+  top: 0;
+  right: 2px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+}
+
 .spinner {
   width: 14px;
   height: 14px;

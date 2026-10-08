@@ -649,6 +649,9 @@ module.exports = async function selftest(ctx) {
   await shot('clair');
   commands.setSetting('appearance', 'auto');
 
+  // Barre latérale : sélection multiple, annulation (tests/barre.js)
+  await require('./barre')({ ...ctx, check });
+
   // Tableaux (tests/easels.js)
   await require('./easels')({ ...ctx, check });
 

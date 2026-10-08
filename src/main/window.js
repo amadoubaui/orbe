@@ -1021,6 +1021,137 @@ class OrbeWindow {
     this.changed();
   }
 
+  // --- Sélection multiple ---------------------------------------------------
+  // La sélection vit dans la barre latérale ; le processus principal ne reçoit
+  // que des listes d'identifiants, vérifiées une à une : seuls restent les
+  // onglets (jamais les dossiers) affichés dans cette fenêtre — favoris du
+  // profil et Espace courant —, sans doublon et dans l'ordre d'affichage.
+  checkIds(ids) {
+    if (!Array.isArray(ids) || ids.length > 5000) return [];
+    const wanted = new Set(ids.filter((x) => typeof x === 'string'));
+    if (!wanted.size) return [];
+    return this.orderedIds().filter((id) => wanted.has(id) && this.data.tabs[id]);
+  }
+
+  // Sélection annoncée par la barre latérale, revérifiée à chaque usage.
+  selected() {
+    return this.checkIds(this.selection);
+  }
+
+  // Après une action sur la sélection : la barre latérale la vide.
+  dropSelection() {
+    this.selection = [];
+    this.selRev = (this.selRev || 0) + 1;
+  }
+
+  closeMany(ids) {
+    ids = this.checkIds(ids);
+    if (!ids.length) return;
+    for (const id of [...ids].reverse()) this.close(id, { silent: true });
+    this.dropSelection();
+    this.layout();
+    this.focusContent();
+    this.remember();
+    this.changed();
+  }
+
+  // Dépose plusieurs onglets au même endroit, dans leur ordre d'affichage.
+  moveMany({ ids, to, folderId, index }) {
+    ids = this.checkIds(ids);
+    if (!ids.length) return;
+    let dest;
+    if (to === 'favorites') dest = this.favorites;
+    else if (to === 'today') dest = this.space.today;
+    else if (to === 'pinned') dest = this.space.pinned;
+    else if (to === 'folder') {
+      const f = typeof folderId === 'string' ? findNode(this.space.pinned, folderId) : null;
+      if (!f || f.node.type !== 'folder') return;
+      dest = f.node.children;
+    } else return;
+    const flat = to === 'favorites' || to === 'today';
+    const key = (x) => (flat ? x : x.id);
+    // Repère : la première ligne, à partir de la position visée, qui ne part pas avec le lot.
+    const moving = new Set(ids);
+    const from = Number.isFinite(index) ? clamp(Math.floor(index), 0, dest.length) : dest.length;
+    const before = dest.slice(from).map(key).find((k) => !moving.has(k));
+    for (const id of ids) {
+      const loc = this.locate(id);
+      loc.arr.splice(loc.index, 1);
+      const tab = this.data.tabs[id];
+      if (to === 'today') { delete tab.homeUrl; delete tab.customTitle; } else if (!tab.homeUrl) tab.homeUrl = tab.url;
+    }
+    const at = before === undefined ? dest.length : dest.findIndex((x) => key(x) === before);
+    dest.splice(at, 0, ...ids.map((id) => (flat ? id : { type: 'tab', id })));
+    this.dropSelection();
+    this.changed();
+  }
+
+  // Épingle les onglets du jour de la sélection ; si tous sont déjà épinglés, les désépingle.
+  pinMany(ids) {
+    ids = this.checkIds(ids).filter((id) => this.locate(id).list !== 'favorites');
+    if (!ids.length) return;
+    const unpin = ids.every((id) => this.locate(id).list === 'pinned');
+    if (unpin) this.moveMany({ ids, to: 'today', index: 0 });
+    else this.moveMany({ ids: ids.filter((id) => this.locate(id).list === 'today'), to: 'pinned' });
+  }
+
+  // Ajoute la sélection aux favoris ; si tous en sont déjà, les en retire.
+  favoriteMany(ids) {
+    ids = this.checkIds(ids);
+    if (!ids.length || this.incognito) return;
+    const remove = ids.every((id) => this.locate(id).list === 'favorites');
+    if (remove) this.moveMany({ ids, to: 'today', index: 0 });
+    else this.moveMany({ ids: ids.filter((id) => this.locate(id).list !== 'favorites'), to: 'favorites' });
+  }
+
+  moveManyToSpace(ids, spaceId) {
+    ids = this.checkIds(ids).filter((id) => this.locate(id).list !== 'favorites');
+    if (!ids.length || !this.data.spaces.some((s) => s.id === spaceId)) return;
+    // Les épinglés s'ajoutent à la suite ; les onglets du jour arrivent en tête,
+    // donc du dernier au premier pour garder leur ordre.
+    const today = ids.filter((id) => this.locate(id).list === 'today');
+    for (const id of ids) if (!today.includes(id)) this.moveToSpace(id, spaceId);
+    for (const id of today.reverse()) this.moveToSpace(id, spaceId);
+    this.dropSelection();
+    this.changed();
+  }
+
+  copyLinks(ids) {
+    ids = this.checkIds(ids);
+    if (!ids.length) return;
+    clipboard.writeText(ids.map((id) => this.data.tabs[id].url).join('\n'));
+    this.toast(t('toast.linksCopied', { n: ids.length }));
+  }
+
+  // Chaque copie se place sous son modèle (en tête d'Aujourd'hui pour un épinglé
+  // ou un favori) et se charge en arrière-plan ; l'onglet affiché ne change pas.
+  duplicateMany(ids) {
+    ids = this.checkIds(ids).filter((id) => !this.data.tabs[id].internal);
+    if (!ids.length) return;
+    for (const id of [...ids].reverse()) {
+      const src = this.data.tabs[id];
+      const tab = this.createTab(src.url, { after: id });
+      tab.title = src.title;
+      tab.favicon = src.favicon;
+      this.ensureView(tab.id);
+    }
+    OrbeWindow.trimLive();
+    this.dropSelection();
+    this.changed();
+  }
+
+  // « Nouveau dossier avec la sélection » : le dossier prend la place du premier
+  // onglet épinglé de la sélection (sinon la fin des épinglés) et reçoit le lot.
+  folderFromSelection(ids) {
+    ids = this.checkIds(ids);
+    if (!ids.length) return;
+    const folder = { type: 'folder', id: uid(), name: t('tabs.folderDefault'), open: true, children: [] };
+    const first = ids.map((id) => this.locate(id)).find((loc) => loc.list === 'pinned');
+    if (first) first.arr.splice(first.index, 0, folder); else this.space.pinned.push(folder);
+    this.moveMany({ ids, to: 'folder', folderId: folder.id });
+    this.askRename(folder.id);
+  }
+
   // --- Dossiers -------------------------------------------------------------
   newFolder() {
     const folder = { type: 'folder', id: uid(), name: t('tabs.folderDefault'), open: true, children: [] };
@@ -1775,7 +1906,9 @@ class OrbeWindow {
     menu.popup({ window: this.win, callback: () => { this.menuOpen = false; } });
   }
 
-  tabMenu(id) {
+  tabMenu(id, ids) {
+    const many = this.checkIds(ids);
+    if (many.length > 1 && many.includes(id)) return this.tabsMenu(many);
     const loc = this.locate(id);
     if (!loc) return;
     if (loc.node.type === 'folder') return this.folderMenu(id);
@@ -1810,6 +1943,32 @@ class OrbeWindow {
       } });
     }
     this.popup(tpl);
+  }
+
+  // Menu d'une sélection de plusieurs onglets : chaque action porte sur tous.
+  tabsMenuTemplate(ids) {
+    const n = ids.length;
+    const lists = ids.map((id) => this.locate(id).list);
+    const favs = lists.every((l) => l === 'favorites');
+    const pinned = lists.every((l) => l === 'pinned');
+    const others = this.data.spaces.filter((s) => s !== this.space);
+    const tpl = [
+      { label: t('tabs.copyLinks'), click: () => this.copyLinks(ids) },
+      { label: t('tabs.duplicate'), click: () => this.duplicateMany(ids) },
+      { type: 'separator' },
+      { label: t(pinned ? 'tabs.unpinMany' : 'tabs.pinMany', { n }), visible: !favs, enabled: pinned || lists.includes('today'), click: () => this.pinMany(ids) },
+      { label: t(favs ? 'tabs.removeFavorite' : 'tabs.addFavorite'), visible: !this.incognito, click: () => this.favoriteMany(ids) },
+      { label: t('tabs.folderFromSelection'), click: () => this.folderFromSelection(ids) },
+    ];
+    if (others.length && !lists.includes('favorites')) {
+      tpl.push({ label: t('tabs.moveTo'), submenu: others.map((s) => ({ label: `${s.icon} ${s.name}`, click: () => this.moveManyToSpace(ids, s.id) })) });
+    }
+    tpl.push({ type: 'separator' }, { label: t('tabs.closeMany', { n }), click: () => this.closeMany(ids) });
+    return tpl;
+  }
+
+  tabsMenu(ids) {
+    this.popup(this.tabsMenuTemplate(ids));
   }
 
   folderMenu(id) {
@@ -1960,6 +2119,7 @@ class OrbeWindow {
       pinned: space.pinned.map(nodeVM),
       today: space.today.map(tabVM),
       activeId,
+      selRev: this.selRev || 0,
       nav: {
         url: tab ? tab.url : '',
         internal: tab ? isInternal(tab.url) : false,
@@ -2006,19 +2166,21 @@ class OrbeWindow {
       // Clic sur l'onglet déjà affiché : rien à faire, et surtout ne pas
       // reprendre le clavier (second clic d'un double-clic pour renommer).
       case 'activate': return a === this.activeId && live.has(a) && !this.peekState ? undefined : this.activate(a);
-      case 'close': return this.close(a);
+      // Variante { ids } : l'action porte sur la sélection (liste vérifiée par checkIds).
+      case 'close': return a && typeof a === 'object' ? this.closeMany(a.ids) : this.close(a);
+      case 'select': this.selection = this.checkIds(a); return undefined;
       case 'openCommand': return this.openCommand(a);
       case 'toggleSidebar': return this.toggleSidebar();
       case 'sidebarWidth': return this.setSidebarWidth(a);
       case 'switchSpace': return this.switchSpace(a);
       case 'stepSpace': return this.stepSpace(a);
-      case 'tabMenu': return this.tabMenu(a);
+      case 'tabMenu': return a && typeof a === 'object' ? this.tabMenu(String(a.id), a.ids) : this.tabMenu(a);
       case 'spaceMenu': return this.spaceMenu(a);
       case 'sidebarMenu': return this.sidebarMenu();
       case 'shieldMenu': return this.shieldMenu();
       case 'rename': return this.rename(a.id, a.name);
       case 'toggleFolder': return this.toggleFolder(a);
-      case 'move': return this.move(a);
+      case 'move': return a && Array.isArray(a.ids) ? this.moveMany(a) : this.move(a);
       case 'toggleMute': return this.toggleMute(a);
       case 'mediaToggle': return this.mediaToggle();
       case 'resetPinned': return this.resetPinned(a);
