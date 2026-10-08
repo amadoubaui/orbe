@@ -432,10 +432,10 @@ Arc contient en tout trois fichiers son. Aucun autre son n'existe dans l'applica
 
 | Id | Ce que fait Arc | Preuve Arc | État | Preuve Orbe | Note |
 | --- | --- | --- | --- | --- | --- |
-| SON-1 | Son de capture : `capture.wav`, 0,63 s, stéréo 48 kHz 24 bits | binaire `ARC_SoundEffects.bundle` | ⬜ | aucun son dans Orbe (recherche dans `src/`) | Créer un son d'obturateur original (ne pas copier le fichier d'Arc) et le jouer à la capture |
+| SON-1 | Son de capture : `capture.wav`, 0,63 s, stéréo 48 kHz 24 bits | binaire `ARC_SoundEffects.bundle` | ✅ | aucun son dans Orbe (recherche dans `src/`) | Fait le 8 oct. (zone + choix de l'action, son original, réglage) |
 | SON-2 | Son `event.m4a`, 3,52 s, stéréo 44,1 kHz | binaire | ⬜ | | Moment où il joue : non vérifié (probablement un événement d'accueil ou de carte de membre) ; à écouter avec le propriétaire |
 | SON-3 | Musique d'accueil `intro-music.mp3`, 21,3 s, pendant la création du compte ; vidéo `demo.mov` | binaire `ARC_AuthFeature` ; inverse | ⬜ | accueil silencieux | Musique originale courte, coupable |
-| SON-4 | Réglage « Play Arc sound effects » (Advanced) | binaire ; HC 20498417809815 | ⬜ | | Réglage « Jouer les sons d'Orbe » |
+| SON-4 | Réglage « Play Arc sound effects » (Advanced) | binaire ; HC 20498417809815 | ✅ | | Fait le 8 oct. (zone + choix de l'action, son original, réglage) |
 | SON-5 | Pas de son pour copier l'adresse, changer d'Espace, fermer un onglet ou finir un téléchargement | binaire (seuls trois fichiers) | ✅ | Orbe est muet aussi | Vérifié par l'absence de fichiers ; un son système reste possible mais non constaté |
 | SON-6 | Retour haptique en réordonnant les onglets, réglage « Haptic feedback when reordering tabs » | binaire ; HC 20498293324823, 20498377604887 | ⬜ | | Electron n'expose pas `NSHapticFeedbackManager` : petit module natif à écrire |
 | SON-7 | Retour haptique au dépôt d'un glisser-déposer | binaire `dropHapticSubject`, `isDragDropHapticFeedbackEnabled` | ⬜ | | Même module |
@@ -531,8 +531,8 @@ Aucun geste n'a été rejoué sur Arc pendant cet inventaire (ils demandent la m
 | TAB-11 | Export PNG (« Share Via… »), File → Save As | HC 19231142050071 | ⬜ | | |
 | TAB-12 | Partage en lecture ou en édition, collaborateurs, commentaires | HC 19231142050071 ; binaire | ➖ | | Demande un serveur |
 | TAB-13 | Liste des tableaux dans la Bibliothèque | menu « View Easels… » | ✅ | self (vignette, réouverture, suppression) | |
-| TAB-14 | Capture… ⇧⌘2 : choisir une zone, les éléments de la page sont détectés ; infobulle « Click or drag to capture a portion of this page » ; curseur en appareil photo | menu ; HC 20498417809815 ; binaire | 🟡 | ⇧⌘2 capture toute la partie visible ; la zone n'existe que pour « vers un tableau » (self « capture d'une zone choisie à la souris ») | Brancher la zone sur ⇧⌘2 |
-| TAB-15 | Après la capture : envoyer, enregistrer, copier, reprendre, ajouter à un tableau | HC 20498417809815 ; binaire | 🟡 | copie + fichier d'office | Petit panneau d'actions |
+| TAB-14 | Capture… ⇧⌘2 : choisir une zone, les éléments de la page sont détectés ; infobulle « Click or drag to capture a portion of this page » ; curseur en appareil photo | menu ; HC 20498417809815 ; binaire | ✅ | ⇧⌘2 capture toute la partie visible ; la zone n'existe que pour « vers un tableau » (self « capture d'une zone choisie à la souris ») | Fait le 8 oct. (zone + choix de l'action, son original, réglage) |
+| TAB-15 | Après la capture : envoyer, enregistrer, copier, reprendre, ajouter à un tableau | HC 20498417809815 ; binaire | ✅ | copie + fichier d'office | Fait le 8 oct. (zone + choix de l'action, son original, réglage) |
 | TAB-16 | Son à la capture | binaire `capture.wav` | ⬜ | | Voir SON-1 |
 | TAB-17 | Capture Full Page (PNG dans le dossier de téléchargement) | menu ; HC 25481392111895 | ✅ | self | |
 | TAB-18 | Capture in Portrait Mode (page posée sur un fond) | menu ; HC 20468488031511 | ⬜ | | |

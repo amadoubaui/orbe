@@ -16,7 +16,7 @@ Ce document est un travail de recherche : aucun fichier source d'Orbe n'a été 
 | Date | 8 octobre 2026 |
 | Machine | MacBook Pro M2 Pro (12 cœurs), 16 Go, macOS 26.4, écran intégré 3456 × 2234 à **120 Hz** (relevé : `screen.getPrimaryDisplay().displayFrequency` = 120) |
 | Moteur | Electron 44.7.0 (`~/.orbe-dev`), lancé depuis les sources |
-| Code mesuré | branche `main`, commit `9988bbf`, **plus** les modifications non enregistrées présentes dans le dossier pendant la séance (marge de 10 pt, barre latérale à 50 ms, barre de commande) — voir la remarque ci-dessous |
+| Code mesuré | branche `main`, commit `9988bbf`, **plus** les modifications en cours dans le dossier pendant la séance (marge de 10 pt, barre latérale à 50 ms, barre de commande ; enregistrées depuis, jusqu'au commit `95b3c75`) — voir la remarque ci-dessous |
 | Fenêtre | 1360 × 860 points, barre latérale de 250 points |
 | Profils | toujours temporaires (`ORBE_USER_DATA=<dossier temporaire>` + `--selftest`, trousseau factice) ; le vrai profil n'a jamais été ouvert |
 
@@ -44,8 +44,9 @@ Les scripts sont dans le dossier temporaire de la séance (`perfbench/`), ils ne
 
 1. *Machine chargée.* D'autres travaux tournaient en même temps (charge moyenne de 6 à 12, avec
    une pointe à 90 vers 16 h 45). Les mesures sont des médianes sur plusieurs passes, et les
-   variantes sont comparées en alternance (A, B, A, B…) pour annuler la dérive. Une série prise
-   pendant la pointe a été jetée et refaite.
+   variantes sont comparées en alternance (A, B, A, B…) pour annuler la dérive. Les séries prises
+   pendant la pointe (disque, saisie, démarrage avec gros profil) ont été jetées et refaites
+   au calme ; seules les valeurs refaites figurent ici.
 2. *Démarrage « à froid ».* Un vrai démarrage à froid (après redémarrage du Mac) n'est pas
    reproductible sans droits d'administrateur. Deux situations sont donc données :
    « **à chaud** » (lancements enchaînés) et « **refroidi** » (30 s d'attente entre deux lancements,
@@ -78,11 +79,11 @@ Les scripts sont dans le dossier temporaire de la séance (`perfbench/`), ils ne
 | Barre latérale, bascule | commit `9988bbf` : 180 ms | 18–19 positions pour 22 images (≈ 100 pas/s irréguliers) | à améliorer |
 | | dossier de travail : 50 ms | 5–6 positions pour 6 images | correct |
 | Vue scindée, glisser | 2 pages lourdes | 24–34 images > 25 ms par seconde de glisser | à améliorer |
-| Saisie | frappe → suggestions peintes (8 000 visites) | **19,6 ms**, dont 14 ms de calcul sur le fil principal | à améliorer |
-| | ⌘T → champ peint | 3 ms (première fois 19 ms) | excellent |
-| | changement d'onglet (clic → page visible) | 5,4 ms + 3,5 ms | excellent |
-| Disque | `orbe.json` au plafond d'historique | **4,0 à 6,5 Mo** réécrits en entier | à améliorer |
-| | blocage du fil principal par sauvegarde | **31 ms** (`JSON.stringify`) | à améliorer |
+| Saisie | frappe → suggestions peintes (8 000 visites) | **20–22 ms**, dont 14–15 ms de calcul sur le fil principal | à améliorer |
+| | ⌘T → champ peint | 3–6 ms (première fois 19–28 ms) | excellent |
+| | changement d'onglet (clic → page visible) | 4,5–5,4 ms + 2–3,5 ms | excellent |
+| Disque | `orbe.json` au plafond d'historique | **4,1 à 6,4 Mo** réécrits en entier, deux fois (copie de secours) | à améliorer |
+| | blocage du fil principal par sauvegarde | **9–12 ms** (`JSON.stringify`), soit plus d'une image | à améliorer |
 | | fréquence en naviguant | 1 écriture toutes les 2 s environ | à améliorer |
 
 Lecture rapide : Orbe est **déjà rapide là où on l'attendait le moins** (rendu de la barre
@@ -113,7 +114,7 @@ Ce que fait le processus principal avant la fenêtre (profil CPU par `inspector`
 | Poste | Temps |
 | --- | --- |
 | Tous les `require` de `main.js` (20 modules d'Orbe) | **≈ 15 ms** au total ; le plus lourd : `shared/locales.js` 6 ms, `sessions.js` 7,5 ms (avec ses dépendances) |
-| `store.load` | 1 ms (profil neuf) ; **57–65 ms** avec un fichier de 6 Mo |
+| `store.load` | 1 ms (profil neuf) ; **17 ms** avec un fichier de 4,9 Mo (400 onglets, 8 500 visites) |
 | `sessions.setupDefaultSession` (premier `protocol.handle`, crée la session par défaut) | 7 ms à chaud, **33–42 ms** refroidi |
 | `menu.build` | 3–4 ms |
 | `new OrbeWindow` | **108 ms** refroidi, dont ≈ 92 ms dans la création native de la fenêtre et 30 ms pour les deux vues d'interface |
@@ -123,7 +124,9 @@ Ce que fait le processus principal avant la fenêtre (profil CPU par `inspector`
 Conclusions : (1) le code d'Orbe pèse peu — environ 250 ms à chaud sont pris par Electron et
 Chromium eux-mêmes avant et pendant la création de la fenêtre ; (2) entre « première vue créée »
 et « fenêtre affichée », 114 ms à chaud et **242 ms refroidi** passent à attendre que la coque
-ait fini de charger ; (3) un gros `orbe.json` ajoute 60 ms.
+ait fini de charger ; (3) un gros profil (400 onglets, 8 500 visites, 4,9 Mo) retarde la fenêtre de 28 ms (392 contre
+364 ms, 6 lancements alternés) et la barre latérale peinte de 37 ms (429 contre 392), dont 17 ms
+de `store.load`.
 
 ### Variantes essayées (copie jetable, 8 tours en alternance, à chaud)
 
@@ -183,8 +186,8 @@ Même comparaison, lancements espacés de 25 s (6 tours, plus bruité) :
 
 - ⬜ **DEM-4 — Sortir l'historique du fichier lu au démarrage.**
   *Problème* : avec 8 500 visites (plafond de `store.js`), `store.load` passe de 1 ms à
-  **57–65 ms**, en bloquant, avant toute fenêtre. *Changement* : voir PERF-1 (historique dans un
-  fichier à part, lu après l'affichage). *Gain* : −60 ms sur les profils anciens.
+  **17 ms**, en bloquant, avant toute fenêtre. *Changement* : voir PERF-1 (historique dans un
+  fichier à part, lu après l'affichage). *Gain* : ≈ −17 ms sur les profils anciens.
   *Risque / effort* : ceux de PERF-1.
 
 - ⬜ **DEM-5 — Ne rien faire pour les extensions quand il n'y en a pas.**
@@ -421,23 +424,24 @@ une part d'icônes `data:` de moins de 2 Ko, que `lightIcon` autorise) :
 
 | État | Taille du fichier | `JSON.stringify` (bloque le fil principal) | `write()` complet | `flush()` à la fermeture | Lecture + analyse au démarrage |
 | --- | --- | --- | --- | --- | --- |
-| Profil neuf | 4 Ko | 0,01 ms | < 1 ms | 0,6 ms | 0,07 ms |
-| 1 000 visites | 466 Ko | 2,5 ms | 13 ms | 5,7 ms | 3,7 ms |
-| 4 000 visites | 1,9 Mo | 12,5 ms | 31 ms | 23 ms | 15 ms |
-| 8 500 visites (plafond), 10 % d'icônes `data:` | **4,0 Mo** | **31 ms** | 77 ms | 48 ms | 28 ms |
-| 8 500 visites, 30 % d'icônes `data:` | **6,5 Mo** | 30 ms | 79 ms | 75 ms | 49 ms |
+| Profil neuf | 4 Ko | 0,02 ms | 0,8 ms | 0,2 ms | 0,04 ms |
+| 1 000 visites | 487 Ko | 0,8 ms | 2,6 ms | 2,0 ms | 1,3 ms |
+| 4 000 visites | 1,9 Mo | 3,4 ms | 9,7 ms | 7,0 ms | 4,9 ms |
+| 8 500 visites (plafond), 10 % d'icônes `data:` | **4,1 Mo** | **9,3 ms** (90ᵉ centile 10,5) | 24,5 ms | 19,9 ms | 12,6 ms |
+| 8 500 visites, 30 % d'icônes `data:` | **6,4 Mo** | **12,1 ms** (90ᵉ centile 12,9) | 29,9 ms | 24,3 ms | 16,9 ms |
 
 | Découpage | Taille | `JSON.stringify` |
 | --- | --- | --- |
-| Tout sauf l'historique | 381 Ko | 0,65–0,83 ms |
+| Tout sauf l'historique | 381 Ko | 0,2–0,8 ms |
 | Onglets, Espaces, réglages seuls (sans historique, archive ni téléchargements) | 4 Ko (profil d'essai) | 0,01 ms |
-| Une ligne ajoutée à un journal (`appendFile`, ≈ 220 octets) | — | 0,06–0,1 ms synchrone, 0,3–0,8 ms asynchrone |
+| Une ligne ajoutée à un journal (`appendFile`, ≈ 220 octets) | — | 0,03 ms synchrone, 0,1 ms asynchrone |
 
-Fréquence : 12 navigations en 12,6 s déclenchent 48 appels à `store.save()` et **6 écritures
+Fréquence : 12 navigations en 11,5 s déclenchent 48 appels à `store.save()` et **6 écritures
 complètes**, soit une toutes les 2 s. Sur un profil ancien, naviguer coûte donc environ
-**30 ms de blocage du fil principal toutes les 2 secondes** (3 à 4 images perdues à 120 Hz
-pour tout ce que ce fil anime : bascule de la barre, glisser de la séparation) et 120 à 200 Mo
-écrits sur le disque par minute de navigation active.
+**9 à 12 ms de blocage du fil principal toutes les 2 secondes** (une à deux images perdues à
+120 Hz pour tout ce que ce fil anime : bascule de la barre, glisser de la séparation ; trois
+fois plus sur une machine chargée, mesuré : 31 ms) et 130 à 200 Mo écrits par minute de
+navigation active — le double en comptant la copie `.bak` refaite à chaque écriture.
 
 ### Points
 
@@ -454,8 +458,8 @@ pour tout ce que ce fil anime : bascule de la barre, glisser de la séparation) 
   4. Migration : au premier lancement, si `orbe.json` contient `history`, l'écrire en journal
      et le retirer ; garder `orbe.json.bak` tel quel.
   5. `lib:clear` et « effacer les données » tronquent le journal.
-  *Gain mesuré* : blocage par sauvegarde **31 ms → 0,7 ms**, écriture 4–6,5 Mo → 0,4 Mo,
-  démarrage −60 ms (DEM-4), une visite = 0,1 ms.
+  *Gain mesuré* : blocage par sauvegarde **9–12 ms → 0,2–0,8 ms**, écriture 4,1–6,4 Mo → 0,4 Mo,
+  démarrage −17 ms (DEM-4), une visite = 0,03 à 0,1 ms.
   *Risque* : moyen — format de données, donc migration et retour arrière à tester ; une ligne
   tronquée par une coupure de courant doit être ignorée à la lecture (`try { JSON.parse }` par
   ligne). Pas de base SQLite, pas de dépendance. *Effort* : M.
@@ -472,7 +476,7 @@ pour tout ce que ce fil anime : bascule de la barre, glisser de la séparation) 
 
 - ⬜ **PERF-3 — `write()` : ne pas recopier le fichier à chaque fois.**
   *Problème* : chaque écriture fait `writeFile(tmp)` + `copyFile(orbe.json → .bak)` + `rename` :
-  le fichier est écrit **deux fois** (77 ms au total pour 4 Mo, dont 31 de `stringify`).
+  le fichier est écrit **deux fois** (24,5 ms au total pour 4,1 Mo, dont 9,3 de `stringify`).
   *Changement* : remplacer la copie par `rename(orbe.json → .bak)` puis `rename(tmp → orbe.json)`,
   ou ne rafraîchir `.bak` qu'une fois par session. *Gain* : moitié des octets écrits.
   *Risque* : faible (entre les deux `rename`, seul `.bak` existe : `load()` le lit déjà en secours).
@@ -482,34 +486,35 @@ pour tout ce que ce fil anime : bascule de la barre, glisser de la séparation) 
 
 | Geste | Mesure | Valeur |
 | --- | --- | --- |
-| ⌘T | `openCommand()` → champ visible et peint | 3,1 ms (90ᵉ centile 8,6 ; première fois 19 ms) |
+| ⌘T | `openCommand()` → champ visible et peint | 3,1–6,4 ms (90ᵉ centile 8,6–12 ; première fois 19–28 ms) |
 | Frappe dans la barre de commande | événement clavier → `input` dans la vue | 1,3 ms |
-| | → liste de suggestions peinte | **19,6 ms** (90ᵉ centile 25,7 ; max 30,6) |
-| | dont `suggestLocal` sur le fil principal (8 001 visites, 2 000 archives) | **14,1 ms** (90ᵉ centile 19,9 ; max 23,7) |
+| | → liste de suggestions peinte | **19,6–21,8 ms** (90ᵉ centile 26–27 ; max 31) |
+| | dont `suggestLocal` sur le fil principal (8 000 visites, 2 000 archives) | **14,1–15,4 ms** (90ᵉ centile 19–20 ; max 21–24) |
 | | suggestions du moteur de recherche (Google, réseau) | 174 ms (90ᵉ centile 264) |
-| `suggest.local` selon l'historique | 500 / 2 000 / 8 000 visites | 1,1 / 2,4 / 9,4 ms |
-| Changement d'onglet | `activate()` (synchrone) | 5,4 ms (max 9,1) |
-| | → première image de la page affichée | +3,5 ms (90ᵉ centile 10,6) |
-| | capture pour la vignette : `capturePage` | 4,9 ms (asynchrone) |
-| | réduction + JPEG sur le fil principal | 3,1 ms |
+| `suggest.local` selon l'historique | 500 / 2 000 / 8 000 visites | 0,6 / 2,9 / 10,2 ms |
+| Changement d'onglet | `activate()` (synchrone) | 4,5–5,4 ms (max 11) |
+| | → première image de la page affichée | +2,2 à 3,5 ms (90ᵉ centile 5–11) |
+| | capture pour la vignette : `capturePage` | 4,9–6,2 ms (asynchrone) |
+| | réduction + JPEG sur le fil principal | 2,9–3,1 ms |
 | Changement d'Espace | `switchSpace()` puis image de la page | 3–4 ms + 2 ms |
-| Réveil d'un onglet en veille | clic → première peinture (page locale lourde) | 167 ms |
+| Réveil d'un onglet en veille | clic → première peinture (page locale lourde) | 167–183 ms |
 
-Série prise alors que la machine était chargée : les valeurs absolues de frappe sont sans doute
-un peu pessimistes, les proportions restent.
+Deux séries (les fourchettes donnent les deux médianes) ; elles concordent.
 
 ### Points
 
 - ⬜ **PERF-4 — Barre de commande : index de recherche normalisé, calculé une fois.**
   *Problème* : à chaque frappe, `suggest.local` parcourt tout l'historique et recalcule pour
   chaque entrée `norm(strip(url))` et `norm(title)` (minuscules + décomposition Unicode +
-  expression régulière) : 14 ms de blocage du fil principal par caractère tapé avec 8 000
+  expression régulière) : 14–15 ms de blocage du fil principal par caractère tapé avec 8 000
   visites, soit presque deux images à 120 Hz.
   *Changement* : garder à côté de chaque entrée ses deux chaînes normalisées, calculées à la
   première recherche et invalidées quand le titre change (une `WeakMap` suffit) ; même chose
   pour l'archive et les onglets.
-  *Gain mesuré* (micro-essai Node, 8 003 entrées, mêmes résultats vérifiés) : **23,0 ms → 8,7 ms**
-  par frappe, soit 2,6 fois moins. *Risque* : faible. *Effort* : S.
+  *Gain mesuré* (micro-essai Node sur la seule boucle d'historique, 8 003 entrées, mêmes
+  résultats vérifiés) : **7,0–7,5 ms → 1,2–1,4 ms** par frappe, soit 5 à 6 fois moins ; dans
+  l'application, où s'ajoutent l'archive et les onglets, attendre 15 → environ 3 ms.
+  *Risque* : faible. *Effort* : S.
 
 - ⬜ **PERF-5 — Barre de commande : recherche incrémentale.**
   *Problème* : taper « navig » relance cinq recherches complètes. *Changement* : si la nouvelle
@@ -576,11 +581,11 @@ réconciliation par clé de `shell.js` et `content-visibility: auto` font leur t
   sur les très gros profils ; nul en dessous de 100 onglets. *Risque* : faible. *Effort* : M.
   Priorité basse.
 
-- ⬜ **PERF-23 — Compter les envois d'état pendant le chargement d'un vrai site.**
-  *À mesurer* : nombre de `sendState` par seconde sur une page d'actualité (le regroupement par
-  `setImmediate` et les 250 ms du compteur du bloqueur devraient le borner vers 4 à 10 par
-  seconde). Le scénario est écrit mais n'a pas été passé sur des sites réels pendant cette
-  séance. *Effort* : S.
+- ➖ **PERF-23 — Limiter les envois d'état pendant le chargement d'une page.** Écarté après
+  mesure sur cinq vrais sites (compteur posé sur `sendState`, du début du chargement à 3 s après
+  la fin) : Le Monde 5 envois, YouTube 6, Wikipédia 4, GitHub 7, BBC News 17 ; au plus **6 par
+  seconde**, 1 à 3 en moyenne. Le regroupement par `setImmediate` et les 250 ms du compteur du
+  bloqueur suffisent.
 
 - ⬜ **PERF-24 — Icônes : ne pas demander `/favicon.ico` aux sites jamais chargés.**
   *Constat* : `guessIcon` fait demander par la coque `origine/favicon.ico` pour chaque onglet
@@ -651,8 +656,8 @@ Animation), au rythme de l'écran, sans passer par le JavaScript ni redessiner l
 
 - ⬜ **ANIM-1 — Bascule de la barre latérale par l'animation native de `setBounds`.**
   *Problème* : minuteur à 100 Hz irrégulier dans le processus principal, désynchronisé de la
-  transition CSS de la barre ; à la merci de tout blocage de ce fil (31 ms à chaque sauvegarde,
-  14 ms à chaque frappe).
+  transition CSS de la barre ; à la merci de tout blocage de ce fil (9 à 12 ms à chaque
+  sauvegarde, 14 ms à chaque frappe).
   *Changement* (`animateTo`) : calculer le rectangle final et faire **un** appel
   `rt.view.setBounds(final, { animate: { duration: DUR, easing: 'ease-out' } })` pour chaque
   vue affichée ; garder la même durée et la même courbe côté CSS (`#sidebar { transition: transform <DUR>ms ease-out }`)
@@ -782,6 +787,9 @@ Ce chapitre est de la recherche : ce qu'Electron 44 expose réellement (relevé 
   droits ; il ne faut ni reprendre ni imiter de près les sons d'Arc ou de macOS, ni partir
   d'une banque sans licence claire (préférer CC0 ou création propre). Les fichiers doivent être
   publiés sous la licence du projet (MIT) avec leur source (le script de synthèse).
+  *Déjà commencé pendant la séance* (commit `014fab0`) : un son de capture original, fabriqué
+  par `scripts/make-sounds.js` (`src/renderer/sons/capture.wav`, 37 Ko) et un réglage « Sons » ;
+  ce point couvre la suite (autres gestes) et la mesure du coût.
   *Technique la moins chère* : les synthétiser à la volée dans la coque avec l'API Web Audio
   (un oscillateur + une enveloppe de 40 à 120 ms, aucun fichier), contexte audio créé au premier
   son puis suspendu après 5 s de silence. *À mesurer* : mémoire du service audio de Chromium une
@@ -848,10 +856,10 @@ Classés par gain rapporté à l'effort ; les gains sont ceux mesurés plus haut
 
 | Rang | Point | Gain mesuré | Effort | Risque |
 | --- | --- | --- | --- | --- |
-| 1 | **PERF-4** index de recherche normalisé | frappe : 23 → 8,7 ms de blocage (÷ 2,6) | S | faible |
+| 1 | **PERF-4** index de recherche normalisé | frappe : 14–15 ms de blocage → ≈ 3 ms (boucle seule : 7,2 → 1,3 ms) | S | faible |
 | 2 | **DEM-1** afficher la fenêtre tout de suite | fenêtre −60 ms à chaud, −104 ms refroidi ; première page −62 ms | S | faible |
-| 3 | **PERF-1** historique en journal à part | blocage par sauvegarde 31 → 0,7 ms ; 4–6,5 Mo → 0,4 Mo par écriture ; démarrage −60 ms sur vieux profil | M | moyen |
-| 4 | **MEM-1** une seule interface, un seul processus | ≈ −100 Mo ; première ouverture d'une vue 80–100 → 7–15 ms | M | moyen |
+| 3 | **MEM-1** une seule interface, un seul processus | ≈ −100 Mo ; première ouverture d'une vue 80–100 → 7–15 ms | M | moyen |
+| 4 | **PERF-1** historique en journal à part | blocage par sauvegarde 9–12 → 0,2–0,8 ms ; 4,1–6,4 Mo → 0,4 Mo par écriture ; démarrage −17 ms sur vieux profil | M | moyen |
 | 5 | **ANIM-1** bascule par animation native | 0 tic du fil principal, 0 remise en page pendant le mouvement, cadence de l'écran | M | moyen |
 | 6 | **PERF-3** plus de copie du fichier à chaque écriture | moitié des octets écrits | S | faible |
 | 7 | **PERF-2** sauvegarde paresseuse pour titres et icônes | écritures ÷ 2 à 3 en navigation | S | faible |
