@@ -27,37 +27,17 @@ ses.webRequest.onBeforeRequest(adblock.FILTER, (details, callback) => {
 });
 ```
 
-Cas normal :
+Dans Orbe, le branchement est fait ainsi :
 
-```js
-// sessions.js, dans configure(ses, { persist }), après configured.add(ses)
-adblock.attach(ses);
-
-// main.js, après store.load()
-adblock.configure({
-  enabled: store.state.settings.adblock,
-  allowlist: store.state.settings.adblockAllow,
-  onChange: ({ enabled, allowlist }) => {
-    store.state.settings.adblock = enabled;
-    store.state.settings.adblockAllow = allowlist;
-    store.save();
-  },
-  onCount: (webContentsId, n) => { /* mettre à jour le badge de l'onglet */ },
-});
-// Une fois la première fenêtre affichée (facultatif, évite que la toute
-// première page passe pendant la lecture de la liste) :
-setTimeout(() => adblock.load(), 1000);
-```
-
-À prévoir ailleurs :
-
-- `store.js`, `DEFAULT_SETTINGS` : `adblock: true, adblockAllow: []` ;
-- `scripts/build-mac.js` : copier `assets/blocklist.txt` dans
-  `<app>/assets/blocklist.txt` (seul `src/` est copié aujourd'hui), ou passer un
-  autre chemin par `configure({ listPath })` ;
-- interface : `setEnabled(bool)`, `allowSite(hôte ou URL, bool)`,
-  `isSiteAllowed(hôte)`, `stats()` ; recharger l'onglet après une bascule pour
-  faire revenir ou disparaître ce qui était déjà chargé.
+- `sessions.js` appelle `adblock.attach(ses)` pour chaque profil et pour la
+  navigation privée ;
+- `main.js` appelle `adblock.configure(…)` au démarrage avec les réglages
+  `adblock` et `adblockAllow`, et charge la liste une seconde plus tard pour
+  ne pas ralentir l'ouverture ;
+- le bouclier de la barre latérale affiche le compteur de la page et propose
+  l'exception par site (`toggleSiteBlocking` dans `window.js`), suivie d'un
+  rechargement de l'onglet ;
+- `scripts/build-mac.js` copie la liste dans l'application.
 
 Les compteurs par onglet se remettent à zéro tout seuls quand la page change
 (`did-navigate`) et sont oubliés à la fermeture de l'onglet ; `resetTab(id)`

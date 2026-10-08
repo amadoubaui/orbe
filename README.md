@@ -79,7 +79,7 @@ git clone https://github.com/amadoubaui/orbe.git
 cd orbe
 npm start        # lance le navigateur
 npm test         # tests de bout en bout (71 vérifications)
-npm run build    # fabrique dist/Orbe.app
+npm run build    # fabrique ~/.orbe-dev/dist/Orbe.app (-- --install pour /Applications)
 ```
 
 Au premier lancement, le moteur (Electron) est téléchargé dans `~/.orbe-dev`,
