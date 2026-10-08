@@ -21,6 +21,8 @@ const boosts = require('./boosts');
 const passwords = require('./passwords');
 const easels = require('./easels');
 const platform = require('./platform');
+const essentials = require('./essentials');
+const downloads = require('./downloads');
 
 platform.adaptLocales(locales);
 
@@ -51,6 +53,8 @@ else if (SELFTEST) app.setPath('userData', fs.mkdtempSync(path.join(os.tmpdir(),
 if (SELFTEST) {
   // Les tests ne touchent jamais au vrai trousseau du système.
   app.commandLine.appendSwitch('use-mock-keychain');
+  // Caméra et micro factices : aucun vrai appareil n'est ouvert pendant les tests.
+  app.commandLine.appendSwitch('use-fake-device-for-media-stream');
   const dl = path.join(app.getPath('userData'), 'Telechargements');
   fs.mkdirSync(dl, { recursive: true });
   app.setPath('downloads', dl);
@@ -164,6 +168,9 @@ const SETTABLE = {
   peekLinks: (v) => typeof v === 'boolean',
   passwordSave: (v) => typeof v === 'boolean',
   passwordFill: (v) => typeof v === 'boolean',
+  downloadAsk: (v) => typeof v === 'boolean',
+  downloadOpenPdf: (v) => typeof v === 'boolean',
+  downloadDir: (v) => typeof v === 'string' && v.length <= 1024 && (v === '' || path.isAbsolute(v)),
   routes: (v) => Array.isArray(v) && v.length <= 100 && v.every((r) => r && typeof r.match === 'string' && r.match.length <= 200 && typeof r.to === 'string' && r.to.length <= 40),
 };
 
@@ -226,9 +233,8 @@ async function globalAction(action, a, sender) {
       return true;
     }
     case 'lib:openFile': {
-      const d = s.downloads.find((x) => x.id === a);
-      if (d) shell.openPath(d.path);
-      return true;
+      // Un PDF s'ouvre dans un onglet ; un fichier exécutable demande confirmation.
+      return downloads.action('dl:open', a, sender);
     }
     case 'notes:list':
       return s.notes.slice().sort((x, y) => y.at - x.at);
@@ -330,6 +336,8 @@ function setupIpc() {
     if (action.startsWith('boost:')) return boostAction(action, payload);
     if (action.startsWith('pw:')) return passwords.action(action, payload, e.sender);
     if (action.startsWith('easel:')) return easels.action(action, payload, e.sender);
+    if (action.startsWith('sheet:')) return essentials.sheets.action(action, payload, e.sender);
+    if (action.startsWith('dl:')) return downloads.action(action, payload, e.sender);
     if (action === 'welcome:info') return { arc: require('./import-arc').available() };
     if (/^(lib|settings|shortcuts|ext|notes):/.test(action)) return globalAction(action, payload, e.sender);
     const owner = OrbeWindow.ownerOf(e.sender) || little.LittleWindow.ownerOf(e.sender) || OrbeWindow.primary;
@@ -356,6 +364,9 @@ app.whenReady().then(async () => {
   extensions.configure({ dir: path.join(app.getPath('userData'), 'Extensions'), fetch: (u, o) => net.fetch(u, o), lang: store.state.settings.lang });
   extApi.configure({ dir: path.join(app.getPath('userData'), 'Extensions') });
   extHost.setup();
+  // Feuilles d'onglet, autorisations, certificats, authentification, « quitter la page ? »… (après extHost : mise en page chaînée).
+  essentials.setup({ win, sessions, test: SELFTEST });
+  downloads.env.settingsChanged = broadcastSettings;
   adblock.configure({
     enabled: store.state.settings.adblock,
     allowlist: store.state.settings.adblockAllow,
@@ -396,7 +407,7 @@ app.whenReady().then(async () => {
   sessions.hooks.onDownload = (phase, d, wc) => {
     const owner = (wc && OrbeWindow.ownerOf(wc)) || OrbeWindow.primary;
     if (owner && phase === 'start') owner.toast(store.t('toast.downloadStarted', null, { name: d.name }));
-    if (owner && phase === 'done' && d.state === 'completed') owner.toast(store.t('toast.downloadDone', null, { name: d.name }));
+    if (owner && phase === 'done' && d.state === 'completed') owner.toast(store.t(d.danger ? 'toast.downloadDanger' : 'toast.downloadDone', null, { name: d.name }));
     OrbeWindow.pushAll();
   };
   nativeTheme.on('updated', () => OrbeWindow.pushAll());
@@ -417,7 +428,7 @@ app.whenReady().then(async () => {
     setTimeout(() => { console.error(`\nÉCHEC : scénario bloqué depuis ${limit} s`); app.exit(3); }, limit * 1000).unref();
     try {
       // ORBE_SCENARIO : autre scénario de test (ex. tests/sites.js, sites réels).
-      await require(process.env.ORBE_SCENARIO ? path.resolve(process.env.ORBE_SCENARIO) : '../../tests/selftest')({ first, OrbeWindow, store, win, little, commands, menu, openSettings, openUrl, extensions, extApi, extHost, passwords });
+      await require(process.env.ORBE_SCENARIO ? path.resolve(process.env.ORBE_SCENARIO) : '../../tests/selftest')({ first, OrbeWindow, store, win, little, commands, menu, openSettings, openUrl, extensions, extApi, extHost, passwords, essentials });
       store.flush();
       app.exit(0);
     } catch (err) {

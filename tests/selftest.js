@@ -161,9 +161,17 @@ module.exports = async function selftest(ctx) {
   check('⌘L remplace l’adresse de l’onglet actif', w.activeId === b.id);
   await until(() => titleOf(b.id) === 'C sans opener', 'titre C');
 
-  // Fenêtre ouverte par la page (window.opener conservé)
+  // Fenêtre ouverte par la page (window.opener conservé). L'ouverture suit une
+  // vraie entrée de l'utilisateur : sans geste, elle serait bloquée (popups.js).
+  const gesture = async (id) => {
+    const rt = win.live.get(id);
+    rt.gesture = 0;
+    for (const type of ['mouseDown', 'mouseUp']) rt.wc.sendInputEvent({ type, x: 3, y: 3, button: 'left', clickCount: 1 });
+    await until(() => rt.gesture > 0, 'entrée reçue par la page');
+  };
   w.activate(a.id);
   const before = w.space.today.length;
+  await gesture(a.id);
   await win.live.get(a.id).wc.executeJavaScript('document.getElementById("pop").removeAttribute("target"); window.open("/c"); 1', true);
   await until(() => w.space.today.length === before + 1, 'onglet ouvert par la page');
   const child = w.activeId;
@@ -353,6 +361,7 @@ module.exports = async function selftest(ctx) {
   const other = base.replace('127.0.0.1', 'localhost');
   const todayBefore = w.space.today.length;
   await until(() => !win.live.get(a.id).wc.isLoading(), 'onglet épinglé chargé');
+  await gesture(a.id);
   await win.live.get(a.id).wc.executeJavaScript(`window.open(${JSON.stringify(other + '/b')}); 1`, true);
   await until(() => w.peekState && w.peekState.title === 'Page B', 'aperçu ouvert');
   check('un lien sortant d’un onglet épinglé s’ouvre en aperçu', w.activeId === a.id && w.space.today.length === todayBefore);
@@ -850,6 +859,10 @@ module.exports = async function selftest(ctx) {
 
   // Mots de passe (tests/passwords.js)
   await require('./passwords')({ ...ctx, check });
+
+  // Navigation de tous les jours : autorisations, partage d'écran, certificats,
+  // authentification, « quitter la page ? », fenêtres surgissantes… (tests/essentiels.js)
+  await require('./essentiels')({ ...ctx, check });
 
   // Persistance
   await shot('final');

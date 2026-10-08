@@ -1,5 +1,5 @@
 // Réglages : chaque changement est appliqué immédiatement.
-const FIELDS = ['lang', 'searchEngine', 'suggestions', 'archiveAfterHours', 'maxLiveTabs', 'appearance', 'translucent', 'externalLinks', 'autoPip', 'adblock', 'peekLinks', 'passwordSave', 'passwordFill', 'sounds'];
+const FIELDS = ['lang', 'searchEngine', 'suggestions', 'archiveAfterHours', 'maxLiveTabs', 'appearance', 'translucent', 'externalLinks', 'autoPip', 'adblock', 'peekLinks', 'passwordSave', 'passwordFill', 'sounds', 'downloadAsk', 'downloadOpenPdf'];
 const NUMERIC = new Set(['archiveAfterHours', 'maxLiveTabs']);
 const el = (id) => document.getElementById(id);
 
@@ -10,6 +10,9 @@ function fill(s) {
     else input.value = String(s[f]);
   }
   document.title = t('set.title');
+  // Dossier des téléchargements : celui du système tant qu'aucun autre n'est choisi.
+  O.send('dl:dir').then((dir) => { el('downloadDirPath').textContent = dir || ''; el('downloadDirPath').title = dir || ''; });
+  el('downloadDirReset').hidden = !s.downloadDir;
 }
 
 // Profils : nom modifiable ; suppression possible si aucun Espace ne l'utilise.
@@ -146,6 +149,8 @@ for (const f of FIELDS) {
 
 const flash = (btn) => { const old = btn.textContent; btn.textContent = '✓'; setTimeout(() => { btn.textContent = old; }, 1200); };
 el('passwordManage').onclick = () => O.send('pw:open');
+el('downloadDirPick').onclick = () => O.send('dl:pickDir');
+el('downloadDirReset').onclick = () => O.send('dl:defaultDir');
 el('makeDefault').onclick = async (e) => { await O.send('settings:makeDefault'); flash(e.target); };
 el('resetPerms').onclick = async (e) => { await O.send('settings:resetPerms'); flash(e.target); };
 el('clearData').onclick = async (e) => { if (await O.send('settings:clearData')) flash(e.target); };

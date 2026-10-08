@@ -71,6 +71,17 @@ body.fullscreen #top { padding-left: 0; }
   transition: background 120ms, color 120ms, transform var(--spring-snappy);
 }
 #shield[hidden] { display: none; }
+/* État de la connexion (cadenas, « Non sécurisé »), fenêtres surgissantes bloquées, capture en cours. */
+#lock, #url-row .note { height: 36px; min-width: 30px; padding: 0 8px; border-radius: 10px; background: var(--pill); color: var(--dim); display: flex; align-items: center; gap: 4px; font-size: 11.5px; font-weight: 600; flex: none; white-space: nowrap; transition: background 120ms, color 120ms; }
+#lock svg, #url-row .note svg { width: 14px; height: 14px; }
+#lock:hover, #url-row .note:hover { color: var(--fg); }
+#lock.insecure { color: #c2410c; }
+#lock.broken { color: #dc2626; background: color-mix(in srgb, #dc2626 14%, var(--pill)); }
+#popup-note { color: #c2410c; }
+#capture-note { color: #dc2626; animation: capture-pulse 1.6s ease-in-out infinite; }
+@keyframes capture-pulse { 50% { opacity: 0.55; } }
+.row .act.cap { color: #dc2626; }
+.row.capturing .act.cap { display: grid; }
 #shield:hover { color: var(--fg); }
 #shield:active { transform: scale(0.94); transition: transform var(--press); }
 #shield.on { color: color-mix(in srgb, var(--accent) 55%, var(--fg)); }

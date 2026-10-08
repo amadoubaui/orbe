@@ -66,6 +66,14 @@ h1 { font-size: 20px; }
   </div>
   <p class="muted" style="margin:8px 4px 0;font-size:12px" id="ext-msg" data-t="ext.hint"></p>
 
+  <h2 data-t="lib.downloads"></h2>
+  <div class="card">
+    <div class="line"><div class="grow"><div data-t="set.downloadDir"></div><div class="sub" id="downloadDirPath"></div></div>
+      <button class="btn" id="downloadDirReset" data-t="set.downloadDirReset"></button><button class="btn" id="downloadDirPick" data-t="set.downloadDirPick"></button></div>
+    <div class="line"><span class="grow" data-t="set.downloadAsk"></span><input type="checkbox" id="downloadAsk"></div>
+    <div class="line"><div class="grow"><div data-t="set.downloadOpenPdf"></div><div class="sub" data-t="set.downloadOpenPdfHint"></div></div><input type="checkbox" id="downloadOpenPdf"></div>
+  </div>
+
   <h2 data-t="set.passwords"></h2>
   <div class="card">
     <div class="line"><div class="grow"><div data-t="set.passwordSave"></div><div class="sub" data-t="set.passwordSaveHint"></div></div><input type="checkbox" id="passwordSave"></div>
