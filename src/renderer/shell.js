@@ -140,7 +140,7 @@ function render(s) {
   if (spaces._sig !== sig) {
     spaces._sig = sig;
     spaces.innerHTML = s.spaces.length > 1
-      ? s.spaces.map((x) => `<button class="sp${x.id === s.space.id ? ' active' : ''}" data-space="${esc(x.id)}" title="${esc(x.name)}">${esc(x.icon) || '<span class="pt"></span>'}</button>`).join('')
+      ? s.spaces.map((x) => `<button class="sp${x.id === s.space.id ? ' active' : ''}" data-space="${esc(x.id)}" title="${esc(x.name)}"><span class="em">${esc(x.icon) || '•'}</span></button>`).join('')
       : '';
   }
 

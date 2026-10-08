@@ -144,6 +144,7 @@ function build() {
         item('togglePin', { labelKey: pinned ? 'tabs.unpin' : 'tabs.pin' }),
         item('newFolder'),
         item('duplicate'),
+        item('expandPeek', { enabled: !!w && !!w.peekState }),
         item('toggleMute', { labelKey: tab && tab.muted ? 'tabs.unmute' : 'tabs.mute' }),
         sep, item('nextTab'), item('prevTab'),
         sep, item('clearToday'),
@@ -194,7 +195,7 @@ function refresh(force) {
     const sig = JSON.stringify([
       s.lang, s.appearance, s.showToolbar, w && w.id, w && w.sidebarVisible, w && w.spaceId,
       loc && loc.list, tab && tab.muted, w ? w.data.spaces.map((x) => x.icon + x.name) : 0,
-      w && w.space.profileId, w ? w.data.profiles.length : 0,
+      w && w.space.profileId, w ? w.data.profiles.length : 0, !!(w && w.peekState),
     ]);
     if (!force && sig === lastSignature) return;
     lastSignature = sig;

@@ -2,7 +2,7 @@
 // bascule d'onglets, thème), de barre de recherche ou de notification.
 const $ = (id) => document.getElementById(id);
 const send = O.send;
-const panels = ['command', 'switcher', 'theme', 'find', 'toast'];
+const panels = ['command', 'switcher', 'theme', 'find', 'toast', 'peek'];
 let mode = null;
 
 function show(name) {
@@ -212,6 +212,9 @@ O.on('overlay', (p) => {
     findInput.focus();
     findInput.select();
     if (findInput.value) send('find', { text: findInput.value });
+  } else if (p.mode === 'peek') {
+    show('peek');
+    document.body.classList.add('peek');
   } else if (p.mode === 'toast') {
     show('toast');
     const el = $('toast');
@@ -225,11 +228,17 @@ O.on('overlay', (p) => {
 });
 O.on('settings', (s) => setLang(s.lang));
 
+$('peek-close').onclick = () => send('peekClose');
+$('peek-expand').onclick = () => send('peekExpand');
+$('peek-split').onclick = () => send('peekSplit');
+
 $('backdrop').addEventListener('mousedown', () => {
   if (mode === 'command' || mode === 'theme') send('closeOverlay');
+  else if (mode === 'peek') send('peekClose');
 });
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
   if (mode === 'find') send('findClose');
+  else if (mode === 'peek') send('peekClose');
   else if (mode) send('closeOverlay');
 });

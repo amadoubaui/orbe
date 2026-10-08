@@ -16,7 +16,7 @@ const COMMANDS = [
   { name: 'newLittle', label: 'file.newLittle', accel: 'Alt+Cmd+N', keys: '⌥⌘N', global: true, run: () => hooks.newLittle('') },
   { name: 'reopen', label: 'file.reopen', accel: 'Shift+Cmd+T', keys: '⇧⌘T', run: (w) => w.reopenClosed() },
   { name: 'commandBar', label: 'file.commandBar', accel: 'Cmd+L', keys: '⌘L', palette: false, run: (w) => w.openCommand('edit') },
-  { name: 'closeTab', label: 'file.closeTab', accel: 'Cmd+W', keys: '⌘W', run: (w) => (w.activeId ? w.close() : w.win.close()) },
+  { name: 'closeTab', label: 'file.closeTab', accel: 'Cmd+W', keys: '⌘W', run: (w) => (w.peekState ? w.closePeek() : (w.activeId ? w.close() : w.win.close())) },
   { name: 'closeWindow', label: 'file.closeWindow', accel: 'Shift+Cmd+W', keys: '⇧⌘W', run: (w) => w.win.close() },
   { name: 'capture', label: 'file.capture', accel: 'Shift+Cmd+2', keys: '⇧⌘2', run: (w) => w.capture() },
   { name: 'savePage', label: 'file.savePage', accel: 'Shift+Cmd+S', keys: '⇧⌘S', run: (w) => w.savePage() },
@@ -55,6 +55,7 @@ const COMMANDS = [
   // Onglets
   { name: 'togglePin', label: 'tabs.pin', accel: 'Cmd+D', keys: '⌘D', run: (w) => w.togglePin() },
   { name: 'newFolder', label: 'tabs.newFolder', run: (w) => w.newFolder() },
+  { name: 'expandPeek', label: 'peek.expand', accel: 'Cmd+O', keys: '⌘O', palette: false, run: (w) => w.expandPeek() },
   { name: 'nextTab', label: 'tabs.next', accel: 'Alt+Cmd+Down', keys: '⌥⌘↓', run: (w) => w.stepTab(1) },
   { name: 'prevTab', label: 'tabs.prev', accel: 'Alt+Cmd+Up', keys: '⌥⌘↑', run: (w) => w.stepTab(-1) },
   { name: 'clearToday', label: 'tabs.clearToday', accel: 'Shift+Cmd+K', keys: '⇧⌘K', run: (w) => w.clearToday() },

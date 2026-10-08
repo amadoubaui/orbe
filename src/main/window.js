@@ -47,6 +47,10 @@ function* walk(nodes) {
   }
 }
 
+function sameHost(a, b) {
+  try { return new URL(a).host.replace(/^www\./, '') === new URL(b).host.replace(/^www\./, ''); } catch { return false; }
+}
+
 function samePage(a, b) {
   try {
     const x = new URL(a);
@@ -190,7 +194,10 @@ class OrbeWindow {
     return (id && live.get(id)) || null;
   }
 
+  // Page qui reçoit les commandes (actualiser, zoom, recherche…) : l'aperçu
+  // s'il est ouvert, sinon l'onglet actif.
   get activeWc() {
+    if (this.peekState && !this.peekState.view.webContents.isDestroyed()) return this.peekState.view.webContents;
     const rt = this.activeRt;
     return rt && !rt.wc.isDestroyed() ? rt.wc : null;
   }
@@ -286,6 +293,12 @@ class OrbeWindow {
       }
     }
     this.attached = shown;
+    if (this.peekState) {
+      const m = Math.round(Math.min(90, Math.max(44, rect.width * 0.07)));
+      this.peekChrome.setBounds(rect);
+      this.peekChrome.setBorderRadius(this.htmlFullscreen ? 0 : RADIUS);
+      this.peekState.view.setBounds({ x: rect.x + m, y: rect.y + 16, width: Math.max(200, rect.width - 2 * m), height: Math.max(120, rect.height - 16) });
+    }
     if (this.modalMode) this.modal.setBounds(full);
     if (this.findOpen && this.findView) {
       const i = Math.max(0, ids.indexOf(this.activeId));
@@ -365,7 +378,8 @@ class OrbeWindow {
     clearTimeout(this.toastTimer);
     windows.delete(this.id);
     for (const [id, rt] of [...live]) if (rt.owner === this) OrbeWindow.destroyView(id);
-    for (const v of [this.ui, this.modal, this.findView, this.toastView]) {
+    this.closePeek();
+    for (const v of [this.ui, this.modal, this.findView, this.toastView, this.peekChrome]) {
       if (v && !v.webContents.isDestroyed()) { wcOwner.delete(v.webContents.id); v.webContents.close(); }
     }
     if (this.incognito) this.session.clearStorageData().catch(() => {});
@@ -373,7 +387,7 @@ class OrbeWindow {
   }
 
   // --- Vues web des onglets -------------------------------------------------
-  ensureView(id, viewOptions) {
+  ensureView(id, viewOptions, existing) {
     let rt = live.get(id);
     if (rt) {
       if (rt.owner !== this) {
@@ -387,14 +401,14 @@ class OrbeWindow {
     }
     const tab = this.data.tabs[id];
     const internal = isInternal(tab.url);
-    const view = new WebContentsView(viewOptions || {
+    const view = existing || new WebContentsView(viewOptions || {
       webPreferences: { session: this.sessionFor(id), sandbox: true, contextIsolation: true, preload: internal ? UI_PRELOAD : undefined },
     });
     view.setBackgroundColor('#ffffff');
     rt = { id, view, wc: view.webContents, owner: this, loading: false, lastUsed: Date.now(), internal };
     live.set(id, rt);
     this.wire(rt, tab);
-    if (!viewOptions) rt.wc.loadURL(tab.url).catch(() => {});
+    if (!viewOptions && !existing) rt.wc.loadURL(tab.url).catch(() => {});
     return rt;
   }
 
@@ -455,6 +469,13 @@ class OrbeWindow {
       if (details.disposition === 'background-tab') {
         owner.newTab(details.url, { background: true, after: rt.id });
         return { action: 'deny' };
+      }
+      // Aperçu : lien sortant d'un onglet épinglé ou d'un favori, ou ⇧clic.
+      const from = data.tabs[rt.id];
+      const outside = from && from.homeUrl && !sameHost(details.url, from.url);
+      const shiftClick = details.disposition === 'new-window' && !details.features;
+      if (/^https?:/i.test(details.url) && (outside || shiftClick)) {
+        return { action: 'allow', createWindow: (options) => owner.openPeek(details.url, rt.id, options).webContents };
       }
       // Conserve window.opener (connexions OAuth, paiements…).
       return {
@@ -529,6 +550,7 @@ class OrbeWindow {
     const rt = this.ensureView(id);
     rt.lastUsed = Date.now();
     if (rt.crashed) { rt.crashed = false; rt.wc.reload(); }
+    if (this.peekState && !this.peekAdopting) this.closePeek();
     if (this.findOpen) this.closeFind();
     this.layout();
     this.focusContent();
@@ -545,6 +567,7 @@ class OrbeWindow {
 
   focusContent() {
     if (this.modalMode && this.modalMode !== 'switcher') return this.modal.webContents.focus();
+    if (this.peekState) return this.peekState.view.webContents.focus();
     const wc = this.activeWc;
     if (wc) wc.focus();
     else if (!this.ui.webContents.isDestroyed()) this.ui.webContents.focus();
@@ -921,6 +944,79 @@ class OrbeWindow {
     this.activate(other);
   }
 
+  // --- Aperçu (Peek) --------------------------------------------------------
+  // Une page ouverte par-dessus l'onglet courant, sans quitter celui-ci.
+  // Elle se ferme d'un geste ou devient un vrai onglet.
+  openPeek(url, fromId, options) {
+    this.closePeek();
+    const view = new WebContentsView(options || {
+      webPreferences: { session: this.sessionFor(fromId), sandbox: true, contextIsolation: true },
+    });
+    view.setBackgroundColor('#ffffff');
+    view.setBorderRadius(12);
+    const wc = view.webContents;
+    const state = (this.peekState = { view, from: fromId, url, title: '', handlers: [] });
+    const on = (event, fn) => { wc.on(event, fn); state.handlers.push([event, fn]); };
+    on('page-title-updated', (e, title) => { state.title = title; });
+    on('page-favicon-updated', (e, icons) => { state.favicon = icons[0] || ''; });
+    on('did-navigate', (e, u) => { state.url = u; });
+    on('did-navigate-in-page', (e, u, main) => { if (main) state.url = u; });
+    on('will-prevent-unload', (e) => e.preventDefault());
+    on('context-menu', (e, params) => this.pageMenu({ wc, id: fromId }, params));
+    on('before-input-event', (e, input) => {
+      if (input.type === 'keyDown' && input.key === 'Escape') { e.preventDefault(); return this.closePeek(); }
+      return this.onInput(e, input);
+    });
+    wc.setWindowOpenHandler((d) => { if (/^https?:/i.test(d.url)) this.newTab(d.url); return { action: 'deny' }; });
+    if (!this.peekChrome) {
+      this.peekChrome = this.makeUiView('overlay.html#peek');
+      this.peekChrome.webContents.once('did-finish-load', () => this.peekChrome.webContents.send('overlay', { mode: 'peek' }));
+    } else {
+      this.peekChrome.webContents.send('overlay', { mode: 'peek' });
+    }
+    this.win.contentView.addChildView(this.peekChrome);
+    this.win.contentView.addChildView(view);
+    if (this.findOpen) this.closeFind();
+    this.layout();
+    if (!options) wc.loadURL(url).catch(() => {});
+    wc.focus();
+    return view;
+  }
+
+  detachPeek() {
+    const state = this.peekState;
+    if (!state) return null;
+    this.peekState = null;
+    try { this.win.contentView.removeChildView(state.view); } catch {}
+    try { this.win.contentView.removeChildView(this.peekChrome); } catch {}
+    return state;
+  }
+
+  closePeek() {
+    const state = this.detachPeek();
+    if (!state) return;
+    if (!state.view.webContents.isDestroyed()) state.view.webContents.close({ waitForBeforeUnload: false });
+    if (!this.win.isDestroyed()) this.focusContent();
+  }
+
+  // Transforme l'aperçu en onglet sans recharger la page.
+  expandPeek({ split = false } = {}) {
+    const state = this.detachPeek();
+    if (!state) return;
+    const wc = state.view.webContents;
+    if (wc.isDestroyed()) return;
+    for (const [event, fn] of state.handlers) wc.off(event, fn);
+    const from = this.locate(state.from) ? state.from : null;
+    const tab = this.createTab(wc.getURL() || state.url, { after: from });
+    tab.title = state.title;
+    tab.favicon = state.favicon || '';
+    state.view.setBorderRadius(RADIUS);
+    this.ensureView(tab.id, null, state.view);
+    if (!this.incognito) store.visit(tab.url, tab.title, tab.favicon);
+    if (split && from && this.activeId === from) this.splitWith(from, tab.id);
+    else this.activate(tab.id);
+  }
+
   // --- Vues flottantes ------------------------------------------------------
   showModal(mode, payload, focus = true) {
     this.modalMode = mode;
@@ -1263,6 +1359,7 @@ class OrbeWindow {
       tpl.push(
         { label: t('ctx.openNewTab'), click: () => this.newTab(p.linkURL, { background: true, after: rt.id }) },
         { label: t('ctx.openSplit'), click: () => { this.activate(rt.id); this.newTab(p.linkURL, { split: true }); } },
+        { label: t('ctx.openPeek'), click: () => this.openPeek(p.linkURL, rt.id) },
         { label: t('ctx.openLittle'), click: () => hooks.openLittle(p.linkURL) },
         { label: t('ctx.copyLink'), click: () => clipboard.writeText(p.linkURL) },
       );
@@ -1399,6 +1496,9 @@ class OrbeWindow {
       case 'find': return this.find(String(a.text || ''), a);
       case 'findClose': return this.closeFind();
       case 'theme': return this.setTheme(a);
+      case 'peekClose': return this.closePeek();
+      case 'peekExpand': return this.expandPeek();
+      case 'peekSplit': return this.expandPeek({ split: true });
       case 'open': return this.newTab(String(a));
       default: return undefined;
     }

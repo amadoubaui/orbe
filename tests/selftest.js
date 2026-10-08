@@ -192,6 +192,24 @@ module.exports = async function selftest({ first: w, OrbeWindow, store, win, lit
   w.activate(a.id);
   await until(() => win.live.has(a.id), 'réveil de l’onglet épinglé');
 
+  // Aperçu (Peek) : lien sortant d'un onglet épinglé
+  const other = base.replace('127.0.0.1', 'localhost');
+  const todayBefore = w.space.today.length;
+  await until(() => !win.live.get(a.id).wc.isLoading(), 'onglet épinglé chargé');
+  await win.live.get(a.id).wc.executeJavaScript(`window.open(${JSON.stringify(other + '/b')}); 1`, true);
+  await until(() => w.peekState && w.peekState.title === 'Page B', 'aperçu ouvert');
+  check('un lien sortant d’un onglet épinglé s’ouvre en aperçu', w.activeId === a.id && w.space.today.length === todayBefore);
+  await shot('apercu');
+  const peekWc = w.peekState.view.webContents;
+  w.run('expandPeek');
+  check('⌘O transforme l’aperçu en onglet sans recharger', !w.peekState && win.live.get(w.activeId).wc === peekWc && tabs()[w.activeId].title === 'Page B' && w.space.today.length === todayBefore + 1);
+  w.close(w.activeId);
+  w.activate(a.id);
+  w.openPeek(base + '/c', a.id);
+  await until(() => w.peekState && w.peekState.title.startsWith('C '), 'second aperçu');
+  w.run('closeTab');
+  check('⌘W ferme l’aperçu sans fermer l’onglet', !w.peekState && w.activeId === a.id && !!tabs()[a.id]);
+
   // Espaces
   w.newSpace();
   const s2 = w.space;

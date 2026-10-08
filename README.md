@@ -21,6 +21,11 @@ interface entièrement en français (anglais disponible dans les réglages).
 - **Barre de commande** (⌘T / ⌘L) : adresse, recherche, bascule vers un onglet
   ouvert, historique, actions, suggestions du moteur de recherche.
 - **Vue scindée** jusqu'à quatre volets (⌃⇧=).
+- **Aperçu des liens (Peek)** : un lien sortant d'un onglet épinglé, ou un
+  ⇧clic, s'ouvre par-dessus la page ; ⌘O en fait un onglet, Échap le ferme.
+- **Profils** : cookies, connexions et favoris séparés, un profil par Espace.
+- **Import depuis Arc** : Espaces, épinglés, dossiers, favoris et profils
+  (menu Orbe → Importer depuis Arc…).
 - **Archive** : ⌘W archive l'onglet, ⇧⌘T le rouvre, les onglets inactifs sont
   archivés automatiquement (12 h par défaut).
 - **Petite fenêtre** (⌥⌘N), **navigation privée** (⇧⌘N), plusieurs fenêtres
@@ -63,7 +68,7 @@ Il faut [Node.js](https://nodejs.org) 20 ou plus récent.
 git clone https://github.com/amadoubaui/orbe.git
 cd orbe
 npm start        # lance le navigateur
-npm test         # tests de bout en bout (54 vérifications)
+npm test         # tests de bout en bout (57 vérifications)
 npm run build    # fabrique dist/Orbe.app
 ```
 
@@ -88,8 +93,8 @@ simples, pour un démarrage rapide et une interface fluide.
 ## Feuille de route
 
 Voir [docs/feuille-de-route.md](docs/feuille-de-route.md). Les prochains
-chantiers : extensions Chrome, profils multiples, aperçu des liens (Peek),
-bloqueur de publicités, import depuis Arc, puis la version Windows.
+chantiers : extensions Chrome, bloqueur de publicités, synchronisation, puis la
+version Windows.
 
 ## Licence
 

@@ -130,3 +130,11 @@
 }
 #toast.in { animation: toast 2100ms var(--ease) both; }
 @keyframes toast { 0% { opacity: 0; transform: translate(-50%, -8px); } 7%, 86% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; transform: translate(-50%, -4px); } }
+
+/* Aperçu (Peek) : voile sombre derrière la page et boutons sur le côté. */
+body.peek #backdrop { background: rgba(0, 0, 0, 0.42); animation: fade 160ms var(--ease); }
+@keyframes fade { from { opacity: 0; } }
+#peek { position: fixed; top: 22px; right: 8px; display: flex; flex-direction: column; gap: 8px; }
+.pk { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, 0.16); color: #fff; transition: background 120ms, transform 120ms; }
+.pk:hover { background: rgba(255, 255, 255, 0.3); }
+.pk:active { transform: scale(0.94); }

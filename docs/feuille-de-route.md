@@ -1,5 +1,10 @@
 # Feuille de route
 
+## 0.2 — fait
+
+Profils (cookies et favoris séparés), import depuis Arc, aperçu des liens
+(Peek), icône et fabrication de l'application.
+
 ## 0.1 — socle (fait)
 
 Barre latérale, Espaces, épinglés, dossiers, favoris, barre de commande, vue
@@ -10,14 +15,12 @@ français et anglais, raccourcis d'Arc.
 
 1. **Application installable** : icône, signature, image disque, mises à jour.
 2. **Extensions Chrome** (gestionnaires de mots de passe, bloqueurs…).
-3. **Profils** : plusieurs identités, un profil par Espace.
-4. **Aperçu des liens (Peek)** depuis les onglets épinglés.
-5. **Bloqueur de publicités et de traqueurs** intégré.
-6. **Import depuis Arc** : Espaces, épinglés et dossiers.
-7. Lecteur miniature (image dans l'image), contrôle des médias dans la barre.
-8. Capture d'une zone ou de la page entière.
-9. Synchronisation entre appareils.
-10. **Windows**, puis Linux.
+3. **Bloqueur de publicités et de traqueurs** intégré.
+4. Renommer et supprimer les profils depuis les réglages.
+5. Lecteur miniature (image dans l'image), contrôle des médias dans la barre.
+6. Capture d'une zone ou de la page entière.
+7. Synchronisation entre appareils.
+8. **Windows**, puis Linux.
 
 ## Limites connues
 

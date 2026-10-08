@@ -14,6 +14,8 @@
   <symbol id="i-bolt" viewBox="0 0 16 16"><path d="M8.8 2.5 4 9h3.6l-.4 4.5L12 7H8.4z"/></symbol>
   <symbol id="i-up" viewBox="0 0 16 16"><path d="m4.5 9.5 3.5-3.5 3.5 3.5"/></symbol>
   <symbol id="i-down" viewBox="0 0 16 16"><path d="m4.5 6.5 3.5 3.5 3.5-3.5"/></symbol>
+  <symbol id="i-expand" viewBox="0 0 16 16"><path d="M9.5 3h3.5v3.5M13 3 8.8 7.2M6.5 13H3V9.5M3 13l4.2-4.2"/></symbol>
+  <symbol id="i-split" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="2.5"/><path d="M8 3v10"/></symbol>
   <symbol id="i-x" viewBox="0 0 16 16"><path d="m4.8 4.8 6.4 6.4m0-6.4-6.4 6.4"/></symbol>
 </svg>
 
@@ -45,6 +47,12 @@
   <button class="fb" id="find-prev"><svg class="i"><use href="#i-up"/></svg></button>
   <button class="fb" id="find-next"><svg class="i"><use href="#i-down"/></svg></button>
   <button class="fb" id="find-close"><svg class="i"><use href="#i-x"/></svg></button>
+</div>
+
+<div id="peek" hidden>
+  <button class="pk" id="peek-close" data-t-title="peek.close"><svg class="i"><use href="#i-x"/></svg></button>
+  <button class="pk" id="peek-expand" data-t-title="peek.expand"><svg class="i"><use href="#i-expand"/></svg></button>
+  <button class="pk" id="peek-split" data-t-title="peek.split"><svg class="i"><use href="#i-split"/></svg></button>
 </div>
 
 <div id="toast" hidden></div>
