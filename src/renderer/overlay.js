@@ -194,6 +194,8 @@ findInput.addEventListener('input', () => send('find', { text: findInput.value }
 findInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') { e.preventDefault(); send('find', { text: findInput.value, forward: !e.shiftKey, next: true }); }
 });
+// Les boutons ne prennent pas le clavier : on continue de taper dans le champ.
+for (const id of ['find-next', 'find-prev']) $(id).addEventListener('mousedown', (e) => e.preventDefault());
 $('find-next').onclick = () => send('find', { text: findInput.value, forward: true, next: true });
 $('find-prev').onclick = () => send('find', { text: findInput.value, forward: false, next: true });
 $('find-close').onclick = () => send('findClose');

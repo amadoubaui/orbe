@@ -344,8 +344,13 @@ sidebar.addEventListener('dragstart', (e) => {
   drag = { id: row.dataset.id, folder: !!row.dataset.folder };
   e.dataTransfer.effectAllowed = 'move';
   e.dataTransfer.setData('text/plain', row.dataset.id);
-  item.classList.add('dragging-self');
-  document.body.classList.add('dragging');
+  // Les zones de dépôt ne s'agrandissent qu'après le départ du glisser :
+  // déplacer la ligne saisie pendant « dragstart » annule le geste.
+  requestAnimationFrame(() => {
+    if (!drag) return;
+    item.classList.add('dragging-self');
+    document.body.classList.add('dragging');
+  });
   return undefined;
 });
 sidebar.addEventListener('dragend', endDrag);
