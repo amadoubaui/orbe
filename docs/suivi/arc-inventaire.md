@@ -103,7 +103,7 @@ Règle appliquée pour ✅ : le code existe **et** un test nommé le couvre. Du 
 | BL-50 | ⌘clic sur l'icône d'un épinglé : retour à l'adresse, l'ancienne page part dans un nouvel onglet | HC 20498293324823 | ⬜ | aucun code | |
 | BL-51 | Double-clic sur un onglet pour le renommer | HC 19231060187159 ; binaire « Double-click to rename » | 🟡 | épinglés seulement ; ui 03 | Étendre aux onglets du jour |
 | BL-52 | Icône d'un onglet personnalisable (émoji) ; « Reset Name and Icon » | HC 20498293324823 ; binaire | ⬜ | aucun code | |
-| BL-53 | Sélection multiple (⇧clic, ⌘clic) ; ⌘W et ⇧⌘C agissent sur la sélection | HC 20498417809815 | ⬜ | aucun code | Gros manque d'usage |
+| BL-53 | Sélection multiple (⇧clic, ⌘clic) ; ⌘W et ⇧⌘C agissent sur la sélection ; menu commun, glisser le lot | HC 20498417809815 | ✅ | `SH:setSel`, `W:checkIds` (listes d’identifiants vérifiées) ; self « sélection : … » (tests/barre.js) ; ui 16 | La sélection part de l’onglet affiché, comme dans Chrome (non vérifié sur Arc) ; ⌘D et Suppr agissent aussi sur elle ; menu de la sélection : copier les liens, dupliquer, épingler, favoris, dossier, déplacer vers un Espace, archiver |
 | BL-54 | Rangée du bas : Bibliothèque, icônes des Espaces, « + » | observé | ✅ | `#bottom` ; ui 06 | |
 | BL-55 | « + » du bas : New Space, New Folder, New Split View, New Easel, New Boost, New Note | HC 19231142050071 ; binaire (icônes `add-space`, `folder`, `split-add-right`…) | 🟡 | menu : onglet, dossier, Espace, thème | Ajouter scinder, tableau, Boost, note |
 | BL-56 | Bandeau de mise à jour en bas de la barre | observé « New Arc Version Available » ; HC 21489650267031 | ⬜ | pas de mise à jour automatique | Voir DIV |
@@ -125,7 +125,7 @@ Règle appliquée pour ✅ : le code existe **et** un test nommé le couvre. Du 
 | BL-76 | Un dossier fermé ne s'ouvre pas quand on glisse dessus ; animation de dépôt | HC 20498377604887 | 🟡 | dépôt géré (ui 04), sans animation | |
 | BL-77 | Supprimer un dossier archive ses onglets, avec message et annulation | binaire « Deleting this folder will archive the tabs inside it. » | 🟡 | W:deleteFolder : le contenu remonte, sans message | Comportement différent d'Arc |
 | BL-78 | Dossier transformable en Espace, et Espace en dossier | binaire « Turn into Folder » | ⬜ | aucun code | |
-| BL-79 | « New Folder from Selection » | binaire | ⬜ | pas de sélection multiple | |
+| BL-79 | « New Folder from Selection » | binaire | ✅ | `W:folderFromSelection` ; self « Nouveau dossier avec la sélection » ; ui 16 | Le dossier prend la place du premier onglet épinglé de la sélection |
 | BL-80 | Commandes « Expand All Folders » / « Collapse All Folders » | binaire | ⬜ | aucun code | Simple |
 | BL-81 | Dossiers vivants GitHub (demandes de fusion) | HC 22731612065815 | ➖ | | Dépend d'un service tiers ; hors du socle |
 
@@ -144,7 +144,7 @@ Règle appliquée pour ✅ : le code existe **et** un test nommé le couvre. Du 
 | BL-98 | Glisser un onglet sur un autre dans la barre : vue scindée | HC 20498293324823 | ⬜ | aucun code | |
 | BL-99 | ⌥glisser un onglet : le duplique | HC 19231060187159 | ⬜ | aucun code | |
 | BL-100 | Retour haptique léger pendant le déplacement d'un onglet | HC 20498377604887 ; binaire « Haptic feedback when reordering tabs » | ⬜ | aucun code | Voir SON |
-| BL-101 | Les lignes voisines s'écartent pendant le glisser | non vérifié | ⬜ | trait de 2 px comme repère | Voir ANI |
+| BL-101 | Les lignes voisines s'écartent pendant le glisser | non vérifié | ✅ | `SH:measure`, `SH:part` ; ui 17 (9 vérifications, dont 404 lignes) | Place libre teintée à la place du trait ; la ligne emportée laisse la sienne ; « Réduire les animations » respecté. Le trait vertical reste dans la grille des favoris |
 | BL-102 | Réordonner les Espaces en glissant leur icône | binaire « Drag to Reorder Space » | ⬜ | aucun code | |
 | BL-103 | Message « Tab moved! Click to go there. » après un déplacement | binaire | ⬜ | aucun code | |
 
@@ -165,7 +165,7 @@ Règle appliquée pour ✅ : le code existe **et** un test nommé le couvre. Du 
 | BL-120 | Onglet : Archive Tabs Below | binaire | 🟡 | présent ; aucun test | |
 | BL-121 | Onglet : Archive Tabs Above | binaire | ⬜ | | |
 | BL-122 | Onglet : Archive Other Tabs | binaire | ⬜ | | |
-| BL-123 | Onglet : New Folder with… (sélection) | binaire | ⬜ | | |
+| BL-123 | Onglet : New Folder with… (sélection) | binaire | ✅ | `W:tabsMenu` ; ui 16 « menu de la sélection : Nouveau dossier avec la sélection » | |
 | BL-124 | Onglet : Share | HC 19228534606743 | ➖ | | Demande un serveur de partage |
 | BL-125 | Épinglé : Edit Pinned Page → Replace Pinned URL with Current, Edit… | HC 25541939922199 ; binaire | ⬜ | | Simple : `homeUrl = url` |
 | BL-126 | Épinglé : Close and Keep Pinned | binaire | 🟡 | ⌘W le fait (self) ; pas d'entrée de menu | |
@@ -259,7 +259,7 @@ Actions de la barre de commande relevées dans Arc (libellés du binaire et du c
 | ESP-12 | Renommer : clic sur le titre, ou menu Spaces → Rename Space | HC 20498377604887 ; menu | ✅ | ui 03 | |
 | ESP-13 | Icône : sélecteur d'émojis avec recherche et teintes de peau | HC 20498293324823 ; binaire `ARC_Emojis` | 🟡 | icône émoji (choix limité) | |
 | ESP-14 | Supprimer : confirmation qui nomme l'Espace ; « This will archive all the tabs and folders inside it. » | HC 20498377604887 ; binaire | 🟡 | W:deleteSpace ; aucun test | |
-| ESP-15 | ⌘Z annule la suppression ou la création d'un Espace | binaire (« Undo/Redo prompt for deleting a space ») | ⬜ | ⌘Z ne rouvre qu'un onglet | |
+| ESP-15 | ⌘Z annule la suppression ou la création d'un Espace | binaire (« Undo/Redo prompt for deleting a space ») | ✅ | `W:removeSpace` ; self « ⌘Z rétablit l’Espace : même rang, épinglés, dossier, onglets du jour, thème », « ⌘Z défait la création d’un Espace » ; ui 18 | Les pages de l’Espace rétabli se rechargent à la demande ; pas de message « Undo/Redo » à l’écran, seulement le menu |
 | ESP-16 | Réordonner les Espaces | binaire « Drag to Reorder Space » | ⬜ | | |
 | ESP-17 | Gestionnaire d'Espaces (Manage Spaces…) dans la Bibliothèque | menu ; HC 20498377604887 | ⬜ | | |
 | ESP-18 | Masquer l'en-tête de l'Espace | binaire « Hide Space Header » | ⬜ | | |
@@ -276,15 +276,15 @@ Actions de la barre de commande relevées dans Arc (libellés du binaire et du c
 | --- | --- | --- | --- | --- | --- |
 | ONG-1 | ⌘W archive l'onglet (« Archive Tab ») | menu | ✅ | self | |
 | ONG-2 | ⌘W sur un épinglé : le décharge, il reste dans la barre | non vérifié (comportement connu) | ✅ | self « ⌘W sur un onglet épinglé le met en veille » | |
-| ONG-3 | ⇧⌘T rouvre le dernier onglet fermé, avec son historique | menu ; HC 20498377604887 | 🟡 | self ; l'historique de l'onglet n'est pas rendu | |
-| ONG-4 | ⌘Z annule les actions de la barre : déplacement, personnalisation, effacement, fermeture d'onglet ou d'aperçu | HC 20498377604887 ; menu « Annuler Close Peek » | 🟡 | C:undo : seulement rouvrir un onglet ; nat | Pile d'annulation générale |
-| ONG-5 | ⇧⌘Z rétablit | menu | ⬜ | | |
+| ONG-3 | ⇧⌘T rouvre le dernier onglet fermé, avec son historique | menu ; HC 20498377604887 | 🟡 | self ; ui 02 ; même identifiant et même rang (`W:restoreClosed`) ; l’historique de navigation de l’onglet n’est pas rendu | |
+| ONG-4 | ⌘Z annule les actions de la barre : déplacement, personnalisation, effacement, fermeture d’onglet ou d’aperçu | HC 20498377604887 ; menu « Annuler Close Peek » | ✅ | `W:record`, `W:replay`, `C:undo` ; self « ⌘Z défait toute la suite, état pour état » ; ui 18 | Pile de 50 actions par fenêtre, jamais enregistrée : archiver, déplacer (liste, dossier, rang), épingler, favoris, renommer, Effacer, dossiers, Espaces, aperçu. Hors pile : nouvel onglet, dupliquer, thème, vue scindée. Dans un champ de texte, ⌘Z reste l’annulation du texte |
+| ONG-5 | ⇧⌘Z rétablit | menu | ✅ | `W:replay` ; self « ⇧⌘Z refait toute la suite, état pour état » ; ui 18 | |
 | ONG-6 | Archivage automatique après 12 h par défaut ; 12 h, 24 h, 7 jours, 30 jours | HC 19228855311127 ; warren ; binaire « Archive tabs after » | 🟡 | W:archiveStale (mêmes valeurs, plus « jamais ») ; aucun test | Écrire un test |
 | ONG-7 | Délai réglable par profil | HC 19228855311127 | ⬜ | réglage global | |
 | ONG-8 | Voir ou cliquer un onglet remet son délai à zéro | HC 19228855311127 | 🟡 | `lastUsed` | |
 | ONG-9 | Un onglet qui joue un média n'est ni effacé ni archivé | HC 20498417809815 | 🟡 | épargne les onglets audibles | |
 | ONG-10 | Bandeau unique expliquant l'archivage automatique | HC 20498293324823 ; binaire | ⬜ | | |
-| ONG-11 | ⇧⌘K efface les onglets du jour, avec une animation propre | menu ; HC 20498377604887 | 🟡 | self ; sans animation dédiée | Voir ANI-14 |
+| ONG-11 | ⇧⌘K efface les onglets du jour, avec une animation propre | menu ; HC 20498377604887 | 🟡 | self ; sans animation dédiée ; ⌘Z rétablit tout (ui 18) | Voir ANI-14 |
 | ONG-12 | « Reset all tabs in this Space » | menu | ⬜ | | |
 | ONG-13 | ⌃⇥ : sélecteur des onglets récents, comme ⌘⇥ | binaire ; HC 25619402657303 | ✅ | SH `#switcher` ; nat (`ctrltab.swift`) | Arc montre 5 onglets, Orbe 8 |
 | ONG-14 | Dans le sélecteur, ⌃ maintenu + W ferme l'onglet désigné | HC 25619402657303 | ⬜ | | |
@@ -337,7 +337,7 @@ Actions de la barre de commande relevées dans Arc (libellés du binaire et du c
 | APE-4 | Boutons à côté : fermer, ouvrir en onglet (⌘O), ouvrir en vue scindée | HC 19335302900887 | ✅ | self « ⌘O transforme l'aperçu en onglet sans recharger » | |
 | APE-5 | Fermer : clic à l'extérieur, croix, ⌘W, Échap | HC 20498377604887 | ✅ | self « ⌘W ferme l'aperçu… » | |
 | APE-6 | Geste de fermeture interactif | HC 20498377604887 | ⬜ | | |
-| APE-7 | ⌘Z ou ⇧⌘T rouvre un aperçu fermé | HC 20498377604887 ; menu « Annuler Close Peek » | ⬜ | | |
+| APE-7 | ⌘Z ou ⇧⌘T rouvre un aperçu fermé | HC 20498377604887 ; menu « Annuler Close Peek » | ✅ | `W:dismissPeek` ; self « ⌘Z rouvre l’aperçu fermé », « ⇧⌘T rouvre aussi un aperçu fermé » ; ui 18 | La page de l’aperçu est rechargée (son défilement et ses saisies ne sont pas rendus) |
 | APE-8 | Animation d'ouverture et de fermeture | HC 20498417809815 (existence) ; durée non mesurée | 🟡 | fondu du voile seul, la page apparaît d'un coup | Voir ANI-11 |
 | APE-9 | La barre d'outils s'affiche aussi dans l'aperçu | HC 20498293324823 | ⬜ | | |
 | APE-10 | Les liens de réunion s'ouvrent en onglet, pas en aperçu | HC 20498377604887 | ⬜ | | |
@@ -417,7 +417,7 @@ Chiffres d'Arc : seuls ANI-1 à ANI-4 ont été mesurés. Pour le reste, l'exist
 | ANI-19 | Le lecteur audio rejoint la position de l'image dans l'image en s'animant | HC 20498377604887 | ⬜ | | |
 | ANI-20 | Pastille d'état du lien : s'étend après 1,5 s, s'écarte de la souris | HC 20498377604887 | ⬜ | | |
 | ANI-21 | Apparition et retrait d'une ligne d'onglet | non vérifié | 🟡 | `row-in` 170 ms, `row-out` 150 ms ; aucun test | |
-| ANI-22 | Les lignes s'écartent pendant un glisser | non vérifié | ⬜ | | Technique FLIP |
+| ANI-22 | Les lignes s'écartent pendant un glisser | non vérifié | ✅ | ui 17 ; transformations de 140 ms, relevé unique des positions, aucune mise en page pendant le geste | Mesures dans ameliorations.md (PERF-25) |
 | ANI-23 | Ouverture d'un dossier : hauteur animée | non vérifié | ⬜ | | |
 | ANI-24 | Changement d'onglet : coupe franche | non vérifié | 🟡 | coupe franche | Sans doute identique |
 | ANI-25 | Sélecteur ⌃⇥ : apparition | non vérifié | ⬜ | sans animation | |
@@ -659,7 +659,7 @@ Relevé complet d'Arc par l'accessibilité. Orbe : `menu.js` ; test self « les 
 | MEN-24 | File → Capture in Portrait Mode | | ⬜ | |
 | MEN-25 | File → Save Page As | ⇧⌘S | 🟡 | Présent, non testé |
 | MEN-26 | File → Print | ⌘P | 🟡 | Présent, non testé |
-| MEN-27 | Edit → Undo (libellé dynamique, par exemple « Close Peek ») / Redo | ⌘Z / ⇧⌘Z | 🟡 | Libellé fixe ; voir ONG-4 |
+| MEN-27 | Edit → Undo (libellé dynamique, par exemple « Close Peek ») / Redo | ⌘Z / ⇧⌘Z | ✅ | `M:build` ; self « menu Édition : Annuler Archiver l’onglet » ; ui 18 (libellés après chaque geste) |
 | MEN-28 | Edit → Cut, Copy, Paste, Paste and Match Style ⇧⌘V, Delete, Select All | | ✅ | Rôles natifs ; « Delete » à vérifier |
 | MEN-29 | Edit → Copy URL | ⇧⌘C | ✅ | |
 | MEN-30 | Edit → Copy URL as Markdown | ⌥⇧⌘C | ✅ | |
@@ -843,11 +843,11 @@ Arc : `menu` pour ceux de la barre de menus, sinon la source indiquée. Orbe : `
 4. **SON-1, TAB-16, SON-4** — un son de capture original et le réglage pour le couper. C'est le seul son d'usage courant d'Arc.
 5. **TAB-14, TAB-15** — ⇧⌘2 choisit une zone (le code existe déjà pour « vers un tableau »), puis propose copier, enregistrer, ajouter à un tableau.
 6. **SON-6, SON-7** — retour haptique au déplacement et au dépôt d'un onglet (petit module natif `NSHapticFeedbackManager`), avec le réglage REG-40.
-7. **ANI-22, BL-101** — les lignes s'écartent sous l'onglet qu'on déplace.
+7. ✅ **ANI-22, BL-101** — les lignes s'écartent sous l'onglet qu'on déplace. *(fait : ui 17)*
 8. **ANI-10, ESP-9, GES-1** — vrai glissement côte à côte entre deux Espaces, qui suit le doigt ; à régler caméra en main avec Arc à côté.
 9. **ANI-11, APE-8** — l'aperçu s'ouvre en s'agrandissant et se referme en se réduisant.
-10. **BL-53** — sélection multiple d'onglets (⇧clic, ⌘clic), puis fermer, déplacer, copier, mettre en dossier.
-11. **ONG-4, ONG-5, ESP-15, APE-7** — une vraie pile d'annulation pour la barre (déplacer, renommer, effacer, supprimer, aperçu fermé), avec le libellé dynamique du menu.
+10. ✅ **BL-53** — sélection multiple d'onglets (⇧clic, ⌘clic), puis fermer, déplacer, copier, mettre en dossier. *(fait : ui 16)*
+11. ✅ **ONG-4, ONG-5, ESP-15, APE-7** — une vraie pile d'annulation pour la barre (déplacer, renommer, effacer, supprimer, aperçu fermé), avec le libellé dynamique du menu. *(fait : ui 18)*
 12. **SCI-5, SCI-11** — petite barre en haut de chaque volet (adresse, fermer) et repère du volet actif.
 13. **BL-97, BL-98, SCI-6** — déposer à gauche, à droite, en haut, en bas ; déposer un onglet sur un autre ; ⌥clic.
 14. **BL-94, BL-102** — glisser un onglet vers un autre Espace ; réordonner les Espaces.

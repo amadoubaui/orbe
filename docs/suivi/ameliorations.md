@@ -596,6 +596,35 @@ réconciliation par clé de `shell.js` et `content-visibility: auto` font leur t
   n'essayer `/favicon.ico` qu'une fois par hôte et par session. *Gain* : moins de requêtes, un
   défilement encore plus léger ; **à mesurer** en nombre de requêtes. *Effort* : S.
 
+- ✅ **PERF-25 — Glisser un onglet : relever la géométrie une fois, écarter par transformation.**
+  *Constat* : à chaque mouvement du glisser, `dropTarget` relisait le rectangle de chaque ligne
+  jusqu'à la cible, cherchait `.drop-into` dans tout le document, puis déplaçait le trait de dépôt
+  par `left`/`top` : une mise en page relancée à chaque changement de cible. *Changement* (avec
+  ANI-22 : les lignes s'écartent sous l'onglet déplacé) : les positions des lignes sont relevées
+  une seule fois par glisser (`measure`), le pointeur est ensuite comparé à ce relevé ; les lignes
+  et la place libre ne bougent que par `transform`, et seules celles dont le décalage change sont
+  touchées. Une transformation neutre est posée dès le départ (`body.parting`), car passer de
+  « aucune » à un décalage relançait la mise en page à chaque ligne. *Mesure* (Playwright, vrai
+  glisser de trois allers-retours sur la hauteur de la barre, 404 lignes dans Aujourd'hui ;
+  coût = temps entre un écouteur en capture et un écouteur en fin de propagation sur `window` ;
+  mises en page et styles par le domaine `Performance` du débogueur ; cadence par
+  `requestAnimationFrame` ; `tests/ui/17-ecarter.js` refait la mesure à chaque passage) :
+
+  | 404 lignes | Avant (trait) | Après (lignes écartées) |
+  | --- | --- | --- |
+  | Coût moyen d'un mouvement (`dragover`) | 0,14 ms | 0,012 à 0,021 ms |
+  | 95ᵉ centile / maximum | 0,6 / 0,8 à 1,5 ms | 0,1 / 0,1 à 0,2 ms (limite de l'horloge) |
+  | Mises en page pendant le geste | 55 (3,7 ms) | 0 |
+  | Recalculs de style | 162 (9 ms) | 336 à 346 (32 à 41 ms, soit 0,1 ms l'un) |
+  | Script pendant le geste | 54 à 57 ms | 8 à 12 ms |
+  | Cadence médiane / 95ᵉ centile | 8,3 / 9,2 ms | 8,3 / 9,2 ms |
+  | Images de plus de 25 ms | 0 | 0 |
+
+  Le relevé initial (404 rectangles lus d'un coup, au premier survol) n'est pas dans ces
+  chiffres : il a lieu une fois par glisser. *Reste* : avec des favoris vides, leur zone de
+  dépôt s'ouvre au départ du glisser et décale toute la colonne de 52 points sous le pointeur
+  (comportement antérieur, non modifié) ; les épinglés vides, eux, ne s'agrandissent plus.
+
 ## 9. Animations des vues natives (ANIM)
 
 ### Bascule de la barre latérale

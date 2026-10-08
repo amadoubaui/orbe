@@ -7,6 +7,11 @@ let editing = null; // id en cours de renommage
 let drag = null;
 let animate = false;
 let present = new Set();
+// Sélection multiple (⌘clic, ⇧clic) : identifiants d'onglets ; `anchor` est le
+// point de départ d'une plage ⇧clic.
+const sel = new Set();
+let anchor = null;
+let selRev = 0;
 const FLOATING = location.hash === '#flottant';
 if (FLOATING) document.documentElement.classList.add('floating');
 
@@ -44,7 +49,8 @@ function tabRow(el, it) {
     el.draggable = true;
   }
   el.className = 'row tab' + (it.active ? ' active' : '') + (it.shown ? ' shown' : '') + (it.live ? ' live' : '')
-    + (it.audible ? ' audible' : '') + (it.muted ? ' muted' : '') + (it.changed ? ' changed' : '') + (it.partners ? ' split' : '') + (it.grouped ? ' grouped' : '');
+    + (it.audible ? ' audible' : '') + (it.muted ? ' muted' : '') + (it.changed ? ' changed' : '') + (it.partners ? ' split' : '') + (it.grouped ? ' grouped' : '')
+    + (sel.has(it.id) ? ' sel' : '');
   // Vue scindée : une seule ligne, avec les icônes et les titres de chaque volet.
   const label = it.partners ? [it.title, ...it.partners.map((p) => p.title)].join('  |  ') : it.title;
   if (editing !== it.id && el._t !== label) {
@@ -84,7 +90,7 @@ function tileEl(el, it) {
     el._ic = el.firstChild;
     el.draggable = true;
   }
-  el.className = 'tile' + (it.active ? ' active' : '') + (it.live ? ' live' : '') + (it.audible ? ' audible' : '');
+  el.className = 'tile' + (it.active ? ' active' : '') + (it.live ? ' live' : '') + (it.audible ? ' audible' : '') + (sel.has(it.id) ? ' sel' : '');
   el.title = it.title;
   setIcon(el, it);
 }
@@ -131,6 +137,15 @@ function render(s) {
   present = new Set();
   const collect = (list) => { for (const it of list) { present.add(it.id); if (it.children) collect(it.children); } };
   collect(s.favorites); collect(s.pinned); collect(s.today);
+  // La sélection ne garde que les onglets encore affichés ; elle tombe quand une
+  // action l'a consommée (selRev) ou quand un autre onglet passe au premier plan.
+  if (sel.size) {
+    const kept = (s.selRev || 0) !== selRev || (prev && prev.activeId !== s.activeId) ? [] : [...sel].filter((id) => present.has(id));
+    if (kept.length !== sel.size) setSel(kept);
+  }
+  selRev = s.selRev || 0;
+  // Glisser en cours : si les listes changent, le relevé des lignes est à refaire.
+  if (drag && !drag.settling && geom && prev && structSig(prev) !== structSig(s)) dropGeom();
   S = s;
   setLang(s.lang);
   const b = document.body;
@@ -242,6 +257,9 @@ function render(s) {
   lib.classList.toggle('downloading', !!s.downloads);
   if (s.downloads) lib.querySelector('circle').style.strokeDashoffset = String(75.4 * (1 - s.downloads.progress));
 
+  // Dépôt en attente : les listes viennent de prendre leur ordre définitif.
+  if (drag && drag.settling && drag.settling !== structSig(s)) endDrag();
+
   if (s.spaceDir && prev) {
     const sc = $('scroll');
     sc.classList.remove('slide-next', 'slide-prev');
@@ -295,12 +313,60 @@ function startRename(id) {
   for (const ev of ['click', 'dblclick', 'mousedown']) input.addEventListener(ev, (e) => e.stopPropagation());
 }
 
+// --- Sélection multiple -----------------------------------------------------
+const rowOf = (id) => document.querySelector(`#sidebar [data-id="${CSS.escape(id)}"]`);
+// Onglets dans l'ordre où on les voit : favoris, épinglés, Aujourd'hui (les
+// lignes masquées — dossier replié, volet d'une vue scindée — n'en font pas partie).
+const visibleTabIds = () => [...document.querySelectorAll('#fav .tile, #pinned .row.tab, #today .row.tab')]
+  .filter((el) => el.dataset.id && el.offsetParent !== null).map((el) => el.dataset.id);
+// Ligne de l'onglet affiché (pour une vue scindée : la ligne du groupe).
+const activeRowId = () => { const el = document.querySelector('#sidebar .row.tab.active, #sidebar .tile.active'); return el ? el.dataset.id : null; };
+
+function setSel(ids) {
+  sel.clear();
+  for (const id of ids) sel.add(id);
+  if (!sel.size) anchor = null;
+  for (const el of document.querySelectorAll('#sidebar .sel')) if (!sel.has(el.dataset.id)) el.classList.remove('sel');
+  for (const id of sel) { const el = rowOf(id); if (el) el.classList.add('sel'); }
+  send('select', [...sel]);
+}
+
+// ⌘clic : ajoute ou retire un onglet. Comme dans Arc, la sélection part de
+// l'onglet affiché : le premier ⌘clic sur un autre onglet les réunit.
+function toggleSel(id) {
+  const next = new Set(sel);
+  const current = activeRowId();
+  if (!next.size && current && current !== id) next.add(current);
+  if (next.has(id)) next.delete(id); else next.add(id);
+  setSel(next);
+  anchor = sel.size ? id : null;
+}
+
+// ⇧clic : tout ce qui se trouve entre le point de départ et la ligne cliquée.
+function rangeSel(id) {
+  const order = visibleTabIds();
+  const from = anchor && order.includes(anchor) ? anchor : (activeRowId() || id);
+  const a = order.indexOf(from);
+  const b = order.indexOf(id);
+  if (a < 0 || b < 0) return setSel([id]);
+  setSel(order.slice(Math.min(a, b), Math.max(a, b) + 1));
+  anchor = from;
+  return undefined;
+}
+
 // --- Clics ------------------------------------------------------------------
 const sidebar = $('sidebar');
 
 sidebar.addEventListener('click', (e) => {
   const act = e.target.closest('[data-act]');
   const row = e.target.closest('[data-id]');
+  // ⌘clic (Ctrl hors macOS) ou ⇧clic sur un onglet : sélection, sans l'afficher.
+  if (row && !row.dataset.folder && (modKey(e) || e.shiftKey) && !(act && act.dataset.act !== 'icon')) {
+    e.stopPropagation();
+    return modKey(e) ? toggleSel(row.dataset.id) : rangeSel(row.dataset.id);
+  }
+  // Tout autre clic dans la barre abandonne la sélection.
+  if (sel.size) setSel([]);
   if (act && row) {
     e.stopPropagation();
     const id = row.dataset.id;
@@ -309,15 +375,16 @@ sidebar.addEventListener('click', (e) => {
     else if (act.dataset.act === 'reset') send('resetPinned', id);
     // Clic sur l'icône d'un épinglé sorti de son adresse : retour à celle-ci.
     else if (act.dataset.act === 'icon') send(row.classList.contains('changed') ? 'resetPinned' : (row.dataset.folder ? 'toggleFolder' : 'activate'), id);
-    return;
+    return undefined;
   }
   if (row) {
     if (row.dataset.folder) send('toggleFolder', row.dataset.id);
     else send('activate', row.dataset.id);
-    return;
+    return undefined;
   }
   const sp = e.target.closest('[data-space]');
   if (sp) send('switchSpace', sp.dataset.space);
+  return undefined;
 });
 
 // Clic molette : archive l'onglet.
@@ -338,8 +405,12 @@ sidebar.addEventListener('contextmenu', (e) => {
   e.preventDefault();
   const row = e.target.closest('[data-id]');
   const sp = e.target.closest('[data-space]');
-  if (row) send('tabMenu', row.dataset.id);
-  else if (sp) send('spaceMenu', sp.dataset.space);
+  if (row) {
+    // Clic droit hors de la sélection : elle tombe, le menu est celui de la ligne.
+    const id = row.dataset.id;
+    if (sel.size && !sel.has(id)) setSel([]);
+    send('tabMenu', sel.size > 1 ? { id, ids: [...sel] } : id);
+  } else if (sp) send('spaceMenu', sp.dataset.space);
   else if (e.target.closest('#space-head')) send('spaceMenu', null);
   else send('sidebarMenu');
 });
@@ -451,107 +522,289 @@ $('dividers').addEventListener('pointerdown', (e) => {
 });
 
 // --- Glisser-déposer --------------------------------------------------------
+// Dans les listes, les lignes voisines s'écartent pour montrer où l'onglet va
+// tomber (transformations seulement : la mise en page ne change pas pendant le
+// geste). Dans la grille des favoris, un trait vertical marque la position.
 const line = $('drop-line');
+const ROW_SLOT = 41; // place d'une ligne (37 + 4), quand rien n'est emporté des listes
+let geom = null; // relevé des listes, fait une fois par glisser (voir measure)
+let target = null; // destination affichée
+let intoEl = null; // dossier mis en évidence
 
-function clearDrop() {
-  line.style.display = 'none';
-  for (const el of document.querySelectorAll('.drop-into')) el.classList.remove('drop-into');
+// Ordre et forme des listes : sert à savoir si un nouvel état les a changées.
+function structSig(s) {
+  let out = String(s.activeId);
+  const walk = (list) => {
+    for (const it of list) {
+      out += '/' + it.id + (it.grouped ? '~' : '');
+      if (it.children) { out += it.open ? '[' : '('; walk(it.children); out += ']'; }
+    }
+  };
+  for (const list of [s.favorites, s.pinned, s.today]) { out += '|'; walk(list); }
+  return out;
 }
 
+// Relevé fait au premier survol : chaque ligne visible des épinglés et
+// d'Aujourd'hui (et ce qui les sépare), de haut en bas, avec sa position dans
+// le contenu défilant. Ensuite le glisser ne lit plus la mise en page : il
+// compare le pointeur à ces positions, quel que soit le nombre de lignes.
+function measure() {
+  const sr = scroller.getBoundingClientRect();
+  const scroll = scroller.scrollTop;
+  const base = sr.top - scroll;
+  const flow = [];
+  const dragged = new Set(drag.ids || [drag.id]);
+  const add = (el, gap, origin) => {
+    const r = el.getBoundingClientRect();
+    if (!r.height) return false;
+    flow.push({ el, top: r.top - base, h: r.height, size: r.height + gap, origin, off: 0 });
+    return true;
+  };
+  const scan = (el, to, folderId, inOrigin) => {
+    const r = el.getBoundingClientRect();
+    const gap = parseFloat(getComputedStyle(el).rowGap) || 0;
+    const zone = { to, folderId, top: r.top - base, bottom: r.bottom - base, left: r.left, width: r.width, gap, kids: [], count: el.children.length, end: 0 };
+    for (let i = 0; i < el.children.length; i++) {
+      const child = el.children[i];
+      const key = child.dataset.key;
+      const origin = inOrigin || (!!key && dragged.has(key));
+      const a = flow.length;
+      if (child.classList.contains('folder')) {
+        if (!add(child._head, gap, origin)) continue;
+        const fr = child.getBoundingClientRect();
+        const kid = { i, a, top: fr.top - base, bottom: fr.bottom - base, head: flow[a], id: key, el: child, sub: null };
+        if (child._children.getBoundingClientRect().height) kid.sub = scan(child._children, 'folder', key, origin);
+        zone.kids.push(kid);
+      } else if (add(child, gap, origin)) {
+        zone.kids.push({ i, a, top: flow[a].top, bottom: flow[a].top + flow[a].h });
+      }
+    }
+    zone.end = flow.length;
+    return zone;
+  };
+  const pinned = scan($('pinned'), 'pinned', null, false);
+  add($('divider'), 0, false);
+  add($('b-newtab'), 0, false);
+  const today = scan($('today'), 'today', null, false);
+  // cum[k] : place libérée, au-dessus de la ligne k, par les lignes emportées.
+  const cum = new Float64Array(flow.length + 1);
+  for (let k = 0; k < flow.length; k++) cum[k + 1] = cum[k] + (flow[k].origin ? flow[k].size : 0);
+  geom = { top: sr.top, scroll, flow, pinned, today, cum, total: cum[flow.length] || ROW_SLOT };
+}
+
+// Écarte les lignes pour ouvrir une place de hauteur `room` devant la ligne `gi`
+// du relevé ; les lignes emportées laissent la leur. `null` : tout revient en
+// place. Seules les lignes dont le décalage change sont touchées.
+function part(gi, room) {
+  const { flow, cum } = geom;
+  for (let k = 0; k < flow.length; k++) {
+    const f = flow[k];
+    const off = gi === null || f.origin ? 0 : (k >= gi ? room : 0) - cum[k];
+    if (off !== f.off) {
+      f.off = off;
+      f.el.style.transform = off ? `translateY(${off}px)` : '';
+    }
+  }
+}
+
+// Abandonne le relevé (les listes ont changé) : les lignes reprennent leur place.
+function dropGeom() {
+  if (!geom) return;
+  part(null);
+  geom = null;
+  showTarget(null);
+}
+
+// Affiche la destination : dossier mis en évidence, lignes écartées et place
+// libre, ou trait dans la grille des favoris.
+function showTarget(t) {
+  const same = t === target || (t && target && t.to === target.to && t.folderId === target.folderId && t.index === target.index && t.into === target.into && !t.pos && t.g === target.g);
+  if (same) return;
+  target = t;
+  const into = (t && t.into) || null;
+  if (into !== intoEl) {
+    if (intoEl) intoEl.classList.remove('drop-into');
+    if (into) into.classList.add('drop-into');
+    intoEl = into;
+  }
+  if (geom) part(t && t.g != null ? t.g : null, t ? t.room : 0);
+  if (t && t.slot) placeSlot();
+  else if (t && t.pos) {
+    const p = t.pos;
+    line._size = '';
+    line.className = 'v';
+    line.style.cssText = `display:block;left:${p.x}px;top:${p.y}px;height:${p.h}px`;
+  } else if (line._size !== '-') {
+    line._size = '-';
+    line.style.display = 'none';
+  }
+}
+
+// Place libre entre les lignes écartées (suit le défilement de la liste). Tant
+// que sa taille ne change pas, seule sa transformation est modifiée : la mise en
+// page n'est pas touchée.
+function placeSlot() {
+  const s = target.slot;
+  const move = `translate(${s.x}px,${Math.round(s.y + geom.top - geom.scroll)}px)`;
+  const size = `display:block;width:${s.w}px;height:${s.h}px;transform:`;
+  if (line._size === size) line.style.transform = move;
+  else { line._size = size; line.className = 'slot'; line.style.cssText = size + move; }
+}
+scroller.addEventListener('scroll', () => {
+  if (!geom) return;
+  geom.scroll = scroller.scrollTop;
+  if (target && target.slot) placeSlot();
+}, { passive: true });
+
 function endDrag() {
-  if (drag) send('dragZone', false);
+  if (!drag) return;
+  clearTimeout(drag.timer);
+  const settled = drag.settling;
+  if (!settled) send('dragZone', false);
   zoneOn = false;
-  clearDrop();
-  document.body.classList.remove('dragging');
+  // Dépôt accepté : les lignes sont déjà à leur place définitive, on retire les
+  // décalages sans animation. Abandon : elles reviennent en glissant.
+  const b = document.body;
+  if (settled) b.classList.remove('parting');
+  else setTimeout(() => { if (!drag) b.classList.remove('parting'); }, 180);
+  if (geom) part(null);
+  geom = null;
+  showTarget(null);
+  b.classList.remove('dragging');
   for (const el of document.querySelectorAll('.dragging-self')) el.classList.remove('dragging-self');
   drag = null;
 }
 
 sidebar.addEventListener('dragstart', (e) => {
   const row = e.target.closest('[data-id]');
-  if (!row || editing) return e.preventDefault();
+  if (!row || editing || drag) return e.preventDefault();
   const item = row.dataset.folder ? row.parentElement : row;
-  drag = { id: row.dataset.id, folder: !!row.dataset.folder };
+  // Glisser une ligne sélectionnée emporte toute la sélection, dans l'ordre affiché ;
+  // glisser une autre ligne abandonne la sélection.
+  const many = !row.dataset.folder && sel.size > 1 && sel.has(row.dataset.id) ? visibleTabIds().filter((id) => sel.has(id)) : null;
+  if (sel.size && !many) setSel([]);
+  drag = { id: row.dataset.id, folder: !!row.dataset.folder, ids: many && many.length > 1 ? many : null };
+  if (drag.ids) dragGhost(e, row, drag.ids.length);
   e.dataTransfer.effectAllowed = 'move';
   e.dataTransfer.setData('text/plain', row.dataset.id);
   e.dataTransfer.setData('application/x-orbe-item', row.dataset.id);
   // Les zones de dépôt ne s'agrandissent qu'après le départ du glisser :
   // déplacer la ligne saisie pendant « dragstart » annule le geste.
   requestAnimationFrame(() => {
-    if (!drag) return;
+    if (!drag || drag.settling) return;
+    if (drag.ids) for (const id of drag.ids) { const el = rowOf(id); if (el) el.classList.add('dragging-self'); }
     item.classList.add('dragging-self');
-    document.body.classList.add('dragging');
+    document.body.classList.add('dragging', 'parting');
+    dropGeom(); // les zones vides viennent de s'agrandir : relevé à refaire
     if (!drag.folder) send('dragZone', true);
   });
   return undefined;
 });
-sidebar.addEventListener('dragend', endDrag);
+sidebar.addEventListener('dragend', () => { if (drag && !drag.settling) endDrag(); });
 
-// Calcule la destination sous le pointeur : liste, position et repère visuel.
-function dropTarget(e) {
-  let zone = e.target.closest('[data-drop]');
-  if (!zone) {
-    const inScroll = e.target.closest('#scroll');
-    if (!inScroll) return null;
-    zone = $('today');
-  }
-  let to = zone.dataset.drop;
-  let folderId = null;
-  if (to.startsWith('folder:')) { folderId = to.slice(7); to = 'folder'; }
-  // Un dossier se dépose dans les épinglés ou dans un autre dossier, pas dans lui-même.
-  if (drag && drag.folder && to !== 'pinned' && to !== 'folder') return null;
-  if (drag && drag.folder && zone.closest(`[data-key="${CSS.escape(drag.id)}"]`)) return null;
+// Image du glisser pour une sélection : la ligne saisie, une carte derrière
+// elle et le nombre d'onglets emportés. Posée hors de l'écran, le temps que le
+// système en prenne une copie.
+function dragGhost(e, row, n) {
+  const r = row.getBoundingClientRect();
+  const ghost = document.createElement('div');
+  ghost.className = 'drag-ghost';
+  ghost.style.width = (r.width + 10) + 'px';
+  const copy = row.cloneNode(true);
+  copy.removeAttribute('data-id');
+  copy.removeAttribute('data-key');
+  copy.classList.remove('sel', 'active', 'shown');
+  const badge = document.createElement('span');
+  badge.className = 'count';
+  badge.textContent = String(n);
+  ghost.append(copy, badge);
+  document.body.appendChild(ghost);
+  e.dataTransfer.setDragImage(ghost, e.clientX - r.left, e.clientY - r.top + 8);
+  setTimeout(() => ghost.remove(), 0);
+}
+
+// Grille des favoris : position parmi les tuiles et trait vertical.
+function gridTarget(e, zone) {
+  if (drag.folder) return null;
   const kids = [...zone.children];
-  const grid = to === 'favorites';
-  if (grid && drag && drag.folder) return null;
-
-  // Sur l'en-tête d'un dossier : dépose dedans.
-  if (!grid) {
-    const head = e.target.closest('.folder > .row');
-    if (head && !(drag && drag.folder && head.closest(`[data-key="${CSS.escape(drag.id)}"]`))) {
-      const r = head.getBoundingClientRect();
-      if (e.clientY > r.top + r.height * 0.25 && e.clientY < r.bottom - r.height * 0.25) {
-        return { to: 'folder', folderId: head.dataset.id, into: head.parentElement };
-      }
-    }
-  }
   let index = kids.length;
   let rect = null;
   for (let i = 0; i < kids.length; i++) {
     const r = kids[i].getBoundingClientRect();
-    const before = grid
-      ? (e.clientY < r.bottom && e.clientX < r.left + r.width / 2) || e.clientY < r.top
-      : e.clientY < r.top + r.height / 2;
-    if (before) { index = i; rect = r; break; }
+    if ((e.clientY < r.bottom && e.clientX < r.left + r.width / 2) || e.clientY < r.top) { index = i; rect = r; break; }
   }
   const zr = zone.getBoundingClientRect();
-  let pos;
-  if (grid) {
-    const last = kids.length ? kids[kids.length - 1].getBoundingClientRect() : zr;
-    pos = rect ? { x: rect.left - 4, y: rect.top, h: rect.height, v: true } : { x: (kids.length ? last.right + 2 : zr.left), y: last.top, h: last.height || 40, v: true };
-  } else {
-    const last = kids.length ? kids[kids.length - 1].getBoundingClientRect() : null;
-    pos = { x: zr.left + 4, y: rect ? rect.top - 1 : (last ? last.bottom : zr.top), w: zr.width - 8 };
+  const last = kids.length ? kids[kids.length - 1].getBoundingClientRect() : zr;
+  const pos = rect ? { x: rect.left - 4, y: rect.top, h: rect.height } : { x: (kids.length ? last.right + 2 : zr.left), y: last.top, h: last.height || 40 };
+  return { to: 'favorites', folderId: null, index, pos };
+}
+
+// Listes : destination d'après le relevé. `y` est dans le contenu défilant.
+function listTarget(y) {
+  const g = geom;
+  // Tant que le pointeur reste dans la place ouverte, la destination ne change pas.
+  if (target && target.slot && y >= target.slot.y && y < target.slot.y + target.slot.h + 4) return target;
+  // Épinglés vides : la liste n'a pas de hauteur, on vise du nom de l'Espace au séparateur.
+  const none = g.pinned.kids.length ? 0 : 1;
+  let zone = y >= g.pinned.top - 30 * none && y < g.pinned.bottom + 11 * none ? g.pinned : g.today;
+  for (;;) {
+    let kid = null;
+    for (const k of zone.kids) { if (k.top > y) break; kid = k; }
+    if (!kid || !kid.head || y >= kid.bottom) break;
+    // Un dossier ne se dépose ni dans lui-même ni dans l'un de ses sous-dossiers.
+    const own = drag.folder && kid.id === drag.id;
+    const h = kid.head;
+    // Sur l'en-tête d'un dossier : dépose dedans.
+    if (!own && y > h.top + h.h * 0.25 && y < h.top + h.h * 0.75) return { to: 'folder', folderId: kid.id, into: kid.el, g: null };
+    if (!kid.sub || y < kid.sub.top || y >= kid.sub.bottom) break;
+    if (own) return null;
+    zone = kid.sub;
   }
-  return { to, folderId, index, pos };
+  // Un dossier se dépose dans les épinglés ou dans un autre dossier.
+  if (drag.folder && zone.to === 'today') return null;
+  let index = zone.count;
+  let hit = null;
+  for (const k of zone.kids) { if (y < (k.top + k.bottom) / 2) { index = k.i; hit = k; break; } }
+  const t = { to: zone.to, folderId: zone.folderId, index, g: hit ? hit.a : zone.end, room: g.total };
+  const lastKid = zone.kids[zone.kids.length - 1];
+  const pad = zone.to === 'folder' ? 4 : 0;
+  // Liste vide : elle a déjà un peu de hauteur, et la première ligne n'ajoute pas d'écart.
+  if (!lastKid) t.room -= zone.bottom - zone.top - pad + 4;
+  const natural = hit ? g.flow[hit.a].top : (lastKid ? lastKid.bottom + zone.gap : zone.top + pad);
+  t.slot = { x: zone.left, w: zone.width, y: natural - g.cum[t.g], h: g.total - 4 };
+  return t;
+}
+
+// Calcule la destination sous le pointeur : liste, position et repère visuel.
+function dropTarget(e) {
+  const fav = e.target.closest('#fav');
+  if (fav) return gridTarget(e, fav);
+  if (!e.target.closest('#scroll')) return null;
+  if (!geom) measure();
+  return listTarget(e.clientY - geom.top + geom.scroll);
 }
 
 // Au-dessus de la page : lâcher l'onglet crée une vue scindée. Pendant un
 // glisser, c'est la coque qui reçoit les événements, même au-dessus des pages.
-const overPage = (e) => !!drag && !drag.folder && !!S && S.sidebar.visible && !!S.activeId && e.clientX > S.sidebar.width + 12;
+const overPage = (e) => !!drag && !drag.settling && !drag.folder && !!S && S.sidebar.visible && !!S.activeId && e.clientX > S.sidebar.width + 12;
 let zoneOn = false;
 function setZone(on) {
   if (on === zoneOn) return;
   zoneOn = on;
   send('dragZoneOver', on);
 }
-document.addEventListener('dragover', (e) => {
+// « dragenter » compte autant que « dragover » : quand l'élément sous le pointeur
+// change (une ligne qui s'écarte suffit), le moteur n'envoie que « dragenter »,
+// et un lâcher à cet instant serait refusé si lui seul n'acceptait pas le dépôt.
+function overDocument(e) {
   if (!overPage(e)) return setZone(false);
   e.preventDefault();
   e.dataTransfer.dropEffect = 'move';
-  clearDrop();
-  setZone(true);
-}, true);
+  showTarget(null);
+  return setZone(true);
+}
+document.addEventListener('dragover', overDocument, true);
+document.addEventListener('dragenter', overDocument, true);
 document.addEventListener('drop', (e) => {
   if (!overPage(e)) return;
   e.preventDefault();
@@ -561,41 +814,60 @@ document.addEventListener('drop', (e) => {
   send('dropSplit', id);
 }, true);
 
-sidebar.addEventListener('dragover', (e) => {
-  if (overPage(e)) return;
-  const types = [...e.dataTransfer.types];
-  const external = !drag && !types.includes('application/x-orbe-item') && types.some((x) => x === 'text/uri-list' || x === 'text/plain');
-  if (!drag && !external) return;
-  const target = drag ? dropTarget(e) : { external: true };
-  clearDrop();
-  if (!target) return;
-  e.preventDefault();
-  e.dataTransfer.dropEffect = drag ? 'move' : 'copy';
-  if (target.into) target.into.classList.add('drop-into');
-  else if (target.pos) {
-    const p = target.pos;
-    line.className = p.v ? 'v' : '';
-    line.style.cssText = `display:block;left:${p.x}px;top:${p.y}px;` + (p.v ? `height:${p.h}px` : `width:${p.w}px`);
+function overSidebar(e) {
+  if (overPage(e) || (drag && drag.settling)) return;
+  if (!drag) {
+    // Adresse ou texte venu d'ailleurs (une ligne d'une autre fenêtre Orbe n'en est pas une).
+    const types = [...e.dataTransfer.types];
+    if (types.includes('application/x-orbe-item') || !types.some((x) => x === 'text/uri-list' || x === 'text/plain')) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    return;
   }
-});
+  const t = dropTarget(e);
+  showTarget(t);
+  if (!t) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+}
+sidebar.addEventListener('dragover', overSidebar);
+sidebar.addEventListener('dragenter', overSidebar);
 
 sidebar.addEventListener('drop', (e) => {
-  if (overPage(e)) return;
+  if (overPage(e)) return undefined;
   e.preventDefault();
   if (!drag) {
     // Ligne venue d'une autre fenêtre Orbe : ce n'est pas une adresse.
-    if ([...e.dataTransfer.types].includes('application/x-orbe-item')) return endDrag();
+    if ([...e.dataTransfer.types].includes('application/x-orbe-item')) return undefined;
     const url = (e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain') || '').split('\n')[0].trim();
     if (url) send('dropUrl', url);
-    return endDrag();
+    return undefined;
   }
-  const target = dropTarget(e);
-  if (target) send('move', { id: drag.id, to: target.to, folderId: target.folderId, index: target.index });
-  return endDrag();
+  if (drag.settling) return undefined;
+  const t = dropTarget(e);
+  if (!t) return endDrag();
+  showTarget(t);
+  send('move', { ...(drag.ids ? { ids: drag.ids } : { id: drag.id }), to: t.to, folderId: t.folderId, index: t.index });
+  // Lâché à sa propre place, ou rien d'emporté dans les listes (tuile de favori) : fin immédiate.
+  if (!geom) measure();
+  const still = !!t.slot && t.g !== null && geom.flow.every((f) => !f.off);
+  if (still || !geom.flow.some((f) => f.origin)) return endDrag();
+  // Sinon les lignes restent écartées, et la ligne emportée masquée, jusqu'à
+  // l'état suivant, qui les trouve à leur place définitive : pas d'aller-retour visible.
+  send('dragZone', false);
+  drag.settling = structSig(S);
+  drag.timer = setTimeout(endDrag, 400);
+  return undefined;
 });
 
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && drag) endDrag();
+  if (e.key === 'Escape' && drag) { if (!drag.settling) endDrag(); }
+  else if (e.key === 'Escape' && sel.size) setSel([]);
+  // Suppr ou Retour arrière, la barre latérale ayant le clavier : archive la sélection.
+  else if ((e.key === 'Delete' || e.key === 'Backspace') && sel.size && !editing) {
+    e.preventDefault();
+    send('close', { ids: [...sel] });
+  }
 });
 
 O.on('state', render);
