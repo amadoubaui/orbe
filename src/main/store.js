@@ -92,6 +92,7 @@ class Store {
     for (const sp of s.spaces) {
       if (!profileIds.has(sp.profileId)) sp.profileId = 'default';
       sp.pinned = clean(sp.pinned || []);
+      sp.splits = (sp.splits || []).map((g) => (Array.isArray(g) ? g.filter((id) => s.tabs[id]) : [])).filter((g) => g.length > 1);
       sp.today = (sp.today || []).filter((id) => s.tabs[id] && !seen.has(id) && seen.add(id));
     }
     for (const id of Object.keys(s.tabs)) if (!seen.has(id)) delete s.tabs[id];

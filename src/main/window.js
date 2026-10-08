@@ -110,7 +110,6 @@ class OrbeWindow {
     const restore = !incognito && first;
     this.spaceId = (restore && this.data.spaces.some((s) => s.id === saved.spaceId)) ? saved.spaceId : this.data.spaces[0].id;
     this.activeBySpace = restore ? { ...(saved.activeBySpace || {}) } : {};
-    this.splits = [];
     this.closed = [];
     this.sidebarVisible = restore ? saved.sidebarVisible !== false : true;
     this.p = this.sidebarVisible ? 1 : 0; // ouverture de la barre latérale, 0..1
@@ -266,7 +265,15 @@ class OrbeWindow {
   }
 
   groupOf(id) {
-    return this.splits.find((g) => g.includes(id)) || null;
+    for (const sp of this.data.spaces) {
+      for (const g of sp.splits || []) if (g.includes(id)) return g;
+    }
+    return null;
+  }
+
+  // Vues scindées : enregistrées avec l'Espace, elles survivent au redémarrage.
+  get splits() {
+    return this.data.spaces.flatMap((sp) => sp.splits || []);
   }
 
   visibleIds() {
@@ -757,7 +764,12 @@ class OrbeWindow {
     if (!g) return;
     g.splice(g.indexOf(id), 1);
     delete g.ratios;
-    if (g.length < 2) this.splits.splice(this.splits.indexOf(g), 1);
+    if (g.length < 2) {
+      for (const sp of this.data.spaces) {
+        const i = (sp.splits || []).indexOf(g);
+        if (i >= 0) sp.splits.splice(i, 1);
+      }
+    }
   }
 
   // ⌘W : un onglet du jour est archivé ; un onglet épinglé est simplement
@@ -1100,7 +1112,12 @@ class OrbeWindow {
     if (g && g.length >= 4) return this.toast(t('toast.splitMax'));
     this.leaveSplit(b);
     g = this.groupOf(a);
-    if (!g) { g = [a]; this.splits.push(g); }
+    if (!g) {
+      g = [a];
+      const loc = this.locate(a);
+      const sp = (loc && loc.space) || this.space;
+      (sp.splits || (sp.splits = [])).push(g);
+    }
     g.splice(g.indexOf(a) + 1, 0, b);
     delete g.ratios;
     if (!quiet) this.activate(b);

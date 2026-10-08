@@ -172,6 +172,8 @@ module.exports = async function selftest({ first: w, OrbeWindow, store, win, lit
   const rb = win.live.get(b.id).view.getBounds();
   check('vue scindée : la séparation se déplace à la souris', ra.width > ba.width + 100 && rb.width < bb.width - 100 && rb.x + rb.width === bb.x + bb.width, JSON.stringify([ra, rb]));
   await until(() => ui('document.querySelectorAll("#dividers .divider").length === 1'), 'poignée de séparation');
+  const reread = store.normalize(JSON.parse(JSON.stringify(store.state)));
+  check('vue scindée : enregistrée avec l’Espace (retrouvée au redémarrage)', reread.spaces[0].splits.length === 1 && reread.spaces[0].splits[0].join() === [a.id, b.id].join());
   await shot('scinde');
   w.run('closeSplit');
   check('⌃⇧- ferme le volet', w.visibleIds().length === 1 && w.splits.length === 0);
@@ -193,7 +195,8 @@ module.exports = async function selftest({ first: w, OrbeWindow, store, win, lit
   clearInterval(w.peekTimer); // le test remplace la souris
   w.peekTimer = null;
   w.setPeek(true);
-  await until(() => w.floatView && w.floatView.webContents.executeJavaScript('document.body.classList.contains("open") && document.querySelectorAll(".row.tab").length > 0'), 'barre flottante affichée');
+  // (si la fenêtre de test perd le premier plan, le survol est annulé : on le redemande)
+  await until(() => { w.setPeek(true); return w.floatView && w.floatView.webContents.executeJavaScript('document.body.classList.contains("open") && document.querySelectorAll(".row.tab").length > 0'); }, 'barre flottante affichée');
   await sleep(260);
   const peekX = win.live.get(w.activeId).view.getBounds();
   check('survol du bord : la barre flotte, la page ne bouge pas', peekX.x === hiddenX.x && peekX.width === hiddenX.width && w.floatView.getBounds().width > 200);
@@ -255,9 +258,12 @@ module.exports = async function selftest({ first: w, OrbeWindow, store, win, lit
   w.togglePin(pinL.id);
   const lwc = win.live.get(pinL.id).wc;
   const pt = await lwc.executeJavaScript('(() => { const r = document.getElementById("dehors").getBoundingClientRect(); return { x: Math.round(r.left + 40), y: Math.round(r.top + 20) }; })()');
-  lwc.focus();
-  for (const type of ['mouseDown', 'mouseUp']) lwc.sendInputEvent({ type, x: pt.x, y: pt.y, button: 'left', clickCount: 1 });
-  await until(() => w.peekState && w.peekState.title === 'Page B', 'aperçu ouvert par un clic');
+  let clicks = 0;
+  await until(() => {
+    if (w.peekState) return w.peekState.title === 'Page B';
+    if (clicks++ % 25 === 0) { lwc.focus(); for (const type of ['mouseDown', 'mouseUp']) lwc.sendInputEvent({ type, x: pt.x, y: pt.y, button: 'left', clickCount: 1 }); }
+    return false;
+  }, 'aperçu ouvert par un clic');
   check('clic sur un lien sortant d’un onglet épinglé : aperçu, la page épinglée reste', lwc.getURL() === base + '/liens' && w.activeId === pinL.id);
   w.closePeek();
   w.togglePin(pinL.id);
