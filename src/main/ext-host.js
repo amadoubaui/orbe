@@ -8,6 +8,10 @@
 //   - la fenêtre surgissante du bouton d'une extension (`openPopup`).
 const { BrowserWindow, dialog, screen } = require('electron');
 const api = require('./ext-api');
+const panel = require('./ext-panel'); // chrome.sidePanel
+const debug = require('./ext-debug'); // chrome.debugger
+const more = require('./ext-more'); // commands, identity, tabGroups…
+const access = require('./ext-access'); // activeTab
 const { store } = require('./store');
 
 // Chargé à la demande : window.js dépend de sessions.js, qui dépend de ext-api.js.
@@ -89,6 +93,8 @@ function currentWindowId(wc) {
   if (wc) {
     const pop = popups.get(wc.id);
     if (pop && !pop.owner.win.isDestroyed()) return pop.owner.win.id;
+    const side = panel.ownerOf(wc);
+    if (side && !side.win.isDestroyed()) return side.win.id;
     const owner = W().OrbeWindow.ownerOf(wc);
     if (owner) return owner.win.id;
   }
@@ -132,6 +138,9 @@ function frameFrom(processId, routingId) {
 function sync() {
   try {
     compare();
+    // Le panneau latéral et le bandeau du débogueur suivent l'onglet actif.
+    panel.refreshAll();
+    debug.refreshAll();
   } catch (err) {
     console.error('[orbe] extensions : synchronisation des onglets', err);
   }
@@ -256,6 +265,14 @@ function openPopup(w, id, anchor, options = {}) {
     if (p.owner === w && p.id === id && !p.win.isDestroyed()) { p.win.close(); return true; }
   }
   closePopup(w);
+  // Extension qui compte sur « activeTab » : au premier clic, Orbe demande s'il
+  // peut lui ouvrir les pages (voir ext-access.js), puis reprend le clic.
+  if (access.needed(ses, id)) {
+    access.offer(ses, id).then(() => { if (!w.win.isDestroyed()) openPopup(w, id, anchor, options); }).catch((err) => console.error('[orbe] extension', id, err));
+    return true;
+  }
+  // L'extension a demandé que son bouton ouvre son panneau latéral.
+  if (panel.actionClick(w, ses, id, tab)) return true;
   const what = api.clickAction(ses, id, tab);
   if (what !== 'popup') return what === 'clicked';
   const url = api.popupUrl(ses, id, tab ? tab.id : undefined);
@@ -321,6 +338,13 @@ function setup() {
     tabs, windows, currentWindowId, createTab, removeTab, activateTab, focusWindow, confirmPermissions,
     openPopup: (ses, id) => { const w = lastWindow(); return !!(w && openPopup(w, id)); },
   });
+  // Place du panneau latéral dans la fenêtre (voir contentRect et layout, window.js).
+  Object.assign(W().hooks, {
+    rightInset: (w) => panel.rightInset(w),
+    layout: (w) => { panel.place(w); debug.place(w); },
+  });
+  access.setup();
+  more.setup({ openAction: (w, id) => openPopup(w, id), ownerOf: (wc) => panel.ownerOf(wc) });
 }
 
-module.exports = { setup, sync, openPopup, closePopup, actionsFor, tabs, popups };
+module.exports = { setup, sync, openPopup, closePopup, actionsFor, tabs, popups, panel, debug, more, access };

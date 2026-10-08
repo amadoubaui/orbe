@@ -702,6 +702,10 @@ const apiOf = (ses) => (ses && ses.extensions) || ses; // Session.loadExtension 
 const persistent = (ses) => !!ses && (typeof ses.isPersistent !== 'function' || ses.isPersistent());
 const real = (p) => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
 
+// `beforeLoad(id, dossier)` : appelé juste avant de charger une extension
+// (src/main/ext-access.js y reporte l'accès aux sites accordé par l'utilisateur).
+const hooks = { beforeLoad: () => {} };
+
 function liveSessions() {
   const alive = [];
   for (let i = sessions.length - 1; i >= 0; i--) {
@@ -730,6 +734,7 @@ async function sync(ses) {
   for (const [id, rec] of wanted) {
     if (here.has(id)) continue;
     try {
+      hooks.beforeLoad(id, rec.dir);
       const ext = await api.loadExtension(rec.dir, { allowFileAccess: false });
       if (ext && ext.id !== id) {
         // Ne devrait pas arriver : la clé injectée fixe l'identifiant.
@@ -777,5 +782,5 @@ async function unloadFrom(ses, id) {
 module.exports = {
   configure, parseStoreInput, install, installCrx, list, get, remove,
   loadInto, unloadFrom, syncAll, setEnabled, isEnabled, popupFor,
-  parseCrx, verifyCrx, unzip, readZipEntries, injectKey, idFromPublicKey, crxUrl,
+  parseCrx, verifyCrx, unzip, readZipEntries, injectKey, idFromPublicKey, crxUrl, hooks,
 };

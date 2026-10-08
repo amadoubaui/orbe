@@ -18,6 +18,8 @@ const EVENTS = [
   'tabs.onCreated', 'tabs.onUpdated', 'tabs.onRemoved', 'tabs.onActivated', 'windows.onFocusChanged',
   'permissions.onAdded', 'permissions.onRemoved', 'cookies.onChanged', 'action.onClicked', 'commands.onCommand',
   'contextMenus.onClicked', 'webNavigation.onCommitted', 'webNavigation.onCompleted',
+  'sidePanel.onOpened', 'sidePanel.onClosed', 'debugger.onEvent', 'debugger.onDetach',
+  'tabGroups.onCreated', 'tabGroups.onUpdated', 'tabGroups.onRemoved', 'downloads.onChanged',
 ];
 for (const name of EVENTS) {
   const ev = at(name);

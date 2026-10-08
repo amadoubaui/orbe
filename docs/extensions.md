@@ -156,6 +156,15 @@ d'Electron (licence MIT, aucun code tiers, aucune dépendance) :
 | `src/preload/ext.js` | complète `chrome` (et `browser`) dans les pages d'extension et les service workers |
 | `src/main/ext-api.js` | les API elles-mêmes, les autorisations, les événements |
 | `src/main/ext-host.js` | onglets et fenêtres d'Orbe vus comme ceux de Chrome, fenêtre surgissante |
+| `src/main/ext-panel.js` | `sidePanel` : panneau latéral dans la fenêtre (habillage : `src/renderer/panel.*`, `src/preload/panel.js`) |
+| `src/main/ext-debug.js` | `debugger`, sur le débogueur d'Electron, avec son bandeau |
+| `src/main/ext-access.js` | `activeTab` : accès aux pages accordé par l'utilisateur |
+| `src/main/ext-more.js` | raccourcis de `commands`, `identity`, `tabGroups`, zoom, `downloads` |
+
+Les quatre derniers ajoutent leurs méthodes à `ext-api.js` par `extApi.extend({...})` et
+se servent de ses outils (`extApi.internals`). `ORBE_EXT_TRACE=1` écrit dans le
+terminal chaque appel, refus et événement : c'est le moyen le plus rapide de voir
+ce qu'une extension attend.
 
 Tests : `npm run test:ext` (extension `tests/ext-fixture`, sans réseau) et
 `node scripts/test-ext.js reelles` (vraies extensions, demande Internet).
@@ -182,31 +191,108 @@ Tests : `npm run test:ext` (extension `tests/ext-fixture`, sans réseau) et
 - Chromium expose aussi `browser`, objet distinct de `chrome` : les deux sont
   complétés (uBlock Origin Lite utilise `self.browser || self.chrome`).
 
-Ce qui ne marche pas : un script de préchargement n'atteint pas le monde isolé
-des **scripts de contenu**. Ils gardent les API d'Electron (`runtime`,
-`storage.local`, `i18n`) ; `storage.sync` n'y est donc pas corrigé, et une
-écriture faite par un script de contenu n'est annoncée au service worker que si
-une page de l'extension est ouverte.
+Un script de préchargement n'atteint pas le monde isolé des **scripts de
+contenu**, qui gardent les API d'Electron (`runtime`, `storage`, `i18n`). Pour
+`storage.sync`, que beaucoup utilisent (c'est la zone par défaut de Plasmo), le
+correctif y est donc injecté par le service worker de l'extension lui-même, à
+chaque page chargée (`scripting.executeScript`, monde `ISOLATED`) : cela vaut
+pour les extensions Manifest V3 qui ont « scripting » et « storage ». Une page
+ouverte avant l'installation de l'extension n'est corrigée qu'après
+rechargement. Une écriture faite par un script de contenu n'est annoncée au
+service worker que si une page de l'extension est ouverte.
+
+Un service worker qui n'a pas encore tourné depuis le chargement de l'extension
+(démarrage d'Orbe) est lancé au premier événement, qui lui est remis une fois
+ses écouteurs posés.
+
+`chrome-extension://` est déclaré « standard » dans `sessions.js` : sans cela
+Electron refuse aux pages d'extension le système de fichiers du web
+(`webkitRequestFileSystem`, `navigator.storage.getDirectory`), où GoFullPage
+range ses captures.
 
 ### API fournies
 
 | Espace | Ce qui est fait |
 | --- | --- |
 | `permissions` | `contains`, `getAll`, `request`, `remove`, `onAdded`, `onRemoved`. Une autorisation optionnelle est demandée à l'utilisateur, puis retenue (`Extensions/api-state.json`). Une **origine** hors du manifeste est refusée : Electron ne sait pas l'accorder après coup. |
-| `tabs` | `query` (onglet actif, fenêtre courante, motifs d'URL…), `get`, `getCurrent`, `create`, `remove`, `update`, `reload`, `duplicate`, `goBack`, `goForward`, `captureVisibleTab`, `onCreated`, `onUpdated`, `onActivated`, `onRemoved`. `url` et `title` ne sont donnés qu'avec `tabs`, un accès au site ou `activeTab`. Le reste (`sendMessage`, `connect`, zoom) est celui d'Electron. |
+| `tabs` | `query` (onglet actif, fenêtre courante, motifs d'URL…), `get`, `getCurrent`, `create`, `remove`, `update`, `reload`, `duplicate`, `goBack`, `goForward`, `captureVisibleTab`, `onCreated`, `onUpdated`, `onActivated`, `onRemoved`. `url` et `title` ne sont donnés qu'avec `tabs`, un accès au site ou `activeTab`. `getZoom`/`setZoom` agissent sur l'onglet d'Orbe ; `captureVisibleTab` est limité à deux appels par seconde, comme dans Chrome ; `group`/`ungroup` : voir `tabGroups`. `sendMessage` et `connect` sont ceux d'Electron. |
 | `windows` | `get`, `getCurrent`, `getLastFocused`, `getAll`, `update` (premier plan), `onFocusChanged`, `onCreated`, `onRemoved`. `create` ouvre les adresses en onglets ; `remove` est refusé. |
 | `cookies` | `get`, `getAll`, `set`, `remove`, `getAllCookieStores`, `onChanged`, limités aux sites du manifeste. |
 | `contextMenus` | `create`, `update`, `remove`, `removeAll`, `onClicked` (et `onclick` en Manifest V2). Les éléments s'ajoutent au menu contextuel des pages. |
 | `action` (`browserAction`, `pageAction`) | titre, pastille, couleurs, icône, fenêtre surgissante, activation, par onglet ou globalement ; `openPopup`, `onClicked`. |
-| `storage` | `sync` devient une zone locale à part (Electron la refuse), séparée de `local`. `onChanged`, qu'Electron n'envoie jamais à un service worker, y est reconstitué : le service worker annonce ses propres écritures et reçoit celles des pages de l'extension. |
+| `storage` | `managed` rend un objet vide (aucune stratégie d'entreprise). `sync` devient une zone locale à part (Electron la refuse), séparée de `local`. `onChanged`, qu'Electron n'envoie jamais à un service worker, y est reconstitué : le service worker annonce ses propres écritures et reçoit celles des pages de l'extension. |
 | `webNavigation` | `onBeforeNavigate`, `onCommitted`, `onDOMContentLoaded`, `onCompleted`, `onHistoryStateUpdated`, `getFrame`, `getAllFrames`. |
-| `notifications`, `downloads` | minimum : `create`/`clear`/`onClicked`, `download`. |
-| `fontSettings`, `commands` | `getFontList` (liste fixe), `commands.getAll` ; aucun raccourci n'est attribué, `onCommand` n'est jamais émis. |
+| `notifications` | minimum : `create`/`clear`/`onClicked`. |
+| `downloads` | `download` (adresse web, `data:`, ou `blob:` de l'extension ; `filename` réduit à un nom de fichier, dans le dossier des téléchargements), `search`, `show`, `onCreated`, `onChanged`. |
+| `fontSettings` | `getFontList` (liste fixe). |
+| `commands` | `getAll`, `onCommand`. Les raccourcis du manifeste (`suggested_key`) sont lus dans les vues d'Orbe (`before-input-event`) : rien n'est enregistré auprès du système, ils ne valent que quand Orbe a le clavier. Un raccourci déjà pris par Orbe n'est pas attribué (`shortcut` vide). `_execute_action` vaut un clic sur le bouton. |
+| `sidePanel` | `setOptions`, `getOptions`, `open`, `close`, `setPanelBehavior`, `getPanelBehavior`, `getLayout`, `onOpened`, `onClosed` ; `side_panel.default_path` du manifeste ; `runtime.getContexts` annonce le panneau (`SIDE_PANEL`). Voir « Panneau latéral ». |
+| `debugger` | `attach`, `detach`, `sendCommand`, `getTargets`, `onEvent`, `onDetach`, sur les onglets seulement. Voir « Débogueur ». |
+| `tabGroups`, `tabs.group` | groupes tenus en mémoire (`get`, `query`, `update`, `move`, événements, `groupId` des onglets). Orbe ne les dessine pas : ses onglets se rangent en Espaces et en dossiers. |
+| `identity` | `launchWebAuthFlow` : petite fenêtre dans la session du profil, refermée dès que la page va vers `https://<id>.chromiumapp.org/…`, adresse rendue à l'extension (sans `interactive`, fenêtre invisible et « User interaction required » si rien ne redirige) ; `getRedirectURL`. `getAuthToken` est refusé : Orbe n'a pas de compte Google. |
+| `activeTab` | voir « Accès à l'onglet en cours ». |
 | `runtime`, `extension` | `openOptionsPage` (dans un onglet), `isAllowedIncognitoAccess`, `isAllowedFileSchemeAccess`. |
 
 Un espace de noms n'apparaît que si le manifeste déclare l'autorisation
-correspondante. Absents : `sidePanel`, `debugger`, `identity`, messagerie
-native, `tts`, `tabGroups`, `history`, `bookmarks`, `management` complet.
+correspondante, et le processus principal la revérifie à chaque appel. Absents :
+messagerie native (`runtime.connectNative` échoue : Electron ne la fournit pas),
+`tts`, `history`, `bookmarks`, `management` complet, accès à un site accordé
+après coup (`permissions.request({ origins })`).
+
+### Panneau latéral
+
+```js
+const { panel } = require('./ext-host');
+panel.shownIn(orbeWindow)       // { extId, tabId, url, wc, view } ou null
+panel.userClose(orbeWindow)     // ferme le panneau affiché
+panel.setWidth(orbeWindow, px)  // largeur, bornée et retenue (api-state.json, `_ui.panelWidth`)
+```
+
+Le panneau est une `WebContentsView` posée à droite de la zone des pages : la
+page de l'extension, dans la session du profil de l'onglet, sous un en-tête
+d'Orbe (nom, fermeture) dont le bord gauche se tire pour régler la largeur
+(260 px au moins, 380 par défaut). `window.js` ne sait rien du panneau : il
+appelle `hooks.rightInset(fenêtre)` dans `contentRect()` — la place à laisser à
+droite — et `hooks.layout(fenêtre)` à la fin de `layout()`.
+
+Comme dans Chrome, une extension a un panneau global par fenêtre et peut en
+avoir un propre à un onglet (`setOptions({ tabId, path })`, `open({ tabId })`) :
+celui-ci ne se montre que sur son onglet et y remplace le panneau global.
+`setOptions({ enabled: false })` referme le panneau, `window.close()` dans sa
+page aussi. Avec `setPanelBehavior({ openPanelOnActionClick: true })`, le bouton
+de l'extension ouvre et referme le panneau.
+
+Écarts : `open()` ne vérifie pas qu'un geste de l'utilisateur vient d'avoir
+lieu ; un `windowId` inconnu désigne la fenêtre courante (l'onglet qu'Electron
+donne dans `sender.tab` porte `windowId: 0`, et des extensions le repassent tel
+quel). Un panneau s'ouvre à la demande de l'extension ; Orbe n'a pas de menu
+pour ouvrir le panneau d'une extension qui ne le fait pas elle-même.
+
+### Débogueur
+
+`chrome.debugger` passe par `webContents.debugger`. Tant qu'un onglet est
+piloté, un bandeau « « Nom » pilote cet onglet (débogueur) » reste affiché en
+haut de la page, avec un bouton « Arrêter » qui détache (`onDetach`,
+`canceled_by_user`). Un seul débogueur par onglet : ouvrir les outils de
+développement détache l'extension. Le débogueur d'Electron a plus de pouvoirs
+que celui que Chrome donne aux extensions ; sont donc refusés : les domaines
+`Browser`, `Tethering`, `SystemInfo`, `Tracing`, `Extensions`, tout `Target.*`
+qui sort de l'onglet (`getTargets`, `attachToTarget`, `createTarget`…), et
+`Page.navigate` vers autre chose qu'une adresse web.
+
+### Accès à l'onglet en cours (`activeTab`)
+
+Chrome ouvre l'onglet en cours à une extension le temps d'un clic sur son
+bouton. Electron ne connaît pas cet accès temporaire et ne sait pas accorder un
+site après le chargement : sans accès déclaré, `scripting.executeScript` est
+refusé. Pour une extension qui déclare `activeTab` sans accès à tous les sites,
+Orbe demande donc au premier clic s'il peut lui donner cet accès ; si oui, il
+ajoute `<all_urls>` au manifeste installé (reporté à chaque mise à jour) et
+recharge l'extension. La couche d'API continue de raisonner sur le manifeste
+d'origine, et n'accepte une injection que dans un onglet ouvert par un geste
+(clic sur le bouton, menu contextuel, raccourci), tant qu'il reste sur le même
+site. Ce contrôle imite Chrome mais n'est pas une barrière : pour Chromium,
+l'extension a accès à tous les sites — c'est ce que dit la question posée.
 
 ### Bouton et fenêtre surgissante
 
@@ -227,6 +313,17 @@ perdant le focus ou avec Échap. Le bouton lui-même reste à dessiner dans la
 barre latérale ; en attendant, Réglages → Extensions → « Ouvrir ».
 
 ## Relevé sur Electron 44.7.0 (Chromium 152)
+
+Extensions à panneau latéral, capture et débogueur (`node scripts/test-ext.js
+reelles`, `ORBE_EXT=peeper,gofullpage,claude`) :
+
+| | Avant | Avec ces API |
+| --- | --- | --- |
+| **CSS Peeper 1.2.3** | clic sans effet visible ; inspecteur bloqué sur son écran de présentation (`"sync" is not available`) | inspecteur dans la page (`wordpress.org` : EB Garamond / Inter, 1 868 règles, 30 feuilles) ; panneau latéral ouvert par `sidePanel.open`, pages 1102 → 714 px, lit les styles de l'onglet (`scripting.executeScript`). Dans l'extension, la vue latérale de la page inspectée est réservée aux comptes payants. |
+| **GoFullPage 8.9** | « Something went wrong » (système de fichiers refusé, puis injection refusée) | page entière de `fr.wikipedia.org/wiki/Dakar` : 2204 × 44 680 px en deux images (2204 × 28 800 et 2204 × 15 880), page de résultat avec téléchargement |
+| **Claude 1.0.99** | service worker arrêté : `Cannot read properties of undefined (reading 'Color')` | service worker sans erreur, raccourci ⌘E, panneau propre à l'onglet, groupe d'onglets « Claude ». S'arrête à « Se connecter » (compte payant) ; `connectNative` échoue (pas de messagerie native dans Electron). |
+
+Trois extensions vérifiées plus tôt :
 
 Installation réelle depuis le Store dans un profil jetable d'Orbe, pages
 `fr.wikipedia.org`, `wordpress.org` et `www.lemonde.fr`.
@@ -260,6 +357,7 @@ Avec elle (`tests/ext-reelles.js`) :
   `tabs.create` dans un onglet d'Orbe.
 - **uBlock Origin Lite** : fenêtre « www.lemonde.fr — filtering mode optimal ».
 
-Reste à faire : dessiner les boutons dans la barre latérale, raccourcis des
-commandes d'extension, accès aux sites accordé après coup (modes « complet »
-d'uBlock Origin Lite), `storage.sync` dans les scripts de contenu.
+Reste à faire : dessiner les boutons dans la barre latérale, accès aux sites
+accordé après coup (`permissions.request({ origins })`, modes « complet »
+d'uBlock Origin Lite), messagerie native, retirer dans les Réglages un accès
+`activeTab` accordé, dessiner les groupes d'onglets.

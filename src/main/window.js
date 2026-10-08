@@ -25,7 +25,9 @@ const windows = new Map(); // id BaseWindow -> OrbeWindow
 const live = new Map(); // id onglet -> { view, wc, owner, loading, lastUsed }
 const trusted = new WeakSet(); // webContents autorisés à parler au processus principal
 const wcOwner = new Map(); // id webContents (coque, flottants) -> OrbeWindow
-const hooks = { changed: () => {}, openLittle: () => {}, openSettings: () => {}, extensionMenu: () => [] };
+// `rightInset(fenêtre)` : place réservée à droite des pages (panneau latéral d'une
+// extension) ; `layout(fenêtre)` : appelé à la fin de chaque mise en page.
+const hooks = { changed: () => {}, openLittle: () => {}, openSettings: () => {}, extensionMenu: () => [], rightInset: () => 0, layout: () => {} };
 
 const t = (key, vars) => store.t(key, null, vars);
 const isInternal = (url) => (url || '').startsWith(INTERNAL);
@@ -295,7 +297,7 @@ class OrbeWindow {
     return {
       x: Math.round(PAD + (sw - PAD) * this.p),
       y: top,
-      width: Math.max(100, docked ? W - sw - PAD : W - 2 * PAD),
+      width: Math.max(100, (docked ? W - sw - PAD : W - 2 * PAD) - hooks.rightInset(this)),
       height: Math.max(100, H - top - PAD),
     };
   }
@@ -405,6 +407,7 @@ class OrbeWindow {
     if (this.toastView) {
       this.toastView.setBounds({ x: Math.round(rect.x + rect.width / 2 - 190), y: rect.y + 12, width: 380, height: 46 });
     }
+    hooks.layout(this);
   }
 
   // Anime l'ouverture de la barre latérale en ne déplaçant que la position des
