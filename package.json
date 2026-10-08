@@ -15,6 +15,7 @@
     "build:win": "node scripts/build-win.js"
   },
   "orbe": {
-    "electron": "44.7.0"
+    "electron": "44.7.0",
+    "electronDrm": "44.5.1+wvcus"
   }
 }

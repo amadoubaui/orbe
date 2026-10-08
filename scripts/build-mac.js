@@ -87,6 +87,13 @@ plutil('CFBundleDocumentTypes', '-json', JSON.stringify([{ CFBundleTypeName: 'Do
 
 console.log('Signature locale…');
 run('xattr', ['-cr', appPath]);
+// Moteur avec Widevine : la signature VMP (compte EVS de castlabs) se fait
+// après toute modification de l'application et avant la signature de code.
+// Sans elle, les flux de test se lisent mais les services commerciaux refusent.
+if (dev.drm && process.env.ORBE_EVS) {
+  console.log('Signature VMP (EVS)…');
+  run('python3', ['-m', 'castlabs_evs.vmp', 'sign-pkg', out]);
+}
 run('codesign', ['--force', '--deep', '--sign', '-', appPath]);
 console.log('Application prête : ' + appPath);
 

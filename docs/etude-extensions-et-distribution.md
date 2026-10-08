@@ -48,11 +48,31 @@ Environ 250 lignes, sans dépendance.
 
 ## Vidéo protégée (Netflix, Disney+, Prime Video, Spotify web)
 
-Electron de série lit H.264, AAC, HEVC et AV1, mais pas les contenus protégés
-par Widevine : ces services ne fonctionnent pas dans Orbe aujourd'hui. Une
-variante d'Electron maintenue par castlabs ajoute Widevine ; elle suit les
-versions avec retard et demande une étape de signature supplémentaire.
-À étudier sur une branche quand ce besoin deviendra prioritaire.
+Electron de série ne lit pas les contenus protégés par Widevine. Une variante
+maintenue par castlabs le fait ; Orbe peut l'utiliser à la demande :
+
+```sh
+ORBE_DRM=1 npm start          # moteur avec Widevine, installé dans ~/.orbe-dev-drm
+ORBE_DRM=1 npm run build      # application fabriquée avec ce moteur
+```
+
+Vérifié sur macOS (Apple Silicon) avec ce moteur : les flux de test publics
+(Shaka, Bitmovin) se lisent, les tests d'Orbe passent à l'identique.
+
+Non vérifié : Netflix, Disney+, Prime Video et Spotify. Ils exigent très
+probablement une signature supplémentaire de l'application (« VMP »), fournie
+gratuitement par castlabs contre la création d'un compte :
+
+```sh
+python3 -m pip install --upgrade castlabs-evs
+python3 -m castlabs_evs.account signup
+ORBE_DRM=1 ORBE_EVS=1 npm run build
+```
+
+À savoir : ce moteur suit Electron avec retard (correctifs de sécurité plus
+tardifs), la qualité est limitée (protection logicielle, souvent 480–720p), et
+rien n'a été essayé sous Windows. C'est pourquoi il n'est pas le moteur par
+défaut.
 
 ## Connexion Google
 

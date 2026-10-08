@@ -9,8 +9,13 @@ const os = require('os');
 const path = require('path');
 
 const root = path.join(__dirname, '..');
-const version = require('../package.json').orbe.electron;
-const runtime = process.env.ORBE_RUNTIME || path.join(os.homedir(), '.orbe-dev');
+// ORBE_DRM=1 : moteur castlabs (Electron avec Widevine), pour lire les vidéos
+// protégées. Il suit Electron avec un peu de retard : ce n'est pas le défaut.
+const drm = !!process.env.ORBE_DRM;
+const conf = require('../package.json').orbe;
+const version = drm ? conf.electronDrm : conf.electron;
+const runtime = process.env.ORBE_RUNTIME || path.join(os.homedir(), drm ? '.orbe-dev-drm' : '.orbe-dev');
+const spec = drm ? `https://github.com/castlabs/electron-releases#v${version}` : `electron@${version}`;
 const pkg = path.join(runtime, 'node_modules', 'electron', 'package.json');
 
 function installed() {
@@ -28,7 +33,7 @@ function ensure() {
     fs.mkdirSync(runtime, { recursive: true });
     const manifest = path.join(runtime, 'package.json');
     if (!fs.existsSync(manifest)) fs.writeFileSync(manifest, '{"name":"orbe-runtime","private":true}\n');
-    npm(['install', `electron@${version}`, '--no-audit', '--no-fund'], runtime);
+    npm(['install', spec, '--no-audit', '--no-fund'], runtime);
   }
   return path.join(runtime, 'node_modules', 'electron', 'cli.js');
 }
@@ -39,4 +44,4 @@ if (require.main === module) {
   child.on('exit', (code) => process.exit(code == null ? 1 : code));
 }
 
-module.exports = { ensure, npm, runtime, version, root };
+module.exports = { ensure, npm, runtime, version, root, drm };

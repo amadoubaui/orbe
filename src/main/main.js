@@ -319,6 +319,10 @@ app.on('second-instance', (e, argv) => {
 app.whenReady().then(async () => {
   store.load(app.getPath('userData'));
   const firstRun = !Object.keys(store.state.tabs).length && !Object.keys(store.state.history).length;
+  // Moteur avec Widevine (ORBE_DRM) : prépare le module de lecture protégée, sans
+  // retarder l'ouverture (premier lancement : téléchargement en arrière-plan).
+  const { components } = require('electron');
+  if (components) components.whenReady().catch((err) => console.error('[orbe] widevine', err.message));
   applyAppearance();
   extensions.configure({ dir: path.join(app.getPath('userData'), 'Extensions'), fetch: (u, o) => net.fetch(u, o), lang: store.state.settings.lang });
   adblock.configure({

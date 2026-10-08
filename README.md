@@ -89,6 +89,9 @@ npm run test:ui  # tests d'interface Playwright, souris et clavier réels (138 v
 npm run build    # fabrique ~/.orbe-dev/dist/Orbe.app (-- --install pour /Applications)
 ```
 
+Vidéos protégées (Widevine) : `ORBE_DRM=1 npm start` utilise un moteur qui les
+lit ; voir [docs/etude-extensions-et-distribution.md](docs/etude-extensions-et-distribution.md).
+
 Au premier lancement, le moteur (Electron) est téléchargé dans `~/.orbe-dev`,
 en dehors du projet. Les données du navigateur sont dans
 `~/Library/Application Support/Orbe`.
