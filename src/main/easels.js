@@ -157,13 +157,25 @@ function queue(id, json) {
   return writing.get(id);
 }
 
-function sweepDeleted(id) {
+// Supprime les fichiers d'un tableau. Une écriture encore en cours (page du
+// tableau restée ouverte) ou un verrou passager (Windows, antivirus) peuvent
+// faire échouer ou annuler le premier passage : on repasse quelques fois.
+function sweepDeleted(id, attempt = 0) {
+  let left = false;
   try {
     fs.rmSync(fileOf(id), { force: true, maxRetries: 4, retryDelay: 60 });
     fs.rmSync(dirOf(id), { recursive: true, force: true, maxRetries: 4, retryDelay: 60 });
   } catch (err) {
-    console.error('[orbe] tableau : suppression incomplète', err.message);
+    left = true;
+    if (attempt >= 5) console.error('[orbe] tableau : suppression incomplète', err.message);
   }
+  if (attempt >= 5 || loadIndex().has(id)) return;
+  const again = [150, 400, 1000, 2500, 6000][attempt];
+  const timer = setTimeout(() => {
+    if (loadIndex().has(id)) return; // recréé entre-temps sous le même identifiant : on n'y touche plus
+    if (left || fs.existsSync(fileOf(id)) || fs.existsSync(dirOf(id)) || attempt < 2) sweepDeleted(id, attempt + 1);
+  }, again);
+  if (timer.unref) timer.unref();
 }
 
 function readDoc(id) {

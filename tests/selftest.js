@@ -469,10 +469,11 @@ module.exports = async function selftest(ctx) {
   const tall = w.newTab(base + '/long');
   await until(() => titleOf(tall.id) === 'Page longue', 'page longue chargée');
   const dlDir = require('electron').app.getPath('downloads');
-  const pngBefore = fs.readdirSync(dlDir).filter((f) => f.endsWith('.png')).length;
+  const pngsBefore = new Set(fs.readdirSync(dlDir).filter((f) => f.endsWith('.png')));
+  const pngBefore = pngsBefore.size;
   await w.captureFull();
   await until(() => fs.readdirSync(dlDir).filter((f) => f.endsWith('.png')).length === pngBefore + 1, 'capture enregistrée');
-  const png = fs.readdirSync(dlDir).filter((f) => f.endsWith('.png')).map((f) => path.join(dlDir, f)).sort().pop();
+  const png = path.join(dlDir, fs.readdirSync(dlDir).filter((f) => f.endsWith('.png') && !pngsBefore.has(f))[0]);
   const pngSize = await until(() => { const sz = require('electron').nativeImage.createFromPath(png).getSize(); return sz.height ? sz : null; }, 'capture lisible');
   check('capture de la page entière (au-delà de la zone visible)', pngSize.height >= 4000, JSON.stringify(pngSize));
   w.close(tall.id);
