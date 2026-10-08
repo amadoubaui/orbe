@@ -14,6 +14,8 @@ const COMMANDS = [
   { name: 'newWindow', label: 'file.newWindow', accel: 'Cmd+N', keys: '⌘N', global: true, run: () => hooks.newWindow({}) },
   { name: 'newIncognito', label: 'file.newIncognito', accel: 'Shift+Cmd+N', keys: '⇧⌘N', global: true, run: () => hooks.newWindow({ incognito: true }) },
   { name: 'newLittle', label: 'file.newLittle', accel: 'Alt+Cmd+N', keys: '⌥⌘N', global: true, run: () => hooks.newLittle('') },
+  // ⌘Z : annule l'archivage quand on n'est pas en train d'écrire, sinon annulation classique.
+  { name: 'undo', label: 'edit.undo', accel: 'Cmd+Z', keys: '⌘Z', palette: false, run: (w) => undo(w) },
   { name: 'reopen', label: 'file.reopen', accel: 'Shift+Cmd+T', keys: '⇧⌘T', run: (w) => w.reopenClosed() },
   { name: 'commandBar', label: 'file.commandBar', accel: 'Cmd+L', keys: '⌘L', palette: false, run: (w) => w.openCommand('edit') },
   { name: 'closeTab', label: 'file.closeTab', accel: 'Cmd+W', keys: '⌘W', run: (w) => (w.peekState ? w.closePeek() : (w.activeId ? w.close() : w.win.close())) },
@@ -38,6 +40,7 @@ const COMMANDS = [
   { name: 'clearCookies', label: 'view.clearCookies', run: (w) => w.clearAndReload('cookies') },
   { name: 'clearCache', label: 'view.clearCache', run: (w) => w.clearAndReload('cache') },
   { name: 'addSplit', label: 'view.addSplit', accel: 'Ctrl+Shift+=', keys: '⌃⇧=', run: (w) => w.addSplit() },
+  ...[1, 2, 3, 4].map((n) => ({ name: 'pane' + n, label: 'view.pane', accel: `Ctrl+Shift+${n}`, keys: `⌃⇧${n}`, palette: false, run: (w) => w.focusPane(n) })),
   { name: 'closeSplit', label: 'view.closeSplit', accel: 'Ctrl+Shift+-', keys: '⌃⇧-', run: (w) => w.closeSplitPane() },
   { name: 'actualSize', label: 'view.actualSize', accel: 'Cmd+0', keys: '⌘0', run: (w) => w.zoom(0) },
   { name: 'zoomIn', label: 'view.zoomIn', accel: 'Cmd+Plus', keys: '⌘+', run: (w) => w.zoom(0.5) },
@@ -90,6 +93,16 @@ const byName = new Map(COMMANDS.map((c) => [c.name, c]));
 function makeDefault() {
   app.setAsDefaultProtocolClient('http');
   app.setAsDefaultProtocolClient('https');
+}
+
+async function undo(w) {
+  const target = require('electron').webContents.getFocusedWebContents();
+  let typing = false;
+  if (target) {
+    typing = await target.executeJavaScript('(() => { const e = document.activeElement; return !!e && (e.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(e.tagName)); })()').catch(() => true);
+  }
+  if (typing || !w.closed.length) { if (target) target.undo(); return; }
+  w.reopenClosed();
 }
 
 async function importArc(w) {

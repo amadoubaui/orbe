@@ -505,6 +505,19 @@ class OrbeWindow {
     }
     if (!rt.internal) {
       const guard = (e, url) => { if (isInternal(url)) e.preventDefault(); };
+      // Comme dans Arc : depuis un onglet épinglé ou un favori, un lien cliqué
+      // vers un autre site s'ouvre en aperçu, sans quitter la page épinglée.
+      let lastClick = 0;
+      wc.on('before-mouse-event', (e, mouse) => { if (mouse.type === 'mouseUp' && mouse.button === 'left') lastClick = Date.now(); });
+      wc.on('will-navigate', (e, url) => {
+        if (!e.isMainFrame || e.defaultPrevented || !store.state.settings.peekLinks) return;
+        if (!tab.homeUrl || Date.now() - lastClick > 1200 || !webUrl(url) || sameHost(url, tab.url)) return;
+        if (rt.owner.locate(rt.id) && rt.owner.visibleIds().includes(rt.id)) {
+          e.preventDefault();
+          lastClick = 0;
+          rt.owner.openPeek(url, rt.id);
+        }
+      });
       wc.on('will-navigate', guard);
       wc.on('will-redirect', guard);
     }
@@ -650,7 +663,7 @@ class OrbeWindow {
       if (prevId !== id && prevRt && !prevRt.wc.isDestroyed() && prevRt.wc.isCurrentlyAudible()) {
         prevRt.playing = true;
         this.mediaId = prevId;
-        if (!(this.groupOf(id) || []).includes(prevId)) this.pip(prevRt, true);
+        if (!(this.groupOf(id) || []).includes(prevId) && !this.data.tabs[prevId].muted) this.pip(prevRt, true);
       }
     }
     if (this.mediaId === id) this.mediaId = null;
@@ -792,12 +805,10 @@ class OrbeWindow {
     if (loc.list === 'today') {
       space.pinned.push({ type: 'tab', id });
       tab.homeUrl = tab.url;
-      this.toast(t('toast.pinned'));
     } else {
       space.today.unshift(id);
       delete tab.homeUrl;
       delete tab.customTitle;
-      this.toast(t('toast.unpinned'));
     }
     this.changed();
   }
@@ -857,7 +868,6 @@ class OrbeWindow {
     tab.muted = !tab.muted;
     const rt = live.get(id);
     if (rt) rt.wc.setAudioMuted(tab.muted);
-    this.toast(t(tab.muted ? 'toast.muted' : 'toast.unmuted'));
     this.changed();
   }
 
@@ -1079,6 +1089,11 @@ class OrbeWindow {
     this.openCommand('split');
   }
 
+  focusPane(n) {
+    const id = this.visibleIds()[n - 1];
+    if (id && this.visibleIds().length > 1) this.activate(id);
+  }
+
   closeSplitPane() {
     const id = this.activeId;
     const g = id && this.groupOf(id);
@@ -1199,7 +1214,8 @@ class OrbeWindow {
     this.showModal('command', {
       value: tab && !isInternal(tab.url) ? tab.url : '',
       items: this.suggestLocal(''),
-      centerX: Math.round(mode === 'edit' ? rect.x + rect.width / 2 : W / 2),
+      centerX: Math.round(W / 2),
+      anchor: mode === 'edit' && this.sidebarVisible ? { x: 8, y: 46, width: Math.max(460, this.sidebarWidth + 220) } : null,
     });
   }
 

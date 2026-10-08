@@ -128,6 +128,7 @@ const SETTABLE = {
   externalLinks: (v) => v === 'window' || v === 'little',
   autoPip: (v) => typeof v === 'boolean',
   adblock: (v) => typeof v === 'boolean',
+  peekLinks: (v) => typeof v === 'boolean',
 };
 
 function profileList() {

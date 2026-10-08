@@ -105,7 +105,10 @@ list.addEventListener('click', (e) => {
 
 function openCommand(p) {
   show('command');
-  $('command').style.left = p.centerX ? p.centerX + 'px' : '50%';
+  const box = $('command');
+  box.classList.toggle('anchored', !!p.anchor);
+  if (p.anchor) box.style.cssText = `left:${p.anchor.x}px;top:${p.anchor.y}px;width:${p.anchor.width}px`;
+  else box.style.cssText = `left:${p.centerX ? p.centerX + 'px' : '50%'}`;
   input.value = p.value || '';
   typed = '';
   deleting = false;

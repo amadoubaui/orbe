@@ -201,9 +201,10 @@ module.exports = {
       await ctx.clic(shell, '#url');
       await jusqua(ctx.commandeOuverte, 'ouverte par la pastille');
       assert.equal(await champ(), ctx.url('/c'));
-      const centre = await modal.evaluate(() => { const r = document.getElementById('command').getBoundingClientRect(); return r.left + r.width / 2; });
-      const e = await ctx.etat();
-      assert.ok(Math.abs(centre - (e.vuePage.x + e.vuePage.width / 2)) <= 2, 'panneau centré sur la page');
+      // Comme dans Arc : avec ⌘L, le panneau s'ouvre à l'emplacement de la pastille d'adresse.
+      const boite = await modal.evaluate(() => { const r = document.getElementById('command').getBoundingClientRect(); return { x: r.left, y: r.top }; });
+      const pastille = await shell.evaluate(() => { const r = document.getElementById('url').getBoundingClientRect(); return { x: r.left, haut: r.top }; });
+      assert.ok(Math.abs(boite.x - pastille.x) <= 4 && Math.abs(boite.y - pastille.haut) <= 8, `panneau ancré sur la pastille (${JSON.stringify([boite, pastille])})`);
       await modal.keyboard.press('Escape');
       await fermee();
     });

@@ -29,12 +29,12 @@ function setIcon(el, it) {
 function tabRow(el, it) {
   if (!el._built) {
     el._built = true;
-    el.innerHTML = `<span class="ic"></span><span class="title"></span>`
+    el.innerHTML = `<span class="ic" data-act="icon"></span><span class="slash">/</span><span class="title"></span>`
       + `<button class="act reset" data-act="reset">${icon('reset')}</button>`
       + `<button class="act snd" data-act="mute">${icon('sound')}</button>`
       + `<button class="act x" data-act="close">${icon('x')}</button>`;
     el._ic = el.firstChild;
-    el._title = el.children[1];
+    el._title = el.children[2];
     el._snd = el.querySelector('.snd use');
     el.draggable = true;
   }
@@ -137,6 +137,7 @@ function render(s) {
   $('space-icon').textContent = s.space.icon;
 
   reconcile($('fav'), s.favorites, true);
+  $('fav').style.gridTemplateColumns = `repeat(${Math.min(Math.max(s.favorites.length, 1), 4)}, 1fr)`;
   reconcile($('pinned'), s.pinned);
   reconcile($('today'), s.today);
   $('b-clear').classList.toggle('can', s.today.length > (s.today.some((x) => x.active) ? 1 : 0));
@@ -244,6 +245,8 @@ sidebar.addEventListener('click', (e) => {
     if (act.dataset.act === 'close') send('close', id);
     else if (act.dataset.act === 'mute') send('toggleMute', id);
     else if (act.dataset.act === 'reset') send('resetPinned', id);
+    // Clic sur l'icône d'un épinglé sorti de son adresse : retour à celle-ci.
+    else if (act.dataset.act === 'icon') send(row.classList.contains('changed') ? 'resetPinned' : (row.dataset.folder ? 'toggleFolder' : 'activate'), id);
     return;
   }
   if (row) {

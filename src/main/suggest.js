@@ -83,6 +83,12 @@ function local(query, { tabs, commands, activeId }) {
       if (out.length >= 6) break;
     }
   }
+  for (const a of store.state.archive) {
+    if (out.length >= 7) break;
+    if (seen.has(a.url) || !(norm(a.title).includes(q) || norm(strip(a.url)).includes(q))) continue;
+    seen.add(a.url);
+    out.push({ kind: 'history', url: a.url, title: a.title || strip(a.url), subtitle: store.t('lib.archive'), favicon: a.favicon });
+  }
   for (const { h } of hist) {
     if (out.length >= 8) break;
     if (seen.has(h.url)) continue;

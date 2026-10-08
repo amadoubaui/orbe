@@ -8,7 +8,7 @@ const { app } = require('electron');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // Positions physiques (clavier Mac) : chiffres, lettres, flèches, signes.
-const K = { 1: 18, 2: 19, 3: 20, 9: 25, t: 17, d: 2, s: 1, w: 13, l: 37, c: 8, k: 40, y: 16, left: 123, right: 124, down: 125, up: 126, equal: 24, minus: 27, lbracket: 33, rbracket: 30, esc: 53 };
+const K = { 1: 18, 2: 19, 3: 20, 9: 25, t: 17, d: 2, s: 1, w: 13, z: 6, l: 37, c: 8, k: 40, y: 16, left: 123, right: 124, down: 125, up: 126, equal: 24, minus: 27, lbracket: 33, rbracket: 30, esc: 53 };
 
 module.exports = async ({ first: w, win }) => {
   let failed = 0;
@@ -82,8 +82,18 @@ module.exports = async ({ first: w, win }) => {
   const n = w.space.today.length;
   await press('w', 'cmd');
   check('⌘W archive l’onglet', w.space.today.length === n - 1);
+  await press('z', 'cmd');
+  check('⌘Z annule l’archivage', w.space.today.length === n);
+  await press('w', 'cmd');
   await press('t', 'cmd', 'shift');
   check('⇧⌘T le rouvre', w.space.today.length === n);
+  w.splitWith(w.activeId, b.id);
+  await sleep(400);
+  await press('1', 'ctrl', 'shift');
+  const first = w.activeId;
+  await press('2', 'ctrl', 'shift');
+  check('⌃⇧1 / ⌃⇧2 passent d’un volet à l’autre', w.activeId !== first && w.visibleIds().length === 2, `${first} ${w.activeId}`);
+  w.run('closeSplit');
   await press('k', 'cmd', 'shift');
   check('⇧⌘K efface Aujourd’hui', w.space.today.length === 1);
   await press('y', 'cmd');

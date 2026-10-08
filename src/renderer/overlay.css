@@ -138,3 +138,9 @@ body.peek #backdrop { background: rgba(0, 0, 0, 0.42); animation: fade 160ms var
 .pk { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, 0.16); color: #fff; transition: background 120ms, transform 120ms; }
 .pk:hover { background: rgba(255, 255, 255, 0.3); }
 .pk:active { transform: scale(0.94); }
+
+/* ⌘L : la barre de commande s'ouvre sous la pastille d'adresse. */
+#command.anchored { transform: none; animation: drop 130ms var(--ease); }
+#command.anchored #cmd-field { height: 42px; }
+#command.anchored #cmd-input { font-size: 15px; }
+@keyframes drop { from { opacity: 0; transform: translateY(-6px); } }

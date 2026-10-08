@@ -68,7 +68,7 @@ function build() {
     {
       label: t('menu.edit'),
       submenu: [
-        { label: t('edit.undo'), role: 'undo' },
+        item('undo'),
         { label: t('edit.redo'), role: 'redo' },
         sep,
         { label: t('edit.cut'), role: 'cut' },
@@ -99,6 +99,7 @@ function build() {
         item('stop'), item('reload'), item('forceReload'), item('clearCookies'), item('clearCache'),
         sep,
         item('addSplit'), item('closeSplit'),
+        ...[1, 2, 3, 4].map((n) => item('pane' + n, { label: `${t('view.pane')} ${n}`, visible: false, acceleratorWorksWhenHidden: true })),
         sep,
         item('boost'), item('zap'),
         sep,

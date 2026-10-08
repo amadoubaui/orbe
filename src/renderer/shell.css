@@ -108,12 +108,12 @@ body.fullscreen #top { padding-left: 0; }
 /* Favoris : grille de tuiles en haut, communes à tous les Espaces. */
 #fav {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+  grid-template-columns: repeat(4, 1fr);
   gap: 8px;
   flex: none;
 }
-#fav:not(:empty) { margin-bottom: 12px; }
-body.dragging #fav:empty { min-height: 40px; border: 1.5px dashed var(--line); border-radius: 12px; margin-bottom: 10px; }
+#fav:not(:empty) { margin: 8px 0 4px; }
+body.dragging #fav:empty { min-height: 40px; border: 1.5px dashed var(--line); border-radius: 12px; margin: 8px 0 4px; }
 .tile {
   height: 44px;
   border-radius: 12px;
@@ -183,6 +183,10 @@ body.dragging .list:empty { min-height: 30px; }
 .row .act:hover { background: var(--pill); color: var(--fg); }
 .row:hover .act.x, .row.audible .act.snd, .row.muted .act.snd, .row.changed .act.reset { display: grid; }
 .row.changed:not(:hover) .act.reset { display: none; }
+.row .slash { display: none; color: var(--faint); font-weight: 600; margin: 0 -4px 0 -5px; flex: none; }
+.row.changed .slash { display: inline; }
+.row.changed .ic { cursor: pointer; }
+#pinned .row.tab:not(.live):hover .act.x { display: none; }
 .row.split .ic::after {
   content: '';
   position: absolute;

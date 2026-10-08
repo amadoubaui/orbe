@@ -41,6 +41,7 @@ function serve() {
     </script>`));
     if (url.pathname === '/pixel') { hits.pixel += 1; res.setHeader('content-type', 'image/gif'); return res.end(Buffer.from('R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==', 'base64')); }
     if (url.pathname === '/pub') return res.end(page('Page avec pub', `<img src="http://pub.orbe.localhost:${server.address().port}/pixel"><img src="/pixel?local">`));
+    if (url.pathname === '/liens') return res.end(page('Page à liens', `<a id="dehors" href="http://localhost:${server.address().port}/b" style="display:block;width:300px;height:60px;background:#def">ailleurs</a>`));
     if (url.pathname === '/long') return res.end(page('Page longue', '<div style="height:4000px;background:linear-gradient(#fde,#def)">haut</div><p>bas</p>'));
     if (url.pathname === '/file.txt') { res.setHeader('content-disposition', 'attachment; filename="orbe-test.txt"'); return res.end('bonjour'); }
     res.statusCode = 404;
@@ -230,6 +231,21 @@ module.exports = async function selftest({ first: w, OrbeWindow, store, win, lit
   await until(() => w.peekState && w.peekState.title.startsWith('C '), 'second aperçu');
   w.run('closeTab');
   check('⌘W ferme l’aperçu sans fermer l’onglet', !w.peekState && w.activeId === a.id && !!tabs()[a.id]);
+
+  // Aperçu sur un clic ordinaire depuis un onglet épinglé (comme dans Arc)
+  const pinL = w.newTab(base + '/liens');
+  await until(() => titleOf(pinL.id) === 'Page à liens' && !win.live.get(pinL.id).loading, 'page à liens');
+  w.togglePin(pinL.id);
+  const lwc = win.live.get(pinL.id).wc;
+  const pt = await lwc.executeJavaScript('(() => { const r = document.getElementById("dehors").getBoundingClientRect(); return { x: Math.round(r.left + 40), y: Math.round(r.top + 20) }; })()');
+  lwc.focus();
+  for (const type of ['mouseDown', 'mouseUp']) lwc.sendInputEvent({ type, x: pt.x, y: pt.y, button: 'left', clickCount: 1 });
+  await until(() => w.peekState && w.peekState.title === 'Page B', 'aperçu ouvert par un clic');
+  check('clic sur un lien sortant d’un onglet épinglé : aperçu, la page épinglée reste', lwc.getURL() === base + '/liens' && w.activeId === pinL.id);
+  w.closePeek();
+  w.togglePin(pinL.id);
+  w.close(pinL.id);
+  w.activate(a.id);
 
   // Espaces
   w.newSpace();
