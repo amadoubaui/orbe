@@ -18,6 +18,7 @@ const extensions = require('./extensions');
 const extApi = require('./ext-api');
 const extHost = require('./ext-host');
 const boosts = require('./boosts');
+const passwords = require('./passwords');
 const platform = require('./platform');
 
 platform.adaptLocales(locales);
@@ -32,6 +33,8 @@ if (process.env.ORBE_USER_DATA) app.setPath('userData', path.resolve(process.env
 else if (SELFTEST) app.setPath('userData', fs.mkdtempSync(path.join(os.tmpdir(), 'orbe-test-')));
 // En test, rien n'est écrit dans le vrai dossier Téléchargements.
 if (SELFTEST) {
+  // Les tests ne touchent jamais au vrai trousseau du système.
+  app.commandLine.appendSwitch('use-mock-keychain');
   const dl = path.join(app.getPath('userData'), 'Telechargements');
   fs.mkdirSync(dl, { recursive: true });
   app.setPath('downloads', dl);
@@ -142,6 +145,8 @@ const SETTABLE = {
   autoPip: (v) => typeof v === 'boolean',
   adblock: (v) => typeof v === 'boolean',
   peekLinks: (v) => typeof v === 'boolean',
+  passwordSave: (v) => typeof v === 'boolean',
+  passwordFill: (v) => typeof v === 'boolean',
   routes: (v) => Array.isArray(v) && v.length <= 100 && v.every((r) => r && typeof r.match === 'string' && r.match.length <= 200 && typeof r.to === 'string' && r.to.length <= 40),
 };
 
@@ -262,7 +267,7 @@ async function globalAction(action, a, sender) {
       return profileList();
     }
     case 'settings:deleteProfile':
-      if (OrbeWindow.deleteProfile(String(a))) menu.refresh(true);
+      if (OrbeWindow.deleteProfile(String(a))) { passwords.forgetProfile(String(a)); menu.refresh(true); }
       return profileList();
     case 'settings:makeDefault':
       commands.makeDefault();
@@ -305,6 +310,7 @@ function setupIpc() {
   ipcMain.handle('orbe', async (e, action, payload) => {
     if (!ok(e) || typeof action !== 'string') return undefined;
     if (action.startsWith('boost:')) return boostAction(action, payload);
+    if (action.startsWith('pw:')) return passwords.action(action, payload, e.sender);
     if (action === 'welcome:info') return { arc: require('./import-arc').available() };
     if (/^(lib|settings|shortcuts|ext|notes):/.test(action)) return globalAction(action, payload, e.sender);
     const owner = OrbeWindow.ownerOf(e.sender) || little.LittleWindow.ownerOf(e.sender) || OrbeWindow.primary;
@@ -350,10 +356,12 @@ app.whenReady().then(async () => {
   commands.hooks.newLittle = (url) => new little.LittleWindow(url);
   commands.hooks.openSettings = openSettings;
   commands.hooks.openBoost = openBoost;
+  commands.hooks.openPasswords = () => passwords.openManager();
+  passwords.configure({ trusted, uiPreload: UI_PRELOAD, internal: INTERNAL, toast: (wc, text) => { const o = OrbeWindow.ownerOf(wc); if (o) o.toast(text); } });
   commands.hooks.settingsChanged = broadcastSettings;
   win.hooks.openLittle = (url) => new little.LittleWindow(url);
-  win.hooks.changed = () => { menu.refresh(); extHost.sync(); };
-  win.hooks.extensionMenu = (wc, params) => extApi.contextMenuItems(wc, params);
+  win.hooks.changed = () => { menu.refresh(); extHost.sync(); passwords.sync(); };
+  win.hooks.extensionMenu = (wc, params) => [...extApi.contextMenuItems(wc, params), ...passwords.contextMenuItems(wc, params)];
   extApi.hooks.actionChanged = () => OrbeWindow.pushAll();
   little.hooks.openInOrbe = (url, spaceId) => {
     openUrl.direct = true;
@@ -387,7 +395,7 @@ app.whenReady().then(async () => {
   if (SELFTEST) {
     try {
       // ORBE_SCENARIO : autre scénario de test (ex. tests/sites.js, sites réels).
-      await require(process.env.ORBE_SCENARIO ? path.resolve(process.env.ORBE_SCENARIO) : '../../tests/selftest')({ first, OrbeWindow, store, win, little, commands, menu, openSettings, openUrl, extensions, extApi, extHost });
+      await require(process.env.ORBE_SCENARIO ? path.resolve(process.env.ORBE_SCENARIO) : '../../tests/selftest')({ first, OrbeWindow, store, win, little, commands, menu, openSettings, openUrl, extensions, extApi, extHost, passwords });
       store.flush();
       app.exit(0);
     } catch (err) {

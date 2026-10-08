@@ -33,6 +33,8 @@ const DEFAULT_SETTINGS = {
   autoPip: true,
   adblock: true,
   adblockAllow: [],
+  passwordSave: true,
+  passwordFill: true,
 };
 
 class Store {

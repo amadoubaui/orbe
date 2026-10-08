@@ -41,6 +41,9 @@ interface entièrement en français (anglais disponible dans les réglages).
   uBlock Origin Lite. Leur fenêtre s'ouvre depuis le bouclier, à côté de
   l'adresse. Les extensions à panneau latéral ne fonctionnent pas encore.
 - **Boosts** : CSS personnalisé par site et « Zap » pour masquer un élément.
+- **Mots de passe** : enregistrement et remplissage intégrés, chiffrés avec le
+  trousseau du système, import et export CSV (Safari / iCloud, Chrome). Le
+  modèle de menace est dans [docs/mots-de-passe.md](docs/mots-de-passe.md).
 - **Notes** (⌃⌘N) et **médias** dans la bibliothèque.
 - **Archive** : ⌘W archive l'onglet, ⇧⌘T le rouvre, les onglets inactifs sont
   archivés automatiquement (12 h par défaut).
@@ -84,7 +87,7 @@ Il faut [Node.js](https://nodejs.org) 20 ou plus récent.
 git clone https://github.com/amadoubaui/orbe.git
 cd orbe
 npm start        # lance le navigateur
-npm test         # tests de bout en bout (87 vérifications)
+npm test         # tests de bout en bout (140 vérifications)
 npm run test:ui  # tests d'interface Playwright, souris et clavier réels (138 vérifications)
 # tests au clavier réel (prennent le clavier) : voir tests/natif/
 npm run build    # fabrique ~/.orbe-dev/dist/Orbe.app (-- --install pour /Applications)

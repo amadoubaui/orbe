@@ -536,7 +536,9 @@ class OrbeWindow {
     // l'adresse, qu'une page web peut changer.
     const internal = tab.internal === true && isInternal(tab.url);
     const view = existing || new WebContentsView(viewOptions || {
-      webPreferences: { session: this.sessionFor(id), sandbox: true, contextIsolation: true, preload: internal ? UI_PRELOAD : undefined },
+      // nodeIntegrationInSubFrames : avec le bac à sable, cela ne fait qu'exécuter les scripts
+      // de préchargement de la session dans les iframes (mots de passe) ; aucun accès à Node.
+      webPreferences: { session: this.sessionFor(id), sandbox: true, contextIsolation: true, nodeIntegrationInSubFrames: true, preload: internal ? UI_PRELOAD : undefined },
     });
     view.setBackgroundColor('#ffffff');
     rt = { id, view, wc: view.webContents, owner: this, loading: false, lastUsed: Date.now(), internal };
@@ -1195,7 +1197,7 @@ class OrbeWindow {
   openPeek(url, fromId, options) {
     this.closePeek();
     const view = new WebContentsView(options || {
-      webPreferences: { session: this.sessionFor(fromId), sandbox: true, contextIsolation: true },
+      webPreferences: { session: this.sessionFor(fromId), sandbox: true, contextIsolation: true, nodeIntegrationInSubFrames: true },
     });
     view.setBackgroundColor('#ffffff');
     view.setBorderRadius(12);
