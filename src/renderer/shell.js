@@ -334,20 +334,35 @@ for (const p of ['b', 'tb']) {
 }
 
 // --- Balayage à deux doigts : changer d'Espace ------------------------------
+// La liste suit le doigt ; passé un seuil, on change d'Espace, sinon elle
+// revient en place. Au bout de la rangée, elle résiste.
 let swipe = 0;
 let swipeLock = false;
 let swipeTimer = null;
+const scroller = $('scroll');
+function swipeReset(animated) {
+  swipe = 0;
+  scroller.style.transition = animated ? 'transform 220ms var(--ease), opacity 220ms' : '';
+  scroller.style.transform = '';
+  scroller.style.opacity = '';
+}
 sidebar.addEventListener('wheel', (e) => {
   if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
   e.preventDefault();
   clearTimeout(swipeTimer);
-  swipeTimer = setTimeout(() => { swipe = 0; swipeLock = false; }, 220);
-  if (swipeLock) return;
+  swipeTimer = setTimeout(() => { swipeLock = false; swipeReset(true); }, 160);
+  if (swipeLock || !S) return;
   swipe += e.deltaX;
-  if (Math.abs(swipe) > 70) {
+  const i = S.spaces.findIndex((x) => x.id === S.space.id);
+  const edge = (swipe > 0 && i >= S.spaces.length - 1) || (swipe < 0 && i <= 0);
+  const shift = edge ? swipe * 0.15 : swipe * 0.7;
+  scroller.style.transition = '';
+  scroller.style.transform = `translateX(${-shift}px)`;
+  scroller.style.opacity = String(Math.max(0.35, 1 - Math.abs(shift) / 220));
+  if (!edge && Math.abs(swipe) > 70) {
     swipeLock = true;
     send('stepSpace', swipe > 0 ? 1 : -1);
-    swipe = 0;
+    swipeReset(false);
   }
 }, { passive: false });
 

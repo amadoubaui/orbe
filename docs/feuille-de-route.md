@@ -26,7 +26,6 @@ animations des onglets, Boosts et Zap, extensions Chrome (expérimental).
 ## Écarts avec Arc encore ouverts
 
 - Scission verticale ; glisser un onglet sur la page pour scinder.
-- Balayage entre Espaces qui suit le doigt.
 - Bibliothèque : médias et Espaces ; aperçu des fichiers récents au survol.
 - Centre de contrôle du site.
 - Easels et notes.
