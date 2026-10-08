@@ -667,7 +667,7 @@ toutes les 20 ms, compteur de `resize` et traçage `devtools.timeline` dans la p
 | Appel **non** animé pendant le trajet | la vue saute bien à la nouvelle place, mais `getBounds()` reste ensuite sur la cible de l'animation interrompue (cote fausse) : à ne jamais faire |
 | Largeur ou hauteur animée | la page ne reçoit qu'**un** `resize` et ne fait qu'**une** remise en page : au départ si elle grandit, à l'arrivée si elle rétrécit ; entre-temps son image est rognée par le cadre qui bouge (elle n'est ni étirée ni redessinée). Le relevé « 13 à 18 `resize` » du tableau ci-dessus ne s'est pas reproduit |
 | Vue retirée puis rattachée pendant le trajet | à sa cible, cotes justes |
-| Windows | **non mesuré sur une machine** ; le code ne dépend pas de l'animation (si l'option est ignorée ou refusée, la vue est posée directement) et l'intégration continue vérifie les cotes finales sur Windows |
+| Windows | même comportement, relevé sur la machine d'intégration (Windows Server, où « Réduire les animations » est actif : les essais imposent le chemin animé) : trajet de 400 ms, `getBounds()` encore à l'ancienne cote à 200 ms, arrivée signalée à 411 ms (73 ms pour 50 demandées), cotes finales exactes après interruptions, redimensionnement et vue scindée. Le rendu à l'œil sur un vrai poste Windows reste à voir ; si l'option était refusée, la vue serait posée directement |
 
 D'où `place(vue, rect, ms)` dans `window.js` : un seul appel animé par vue ; tant qu'une vue est
 en vol, toute nouvelle cible lui est donnée par un appel animé sur le temps qu'il lui reste.
@@ -693,6 +693,9 @@ Mesures (même scénario lancé sur le commit `a9ec705` puis sur la branche ; pa
 | Changement d'Espace (raccourci), images de la coque en 450 ms | 57, écart max 9,5 ms, 0 image lente | 57, écart max 11,8 ms, 0 image lente |
 | Changement d'Espace : rendu de la liste | aussitôt (≈ 60 ms), puis glissé-fondu de 36 px | différé à l'arrivée (≈ 265 ms) : pendant le glissement, rien n'est redessiné |
 | `sendState` (3 Espaces × 40 onglets) | 0,021 ms, 12,5 ko | 0,046 ms, 36,6 ko (listes des deux Espaces voisins) |
+
+Essais : 27 vérifications de bout en bout ajoutées (211 sur macOS, 210 sur Windows), 11 vérifications
+d'interface ajoutées (172), toutes vertes sur les deux systèmes.
 
 Ce qui reste à régler la main sur le pavé tactile : seuil (40 % de la largeur, 110 px au
 plus), vitesse d'un geste vif (1,5 px/ms), délai « doigts levés » (90 ms sans événement),
