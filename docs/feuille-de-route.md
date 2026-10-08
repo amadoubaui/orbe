@@ -25,15 +25,11 @@ animations des onglets, Boosts et Zap, extensions Chrome (expérimental).
 
 ## Écarts avec Arc encore ouverts
 
-- Vue scindée affichée comme une seule ligne dans la barre latérale ; scission
-  verticale ; glisser un onglet sur la page pour scinder.
-- Balayage entre Espaces qui suit le doigt ; thème d'Espace en dégradé avec grain.
-- Dossiers imbriqués ; dossier replié qui montre encore l'onglet actif.
-- Petite fenêtre : choix de l'Espace de destination ; règles d'aiguillage des
-  liens (Air Traffic Control).
+- Scission verticale ; glisser un onglet sur la page pour scinder.
+- Balayage entre Espaces qui suit le doigt.
+- Règles d'aiguillage des liens (Air Traffic Control).
 - Bibliothèque : médias et Espaces ; aperçu des fichiers récents au survol.
-- Adresse du lien survolé ; centre de contrôle du site ; vignettes dans la
-  bascule ⌃Tab.
+- Centre de contrôle du site ; vignettes dans la bascule ⌃Tab.
 - Easels et notes.
 
 ## Ensuite, par ordre de priorité

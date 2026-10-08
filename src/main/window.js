@@ -1780,8 +1780,12 @@ class OrbeWindow {
         live: !!alive,
         changed: !!tab.homeUrl && !samePage(tab.homeUrl, tab.url),
         split: g ? this.splits.indexOf(g) + 1 : 0,
-        active: id === activeId,
-        shown: !!g && g.includes(activeId) && id !== activeId,
+        // Comme dans Arc, une vue scindée n'occupe qu'une ligne : celle de son
+        // premier onglet, qui porte les icônes et les titres des autres.
+        partners: g && g[0] === id ? g.slice(1).filter((x) => d.tabs[x]).map((x) => ({ id: x, title: d.tabs[x].customTitle || d.tabs[x].title || suggest.strip(d.tabs[x].url), favicon: d.tabs[x].favicon, url: d.tabs[x].url })) : null,
+        grouped: !!g && g[0] !== id,
+        active: g && g[0] === id ? g.includes(activeId) : id === activeId,
+        shown: false,
       };
     };
     const nodeVM = (n) => (n.type === 'folder'

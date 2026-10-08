@@ -187,17 +187,9 @@ body.dragging .list:empty { min-height: 30px; }
 .row.changed .slash { display: inline; }
 .row.changed .ic { cursor: pointer; }
 #pinned .row.tab:not(.live):hover .act.x { display: none; }
-.row.split .ic::after {
-  content: '';
-  position: absolute;
-  left: 21px;
-  top: 19px;
-  width: 9px;
-  height: 8px;
-  border-radius: 2.5px;
-  border: 1.5px solid var(--fg);
-  background: linear-gradient(90deg, var(--bg) 46%, var(--fg) 46% 54%, var(--bg) 54%);
-}
+.row.grouped { display: none; }
+.row .more { display: none; gap: 4px; flex: none; margin-left: -4px; }
+.row.split .more { display: flex; }
 #b-newtab { color: var(--dim); }
 #b-newtab:hover { color: var(--fg); }
 .row.dragging-self, .tile.dragging-self, .folder.dragging-self { opacity: 0.35; }

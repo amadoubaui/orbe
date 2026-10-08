@@ -33,21 +33,30 @@ function setIcon(el, it) {
 function tabRow(el, it) {
   if (!el._built) {
     el._built = true;
-    el.innerHTML = `<span class="ic" data-act="icon"></span><span class="slash">/</span><span class="title"></span>`
+    el.innerHTML = `<span class="ic" data-act="icon"></span><span class="more"></span><span class="slash">/</span><span class="title"></span>`
       + `<button class="act reset" data-act="reset">${icon('reset')}</button>`
       + `<button class="act snd" data-act="mute">${icon('sound')}</button>`
       + `<button class="act x" data-act="close">${icon('x')}</button>`;
     el._ic = el.firstChild;
-    el._title = el.children[2];
+    el._title = el.children[3];
+    el._more = el.children[1];
     el._snd = el.querySelector('.snd use');
     el.draggable = true;
   }
   el.className = 'row tab' + (it.active ? ' active' : '') + (it.shown ? ' shown' : '') + (it.live ? ' live' : '')
-    + (it.audible ? ' audible' : '') + (it.muted ? ' muted' : '') + (it.changed ? ' changed' : '') + (it.split ? ' split' : '');
-  if (editing !== it.id && el._t !== it.title) {
-    el._t = it.title;
-    el._title.textContent = it.title;
-    el.title = it.title;
+    + (it.audible ? ' audible' : '') + (it.muted ? ' muted' : '') + (it.changed ? ' changed' : '') + (it.partners ? ' split' : '') + (it.grouped ? ' grouped' : '');
+  // Vue scindée : une seule ligne, avec les icônes et les titres de chaque volet.
+  const label = it.partners ? [it.title, ...it.partners.map((p) => p.title)].join('  |  ') : it.title;
+  if (editing !== it.id && el._t !== label) {
+    el._t = label;
+    el._title.textContent = label;
+    el.title = label;
+  }
+  const moreKey = it.partners ? it.partners.map((p) => p.id + p.favicon).join(',') : '';
+  if (el._mk !== moreKey) {
+    el._mk = moreKey;
+    el._more.textContent = '';
+    for (const p of it.partners || []) el._more.appendChild(faviconEl(S && S.incognito ? '' : (p.favicon || guessIcon(p.url)), p.title));
   }
   if (el._m !== it.muted) { el._m = it.muted; el._snd.setAttribute('href', it.muted ? '#i-mute' : '#i-sound'); }
   setIcon(el, it);
