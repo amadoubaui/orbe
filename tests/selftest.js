@@ -27,6 +27,17 @@ function serve() {
     if (url.pathname === '/a') return res.end(page('Page A', '<h1>Alpha</h1><p>orbe orbe orbe</p><a id="pop" href="/c" target="_blank">ouvrir C</a>'));
     if (url.pathname === '/b') return res.end(page('Page B', '<h1>Bravo</h1>'));
     if (url.pathname === '/c') return res.end(page('Page C', '<h1>Charlie</h1><script>document.title = window.opener ? "C avec opener" : "C sans opener"</script>'));
+    if (url.pathname === '/video') return res.end(page('Page vidéo', `<video id="v" width="320" height="180" playsinline></video><script>
+      window.start = async () => {
+        const c = document.createElement('canvas'); c.width = 320; c.height = 180;
+        const g = c.getContext('2d'); let n = 0;
+        setInterval(() => { g.fillStyle = 'hsl(' + (n++ % 360) + ' 70% 50%)'; g.fillRect(0, 0, 320, 180); }, 40);
+        const ac = new AudioContext(); const osc = ac.createOscillator(); const gain = ac.createGain(); gain.gain.value = 0.002;
+        const dest = ac.createMediaStreamDestination(); osc.connect(gain).connect(dest); osc.start();
+        const stream = c.captureStream(25); stream.addTrack(dest.stream.getAudioTracks()[0]);
+        const v = document.getElementById('v'); v.srcObject = stream; await v.play(); return true;
+      };
+    </script>`));
     if (url.pathname === '/long') return res.end(page('Page longue', '<div style="height:4000px;background:linear-gradient(#fde,#def)">haut</div><p>bas</p>'));
     if (url.pathname === '/file.txt') { res.setHeader('content-disposition', 'attachment; filename="orbe-test.txt"'); return res.end('bonjour'); }
     res.statusCode = 404;
@@ -310,6 +321,21 @@ module.exports = async function selftest({ first: w, OrbeWindow, store, win, lit
   const pngSize = await until(() => { const sz = require('electron').nativeImage.createFromPath(png).getSize(); return sz.height ? sz : null; }, 'capture lisible');
   check('capture de la page entière (au-delà de la zone visible)', pngSize.height >= 4000, JSON.stringify(pngSize));
   w.close(tall.id);
+  w.activate(a.id);
+
+  // Image dans l'image : la vidéo suit quand on change d'onglet
+  const vid = w.newTab(base + '/video');
+  await until(() => titleOf(vid.id) === 'Page vidéo', 'page vidéo chargée');
+  const vwc = win.live.get(vid.id).wc;
+  await vwc.executeJavaScript('start()', true);
+  await until(() => vwc.isCurrentlyAudible(), 'vidéo audible');
+  w.activate(a.id);
+  await until(() => vwc.executeJavaScript('!!document.pictureInPictureElement'), 'vidéo passée en image dans l’image');
+  check('la vidéo en cours passe en image dans l’image en quittant l’onglet', w.mediaId === vid.id);
+  w.activate(vid.id);
+  await until(async () => !(await vwc.executeJavaScript('!!document.pictureInPictureElement')), 'retour de la vidéo dans la page');
+  check('elle revient dans la page au retour sur l’onglet', w.mediaId === null);
+  w.close(vid.id);
   w.activate(a.id);
 
   // Réglages

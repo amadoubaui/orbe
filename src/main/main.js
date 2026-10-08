@@ -93,6 +93,7 @@ const SETTABLE = {
   translucent: (v) => typeof v === 'boolean',
   maxLiveTabs: (v) => Number.isInteger(v) && v >= 4 && v <= 60,
   externalLinks: (v) => v === 'window' || v === 'little',
+  autoPip: (v) => typeof v === 'boolean',
 };
 
 function profileList() {

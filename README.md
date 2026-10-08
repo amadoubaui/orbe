@@ -26,6 +26,8 @@ interface entièrement en français (anglais disponible dans les réglages).
 - **Profils** : cookies, connexions et favoris séparés, un profil par Espace.
 - **Import depuis Arc** : Espaces, épinglés, dossiers, favoris et profils
   (menu Orbe → Importer depuis Arc…).
+- **Vidéo et son** : la vidéo en cours passe en image dans l'image quand tu
+  changes d'onglet ; un lecteur miniature dans la barre latérale pilote le son.
 - **Archive** : ⌘W archive l'onglet, ⇧⌘T le rouvre, les onglets inactifs sont
   archivés automatiquement (12 h par défaut).
 - **Petite fenêtre** (⌥⌘N), **navigation privée** (⇧⌘N), plusieurs fenêtres
@@ -68,7 +70,7 @@ Il faut [Node.js](https://nodejs.org) 20 ou plus récent.
 git clone https://github.com/amadoubaui/orbe.git
 cd orbe
 npm start        # lance le navigateur
-npm test         # tests de bout en bout (59 vérifications)
+npm test         # tests de bout en bout (61 vérifications)
 npm run build    # fabrique dist/Orbe.app
 ```
 

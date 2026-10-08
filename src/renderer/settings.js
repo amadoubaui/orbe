@@ -1,5 +1,5 @@
 // Réglages : chaque changement est appliqué immédiatement.
-const FIELDS = ['lang', 'searchEngine', 'suggestions', 'archiveAfterHours', 'maxLiveTabs', 'appearance', 'translucent', 'externalLinks'];
+const FIELDS = ['lang', 'searchEngine', 'suggestions', 'archiveAfterHours', 'maxLiveTabs', 'appearance', 'translucent', 'externalLinks', 'autoPip'];
 const NUMERIC = new Set(['archiveAfterHours', 'maxLiveTabs']);
 const el = (id) => document.getElementById(id);
 

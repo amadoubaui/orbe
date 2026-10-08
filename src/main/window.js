@@ -148,7 +148,7 @@ class OrbeWindow {
     this.win.on('closed', () => this.dispose());
     for (const ev of ['resized', 'moved']) this.win.on(ev, () => this.remember());
 
-    this.peekTimer = setInterval(() => this.pollPeek(), 90);
+    this.syncPeekTimer();
     this.ui.webContents.once('did-finish-load', () => {
       this.layout();
       this.win.show();
@@ -333,8 +333,16 @@ class OrbeWindow {
     this.peek = false;
     this.setButtons(this.sidebarVisible);
     this.animateTo(this.sidebarVisible ? 1 : 0);
+    this.syncPeekTimer();
     this.remember();
     OrbeWindow.pushAll();
+  }
+
+  // La surveillance du bord gauche ne tourne que barre latérale masquée.
+  syncPeekTimer() {
+    const needed = !this.sidebarVisible && !this.win.isDestroyed();
+    if (needed && !this.peekTimer) this.peekTimer = setInterval(() => this.pollPeek(), 80);
+    else if (!needed && this.peekTimer) { clearInterval(this.peekTimer); this.peekTimer = null; }
   }
 
   setPeek(on) {
@@ -552,9 +560,15 @@ class OrbeWindow {
     // En quittant un onglet qui joue du son, il passe dans le lecteur miniature.
     for (const prevId of this.visibleIds()) {
       const prevRt = live.get(prevId);
-      if (prevId !== id && prevRt && !prevRt.wc.isDestroyed() && prevRt.wc.isCurrentlyAudible()) { prevRt.playing = true; this.mediaId = prevId; }
+      if (prevId !== id && prevRt && !prevRt.wc.isDestroyed() && prevRt.wc.isCurrentlyAudible()) {
+        prevRt.playing = true;
+        this.mediaId = prevId;
+        if (!(this.groupOf(id) || []).includes(prevId)) this.pip(prevRt, true);
+      }
     }
     if (this.mediaId === id) this.mediaId = null;
+    const backRt = live.get(id);
+    if (backRt && backRt.pip) this.pip(backRt, false);
     this.activeBySpace[this.space.id] = id;
     const tab = this.data.tabs[id];
     tab.lastActiveAt = Date.now();
@@ -716,6 +730,22 @@ class OrbeWindow {
       tab.homeUrl = tab.homeUrl || tab.url;
     }
     this.changed();
+  }
+
+  // Image dans l'image : la vidéo en cours suit l'utilisateur quand il change
+  // d'onglet, et retourne dans sa page quand il y revient.
+  pip(rt, enter) {
+    if (!store.state.settings.autoPip || rt.wc.isDestroyed()) return;
+    rt.pip = enter;
+    const code = enter
+      ? `(() => {
+          const v = [...document.querySelectorAll('video')]
+            .filter((x) => !x.paused && !x.ended && x.readyState > 2 && !x.disablePictureInPicture && x.videoWidth > 0)
+            .sort((a, b) => b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight)[0];
+          if (v && document.pictureInPictureEnabled && !document.pictureInPictureElement) v.requestPictureInPicture().catch(() => {});
+        })()`
+      : `(() => { if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {}); })()`;
+    rt.wc.executeJavaScript(code, true).catch(() => {});
   }
 
   // Lecture / pause du média de l'onglet en arrière-plan.

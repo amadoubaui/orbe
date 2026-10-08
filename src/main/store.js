@@ -25,6 +25,7 @@ const DEFAULT_SETTINGS = {
   sidebarWidth: 250,
   maxLiveTabs: 14,
   externalLinks: 'window',
+  autoPip: true,
 };
 
 class Store {
