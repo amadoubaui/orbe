@@ -1695,7 +1695,9 @@ class OrbeWindow {
   handle(action, a) {
     switch (action) {
       case 'ready': return this.sendState();
-      case 'activate': return this.activate(a);
+      // Clic sur l'onglet déjà affiché : rien à faire, et surtout ne pas
+      // reprendre le clavier (second clic d'un double-clic pour renommer).
+      case 'activate': return a === this.activeId && live.has(a) && !this.peekState ? undefined : this.activate(a);
       case 'close': return this.close(a);
       case 'openCommand': return this.openCommand(a);
       case 'toggleSidebar': return this.toggleSidebar();

@@ -79,6 +79,7 @@ git clone https://github.com/amadoubaui/orbe.git
 cd orbe
 npm start        # lance le navigateur
 npm test         # tests de bout en bout (72 vérifications)
+npm run test:ui  # tests d'interface Playwright, souris et clavier réels (137 vérifications)
 npm run build    # fabrique ~/.orbe-dev/dist/Orbe.app (-- --install pour /Applications)
 ```
 
@@ -93,7 +94,7 @@ src/main/       processus principal : fenêtres, onglets, menus, données
 src/preload/    pont sécurisé entre l'interface et le processus principal
 src/renderer/   interface : barre latérale, barre de commande, pages internes
 src/shared/     textes français et anglais
-tests/          tests de bout en bout
+tests/          tests de bout en bout, tests d'interface (Playwright), sites réels
 docs/           analyse d'Arc et feuille de route
 ```
 

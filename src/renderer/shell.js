@@ -344,6 +344,7 @@ sidebar.addEventListener('dragstart', (e) => {
   drag = { id: row.dataset.id, folder: !!row.dataset.folder };
   e.dataTransfer.effectAllowed = 'move';
   e.dataTransfer.setData('text/plain', row.dataset.id);
+  e.dataTransfer.setData('application/x-orbe-item', row.dataset.id);
   // Les zones de dépôt ne s'agrandissent qu'après le départ du glisser :
   // déplacer la ligne saisie pendant « dragstart » annule le geste.
   requestAnimationFrame(() => {
@@ -408,7 +409,8 @@ function dropTarget(e) {
 }
 
 sidebar.addEventListener('dragover', (e) => {
-  const external = !drag && [...e.dataTransfer.types].some((x) => x === 'text/uri-list' || x === 'text/plain');
+  const types = [...e.dataTransfer.types];
+  const external = !drag && !types.includes('application/x-orbe-item') && types.some((x) => x === 'text/uri-list' || x === 'text/plain');
   if (!drag && !external) return;
   const target = drag ? dropTarget(e) : { external: true };
   clearDrop();
@@ -426,6 +428,8 @@ sidebar.addEventListener('dragover', (e) => {
 sidebar.addEventListener('drop', (e) => {
   e.preventDefault();
   if (!drag) {
+    // Ligne venue d'une autre fenêtre Orbe : ce n'est pas une adresse.
+    if ([...e.dataTransfer.types].includes('application/x-orbe-item')) return endDrag();
     const url = (e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain') || '').split('\n')[0].trim();
     if (url) send('dropUrl', url);
     return endDrag();

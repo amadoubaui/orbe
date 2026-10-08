@@ -196,7 +196,7 @@ body.dragging .list:empty { min-height: 30px; }
 }
 #b-newtab { color: var(--dim); }
 #b-newtab:hover { color: var(--fg); }
-.row.dragging-self, .tile.dragging-self { opacity: 0.35; }
+.row.dragging-self, .tile.dragging-self, .folder.dragging-self { opacity: 0.35; }
 
 .spinner {
   width: 14px;
@@ -231,6 +231,7 @@ body.dragging .list:empty { min-height: 30px; }
 #divider { display: flex; align-items: center; gap: 8px; height: 22px; padding: 0 8px; flex: none; }
 #divider .rule { flex: 1; height: 1px; background: var(--line); }
 #b-clear { font-size: 11px; font-weight: 600; color: var(--dim); opacity: 0; transition: opacity 120ms; padding: 2px 4px; border-radius: 5px; }
+#b-clear:not(.can) { display: none; }
 #scroll:hover #b-clear.can { opacity: 1; }
 #b-clear:hover { color: var(--fg); background: var(--hover); }
 
