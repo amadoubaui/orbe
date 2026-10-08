@@ -246,10 +246,11 @@ function render(s) {
   lib.classList.toggle('downloading', !!s.downloads);
   if (s.downloads) lib.querySelector('circle').style.strokeDashoffset = String(75.4 * (1 - s.downloads.progress));
 
-  // Premier affichage : la barre paraît en fondu, sans glisser.
-  if (!prev && !FLOATING) {
-    b.classList.add('ready', 'no-anim');
-    requestAnimationFrame(() => requestAnimationFrame(() => b.classList.remove('no-anim')));
+  if (s.spaceDir && prev) {
+    const sc = $('scroll');
+    sc.classList.remove('slide-next', 'slide-prev');
+    void sc.offsetWidth;
+    sc.classList.add(s.spaceDir > 0 ? 'slide-next' : 'slide-prev');
   }
 }
 
@@ -584,7 +585,15 @@ function onState(s) {
   }
   const visible = FLOATING ? s.sidebar.peek && !s.sidebar.visible : s.sidebar.visible;
   if (S && !slide && s.space.id !== S.space.id && visible && document.body.classList.contains('open') && !reducedMotion.matches && !drag) return slideTo(s);
-  return render(s);
+  const first = !S;
+  render(s);
+  // Premier affichage : la barre paraît en fondu, sans glisser.
+  if (first && !FLOATING) {
+    const b = document.body;
+    b.classList.add('ready', 'no-anim');
+    requestAnimationFrame(() => requestAnimationFrame(() => b.classList.remove('no-anim')));
+  }
+  return undefined;
 }
 
 sidebar.addEventListener('wheel', (e) => {

@@ -570,7 +570,7 @@ class OrbeWindow {
     clearTimeout(this.toastTimer);
     windows.delete(this.id);
     for (const [id, rt] of [...live]) if (rt.owner === this) OrbeWindow.destroyView(id);
-    this.closePeek();
+    this.closePeek({ animate: false });
     this.growing = null;
     clearTimeout(this.floatTimer);
     clearTimeout(this.statusTimer);
@@ -1310,7 +1310,7 @@ class OrbeWindow {
   // `point` : d'où part la carte (coordonnées de la fenêtre) ; à défaut, le
   // dernier clic dans la page d'origine s'il vient d'avoir lieu.
   openPeek(url, fromId, options, point) {
-    this.closePeek();
+    this.closePeek({ animate: false });
     const view = new WebContentsView(options || {
       webPreferences: { session: this.sessionFor(fromId), sandbox: true, contextIsolation: true, nodeIntegrationInSubFrames: true },
     });
@@ -1339,7 +1339,7 @@ class OrbeWindow {
     on('will-redirect', guard);
     on('context-menu', (e, params) => this.pageMenu({ wc, id: fromId }, params));
     on('before-input-event', (e, input) => {
-      if (input.type === 'keyDown' && input.key === 'Escape') { e.preventDefault(); return this.closePeek({ animate: true }); }
+      if (input.type === 'keyDown' && input.key === 'Escape') { e.preventDefault(); return this.closePeek(); }
       return this.onInput(e, input);
     });
     wc.setWindowOpenHandler((d) => { if (/^https?:/i.test(d.url)) this.newTab(d.url); return { action: 'deny' }; });
@@ -1374,16 +1374,18 @@ class OrbeWindow {
     return state;
   }
 
-  // `animate` : fermeture demandée par l'utilisateur (Échap, ⌘W, clic à côté) :
-  // la carte se réduit vers son point de départ et le voile s'efface. L'aperçu
-  // n'existe plus pour le reste du code dès l'appel ; seule sa vue reste à
-  // l'écran le temps du mouvement.
-  closePeek({ animate = false } = {}) {
-    const ms = animate && this.peekState && !this.win.isDestroyed() ? motion(MOTION.peekOut) : 0;
+  // La carte se réduit vers son point de départ et le voile s'efface (Échap, ⌘W,
+  // clic à côté, changement d'onglet…). L'aperçu n'existe plus pour le reste du
+  // code dès l'appel ; seule sa vue reste à l'écran le temps du mouvement.
+  // `animate: false` : retrait immédiat (un autre aperçu prend la place, fenêtre fermée).
+  closePeek({ animate = true } = {}) {
+    // Page déjà disparue (fermée par elle-même) : rien à animer.
+    const gone = (view) => !view.webContents || view.webContents.isDestroyed();
+    const ms = animate && this.peekState && !this.win.isDestroyed() && !gone(this.peekState.view) ? motion(MOTION.peekOut) : 0;
     if (!ms) {
       const state = this.detachPeek();
       if (!state) return;
-      if (!state.view.webContents.isDestroyed()) state.view.webContents.close({ waitForBeforeUnload: false });
+      if (!gone(state.view)) state.view.webContents.close({ waitForBeforeUnload: false });
       if (!this.win.isDestroyed()) this.focusContent();
       return;
     }
@@ -1397,7 +1399,7 @@ class OrbeWindow {
         try { this.win.contentView.removeChildView(state.view); } catch {}
         if (!this.peekState) { try { this.win.contentView.removeChildView(this.peekChrome); } catch {} }
       }
-      if (!state.view.webContents.isDestroyed()) state.view.webContents.close({ waitForBeforeUnload: false });
+      if (!gone(state.view)) state.view.webContents.close({ waitForBeforeUnload: false });
     };
     this.peekJob = { done, timer: setTimeout(() => this.flushPeek(), ms) };
     this.focusContent();
@@ -2215,7 +2217,7 @@ class OrbeWindow {
       case 'dragZoneOver': if (this.dropView && !this.dropView.webContents.isDestroyed()) this.dropView.webContents.send('overlay', { mode: 'drop', label: t('view.addSplit'), over: !!a }); return undefined;
       case 'dropSplit': return this.dropSplit(String(a));
       case 'splitResize': return this.resizeSplit(Number(a.i), Number(a.at != null ? a.at : a.x));
-      case 'peekClose': return this.closePeek({ animate: true });
+      case 'peekClose': return this.closePeek();
       case 'peekExpand': return this.expandPeek();
       case 'peekSplit': return this.expandPeek({ split: true });
       case 'open': return webUrl(String(a)) ? this.newTab(String(a)) : undefined;
