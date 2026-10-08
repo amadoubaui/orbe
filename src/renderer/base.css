@@ -88,3 +88,8 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 /* ==== Plateformes (html.mac / html.win, classe posée par common.js) ========== */
 html.win body, html.win kbd { font-family: 'Segoe UI Variable Text', 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif; }
 /* ==== Fin du bloc plateformes ============================================== */
+
+/* « Réduire les animations » (réglage du système) : plus de mouvement, seulement des changements d'état. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}

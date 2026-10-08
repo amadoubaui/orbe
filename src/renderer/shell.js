@@ -436,7 +436,8 @@ $('dividers').addEventListener('pointerdown', (e) => {
   const move = (ev) => {
     x = vertical ? ev.clientY : ev.clientX;
     if (vertical) h.style.top = (x - 4) + 'px'; else h.style.left = (x - 4) + 'px';
-    if (!frame) frame = requestAnimationFrame(() => { frame = 0; send('splitResize', { i, at: x }); });
+    // 30 envois par seconde suffisent : au-delà, la page ne se remet pas en page plus vite.
+    if (!frame) frame = setTimeout(() => { frame = 0; send('splitResize', { i, at: x }); }, 33);
   };
   const up = () => {
     h.removeEventListener('pointermove', move);

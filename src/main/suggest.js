@@ -29,6 +29,8 @@ const resolve = (input) => toUrl(input) || searchUrl(input.trim());
 
 const strip = (url) => url.replace(/^https?:\/\/(www\.)?/i, '').replace(/\/$/, '');
 
+const normalized = new WeakMap(); // entrée d'historique -> champs prêts à comparer
+
 function norm(s) {
   return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 }
@@ -47,8 +49,13 @@ function local(query, { tabs, commands, activeId }) {
   const hist = [];
   const now = Date.now();
   for (const h of Object.values(store.state.history)) {
-    const u = norm(strip(h.url));
-    const title = norm(h.title);
+    // Normaliser (accents, casse) coûte cher : fait une fois par entrée, pas à chaque frappe.
+    let c = normalized.get(h);
+    if (!c || c.url !== h.url || c.rawTitle !== h.title) {
+      c = { url: h.url, rawTitle: h.title, u: norm(strip(h.url)), title: norm(h.title) };
+      normalized.set(h, c);
+    }
+    const { u, title } = c;
     let score = 0;
     if (u.startsWith(q)) score = 100;
     else if (u.includes(q)) score = 40;

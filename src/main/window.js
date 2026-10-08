@@ -166,9 +166,11 @@ class OrbeWindow {
     for (const ev of ['resized', 'moved']) this.win.on(ev, () => this.remember());
 
     this.syncPeekTimer();
+    // La fenêtre paraît sans attendre la barre latérale (60 à 100 ms gagnées).
+    if (!process.env.ORBE_HIDE_UNTIL_READY) this.win.show();
     this.ui.webContents.once('did-finish-load', () => {
       this.layout();
-      this.win.show();
+      if (!this.win.isVisible()) this.win.show();
       if (process.env.ORBE_TIMING) console.log(`[orbe] fenêtre affichée en ${Math.round(Date.now() - process.getCreationTime())} ms`);
       this.sendState();
       this.focusContent();
@@ -567,7 +569,7 @@ class OrbeWindow {
     const wc = rt.wc;
     const data = this.data;
     const incognito = this.incognito;
-    const touch = () => { if (!incognito) store.save(); OrbeWindow.pushAll(); };
+    const touch = (lazy) => { if (!incognito) store.save(lazy); OrbeWindow.pushAll(); };
     if (rt.internal) {
       trusted.add(wc);
       wc.on('will-navigate', (e, url) => {
@@ -608,12 +610,12 @@ class OrbeWindow {
       if (isErrorPage(wc.getURL())) return;
       tab.title = String(title).slice(0, 300);
       if (!incognito) store.touchHistory(tab.url, { title });
-      touch();
+      touch(true); // un titre peut attendre la prochaine écriture
     });
     wc.on('page-favicon-updated', (e, icons) => {
       tab.favicon = icons[0] || '';
       if (!incognito) store.touchHistory(tab.url, { favicon: tab.favicon });
-      touch();
+      touch(true);
     });
     const navigated = (url) => {
       if (isErrorPage(url)) return;

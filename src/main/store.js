@@ -54,6 +54,8 @@ class Store {
     } catch {
       try { raw = JSON.parse(fs.readFileSync(this.file + '.bak', 'utf8')); } catch {}
     }
+    // Copie de secours : une fois par lancement, à partir d'un fichier lisible.
+    if (raw) { try { fs.copyFileSync(this.file, this.file + '.bak'); } catch {} }
     this.state = this.normalize(raw || {});
     return this.state;
   }
@@ -117,9 +119,16 @@ class Store {
 
   // Écriture différée et asynchrone : plusieurs modifications rapprochées
   // donnent une seule écriture, qui ne bloque pas l'interface.
-  save() {
-    if (!this.file || this.timer) return;
-    this.timer = setTimeout(() => { this.timer = null; this.write(); }, 1500);
+  // `lazy` : changement mineur (titre, icône d'une page) qui peut attendre ;
+  // un changement normal survenant entre-temps ramène l'écriture à 1,5 s.
+  save(lazy = false) {
+    if (!this.file) return;
+    if (this.timer) {
+      if (lazy || !this.lazyTimer) return;
+      clearTimeout(this.timer);
+    }
+    this.lazyTimer = lazy;
+    this.timer = setTimeout(() => { this.timer = null; this.lazyTimer = false; this.write(); }, lazy ? 8000 : 1500);
   }
 
   async write() {
@@ -128,7 +137,6 @@ class Store {
     const tmp = this.file + '.tmp';
     try {
       await fs.promises.writeFile(tmp, JSON.stringify(this.state));
-      await fs.promises.copyFile(this.file, this.file + '.bak').catch(() => {});
       await fs.promises.rename(tmp, this.file);
     } catch (err) {
       console.error('[orbe] sauvegarde impossible', err);
@@ -176,7 +184,7 @@ class Store {
     if (!e) return;
     if (patch.title) e.title = String(patch.title).slice(0, 300);
     if (lightIcon(patch.favicon)) e.favicon = patch.favicon;
-    this.save();
+    this.save(true);
   }
 
   archive(entry) {

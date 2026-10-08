@@ -16,6 +16,11 @@ if (cmd === 'fait') {
   for (const f of files) {
     const file = path.join(dir, f);
     const lines = fs.readFileSync(file, 'utf8').split('\n').map((line) => {
+      const bullet = /^- (✅|🟡|⬜|➖) \*\*([A-Z]+-\d+) /.exec(line);
+      if (bullet && ids.has(bullet[2])) {
+        ids.delete(bullet[2]);
+        return line.replace(/^- (✅|🟡|⬜|➖) /, '- ✅ ') + (note ? ` *(${note})*` : '');
+      }
       const cells = line.split('|');
       const id = (cells[1] || '').trim();
       if (!ids.has(id)) return line;
@@ -34,6 +39,8 @@ if (cmd === 'fait') {
 for (const f of files) {
   const count = Object.fromEntries(STATES.map((s) => [s, 0]));
   for (const line of fs.readFileSync(path.join(dir, f), 'utf8').split('\n')) {
+    const bullet = /^- (✅|🟡|⬜|➖) \*\*[A-Z]+-\d+ /.exec(line);
+    if (bullet) { count[bullet[1]] += 1; continue; }
     if (!/^\| [A-Z]+-\d+ \|/.test(line)) continue;
     const state = line.split('|').map((c) => c.trim()).find((c) => STATES.includes(c));
     if (state) count[state] += 1;

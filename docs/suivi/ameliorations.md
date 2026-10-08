@@ -150,7 +150,7 @@ Même comparaison, lancements espacés de 25 s (6 tours, plus bruité) :
 
 ### Points
 
-- ⬜ **DEM-1 — Afficher la fenêtre sans attendre la fin du chargement de la coque.**
+- ✅ **DEM-1 — Afficher la fenêtre sans attendre la fin du chargement de la coque.** *(fait le 8 oct.)*
   *Problème* : `OrbeWindow` n'appelle `win.show()` que dans `did-finish-load` de la coque
   (`window.js`, constructeur). La fenêtre est prête 114 ms plus tôt à chaud, 242 ms refroidi.
   Et comme une page cachée ne peint pas, la première page attend aussi.
@@ -464,7 +464,7 @@ navigation active — le double en comptant la copie `.bak` refaite à chaque é
   tronquée par une coupure de courant doit être ignorée à la lecture (`try { JSON.parse }` par
   ligne). Pas de base SQLite, pas de dépendance. *Effort* : M.
 
-- ⬜ **PERF-2 — Ne pas sauvegarder l'état pour un simple changement de titre ou d'icône.**
+- ✅ **PERF-2 — Ne pas sauvegarder l'état pour un simple changement de titre ou d'icône.** *(fait le 8 oct.)*
   *Problème* : `wire()` appelle `touch()` (donc `store.save()`) sur `page-title-updated`,
   `page-favicon-updated` et chaque `did-navigate-in-page` : 4 appels par page en moyenne (48
   pour 12 pages). Le regroupement à 1,5 s les réduit à une écriture toutes les 2 s, mais c'est
@@ -474,7 +474,7 @@ navigation active — le double en comptant la copie `.bak` refaite à chaque é
   en navigation. *Risque* : après un plantage, un titre d'onglet peut dater de 5 s. *Effort* : S.
   Complète PERF-1, ne le remplace pas.
 
-- ⬜ **PERF-3 — `write()` : ne pas recopier le fichier à chaque fois.**
+- ✅ **PERF-3 — `write()` : ne pas recopier le fichier à chaque fois.** *(fait le 8 oct.)*
   *Problème* : chaque écriture fait `writeFile(tmp)` + `copyFile(orbe.json → .bak)` + `rename` :
   le fichier est écrit **deux fois** (24,5 ms au total pour 4,1 Mo, dont 9,3 de `stringify`).
   *Changement* : remplacer la copie par `rename(orbe.json → .bak)` puis `rename(tmp → orbe.json)`,
@@ -503,7 +503,7 @@ Deux séries (les fourchettes donnent les deux médianes) ; elles concordent.
 
 ### Points
 
-- ⬜ **PERF-4 — Barre de commande : index de recherche normalisé, calculé une fois.**
+- ✅ **PERF-4 — Barre de commande : index de recherche normalisé, calculé une fois.** *(fait le 8 oct.)*
   *Problème* : à chaque frappe, `suggest.local` parcourt tout l'historique et recalcule pour
   chaque entrée `norm(strip(url))` et `norm(title)` (minuscules + décomposition Unicode +
   expression régulière) : 14–15 ms de blocage du fil principal par caractère tapé avec 8 000
@@ -680,7 +680,7 @@ Animation), au rythme de l'écran, sans passer par le JavaScript ni redessiner l
   positions alignées sur les images (22 au lieu de 18 sur 180 ms). *Limite* : reste sensible
   aux blocages du fil principal. *Effort* : S.
 
-- ⬜ **ANIM-3 — Glisser la séparation : un `resizeSplit` par image d'écran au plus, sans `sendState`.**
+- ✅ **ANIM-3 — Glisser la séparation : un `resizeSplit` par image d'écran au plus, sans `sendState`.** *(fait le 8 oct.)*
   *Problème* : 106 appels pour 32 remises en page effectives ; chaque appel refait `layout()`
   de toute la fenêtre et renvoie l'état complet à la coque. *Changement* : dans `resizeSplit`,
   ne déplacer que les deux vues concernées (`setBounds` direct), sans `sendState` (la poignée
@@ -718,7 +718,7 @@ Animation), au rythme de l'écran, sans passer par le JavaScript ni redessiner l
   Si DEM-1 est fait, la fenêtre paraît 80 ms avant la barre : faire entrer `#sidebar` en fondu
   (`opacity` 0 → 1, 80–100 ms) au premier rendu plutôt que de la laisser surgir. *Effort* : S.
 
-- ⬜ **ANIM-7 — Respecter « Réduire les animations ».**
+- ✅ **ANIM-7 — Respecter « Réduire les animations ».** *(fait le 8 oct.)*
   *Constat* : aucun `@media (prefers-reduced-motion: reduce)` dans `shell.css` ni `overlay.css` ;
   `animateTo` ne consulte pas le réglage du système. *Changement* : en CSS, ramener durées et
   animations à 0 sous cette requête ; côté principal, lire
