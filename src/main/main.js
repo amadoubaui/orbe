@@ -264,7 +264,8 @@ app.whenReady().then(async () => {
 
   if (SELFTEST) {
     try {
-      await require('../../tests/selftest')({ first, OrbeWindow, store, win, little, commands, menu, openSettings });
+      // ORBE_SCENARIO : autre scénario de test (ex. tests/sites.js, sites réels).
+      await require(process.env.ORBE_SCENARIO ? path.resolve(process.env.ORBE_SCENARIO) : '../../tests/selftest')({ first, OrbeWindow, store, win, little, commands, menu, openSettings });
       store.flush();
       app.exit(0);
     } catch (err) {
