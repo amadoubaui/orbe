@@ -216,7 +216,15 @@ class OrbeWindow {
     this.win.on('leave-full-screen', () => { this.layout(); OrbeWindow.pushAll(); });
     this.win.on('focus', () => { this.focusContent(); hooks.changed(); });
     this.win.on('blur', () => { if (this.peek) this.setPeek(false); });
-    this.win.on('close', () => this.remember());
+    this.win.on('close', () => {
+      this.remember();
+      // La fenêtre se ferme sans plus porter aucune vue : sous Windows, détruire
+      // une fenêtre avec ses vues encore attachées (parfois en cours d'animation,
+      // ou reprises à une autre fenêtre) pouvait bloquer l'application.
+      this.closing = true;
+      try { for (const v of [...this.win.contentView.children]) this.win.contentView.removeChildView(v); } catch {}
+      this.attached = new Set();
+    });
     this.win.on('closed', () => this.dispose());
     for (const ev of ['resized', 'moved']) this.win.on(ev, () => this.remember());
 
@@ -436,7 +444,7 @@ class OrbeWindow {
 
   // `slide` : durée du trajet des pages (retour de la barre latérale), 0 = immédiat.
   layout({ slide = 0 } = {}) {
-    if (this.win.isDestroyed()) return;
+    if (this.win.isDestroyed() || this.closing) return;
     const [W, H] = this.win.getContentSize();
     const full = { x: 0, y: 0, width: W, height: H };
     this.ui.setBounds(full);

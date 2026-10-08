@@ -412,6 +412,9 @@ app.whenReady().then(async () => {
   setInterval(win.archiveStale, 10 * 60e3);
 
   if (SELFTEST) {
+    // Garde-fou : un scénario qui n'avance plus s'arrête de lui-même, avec un message.
+    const limit = Number(process.env.ORBE_TEST_LIMIT) || 480;
+    setTimeout(() => { console.error(`\nÉCHEC : scénario bloqué depuis ${limit} s`); app.exit(3); }, limit * 1000).unref();
     try {
       // ORBE_SCENARIO : autre scénario de test (ex. tests/sites.js, sites réels).
       await require(process.env.ORBE_SCENARIO ? path.resolve(process.env.ORBE_SCENARIO) : '../../tests/selftest')({ first, OrbeWindow, store, win, little, commands, menu, openSettings, openUrl, extensions, extApi, extHost, passwords });

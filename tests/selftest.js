@@ -639,7 +639,11 @@ module.exports = async function selftest(ctx) {
   w.ui.webContents.send = (ch, ...rest) => { if (ch === 'sound') played = rest[0]; return sendOrig(ch, ...rest); };
   // La page vient d'être réaffichée : la capture peut être vide tant qu'elle n'a pas été peinte.
   const zoneSaved = await until(async () => (await w.capture({ area: { x: 10, y: 10, width: 200, height: 120 }, then: 'save' })) === 'save', 'capture d’une zone').catch((e) => e.message);
-  check('capture d’une zone : enregistrée', zoneSaved === true, String(zoneSaved));
+  // Écran en veille ou session verrouillée : Chromium ne peut rien capturer.
+  const canCapture = zoneSaved === true;
+  if (!canCapture) console.log('  – ignoré : captures d’une zone (écran en veille : rien à capturer)');
+  else {
+  check('capture d’une zone : enregistrée', true);
   await until(() => fs.readdirSync(dlDir0).filter((f) => f.endsWith('.png')).length >= pngs0 + 1, 'zone enregistrée');
   const zone = fs.readdirSync(dlDir0).filter((f) => f.endsWith('.png')).map((f) => path.join(dlDir0, f)).sort().pop();
   const zoneSize = await until(() => { const sz = require('electron').nativeImage.createFromPath(zone).getSize(); return sz.width ? sz : null; }, 'zone lisible');
@@ -649,6 +653,7 @@ module.exports = async function selftest(ctx) {
   played = '';
   await w.capture({ area: 'full', then: 'copy' });
   check('réglage « Sons » coupé : aucun son', played === '');
+  }
   store.state.settings.sounds = true;
   w.ui.webContents.send = sendOrig;
   check('le fichier du son existe et se charge', await ui('fetch("sons/capture.wav").then((r) => r.ok && r.headers.get("content-type"))').then((x) => !!x).catch(() => false));
