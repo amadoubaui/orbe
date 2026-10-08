@@ -44,10 +44,10 @@ module.exports = {
       assert.ok(enfant.y >= parent.y + parent.height, 'le contenu est sous l’en-tête');
     });
 
-    await t.verifier('clic sur l’en-tête : le dossier se ferme et masque son contenu', async () => {
+    await t.verifier('clic sur l’en-tête : le dossier se ferme ; l’onglet actif qu’il contient reste visible (comme dans Arc)', async () => {
       await ctx.clic(shell, tete);
       await jusqua(async () => !(await ouvert()), 'dossier fermé');
-      assert.equal(await ctx.ligne('Page A', '#pinned .folder').isVisible(), false);
+      assert.equal(await ctx.ligne('Page A', '#pinned .folder').isVisible(), true);
       assert.equal((await ctx.etat()).epingles[0].ouvert, false);
       assert.equal((await ctx.etat()).actifUrl, ctx.url('/a'), 'l’onglet rangé reste actif');
     });
