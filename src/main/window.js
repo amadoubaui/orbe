@@ -25,7 +25,7 @@ const windows = new Map(); // id BaseWindow -> OrbeWindow
 const live = new Map(); // id onglet -> { view, wc, owner, loading, lastUsed }
 const trusted = new WeakSet(); // webContents autorisés à parler au processus principal
 const wcOwner = new Map(); // id webContents (coque, flottants) -> OrbeWindow
-const hooks = { changed: () => {}, openLittle: () => {}, openSettings: () => {} };
+const hooks = { changed: () => {}, openLittle: () => {}, openSettings: () => {}, extensionMenu: () => [] };
 
 const t = (key, vars) => store.t(key, null, vars);
 const isInternal = (url) => (url || '').startsWith(INTERNAL);
@@ -1797,6 +1797,9 @@ class OrbeWindow {
         { label: t('file.print'), click: () => wc.print() },
       );
     }
+    // Éléments ajoutés par les extensions (chrome.contextMenus).
+    const fromExtensions = hooks.extensionMenu(wc, p);
+    if (fromExtensions.length) { sep(); tpl.push(...fromExtensions); }
     sep();
     tpl.push({ label: t('ctx.inspect'), click: () => wc.inspectElement(p.x, p.y) });
     this.popup(tpl);
