@@ -19,12 +19,13 @@ const COMMANDS = [
   { name: 'newWindow', label: 'file.newWindow', accel: 'Cmd+N', keys: '⌘N', global: true, run: () => hooks.newWindow({}) },
   { name: 'newIncognito', label: 'file.newIncognito', accel: 'Shift+Cmd+N', keys: '⇧⌘N', global: true, run: () => hooks.newWindow({ incognito: true }) },
   { name: 'newLittle', label: 'file.newLittle', accel: 'Alt+Cmd+N', keys: '⌥⌘N', global: true, run: () => hooks.newLittle('') },
-  // ⌘Z : annule l'archivage quand on n'est pas en train d'écrire, sinon annulation classique.
+  // ⌘Z / ⇧⌘Z : défait ou refait la dernière action de la barre latérale quand on
+  // n'est pas en train d'écrire, sinon annulation classique du texte.
   { name: 'undo', label: 'edit.undo', accel: 'Cmd+Z', keys: '⌘Z', palette: false, run: (w) => undo(w) },
-  { name: 'redo', label: 'edit.redo', accel: 'Shift+Cmd+Z', keys: '⇧⌘Z', palette: false, run: () => redo() },
+  { name: 'redo', label: 'edit.redo', accel: 'Shift+Cmd+Z', keys: '⇧⌘Z', palette: false, run: (w) => undo(w, 'redo') },
   { name: 'reopen', label: 'file.reopen', accel: 'Shift+Cmd+T', keys: '⇧⌘T', run: (w) => w.reopenClosed() },
   { name: 'commandBar', label: 'file.commandBar', accel: 'Cmd+L', keys: '⌘L', palette: false, run: (w) => w.openCommand('edit') },
-  { name: 'closeTab', label: 'file.closeTab', accel: 'Cmd+W', keys: '⌘W', run: (w) => (w.peekState ? w.closePeek() : (w.selected().length ? w.closeMany(w.selected()) : (w.activeId ? w.close() : w.win.close()))) },
+  { name: 'closeTab', label: 'file.closeTab', accel: 'Cmd+W', keys: '⌘W', run: (w) => (w.peekState ? w.dismissPeek() : (w.selected().length ? w.closeMany(w.selected()) : (w.activeId ? w.close() : w.win.close()))) },
   { name: 'closeWindow', label: 'file.closeWindow', accel: 'Shift+Cmd+W', keys: '⇧⌘W', run: (w) => w.win.close() },
   { name: 'capture', label: 'file.capture', accel: 'Shift+Cmd+2', keys: '⇧⌘2', run: (w) => w.capture() },
   { name: 'captureFull', label: 'file.captureFull', run: (w) => w.captureFull() },
@@ -115,21 +116,16 @@ function makeDefault() {
   return platform.makeDefault();
 }
 
-async function undo(w) {
+async function undo(w, way = 'undo') {
   const target = require('electron').webContents.getFocusedWebContents();
   // Un tableau au premier plan annule lui-même (ses éléments, ou le texte en cours de saisie).
-  if (easels.history(target, 'undo')) return;
+  if (easels.history(target, way)) return;
   let typing = false;
   if (target) {
     typing = await target.executeJavaScript('(() => { const e = document.activeElement; return !!e && (e.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(e.tagName)); })()').catch(() => true);
   }
-  if (typing || !w.closed.length) { if (target) target.undo(); return; }
-  w.reopenClosed();
-}
-
-function redo() {
-  const target = require('electron').webContents.getFocusedWebContents();
-  if (target && !easels.history(target, 'redo')) target.redo();
+  // Dans un champ de texte, ou sans action de la barre latérale à défaire : la page.
+  if ((typing || !w.replay(way)) && target) target[way]();
 }
 
 async function importArc(w) {

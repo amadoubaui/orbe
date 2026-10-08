@@ -70,8 +70,9 @@ function build() {
     {
       label: t('menu.edit'),
       submenu: [
-        item('undo'),
-        item('redo'),
+        // Comme dans Arc : le libellé nomme l'action de la barre latérale concernée.
+        item('undo', { label: [t('edit.undo'), w && w.pendingLabel('undo') ? t(w.pendingLabel('undo')) : ''].join(' ').trim() }),
+        item('redo', { label: [t('edit.redo'), w && w.pendingLabel('redo') ? t(w.pendingLabel('redo')) : ''].join(' ').trim() }),
         sep,
         { label: t('edit.cut'), role: 'cut' },
         { label: t('edit.copy'), role: 'copy' },
@@ -202,6 +203,7 @@ function refresh(force) {
       s.lang, s.appearance, s.showToolbar, w && w.id, w && w.sidebarVisible, w && w.spaceId,
       loc && loc.list, tab && tab.muted, w ? w.data.spaces.map((x) => x.icon + x.name) : 0,
       w && w.space.profileId, w ? w.data.profiles.length : 0, !!(w && w.peekState),
+      w && w.pendingLabel('undo'), w && w.pendingLabel('redo'),
     ]);
     if (!force && sig === lastSignature) return;
     lastSignature = sig;
