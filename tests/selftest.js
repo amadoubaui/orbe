@@ -404,7 +404,7 @@ module.exports = async function selftest(ctx) {
     check('Windows : bouton de menu visible, pas de marge pour les feux tricolores, police Segoe', isWinClass && menuDisplay !== 'none' && topPad === '0px' && /Segoe/.test(font), chrome);
     const vb = win.live.get(w.activeId).view.getBounds();
     const [cw] = w.win.getContentSize();
-    check('Windows : la page laisse libre la bande des boutons de fenêtre', vb.y === platform.CAPTION_H && vb.x + vb.width === cw - 8, JSON.stringify(vb));
+    check('Windows : la page laisse libre la bande des boutons de fenêtre', vb.y === platform.CAPTION_H && vb.x + vb.width === cw - 10, JSON.stringify(vb));
     // Vraie frappe envoyée à la page : le menu est invisible, ses raccourcis doivent rester actifs.
     const kwc = win.live.get(w.activeId).wc;
     kwc.focus();
@@ -422,7 +422,7 @@ module.exports = async function selftest(ctx) {
     await sleep(250);
     const tb = JSON.parse(await ui('JSON.stringify([document.getElementById("toolbar").getBoundingClientRect().right, innerWidth])'));
     const vt = win.live.get(w.activeId).view.getBounds();
-    check('Windows : la barre d’outils s’arrête avant les boutons de fenêtre', tb[0] <= tb[1] - 138 && vt.y === 48, JSON.stringify([tb, vt]));
+    check('Windows : la barre d’outils s’arrête avant les boutons de fenêtre', tb[0] <= tb[1] - 138 && vt.y === 50, JSON.stringify([tb, vt]));
     await shot('win-barre-outils');
     commands.setSetting('showToolbar', false);
     await until(() => ui('!document.body.classList.contains("toolbar")'), 'barre d’outils masquée');
