@@ -211,6 +211,7 @@ function setupIpc() {
   });
   ipcMain.handle('orbe', async (e, action, payload) => {
     if (!ok(e) || typeof action !== 'string') return undefined;
+    if (action === 'welcome:info') return { arc: require('./import-arc').available() };
     if (/^(lib|settings|shortcuts):/.test(action)) return globalAction(action, payload, e.sender);
     const owner = OrbeWindow.ownerOf(e.sender) || little.LittleWindow.ownerOf(e.sender) || OrbeWindow.primary;
     return owner ? owner.handle(action, payload) : undefined;
@@ -264,7 +265,7 @@ app.whenReady().then(async () => {
   menu.build();
 
   const first = newWindow();
-  if (firstRun && !SELFTEST && !process.env.ORBE_NO_WELCOME) first.openInternal('shortcuts.html');
+  if (firstRun && !SELFTEST && !process.env.ORBE_NO_WELCOME) first.openInternal('welcome.html');
   for (const url of pendingUrls.splice(0)) openUrl(url);
 
   setTimeout(win.archiveStale, 30e3);

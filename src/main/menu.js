@@ -178,7 +178,7 @@ function build() {
         sep, { label: t('window.front'), role: 'front' },
       ],
     },
-    { label: t('menu.help'), role: 'help', submenu: [item('shortcuts'), item('github')] },
+    { label: t('menu.help'), role: 'help', submenu: [item('welcome'), item('shortcuts'), item('github')] },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }

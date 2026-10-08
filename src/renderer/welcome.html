@@ -1,0 +1,49 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">
+<title>Orbe</title>
+<link rel="stylesheet" href="base.css">
+<link rel="stylesheet" href="page.css">
+<style>
+main { max-width: 620px; padding-top: 12vh; }
+.mark { width: 64px; height: 64px; border-radius: 16px; background: linear-gradient(140deg, #8f7dff, #2a1f8f); display: grid; place-items: center; margin-bottom: 26px; box-shadow: 0 8px 24px rgba(60, 40, 180, 0.35); }
+.mark i { width: 30px; height: 30px; border-radius: 50%; border: 6px solid #fff; border-top-color: transparent; transform: rotate(8deg); }
+h1 { font-size: 30px; margin-bottom: 8px; }
+.lead { color: var(--dim); font-size: 15px; margin: 0 0 28px; line-height: 1.5; }
+.line { min-height: 56px; }
+.line b { display: block; font-weight: 600; }
+.keys { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+.keys .line { border-top: 0.5px solid var(--line); }
+.keys .line:nth-child(-n+2) { border-top: 0; }
+.keys .line:nth-child(odd) { border-right: 0.5px solid var(--line); }
+</style>
+</head>
+<body>
+<main>
+  <div class="mark"><i></i></div>
+  <h1 data-t="welcome.title"></h1>
+  <p class="lead" data-t="welcome.lead"></p>
+
+  <div class="card">
+    <div class="line" id="row-import"><div class="grow"><b data-t="welcome.import"></b><span class="sub" data-t="welcome.importHint"></span></div><button class="btn primary" data-cmd="importArc" data-t="import.go"></button></div>
+    <div class="line"><div class="grow"><b data-t="set.default"></b><span class="sub" data-t="welcome.defaultHint"></span></div><button class="btn" data-cmd="defaultBrowser" data-t="set.makeDefault"></button></div>
+    <div class="line"><div class="grow"><b data-t="set.title"></b><span class="sub" data-t="welcome.settingsHint"></span></div><button class="btn" data-cmd="settings">⌘,</button></div>
+  </div>
+
+  <h2 data-t="welcome.start"></h2>
+  <div class="card keys">
+    <div class="line"><span class="grow" data-t="tabs.newTab"></span><kbd>⌘T</kbd></div>
+    <div class="line"><span class="grow" data-t="view.hideSidebar"></span><kbd>⌘S</kbd></div>
+    <div class="line"><span class="grow" data-t="tabs.pin"></span><kbd>⌘D</kbd></div>
+    <div class="line"><span class="grow" data-t="view.addSplit"></span><kbd>⌃⇧=</kbd></div>
+    <div class="line"><span class="grow" data-t="spaces.next"></span><kbd>⌥⌘→</kbd></div>
+    <div class="line"><span class="grow" data-t="file.newLittle"></span><kbd>⌥⌘N</kbd></div>
+  </div>
+  <p style="margin-top:16px;text-align:center"><button class="btn" data-cmd="shortcuts" data-t="help.shortcuts"></button></p>
+</main>
+<script src="common.js"></script>
+<script src="welcome.js"></script>
+</body>
+</html>

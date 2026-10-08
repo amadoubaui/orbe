@@ -349,6 +349,14 @@ module.exports = async function selftest({ first: w, OrbeWindow, store, win, lit
   if (shots) fs.writeFileSync(path.join(shots, 'reglages.png'), (await sw2.webContents.capturePage()).toPNG());
   sw2.close();
 
+  // Page d'accueil
+  const wel = w.openInternal('welcome.html');
+  await until(() => win.live.get(wel.id).wc.executeJavaScript('document.querySelector("h1").textContent === "Bienvenue dans Orbe" && document.querySelectorAll("[data-cmd]").length >= 3'), 'page d’accueil');
+  check('la page d’accueil s’affiche', tabs()[wel.id].internal === true);
+  if (shots) fs.writeFileSync(path.join(shots, 'accueil.png'), (await win.live.get(wel.id).wc.capturePage()).toPNG());
+  w.close(wel.id);
+  w.activate(a.id);
+
   // Bibliothèque (page interne)
   w.run('history');
   const libId = w.activeId;

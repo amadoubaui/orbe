@@ -78,6 +78,7 @@ const COMMANDS = [
   { name: 'toggleSiteBlocking', label: 'adblock.toggleSite', run: (w) => w.toggleSiteBlocking() },
   { name: 'importArc', label: 'app.importArc', run: (w) => importArc(w) },
   { name: 'newProfile', label: 'spaces.newProfile', palette: false, run: (w) => w.newProfile() },
+  { name: 'welcome', label: 'help.welcome', run: (w) => w.openInternal('welcome.html') },
   { name: 'shortcuts', label: 'help.shortcuts', run: (w) => w.openInternal('shortcuts.html') },
   { name: 'github', label: 'help.github', run: (w) => w.newTab('https://github.com/amadoubaui/orbe') },
 ];
