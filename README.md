@@ -28,6 +28,8 @@ interface entièrement en français (anglais disponible dans les réglages).
   (menu Orbe → Importer depuis Arc…).
 - **Vidéo et son** : la vidéo en cours passe en image dans l'image quand tu
   changes d'onglet ; un lecteur miniature dans la barre latérale pilote le son.
+- **Bloqueur de publicités et de traqueurs** intégré (24 000 domaines, moins
+  d'une microseconde par requête), avec exception par site depuis le bouclier.
 - **Archive** : ⌘W archive l'onglet, ⇧⌘T le rouvre, les onglets inactifs sont
   archivés automatiquement (12 h par défaut).
 - **Petite fenêtre** (⌥⌘N), **navigation privée** (⇧⌘N), plusieurs fenêtres
@@ -70,7 +72,7 @@ Il faut [Node.js](https://nodejs.org) 20 ou plus récent.
 git clone https://github.com/amadoubaui/orbe.git
 cd orbe
 npm start        # lance le navigateur
-npm test         # tests de bout en bout (68 vérifications)
+npm test         # tests de bout en bout (70 vérifications)
 npm run build    # fabrique dist/Orbe.app
 ```
 
@@ -95,9 +97,10 @@ simples, pour un démarrage rapide et une interface fluide.
 ## Feuille de route
 
 Voir [docs/feuille-de-route.md](docs/feuille-de-route.md). Les prochains
-chantiers : extensions Chrome, bloqueur de publicités, synchronisation, puis la
-version Windows.
+chantiers : extensions Chrome, synchronisation, puis la version Windows.
 
 ## Licence
 
-[MIT](LICENSE)
+Le code est sous licence [MIT](LICENSE). La liste de blocage
+(`assets/blocklist.txt`) réunit des listes publiques qui gardent chacune leur
+licence (MIT et CC BY 3.0), rappelée en tête du fichier.

@@ -23,6 +23,7 @@
   <symbol id="i-mute" viewBox="0 0 16 16"><path d="M3 6.4h2L7.8 4v8L5 9.6H3z"/><path d="m10.5 6.3 3 3.4m0-3.4-3 3.4"/></symbol>
   <symbol id="i-play" viewBox="0 0 16 16"><path d="M5.5 3.8v8.4L12 8z" fill="currentColor"/></symbol>
   <symbol id="i-pause" viewBox="0 0 16 16"><path d="M5.6 4v8M10.4 4v8" stroke-width="2.2"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 16 16"><path d="M8 2.2 3.4 3.9v3.6c0 2.9 1.9 5.2 4.6 6.3 2.7-1.1 4.6-3.4 4.6-6.3V3.9z"/></symbol>
   <symbol id="i-search" viewBox="0 0 16 16"><circle cx="7.2" cy="7.2" r="3.8"/><path d="m10.2 10.2 3 3"/></symbol>
   <symbol id="i-reset" viewBox="0 0 16 16"><path d="M4 8h8M4 8l3-3M4 8l3 3"/></symbol>
 </svg>
@@ -35,7 +36,10 @@
     <button class="ib" id="b-forward" data-t-title="side.forward"><svg class="i"><use href="#i-forward"/></svg></button>
     <button class="ib" id="b-reload" data-t-title="side.reload"><svg class="i"><use id="reload-icon" href="#i-reload"/></svg></button>
   </div>
-  <button id="url"><span id="url-text"></span></button>
+  <div id="url-row">
+    <button id="url"><span id="url-text"></span></button>
+    <button id="shield" data-t-title="adblock.title"><svg class="i"><use href="#i-shield"/></svg><span id="shield-n"></span></button>
+  </div>
   <div id="scroll">
     <div id="fav" data-drop="favorites"></div>
     <div id="space-head">

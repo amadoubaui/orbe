@@ -13,6 +13,7 @@ const { OrbeWindow, trusted, INTERNAL, UI_PRELOAD } = win;
 const little = require('./little');
 const commands = require('./commands');
 const menu = require('./menu');
+const adblock = require('./adblock');
 
 const SELFTEST = process.argv.includes('--selftest');
 const pendingUrls = [];
@@ -77,6 +78,7 @@ function applyAppearance() {
 
 function broadcastSettings() {
   applyAppearance();
+  if (adblock.isEnabled() !== store.state.settings.adblock) adblock.setEnabled(store.state.settings.adblock);
   for (const wc of webContents.getAllWebContents()) {
     if (trusted.has(wc) && !wc.isDestroyed()) wc.send('settings', store.state.settings);
   }
@@ -95,6 +97,7 @@ const SETTABLE = {
   maxLiveTabs: (v) => Number.isInteger(v) && v >= 4 && v <= 60,
   externalLinks: (v) => v === 'window' || v === 'little',
   autoPip: (v) => typeof v === 'boolean',
+  adblock: (v) => typeof v === 'boolean',
 };
 
 function profileList() {
@@ -226,6 +229,18 @@ app.whenReady().then(async () => {
   store.load(app.getPath('userData'));
   const firstRun = !Object.keys(store.state.tabs).length && !Object.keys(store.state.history).length;
   applyAppearance();
+  adblock.configure({
+    enabled: store.state.settings.adblock,
+    allowlist: store.state.settings.adblockAllow,
+    onChange: ({ enabled, allowlist }) => {
+      store.state.settings.adblock = enabled;
+      store.state.settings.adblockAllow = allowlist;
+      store.save();
+    },
+    onCount: () => OrbeWindow.pushAll(),
+  });
+  // Liste chargée peu après le démarrage, pour ne pas le ralentir.
+  setTimeout(() => adblock.load(), 1200);
   sessions.setupDefaultSession();
   setupIpc();
 

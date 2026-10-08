@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
 const { store, uid } = require('./store');
+const adblock = require('./adblock');
 
 const RENDERER_DIR = path.join(__dirname, '../renderer');
 const configured = new WeakSet();
@@ -62,6 +63,8 @@ async function askPermission(wc, origin, permission) {
 function configure(ses, { persist }) {
   if (configured.has(ses)) return ses;
   configured.add(ses);
+  // Bloqueur de publicités : il occupe l'unique écouteur onBeforeRequest.
+  adblock.attach(ses);
   ses.setUserAgent(cleanUserAgent(ses));
   if (ses !== session.defaultSession) ses.protocol.handle('orbe', serveInternal);
 

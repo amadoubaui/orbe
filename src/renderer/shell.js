@@ -121,6 +121,10 @@ function render(s) {
   $('url-text').classList.toggle('placeholder', !label);
   $('url').classList.toggle('loading', s.nav.loading);
   $('url').title = s.nav.internal ? '' : s.nav.url;
+  const shield = $('shield');
+  shield.hidden = !s.activeId || s.nav.internal || false;
+  shield.className = s.nav.shield;
+  $('shield-n').textContent = s.nav.shield === 'on' && s.nav.blocked ? (s.nav.blocked > 99 ? '99+' : String(s.nav.blocked)) : '';
   $('tb-url-text').textContent = s.nav.internal ? label : (s.nav.url || t('side.search'));
   for (const p of ['b', 'tb']) {
     $(p + '-back').disabled = !s.nav.canBack;
@@ -268,6 +272,7 @@ $('media-play').onclick = () => send('mediaToggle');
 $('media-mute').onclick = () => S && S.media && send('toggleMute', S.media.id);
 $('b-sidebar').onclick = () => send('toggleSidebar');
 $('url').onclick = () => send('openCommand', 'edit');
+$('shield').onclick = () => send('shieldMenu');
 $('tb-url').onclick = () => send('openCommand', 'edit');
 $('b-newtab').onclick = () => send('openCommand', 'new');
 $('b-clear').onclick = () => send('command', 'clearToday');

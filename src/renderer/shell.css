@@ -49,8 +49,30 @@ body.fullscreen #top { padding-left: 0; }
 .ib:active { background: var(--pill); }
 .ib[disabled] { opacity: 0.35; pointer-events: none; }
 
+#url-row { display: flex; gap: 4px; flex: none; }
+#shield {
+  height: 36px;
+  min-width: 34px;
+  padding: 0 9px;
+  border-radius: 10px;
+  background: var(--pill);
+  color: var(--dim);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  transition: background 120ms, color 120ms;
+}
+#shield[hidden] { display: none; }
+#shield:hover { color: var(--fg); }
+#shield.on { color: color-mix(in srgb, var(--accent) 55%, var(--fg)); }
+#shield.off svg, #shield.allowed svg { opacity: 0.45; }
+#shield svg { width: 15px; height: 15px; }
 #url {
-  flex: none;
+  flex: 1;
+  min-width: 0;
   height: 36px;
   border-radius: 10px;
   background: var(--pill);

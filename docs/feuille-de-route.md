@@ -1,5 +1,10 @@
 # Feuille de route
 
+## 0.3 — fait
+
+Bloqueur de publicités, image dans l'image automatique, lecteur miniature,
+capture de page entière, gestion des profils, correctifs de relecture.
+
 ## 0.2 — fait
 
 Profils (cookies et favoris séparés), import depuis Arc, aperçu des liens
@@ -15,12 +20,10 @@ français et anglais, raccourcis d'Arc.
 
 1. **Application installable** : icône, signature, image disque, mises à jour.
 2. **Extensions Chrome** (gestionnaires de mots de passe, bloqueurs…).
-3. **Bloqueur de publicités et de traqueurs** intégré.
-4. Renommer et supprimer les profils depuis les réglages.
-5. Lecteur miniature (image dans l'image), contrôle des médias dans la barre.
-6. Capture d'une zone ou de la page entière.
-7. Synchronisation entre appareils.
-8. **Windows**, puis Linux.
+3. Masquage des emplacements publicitaires vides (filtrage cosmétique).
+4. Capture d'une zone de la page.
+5. Synchronisation entre appareils.
+6. **Windows**, puis Linux.
 
 ## Limites connues
 

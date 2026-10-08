@@ -7,6 +7,7 @@ const fs = require('fs');
 const { store, uid, SPACE_COLORS } = require('./store');
 const sessions = require('./sessions');
 const suggest = require('./suggest');
+const adblock = require('./adblock');
 
 const PAD = 8;
 const GAP = 8;
@@ -1413,6 +1414,31 @@ class OrbeWindow {
     return tab;
   }
 
+  // Active ou coupe le bloqueur pour le site affiché, puis recharge la page.
+  toggleSiteBlocking() {
+    const tab = this.activeId && this.data.tabs[this.activeId];
+    if (!tab || !/^https?:/i.test(tab.url)) return;
+    const allowed = adblock.isSiteAllowed(tab.url);
+    adblock.allowSite(tab.url, !allowed);
+    this.toast(t(allowed ? 'adblock.onSite' : 'adblock.offSite', { site: suggest.strip(new URL(tab.url).origin) }));
+    this.reload(false);
+    OrbeWindow.pushAll();
+  }
+
+  shieldMenu() {
+    const tab = this.activeId && this.data.tabs[this.activeId];
+    const on = store.state.settings.adblock;
+    const web = !!tab && /^https?:/i.test(tab.url);
+    const wc = this.activeWc;
+    const n = wc ? (adblock.stats().blockedByTab.get(wc.id) || 0) : 0;
+    this.popup([
+      { label: t('adblock.count', { n }), enabled: false },
+      { type: 'separator' },
+      { label: t('adblock.thisSite'), type: 'checkbox', checked: on && web && !adblock.isSiteAllowed(tab.url), enabled: on && web, click: () => this.toggleSiteBlocking() },
+      { label: t('adblock.everywhere'), type: 'checkbox', checked: on, click: () => require('./commands').setSetting('adblock', !on) },
+    ]);
+  }
+
   // Actualiser : depuis la page d'erreur, on retente l'adresse d'origine.
   reload(ignoreCache) {
     const wc = this.activeWc;
@@ -1635,6 +1661,8 @@ class OrbeWindow {
         loading: !!(this.activeRt && this.activeRt.loading),
         canBack: !!(wc && wc.navigationHistory.canGoBack()),
         canForward: !!(wc && wc.navigationHistory.canGoForward()),
+        blocked: wc && settings.adblock ? (adblock.stats().blockedByTab.get(wc.id) || 0) : 0,
+        shield: !settings.adblock ? 'off' : (tab && adblock.isSiteAllowed(tab.url) ? 'allowed' : 'on'),
       },
       media: this.mediaId ? {
         id: this.mediaId,
@@ -1664,6 +1692,7 @@ class OrbeWindow {
       case 'tabMenu': return this.tabMenu(a);
       case 'spaceMenu': return this.spaceMenu(a);
       case 'sidebarMenu': return this.sidebarMenu();
+      case 'shieldMenu': return this.shieldMenu();
       case 'rename': return this.rename(a.id, a.name);
       case 'toggleFolder': return this.toggleFolder(a);
       case 'move': return this.move(a);

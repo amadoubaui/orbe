@@ -65,6 +65,8 @@ fs.mkdirSync(target);
 fs.cpSync(path.join(root, 'src'), path.join(target, 'src'), { recursive: true });
 fs.copyFileSync(path.join(root, 'package.json'), path.join(target, 'package.json'));
 fs.copyFileSync(path.join(root, 'LICENSE'), path.join(target, 'LICENSE'));
+fs.mkdirSync(path.join(target, 'assets'));
+fs.copyFileSync(path.join(root, 'assets', 'blocklist.txt'), path.join(target, 'assets', 'blocklist.txt'));
 fs.copyFileSync(path.join(root, 'assets', 'orbe.icns'), path.join(resources, 'orbe.icns'));
 
 plutil('CFBundleName', '-string', 'Orbe');

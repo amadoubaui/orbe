@@ -29,6 +29,8 @@ const DEFAULT_SETTINGS = {
   maxLiveTabs: 14,
   externalLinks: 'window',
   autoPip: true,
+  adblock: true,
+  adblockAllow: [],
 };
 
 class Store {

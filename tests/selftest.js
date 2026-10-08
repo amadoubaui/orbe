@@ -21,6 +21,7 @@ async function until(fn, label, timeout = 8000) {
 
 function serve() {
   const page = (title, body) => `<!doctype html><meta charset="utf-8"><title>${title}</title><body style="font:16px sans-serif;padding:40px">${body}</body>`;
+  const hits = { pixel: 0 };
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://x');
     res.setHeader('content-type', 'text/html; charset=utf-8');
@@ -38,12 +39,15 @@ function serve() {
         const v = document.getElementById('v'); v.srcObject = stream; await v.play(); return true;
       };
     </script>`));
+    if (url.pathname === '/pixel') { hits.pixel += 1; res.setHeader('content-type', 'image/gif'); return res.end(Buffer.from('R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==', 'base64')); }
+    if (url.pathname === '/pub') return res.end(page('Page avec pub', `<img src="http://pub.orbe.localhost:${server.address().port}/pixel"><img src="/pixel?local">`));
     if (url.pathname === '/long') return res.end(page('Page longue', '<div style="height:4000px;background:linear-gradient(#fde,#def)">haut</div><p>bas</p>'));
     if (url.pathname === '/file.txt') { res.setHeader('content-disposition', 'attachment; filename="orbe-test.txt"'); return res.end('bonjour'); }
     res.statusCode = 404;
     return res.end(page('404', 'introuvable'));
   });
-  return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server)));
+  server.hits = hits;
+  return new Promise((resolve) => server.listen(0, () => resolve(server)));
 }
 
 module.exports = async function selftest({ first: w, OrbeWindow, store, win, little, commands, openSettings }) {
@@ -404,6 +408,25 @@ module.exports = async function selftest({ first: w, OrbeWindow, store, win, lit
   await until(() => reloaded, 'nouvelle tentative');
   check('⌘R sur la page d’erreur retente l’adresse d’origine', reloaded === 'http://127.0.0.1:1/x');
   w.close(retry.id);
+  w.activate(a.id);
+
+  // Bloqueur de publicités (« orbe.localhost » joue le rôle du domaine publicitaire)
+  const adblock = require('../src/main/adblock');
+  adblock.setDomains(['orbe.localhost']);
+  server.hits.pixel = 0;
+  const pub = w.newTab(base + '/pub');
+  await until(() => titleOf(pub.id) === 'Page avec pub' && !win.live.get(pub.id).loading, 'page avec publicité');
+  await sleep(300);
+  const pubWc = win.live.get(pub.id).wc;
+  check('le bloqueur annule la requête tierce listée, pas celle du site', server.hits.pixel === 1 && adblock.stats().blockedByTab.get(pubWc.id) === 1, JSON.stringify([server.hits.pixel, adblock.stats().blockedByTab.get(pubWc.id)]));
+  await until(() => ui('document.getElementById("shield-n").textContent === "1"'), 'compteur du bouclier');
+  server.hits.pixel = 0;
+  w.toggleSiteBlocking();
+  await until(() => server.hits.pixel === 2, 'exception pour le site');
+  check('une exception par site laisse tout passer', adblock.isSiteAllowed(base) && store.state.settings.adblockAllow.length === 1);
+  w.toggleSiteBlocking();
+  await sleep(200);
+  w.close(pub.id);
   w.activate(a.id);
 
   // Navigation privée
