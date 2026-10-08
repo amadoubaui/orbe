@@ -1,9 +1,10 @@
 {
   "manifest_version": 3,
-  "name": "Orbe — extension sans autorisation",
+  "name": "Orbe — extension à « activeTab »",
   "version": "1.0.0",
-  "description": "Ne déclare ni panneau latéral ni débogueur : ces API doivent lui être refusées (tests/ext-api.js).",
-  "permissions": ["storage"],
+  "description": "Ne déclare ni panneau latéral ni débogueur, et n'accède aux pages que par « activeTab » (tests/ext-api.js).",
+  "permissions": ["storage", "activeTab", "scripting"],
   "background": { "service_worker": "sw.js" },
+  "action": { "default_title": "Marquer la page" },
   "options_page": "page.html"
 }

@@ -45,6 +45,7 @@ const host = {
   confirmPermissions: async () => false, // (extension, [noms]) -> bool
   groupOf: () => -1, // (session, identifiant d'onglet) -> groupe d'onglets (ext-more.js)
   shortcutOf: () => '', // (session, idExtension, nom de commande) -> raccourci affiché
+  manifestOf: (ext) => ext.manifest || {}, // manifeste d'origine, si Orbe l'a complété (ext-access.js)
 };
 const hooks = { actionChanged: () => {} };
 
@@ -99,6 +100,7 @@ function stateOf(ses, id) {
       menus: new Map((Array.isArray(saved.menus) ? saved.menus : []).map((m) => [String(m.id), m])),
       action: { global: {}, tabs: new Map(), defaultIcon: null },
       activeTabs: new Set(), // onglets ouverts à l'extension par un geste (activeTab)
+      activeOrigins: new Map(), // …et le site qu'ils montraient alors : l'accès ne vaut que pour lui
       notifications: new Map(),
     };
     map.set(id, st);
@@ -109,7 +111,14 @@ function stateOf(ses, id) {
 function context(ses, id, wc) {
   const ext = ses.extensions.getExtension(id);
   if (!ext) return null;
-  return { ses, id, ext, manifest: ext.manifest || {}, wc: wc || null, st: stateOf(ses, id) };
+  return { ses, id, ext, manifest: host.manifestOf(ext), wc: wc || null, st: stateOf(ses, id) };
+}
+
+// « activeTab » : un geste de l'utilisateur ouvre l'onglet à l'extension, tant
+// qu'il reste sur le même site.
+function grantTab(st, t) {
+  st.activeTabs.add(t.id);
+  try { st.activeOrigins.set(t.id, new URL(t.url).origin); } catch {}
 }
 
 // --- Autorisations -----------------------------------------------------------
@@ -401,7 +410,7 @@ function localized(ctx, value) {
 function clickAction(ses, id, tab) {
   const ctx = context(ses, id);
   if (!ctx || !manifestAction(ctx.manifest)) return false;
-  if (tab) ctx.st.activeTabs.add(tab.id);
+  if (tab) grantTab(ctx.st, tab);
   if (popupUrl(ctx, tab ? tab.id : undefined)) return 'popup';
   emit(ses, id, 'action.onClicked', [tab ? tabObject(ctx, tab) : undefined]);
   return 'clicked';
@@ -467,7 +476,7 @@ function contextMenuItems(wc, params) {
         for (const other of ctx.st.menus.values()) if (other.type === 'radio' && other.parentId === m.parentId) other.checked = false;
         m.checked = true;
       }
-      if (tab) ctx.st.activeTabs.add(tab.id);
+      if (tab) grantTab(ctx.st, tab);
       const info = { menuItemId: m.id, editable: !!p.isEditable, pageUrl, frameId: 0 };
       if (m.parentId) info.parentMenuItemId = m.parentId;
       if (p.frameURL) info.frameUrl = p.frameURL;
@@ -508,6 +517,7 @@ const METHODS = {
     if (typeof name !== 'string' || name.length > 80) return;
     const set = origin.frame ? (ctx.st.frames.get(origin.frame) || ctx.st.frames.set(origin.frame, new Set()).get(origin.frame)) : ctx.st.worker;
     if (on) set.add(name); else set.delete(name);
+    if (!origin.frame) ctx.st.workerSeen = true;
   },
 
   // Changement de stockage vu par une page de l'extension : Electron ne
@@ -848,9 +858,11 @@ async function invoke(ses, id, wc, frame, name, args) {
     if (!ctx) throw fail('Extension inconnue');
     const fn = Object.hasOwn(METHODS, String(name)) ? METHODS[name] : null;
     if (!fn) throw fail(`API non prise en charge par Orbe : ${name}`);
+    if (process.env.ORBE_EXT_TRACE && name[0] !== '_') console.log('[appel]', id.slice(0, 4), name, JSON.stringify(args).slice(0, 200));
     const value = await fn(ctx, Array.isArray(args) ? args : [], { frame });
     return { value };
   } catch (err) {
+    if (process.env.ORBE_EXT_TRACE) console.log('[refus]', id.slice(0, 4), name, String((err && err.message) || err));
     return { error: String((err && err.message) || err) };
   }
 }
@@ -875,7 +887,8 @@ function hookWorker(ses, sw) {
 
 // Envoie un événement à tous les contextes de l'extension qui l'écoutent.
 function emit(ses, id, name, args) {
-  if (process.env.ORBE_EXT_TRACE) console.log('[emit]', id.slice(0, 4), name);
+  // ORBE_EXT_TRACE=1 : journal des appels et des événements, pour diagnostiquer une extension.
+  if (process.env.ORBE_EXT_TRACE) console.log('[événement]', id.slice(0, 4), name);
   const map = states.get(ses);
   const st = map && map.get(id);
   if (!st) return;
@@ -885,17 +898,63 @@ function emit(ses, id, name, args) {
     if (gone) { st.frames.delete(frame); continue; }
     if (names.has(name)) { try { frame.send(EVENT, name, args); } catch {} }
   }
-  if (!st.worker.has(name)) return;
+  if (st.worker.has(name)) { toWorker(ses, id, name, args); return; }
+  // Service worker jamais lancé depuis le chargement de l'extension (démarrage
+  // d'Orbe, extension rechargée) : ce qu'il écoute n'est pas encore connu. On le
+  // démarre, et l'événement part s'il s'y abonne.
+  if (st.workerSeen || st.waking === undefined) {
+    if (st.workerSeen) return;
+    st.waking = [];
+    const ext = ses.extensions.getExtension(id);
+    const worker = ext && ext.manifest && ext.manifest.background && ext.manifest.background.service_worker;
+    if (!worker) { st.workerSeen = true; return; }
+    const t0 = Date.now();
+    const flush = () => {
+      // Laisse au script le temps de poser tous ses écouteurs.
+      if (!st.workerSeen && Date.now() - t0 < 4000) { setTimeout(flush, 50); return; }
+      setTimeout(() => {
+        const queued = st.waking || [];
+        st.waking = null;
+        st.workerSeen = true;
+        for (const [n, a] of queued) if (st.worker.has(n)) toWorker(ses, id, n, a);
+      }, 150);
+    };
+    ses.serviceWorkers.startWorkerForScope(ext.url).then(flush, flush);
+  }
+  if (st.waking && st.waking.length < 100) st.waking.push([name, args]);
+}
+
+// Réveille le service worker s'il dormait, et le garde éveillé le temps qu'il
+// traite l'événement.
+function toWorker(ses, id, name, args) {
   const ext = ses.extensions.getExtension(id);
   if (!ext) return;
-  // Réveille le service worker s'il dormait, et le garde éveillé le temps
-  // qu'il traite l'événement.
   ses.serviceWorkers.startWorkerForScope(ext.url).then((sw) => {
     hookWorker(ses, sw);
     const task = sw.startTask();
     setTimeout(() => { try { task.end(); } catch {} }, 5000);
     sw.send(EVENT, name, args);
   }).catch(() => {});
+}
+
+// `storage.sync` dans les scripts de contenu : Electron le refuse, et le script
+// de préchargement n'atteint pas leur monde isolé. À chaque page chargée, le
+// service worker de l'extension y injecte donc le correctif lui-même
+// (`scripting.executeScript`, voir src/preload/ext.js). Ne concerne que les
+// extensions Manifest V3 qui ont des scripts de contenu sur cette page et les
+// autorisations « scripting » et « storage ».
+function contentSync(t, url, frame) {
+  const ses = t.session;
+  if (!attached.has(ses) || !/^https?:/i.test(url || '')) return;
+  const main = !frame || frame === t.wc.mainFrame;
+  for (const ext of ses.extensions.getAllExtensions()) {
+    const m = ext.manifest || {};
+    const scripts = Array.isArray(m.content_scripts) ? m.content_scripts : [];
+    const perms = strings(m.permissions);
+    if (!scripts.length || m.manifest_version !== 3 || !m.background || !m.background.service_worker || !perms.includes('scripting') || !perms.includes('storage')) continue;
+    if (!scripts.some((s) => s && (main || s.all_frames) && strings(s.matches).some((p) => matchPattern(p, url)))) continue;
+    toWorker(ses, ext.id, 'content.sync', [main ? { tabId: t.id } : { tabId: t.id, allFrames: true }]);
+  }
 }
 
 // Événement lié à un onglet : envoyé aux extensions de sa session qui
@@ -919,7 +978,7 @@ const notify = {
   tabRemoved(id, windowId, ses) {
     broadcast(ses, 'tabs.onRemoved', () => [id, { windowId, isWindowClosing: false }]);
     const map = states.get(ses);
-    if (map) for (const st of map.values()) { st.activeTabs.delete(id); st.action.tabs.delete(id); }
+    if (map) for (const st of map.values()) { st.activeTabs.delete(id); st.activeOrigins.delete(id); st.action.tabs.delete(id); }
   },
   tabUpdated(t, change) {
     broadcast(t.session, 'tabs.onUpdated', (ctx) => {
@@ -934,6 +993,15 @@ const notify = {
   windowRemoved: (windowId) => { for (const ses of attached) broadcast(ses, 'windows.onRemoved', () => [windowId]); },
   // Navigation d'un onglet (chrome.webNavigation). `frame` : WebFrameMain ou null.
   navigation(t, name, url, frame) {
+    if (name === 'onCommitted') contentSync(t, url, frame);
+    // Changement de site dans l'onglet : l'accès donné par un geste s'arrête là.
+    if (name === 'onCommitted' && (!frame || frame === t.wc.mainFrame)) {
+      let origin = '';
+      try { origin = new URL(url).origin; } catch {}
+      for (const st of (states.get(t.session) || new Map()).values()) {
+        if (st.activeOrigins.has(t.id) && st.activeOrigins.get(t.id) !== origin) { st.activeTabs.delete(t.id); st.activeOrigins.delete(t.id); }
+      }
+    }
     broadcast(t.session, 'webNavigation.' + name, (ctx) => {
       if (!hasPermission(ctx, 'webNavigation')) return null;
       const main = !frame || frame === t.wc.mainFrame;
@@ -944,7 +1012,7 @@ const notify = {
   command(ses, id, name, t) {
     const ctx = context(ses, id);
     if (!ctx) return;
-    if (t) ctx.st.activeTabs.add(t.id);
+    if (t) grantTab(ctx.st, t);
     emit(ses, id, 'commands.onCommand', [name, t ? tabObject(ctx, t) : undefined]);
   },
 };
@@ -1007,7 +1075,7 @@ function extend(methods) {
   Object.assign(METHODS, methods);
 }
 const internals = {
-  fail, need, hasPermission, hostAccess, context, stateOf, diskOf, persist, emit, broadcast, findTab, targetTab, visibleTabs, tabObject, safeUrl, localized, strings,
+  fail, need, hasPermission, hostAccess, context, grantTab, stateOf, diskOf, persist, emit, broadcast, findTab, targetTab, visibleTabs, tabObject, safeUrl, localized, strings,
   ui: () => disk._ui || (disk._ui = {}), // réglages d'interface (largeur du panneau…)
   attached,
 };

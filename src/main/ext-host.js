@@ -11,6 +11,7 @@ const api = require('./ext-api');
 const panel = require('./ext-panel'); // chrome.sidePanel
 const debug = require('./ext-debug'); // chrome.debugger
 const more = require('./ext-more'); // commands, identity, tabGroups…
+const access = require('./ext-access'); // activeTab
 const { store } = require('./store');
 
 // Chargé à la demande : window.js dépend de sessions.js, qui dépend de ext-api.js.
@@ -264,6 +265,12 @@ function openPopup(w, id, anchor, options = {}) {
     if (p.owner === w && p.id === id && !p.win.isDestroyed()) { p.win.close(); return true; }
   }
   closePopup(w);
+  // Extension qui compte sur « activeTab » : au premier clic, Orbe demande s'il
+  // peut lui ouvrir les pages (voir ext-access.js), puis reprend le clic.
+  if (access.needed(ses, id)) {
+    access.offer(ses, id).then(() => { if (!w.win.isDestroyed()) openPopup(w, id, anchor, options); }).catch((err) => console.error('[orbe] extension', id, err));
+    return true;
+  }
   // L'extension a demandé que son bouton ouvre son panneau latéral.
   if (panel.actionClick(w, ses, id, tab)) return true;
   const what = api.clickAction(ses, id, tab);
@@ -336,7 +343,8 @@ function setup() {
     rightInset: (w) => panel.rightInset(w),
     layout: (w) => { panel.place(w); debug.place(w); },
   });
+  access.setup();
   more.setup({ openAction: (w, id) => openPopup(w, id), ownerOf: (wc) => panel.ownerOf(wc) });
 }
 
-module.exports = { setup, sync, openPopup, closePopup, actionsFor, tabs, popups, panel, debug, more };
+module.exports = { setup, sync, openPopup, closePopup, actionsFor, tabs, popups, panel, debug, more, access };

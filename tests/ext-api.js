@@ -254,6 +254,12 @@ module.exports = async function extApiTest({ first: w, OrbeWindow, win, extApi, 
   const seenP = await until(() => shown.wc.executeJavaScript('window.activeTab'), 'onglet actif vu par le panneau');
   check('la page du panneau trouve l’onglet actif d’Orbe, sans être elle-même un onglet', seenP.id === rtA.wc.id && seenP.url === base + '/a' && await shown.wc.executeJavaScript('call("tabs.getCurrent")') === undefined, seenP);
   check('…et dialogue avec la page (tabs.sendMessage)', await shown.wc.executeJavaScript(`call("tabs.sendMessage", ${rtA.wc.id}, "titre")`) === 'Page a');
+  await until(() => shown.wc.executeJavaScript('document.readyState === "complete" && Array.isArray(window.received)'), 'panneau chargé');
+  await sw({ type: 'call', path: 'runtime.sendMessage', args: [{ type: 'diffusion', texte: 'bonjour' }] });
+  await call('storage.sync.set', { diffusion: 'oui' });
+  const heard = await until(() => shown.wc.executeJavaScript('window.received.length >= 2 && window.received'), 'messages reçus par le panneau', 4000).catch(() => shown.wc.executeJavaScript('window.received'));
+  check('le panneau reçoit les messages et les changements de stockage du service worker', heard.includes('message:bonjour') && heard.includes('stockage:sync:oui'), heard);
+  await call('storage.sync.remove', 'diffusion');
   const ctxs = await call('runtime.getContexts', { contextTypes: ['SIDE_PANEL'] });
   check('runtime.getContexts connaît le panneau (SIDE_PANEL)', ctxs.length === 1 && ctxs[0].documentUrl === ext.url + 'panel.html' && ctxs[0].windowId === w.win.id, ctxs);
   await until(async () => (await events('sidePanel.onOpened')).length === 1, 'sidePanel.onOpened');
@@ -322,12 +328,39 @@ module.exports = async function extApiTest({ first: w, OrbeWindow, win, extApi, 
   check('sidePanel.close', !panel.shownIn(w) && w.contentRect().width === r0.width);
 
   // Une extension qui ne déclare pas ces autorisations n'obtient rien.
-  const bare = await ses.extensions.loadExtension(path.join(__dirname, 'ext-fixture-sans'));
+  // Copiée dans le profil d'essai : Orbe en modifiera le manifeste (« activeTab »).
+  const bareDir = path.join(require('electron').app.getPath('userData'), 'ext-fixture-sans');
+  require('fs').cpSync(path.join(__dirname, 'ext-fixture-sans'), bareDir, { recursive: true });
+  let bare = await ses.extensions.loadExtension(bareDir);
   const barePage = new BrowserWindow({ show: false, webPreferences: { session: ses, sandbox: true, contextIsolation: true } });
   await barePage.loadURL(bare.url + 'page.html');
   check('sans l’autorisation, ni sidePanel ni debugger ni identity ni tabGroups n’existent', await barePage.webContents.executeJavaScript('typeof chrome.permissions === "object" && typeof chrome.sidePanel === "undefined" && typeof chrome.debugger === "undefined" && typeof chrome.identity === "undefined" && typeof chrome.tabGroups === "undefined"'));
   const refused = await Promise.all([['sidePanel.open', [{ windowId: w.win.id }]], ['debugger.attach', [{ tabId: rtA.wc.id }, '1.3']], ['identity.launchWebAuthFlow', [{ url: base + '/auth' }]], ['tabGroups.query', [{}]], ['downloads.download', [{ url: base + '/fichier.txt' }]]].map(([n, args]) => extApi.call(ses, bare.id, n, args)));
   check('…et un appel forcé est refusé par le processus principal', refused.every((r) => /autorisation/.test(r.error || '')) && !panel.shownIn(w) && extHost.debug.sessions.size === 0, refused);
+
+  // « activeTab » : l'extension n'a accès à aucun site ; un clic sur son bouton
+  // lui ouvre l'onglet en cours, après accord de l'utilisateur (ext-access.js).
+  const access = extHost.access;
+  const bareSw = (msg) => barePage.webContents.executeJavaScript(`chrome.runtime.sendMessage(${JSON.stringify(msg)})`);
+  check('avant le clic, l’injection est refusée (aucun accès aux sites)', access.needed(ses, bare.id) && (await bareSw({ type: 'marquer', tabId: rtA.wc.id })).some((r) => /^refus/.test(r)) && await rtA.wc.executeJavaScript('document.documentElement.dataset.marque') === undefined, await bareSw({ type: 'resultats' }));
+  asked.length = 0;
+  check('premier clic : Orbe demande l’accord de l’utilisateur', extHost.openPopup(w, bare.id) === true);
+  await until(() => access.widened(bare.id) && ses.extensions.getExtension(bare.id) && !access.needed(ses, bare.id), 'accès accordé, extension rechargée');
+  await until(() => rtA.wc.executeJavaScript('document.documentElement.dataset.marque === "oui"'), 'page marquée');
+  const bareManifest = JSON.parse(require('fs').readFileSync(path.join(bareDir, 'manifest.json'), 'utf8'));
+  check('…puis le clic aboutit : le script de l’extension s’exécute dans l’onglet', asked.length === 1 && bareManifest.host_permissions.includes('<all_urls>'), { asked, hosts: bareManifest.host_permissions });
+  await barePage.loadURL(bare.url + 'page.html');
+  const bareAll = await extApi.call(ses, bare.id, 'permissions.getAll', []);
+  check('la couche d’API garde le manifeste d’origine (aucun site annoncé)', bareAll.value.origins.length === 0 && (await extApi.call(ses, bare.id, 'tabs.get', [created.id])).value.url === undefined, bareAll);
+  const otherTab = await bareSw({ type: 'marquer', tabId: created.id });
+  check('un onglet qui n’a pas reçu le clic reste fermé à l’extension', /^refus Cannot access contents/.test(otherTab[otherTab.length - 1]) && await win.live.get(bId).wc.executeJavaScript('document.documentElement.dataset.marque') === undefined, otherTab);
+  await call('tabs.update', rtA.wc.id, { url: 'http://localhost:' + server.address().port + '/ailleurs' });
+  await until(() => rtA.wc.getURL().includes('/ailleurs') && !rtA.wc.isLoading(), 'changement de site');
+  const afterNav = await bareSw({ type: 'marquer', tabId: rtA.wc.id });
+  check('changer de site dans l’onglet met fin à l’accès', /^refus/.test(afterNav[afterNav.length - 1]), afterNav);
+  await call('tabs.update', rtA.wc.id, { url: base + '/a' }).catch(() => rtA.wc.loadURL(base + '/a'));
+  await until(() => w.data.tabs[a.id].title === 'Page a' && !rtA.wc.isLoading(), 'retour à la page a');
+  await until(() => call('tabs.sendMessage', rtA.wc.id, 'titre').then((v) => v === 'Page a'), 'script de contenu de retour');
   barePage.destroy();
 
   // Débogueur (chrome.debugger) : celui d'Electron, avec un bandeau visible.
@@ -431,9 +464,17 @@ module.exports = async function extApiTest({ first: w, OrbeWindow, win, extApi, 
   await page('chrome.storage.local.set({ page: 2 })');
   await until(async () => (await events('storage.onChanged')).length >= 3, 'storage.onChanged', 4000).catch(() => {});
   await sleep(600);
-  const changed = await events('storage.onChanged');
+  const allChanged = await events('storage.onChanged');
+  const changed = allChanged.filter((e) => e.args[0][0] !== 'diffusion');
+  check('deux pages ouvertes (options, panneau) : chaque changement n’arrive qu’une fois', allChanged.length - changed.length === 2, allChanged.map((e) => e.args));
   check('storage.onChanged arrive au service worker, une seule fois, avec la bonne zone', changed.map((e) => e.args[0].join() + ':' + e.args[1]).join(' ') === 'cle:sync ici:local page:local', changed.map((e) => e.args));
   check('…et dans les pages de l’extension', await page('new Promise((r) => { chrome.storage.onChanged.addListener((c, a) => r(Object.keys(c).join() + ":" + a)); chrome.storage.sync.set({ vu: 1 }); })') === 'vu:sync');
+  // Le correctif est posé au chargement de la page : celle-ci s'est ouverte
+  // alors que l'extension venait à peine d'être chargée, on la recharge.
+  rtA.wc.reload();
+  await until(() => call('tabs.sendMessage', rtA.wc.id, 'titre').then((v) => v === 'Page a'), 'page a rechargée');
+  await sleep(300);
+  check('storage.sync fonctionne aussi dans un script de contenu, et partage la zone des pages', await call('tabs.sendMessage', rtA.wc.id, 'sync') === 7 && (await call('storage.sync.get', 'contenu')).contenu === 7 && !Object.keys(await call('storage.local.get', null)).some((k) => /contenu|__orbe/.test(k)));
   await call('storage.sync.remove', 'vu');
   await call('storage.sync.clear');
   check('storage.sync.clear ne touche pas à storage.local', Object.keys(await call('storage.sync.get', null)).length === 0 && (await call('storage.local.get', 'ici')).ici === 1);

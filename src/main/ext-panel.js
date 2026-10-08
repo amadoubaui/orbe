@@ -135,6 +135,12 @@ function create(w, ctx, tabId, url, auto) {
   wc.on('before-input-event', (e, input) => w.onInput(e, input, false));
   // `window.close()` dans la page du panneau : le panneau se ferme.
   wc.once('destroyed', () => { if (!p.gone) { destroy(p, true); refresh(w); } });
+  // `sidePanel.open` ne répond qu'une fois la page chargée : l'extension lui
+  // écrit souvent aussitôt après.
+  p.loaded = new Promise((resolve) => {
+    for (const ev of ['did-finish-load', 'did-fail-load', 'destroyed']) wc.once(ev, resolve);
+    setTimeout(resolve, 5000);
+  });
   wc.loadURL(url).catch(() => {});
   X.emit(ctx.ses, ctx.id, 'sidePanel.onOpened', [eventInfo(p)]);
   return p;
@@ -302,11 +308,11 @@ function openIn(w, ctx, tabId) {
   if (!o.url) throw X.fail(tabId != null ? `No active side panel for tabId: ${tabId}` : `No active side panel for windowId: ${w.win.id}`);
   const rt = activeRt(w);
   const target = tabId != null && o.specific ? tabId : null;
-  const old = target != null ? rec.tabs.get(target) : rec.global;
-  if (old && old.extId === ctx.id && old.url === o.url) old.auto = false;
+  let p = target != null ? rec.tabs.get(target) : rec.global;
+  if (p && p.extId === ctx.id && p.url === o.url) p.auto = false;
   else {
-    if (old) destroy(old);
-    const p = create(w, ctx, target, o.url, false);
+    if (p) destroy(p);
+    p = create(w, ctx, target, o.url, false);
     if (target != null) rec.tabs.set(target, p); else rec.global = p;
   }
   // Le panneau demandé prend la place de celui qu'une autre extension avait
@@ -315,6 +321,7 @@ function openIn(w, ctx, tabId) {
   const other = covered != null ? rec.tabs.get(covered) : null;
   if (other && (other.extId !== ctx.id || (target == null && other.auto))) destroy(other);
   refresh(w);
+  return p;
 }
 
 function closeIn(w, ctx, tabId) {
@@ -350,7 +357,7 @@ function actionClick(w, ses, id, tab) {
   if (!ctx || !X.hasPermission(ctx, 'sidePanel') || !openOnClick(id) || w.incognito) return false;
   const tabId = tab ? tab.id : null;
   if (!optionsOf(ctx, tabId).url) return false;
-  if (tab) ctx.st.activeTabs.add(tab.id);
+  if (tab) X.grantTab(ctx.st, tab);
   const rec = records.get(w);
   if (rec && rec.shown && rec.shown.extId === id) { userClose(w); return true; }
   try { openIn(w, ctx, tabId); } catch { return false; }
@@ -359,14 +366,16 @@ function actionClick(w, ses, id, tab) {
 
 // --- API ----------------------------------------------------------------------------
 
-function target(ctx, d, name) {
+function target(ctx, d) {
   const o = d || {};
   let tab = null;
   if (typeof o.tabId === 'number') tab = X.findTab(ctx, o.tabId);
-  else if (typeof o.windowId !== 'number') throw X.fail(`sidePanel.${name} : « tabId » ou « windowId » est requis`);
-  const windowId = tab ? tab.windowId : o.windowId === -2 ? api.host.currentWindowId(ctx.wc) : o.windowId;
-  const w = windowOf(windowId);
-  if (!w || w.incognito) throw X.fail(`No window with id: ${windowId}.`);
+  // Fenêtre désignée, sinon la fenêtre courante. Chrome refuserait un
+  // identifiant inconnu ; mais l'onglet qu'Electron donne aux extensions
+  // (`sender.tab`) porte un `windowId` qui n'est pas celui d'une fenêtre d'Orbe
+  // (0), et elles le repassent tel quel à `sidePanel.open`.
+  const w = (tab ? windowOf(tab.windowId) : windowOf(o.windowId)) || windowOf(api.host.currentWindowId(ctx.wc));
+  if (!w || w.incognito) throw X.fail('No window to open the side panel in.');
   return { w, tabId: tab ? tab.id : null };
 }
 
@@ -397,14 +406,14 @@ api.extend({
     if (tabId !== undefined && settings(ctx).tabs.has(tabId)) out.tabId = tabId;
     return out;
   },
-  'sidePanel.open'(ctx, [d]) {
+  async 'sidePanel.open'(ctx, [d]) {
     X.need(ctx, 'sidePanel');
-    const t = target(ctx, d, 'open');
-    openIn(t.w, ctx, t.tabId);
+    const t = target(ctx, d);
+    await openIn(t.w, ctx, t.tabId).loaded;
   },
   'sidePanel.close'(ctx, [d]) {
     X.need(ctx, 'sidePanel');
-    const t = target(ctx, d, 'close');
+    const t = target(ctx, d);
     closeIn(t.w, ctx, t.tabId);
   },
   'sidePanel.setPanelBehavior'(ctx, [d]) {

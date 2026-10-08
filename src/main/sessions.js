@@ -17,6 +17,11 @@ const hooks = { onDownload: () => {}, ownerWindow: () => null };
 function registerScheme() {
   protocol.registerSchemesAsPrivileged([
     { scheme: 'orbe', privileges: { standard: true, secure: true, supportFetchAPI: true } },
+    // Déjà « standard » dans Chromium ; le redire ici l'ajoute à la liste des
+    // schémas auxquels Electron ouvre le système de fichiers des pages web
+    // (webkitRequestFileSystem, navigator.storage.getDirectory), que des
+    // extensions utilisent pour ranger leurs données (captures de GoFullPage).
+    { scheme: 'chrome-extension', privileges: { standard: true, secure: true } },
   ]);
 }
 
