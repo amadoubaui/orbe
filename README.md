@@ -9,7 +9,7 @@ interface entièrement en français (anglais disponible dans les réglages).
 > Projet libre et indépendant, sans lien avec The Browser Company. Orbe ne
 > contient aucun code ni aucune ressource d'Arc : tout est réécrit.
 
-État : **version 0.3, macOS**. Windows viendra ensuite.
+État : **version 0.4, macOS**. Windows viendra ensuite.
 
 ![Orbe : barre latérale, favoris, onglets épinglés et barre de commande](docs/captures/barre-de-commande.png)
 

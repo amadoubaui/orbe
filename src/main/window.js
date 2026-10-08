@@ -1354,6 +1354,7 @@ class OrbeWindow {
     const wc = this.activeWc;
     if (!wc) return;
     wc.setZoomLevel(delta === 0 ? 0 : clamp(wc.getZoomLevel() + delta, -4, 5));
+    this.toast(`Zoom ${Math.round(wc.getZoomFactor() * 100)} %`);
   }
 
   async capture() {
