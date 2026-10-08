@@ -4,7 +4,9 @@
 // Chrome (`runtime`, `storage`, `scripting`, `alarms`, un peu de `tabs`…). Ce
 // module fournit le reste, branché sur le modèle d'Orbe : `permissions`,
 // `tabs`, `windows`, `cookies`, `contextMenus`, `action`, `webNavigation`,
-// `notifications`, `downloads`, `fontSettings`, `commands`.
+// `notifications`, `fontSettings`, `commands`. D'autres modules en ajoutent
+// (`extend`) : ext-panel.js (`sidePanel`), ext-debug.js (`debugger`), ext-more.js
+// (`identity`, `tabGroups`, `downloads`, raccourcis des commandes).
 //
 // Fonctionnement :
 //   - `attach(session)` enregistre sur la session le script src/preload/ext.js
@@ -41,6 +43,8 @@ const host = {
   focusWindow: () => {},
   openPopup: () => false, // (session, idExtension) -> bool
   confirmPermissions: async () => false, // (extension, [noms]) -> bool
+  groupOf: () => -1, // (session, identifiant d'onglet) -> groupe d'onglets (ext-more.js)
+  shortcutOf: () => '', // (session, idExtension, nom de commande) -> raccourci affiché
 };
 const hooks = { actionChanged: () => {} };
 
@@ -50,7 +54,6 @@ let stateFile = null;
 let disk = {}; // { id: { granted: [noms], menus: [éléments] } }, commun aux profils
 let saveTimer = null;
 let ipcReady = false;
-let downloadSeq = 0;
 
 function fail(message) {
   return new Error(message);
@@ -181,7 +184,7 @@ function tabObject(ctx, t) {
   const o = {
     id: t.id, index: t.index, windowId: t.windowId, active: t.active, highlighted: t.active, selected: t.active,
     pinned: t.pinned, incognito: t.incognito, audible: t.audible, discarded: false, autoDiscardable: true, frozen: false,
-    groupId: -1, mutedInfo: { muted: t.muted }, status: t.status, width: t.width, height: t.height, lastAccessed: t.lastAccessed,
+    groupId: host.groupOf(ctx.ses, t.id), mutedInfo: { muted: t.muted }, status: t.status, width: t.width, height: t.height, lastAccessed: t.lastAccessed,
   };
   if (canSeeTab(ctx, t)) {
     o.url = t.url;
@@ -634,6 +637,12 @@ const METHODS = {
     const t = visibleTabs(ctx).find((x) => x.active && x.windowId === wanted);
     if (!t) throw fail('No active tab.');
     if (!hostAccess(ctx, t.url) && !ctx.st.activeTabs.has(t.id)) throw fail("Either the '<all_urls>' or 'activeTab' permission is required.");
+    // Comme Chrome : pas plus de deux captures par seconde (les extensions de
+    // capture de page entière comptent sur ce message pour ralentir).
+    const now = Date.now();
+    ctx.st.captures = (ctx.st.captures || []).filter((at) => now - at < 1000);
+    if (ctx.st.captures.length >= 2) throw fail('This request exceeds the MAX_CAPTURE_VISIBLE_TAB_CALLS_PER_SECOND quota.');
+    ctx.st.captures.push(now);
     const img = await t.wc.capturePage();
     const o = options || {};
     if (o.format === 'png') return 'data:image/png;base64,' + img.toPNG().toString('base64');
@@ -805,15 +814,6 @@ const METHODS = {
   'notifications.getAll': (ctx) => { need(ctx, 'notifications'); return Object.fromEntries([...ctx.st.notifications.keys()].map((k) => [k, true])); },
   'notifications.getPermissionLevel': () => 'granted',
 
-  // downloads -------------------------------------------------------------------
-  'downloads.download'(ctx, [d]) {
-    need(ctx, 'downloads');
-    const url = String((d && d.url) || '');
-    if (!/^(https?|data):/i.test(url)) throw fail('Invalid URL.');
-    ctx.ses.downloadURL(url);
-    return ++downloadSeq;
-  },
-
   // divers ----------------------------------------------------------------------
   'fontSettings.getFontList'(ctx) {
     need(ctx, 'fontSettings');
@@ -821,8 +821,7 @@ const METHODS = {
   },
   'commands.getAll'(ctx) {
     const list = ctx.manifest.commands && typeof ctx.manifest.commands === 'object' ? ctx.manifest.commands : {};
-    // Orbe n'attribue pas encore de raccourci aux commandes des extensions.
-    return Object.keys(list).map((name) => ({ name, description: localized(ctx, (list[name] && list[name].description) || ''), shortcut: '' }));
+    return Object.keys(list).map((name) => ({ name, description: localized(ctx, (list[name] && list[name].description) || ''), shortcut: host.shortcutOf(ctx.ses, ctx.id, name) }));
   },
   async 'runtime.openOptionsPage'(ctx) {
     const m = ctx.manifest;
@@ -876,6 +875,7 @@ function hookWorker(ses, sw) {
 
 // Envoie un événement à tous les contextes de l'extension qui l'écoutent.
 function emit(ses, id, name, args) {
+  if (process.env.ORBE_EXT_TRACE) console.log('[emit]', id.slice(0, 4), name);
   const map = states.get(ses);
   const st = map && map.get(id);
   if (!st) return;
@@ -1001,7 +1001,21 @@ function forget(id) {
   if (disk[id]) { delete disk[id]; persist(); }
 }
 
+// Autres espaces de noms (panneau latéral, débogueur…) : chaque module ajoute
+// ses méthodes ici et se sert des mêmes outils (`internals`).
+function extend(methods) {
+  Object.assign(METHODS, methods);
+}
+const internals = {
+  fail, need, hasPermission, hostAccess, context, stateOf, diskOf, persist, emit, broadcast, findTab, targetTab, visibleTabs, tabObject, safeUrl, localized, strings,
+  ui: () => disk._ui || (disk._ui = {}), // réglages d'interface (largeur du panneau…)
+  attached,
+};
+
 module.exports = {
+  extend, internals,
+  // Appel direct d'une méthode au nom d'une extension (tests) : { value } ou { error }.
+  call: (ses, id, name, args) => invoke(ses, id, null, null, name, args),
   configure, attach, forget, host, hooks, notify, actions, actionInfo, clickAction, popupUrl: (ses, id, tabId) => { const ctx = context(ses, id); return ctx ? popupUrl(ctx, tabId) : ''; },
   contextMenuItems, matchPattern, parseColor, grantActiveTab: (ses, id, tabId) => { const ctx = context(ses, id); if (ctx) ctx.st.activeTabs.add(tabId); },
   isAttached: (ses) => attached.has(ses), CHANNEL, EVENT,

@@ -41,21 +41,26 @@ function install(invoke, listen) {
   // Seul ce qui se sérialise traverse : fonctions et valeurs exotiques tombent.
   const clean = (v) => { try { return JSON.parse(JSON.stringify(v)); } catch { return null; } };
 
-  // chrome.runtime.lastError, pour les appels à l'ancienne (avec rappel).
-  let lastError;
-  for (const runtime of new Set(roots.map((r) => r.runtime))) {
-    try {
-      const native = Object.getOwnPropertyDescriptor(runtime, 'lastError');
-      if (native && !native.configurable) continue;
-      let nativeValue = native && 'value' in native ? native.value : undefined;
-      Object.defineProperty(runtime, 'lastError', {
-        configurable: true,
-        enumerable: true,
-        get() { return lastError || (native && native.get ? native.get.call(runtime) : nativeValue); },
-        set(v) { if (native && native.set) native.set.call(runtime, v); else nativeValue = v; },
-      });
-    } catch {}
-  }
+  // chrome.runtime.lastError, pour les appels à l'ancienne (avec rappel) : posé
+  // le temps du rappel, puis retiré. Chromium fait de même pour ses propres
+  // erreurs et retire la propriété après coup : un accesseur installé une fois
+  // pour toutes disparaîtrait à la première erreur d'une API d'Electron.
+  const runtimes = [...new Set(roots.map((r) => r.runtime))];
+  const failWith = (err, cb) => {
+    const value = { message: String((err && err.message) || err) };
+    const set = [];
+    for (const runtime of runtimes) {
+      try {
+        const own = Object.getOwnPropertyDescriptor(runtime, 'lastError');
+        if (own && !own.configurable) continue;
+        Object.defineProperty(runtime, 'lastError', { value, configurable: true, enumerable: true, writable: true });
+        set.push(runtime);
+      } catch {}
+    }
+    try { cb(); } finally {
+      for (const runtime of set) { try { delete runtime.lastError; } catch {} }
+    }
+  };
 
   const call = (name, args) => invoke(name, clean(args) || []).then((r) => {
     if (r && r.error) throw new Error(r.error);
@@ -67,10 +72,7 @@ function install(invoke, listen) {
     const cb = typeof args[args.length - 1] === 'function' ? args.pop() : null;
     const p = call(name, args);
     if (!cb) return p;
-    p.then((v) => { cb(v); }, (err) => {
-      lastError = { message: String((err && err.message) || err) };
-      try { cb(); } finally { lastError = undefined; }
-    });
+    p.then((v) => { cb(v); }, (err) => failWith(err, cb));
     return undefined;
   };
 
@@ -144,10 +146,72 @@ function install(invoke, listen) {
     define('permissions', { methods: ['contains', 'getAll', 'request', 'remove'], events: ['onAdded', 'onRemoved'] });
 
     define('tabs', {
-      methods: ['query', 'get', 'getCurrent', 'create', 'remove', 'update', 'reload', 'duplicate', 'goBack', 'goForward', 'captureVisibleTab', 'detectLanguage'],
+      // Le zoom d'Electron ne connaît pas les onglets d'Orbe : il est refait ici.
+      methods: ['query', 'get', 'getCurrent', 'create', 'remove', 'update', 'reload', 'duplicate', 'goBack', 'goForward', 'captureVisibleTab', 'detectLanguage', 'getZoom', 'setZoom', 'getZoomSettings', 'setZoomSettings', 'group', 'ungroup'],
       events: ['onCreated', 'onRemoved', 'onUpdated', 'onActivated', 'onReplaced'],
-      consts: { TAB_ID_NONE: -1 },
+      consts: { TAB_ID_NONE: -1, MAX_CAPTURE_VISIBLE_TAB_CALLS_PER_SECOND: 2 },
     });
+
+    // Panneau latéral : la vue est tenue par Orbe (src/main/ext-panel.js).
+    if (declared.has('sidePanel')) {
+      define('sidePanel', {
+        methods: ['setOptions', 'getOptions', 'open', 'close', 'setPanelBehavior', 'getPanelBehavior', 'getLayout'],
+        events: ['onOpened', 'onClosed'],
+        consts: { Side: { LEFT: 'left', RIGHT: 'right' } },
+      });
+      // runtime.getContexts : Electron ne sait pas qu'une de ces pages est un
+      // panneau latéral. Les siennes sont requalifiées, ou ajoutées.
+      const runtime = c.runtime;
+      const nativeContexts = runtime && typeof runtime.getContexts === 'function' ? runtime.getContexts.bind(runtime) : null;
+      if (runtime && !runtime.__orbeContexts) {
+        const list = async (filter) => {
+          const f = filter && typeof filter === 'object' ? filter : {};
+          const { contextTypes, ...rest } = f;
+          const [found, panels] = await Promise.all([nativeContexts ? nativeContexts(rest).catch(() => []) : [], call('runtime._panelContexts', [])]);
+          const out = [];
+          const left = [...panels];
+          for (const x of found) {
+            const at = x.tabId === -1 ? left.findIndex((p) => p.documentUrl === x.documentUrl) : -1;
+            out.push(at >= 0 ? { ...x, contextType: 'SIDE_PANEL', windowId: left.splice(at, 1)[0].windowId } : x);
+          }
+          const has = (key, value) => !Array.isArray(f[key]) || f[key].includes(value);
+          for (const p of left) if (has('contextIds', p.contextId) && has('documentUrls', p.documentUrl) && has('documentOrigins', p.documentOrigin) && has('windowIds', p.windowId) && has('tabIds', p.tabId) && has('frameIds', p.frameId) && f.incognito !== true) out.push(p);
+          return Array.isArray(contextTypes) ? out.filter((x) => contextTypes.includes(x.contextType)) : out;
+        };
+        try {
+          Object.defineProperty(runtime, 'getContexts', {
+            configurable: true, enumerable: true, writable: true,
+            value(filter, cb) {
+              const p = list(filter);
+              if (typeof cb !== 'function') return p;
+              p.then((v) => cb(v), () => cb([]));
+              return undefined;
+            },
+          });
+          Object.defineProperty(runtime, '__orbeContexts', { value: 1 });
+        } catch {}
+      }
+    }
+
+    // Débogueur : relayé vers celui d'Electron, onglet par onglet (ext-debug.js).
+    if (declared.has('debugger')) {
+      define('debugger', { methods: ['attach', 'detach', 'sendCommand', 'getTargets'], events: ['onEvent', 'onDetach'], consts: { DetachReason: { TARGET_CLOSED: 'target_closed', CANCELED_BY_USER: 'canceled_by_user' }, TargetInfoType: { PAGE: 'page', BACKGROUND_PAGE: 'background_page', WORKER: 'worker', OTHER: 'other' } } });
+    }
+
+    // Groupes d'onglets : tenus en mémoire, sans dessin dans Orbe (ext-more.js).
+    if (declared.has('tabGroups')) {
+      define('tabGroups', {
+        methods: ['get', 'query', 'update', 'move'],
+        events: ['onCreated', 'onUpdated', 'onRemoved', 'onMoved'],
+        consts: { TAB_GROUP_ID_NONE: -1, Color: { GREY: 'grey', BLUE: 'blue', RED: 'red', YELLOW: 'yellow', GREEN: 'green', PINK: 'pink', PURPLE: 'purple', CYAN: 'cyan', ORANGE: 'orange' } },
+      });
+    }
+
+    // Connexion à un service tiers : petite fenêtre d'Orbe (ext-more.js).
+    if (declared.has('identity')) {
+      const identity = define('identity', { methods: ['launchWebAuthFlow', 'getAuthToken', 'getProfileUserInfo', 'getAccounts', 'removeCachedAuthToken', 'clearAllCachedAuthTokens'], events: ['onSignInChanged'] });
+      if (identity) identity.getRedirectURL = (path) => `https://${main.runtime.id}.chromiumapp.org/${String(path == null ? '' : path).replace(/^\//, '')}`;
+    }
 
     define('windows', {
       methods: ['get', 'getCurrent', 'getLastFocused', 'getAll', 'create', 'update', 'remove'],
@@ -169,7 +233,7 @@ function install(invoke, listen) {
         if (typeof p.onclick === 'function') menuClicks.set(String(p.id), p.onclick);
         const done = call('contextMenus.create', [p]);
         if (typeof cb === 'function') {
-          done.then(() => cb(), (err) => { lastError = { message: String(err.message) }; try { cb(); } finally { lastError = undefined; } });
+          done.then(() => cb(), (err) => failWith(err, cb));
         } else done.catch((err) => console.error(err));
         return p.id;
       };
@@ -189,7 +253,7 @@ function install(invoke, listen) {
     }
 
     if (declared.has('downloads')) {
-      define('downloads', { methods: ['download'], events: ['onChanged', 'onCreated'] });
+      define('downloads', { methods: ['download', 'search', 'show', 'erase'], events: ['onChanged', 'onCreated', 'onErased'], consts: { State: { IN_PROGRESS: 'in_progress', INTERRUPTED: 'interrupted', COMPLETE: 'complete' } } });
     }
 
     if (declared.has('fontSettings')) define('fontSettings', { methods: ['getFontList'] });
@@ -244,10 +308,7 @@ function install(invoke, listen) {
         const cb = typeof args[args.length - 1] === 'function' ? args.pop() : null;
         const p = fn(...args);
         if (!cb) return p;
-        p.then((v) => { cb(v); }, (err) => {
-          lastError = { message: String((err && err.message) || err) };
-          try { cb(); } finally { lastError = undefined; }
-        });
+        p.then((v) => { cb(v); }, (err) => failWith(err, cb));
         return undefined;
       };
 
@@ -382,6 +443,12 @@ function install(invoke, listen) {
         try { Object.defineProperty(storage, key, { value, configurable: true, enumerable: true, writable: true }); } catch { try { storage[key] = value; } catch {} }
         return storage[key] === value;
       };
+      // `managed` (réglages d'entreprise) : Electron le refuse ; sans stratégie,
+      // Chrome rend un objet vide (ou les valeurs par défaut demandées).
+      if (storage.managed && typeof storage.managed.get === 'function') {
+        const managedGet = withCallback(async (keys) => (keys && typeof keys === 'object' && !Array.isArray(keys) ? { ...keys } : {}));
+        try { Object.defineProperty(storage.managed, 'get', { value: managedGet, configurable: true, enumerable: true, writable: true }); } catch {}
+      }
       // Tout ensemble, ou rien : sinon le préfixe deviendrait visible.
       if (put('sync', zone('sync', native))) {
         put('local', zone('local', native));

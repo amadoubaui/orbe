@@ -1,0 +1,9 @@
+{
+  "manifest_version": 3,
+  "name": "Orbe — extension sans autorisation",
+  "version": "1.0.0",
+  "description": "Ne déclare ni panneau latéral ni débogueur : ces API doivent lui être refusées (tests/ext-api.js).",
+  "permissions": ["storage"],
+  "background": { "service_worker": "sw.js" },
+  "options_page": "page.html"
+}

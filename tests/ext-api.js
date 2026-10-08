@@ -21,7 +21,13 @@ async function until(fn, label, timeout = 8000) {
 
 function serve() {
   const server = http.createServer((req, res) => {
-    const name = new URL(req.url, 'http://x').pathname.slice(1) || 'accueil';
+    const url = new URL(req.url, 'http://x');
+    const name = url.pathname.slice(1) || 'accueil';
+    // Page de connexion d'un service tiers : renvoie vers l'adresse de retour
+    // de l'extension, par redirection HTTP (/auth) ou par script (/authjs).
+    if (name === 'auth') { res.statusCode = 302; res.setHeader('location', url.searchParams.get('to')); res.end(); return; }
+    if (name === 'authjs') { res.setHeader('content-type', 'text/html; charset=utf-8'); res.end(`<!doctype html><title>Connexion</title><script>location.href = ${JSON.stringify(url.searchParams.get('to'))};</script>`); return; }
+    if (name === 'fichier.txt') { res.setHeader('content-type', 'text/plain'); res.setHeader('content-disposition', 'attachment; filename="fichier.txt"'); res.end('bonjour'); return; }
     res.setHeader('content-type', 'text/html; charset=utf-8');
     res.end(`<!doctype html><meta charset="utf-8"><title>Page ${name}</title><body><h1>${name}</h1><a id="lien" href="/autre">lien</a></body>`);
   });
@@ -229,9 +235,191 @@ module.exports = async function extApiTest({ first: w, OrbeWindow, win, extApi, 
   await until(async () => (await call('windows.getAll')).length === 1, 'windows.getAll');
   w.win.focus();
 
+  // Panneau latéral (chrome.sidePanel) : une vue à droite des pages, qui rétrécissent.
+  const panel = extHost.panel;
+  const PW = () => panel.widthIn(w);
+  const r0 = w.contentRect();
+  const viewA = () => rtA.view.getBounds();
+  const inWindow = (view) => w.win.contentView.children.includes(view);
+  const options0 = await call('sidePanel.getOptions', {});
+  check('sidePanel : API présentes, réglages tirés du manifeste', await page('typeof chrome.sidePanel.open === "function" && typeof chrome.sidePanel.onOpened.addListener === "function"') && options0.enabled === true && options0.path === 'panel.html', options0);
+  await call('sidePanel.open', { windowId: w.win.id });
+  const shown = panel.shownIn(w);
+  check('sidePanel.open ouvre la page de l’extension dans une vue de la fenêtre', !!shown && shown.url === ext.url + 'panel.html' && shown.wc.session === ses && inWindow(shown.view));
+  const r1 = w.contentRect();
+  const [winW] = w.win.getContentSize();
+  check('la zone des pages rétrécit de la largeur du panneau', r1.width === r0.width - PW() - 8 && r1.x === r0.x && viewA().width === r1.width, { avant: r0, apres: r1, page: viewA() });
+  const pb = shown.view.getBounds();
+  check('le panneau est posé à droite des pages, sous son en-tête', pb.x === r1.x + r1.width + 8 && pb.x + pb.width === winW - 8 && pb.y === r1.y + panel.HEADER && pb.y + pb.height === r1.y + r1.height, pb);
+  const seenP = await until(() => shown.wc.executeJavaScript('window.activeTab'), 'onglet actif vu par le panneau');
+  check('la page du panneau trouve l’onglet actif d’Orbe, sans être elle-même un onglet', seenP.id === rtA.wc.id && seenP.url === base + '/a' && await shown.wc.executeJavaScript('call("tabs.getCurrent")') === undefined, seenP);
+  check('…et dialogue avec la page (tabs.sendMessage)', await shown.wc.executeJavaScript(`call("tabs.sendMessage", ${rtA.wc.id}, "titre")`) === 'Page a');
+  const ctxs = await call('runtime.getContexts', { contextTypes: ['SIDE_PANEL'] });
+  check('runtime.getContexts connaît le panneau (SIDE_PANEL)', ctxs.length === 1 && ctxs[0].documentUrl === ext.url + 'panel.html' && ctxs[0].windowId === w.win.id, ctxs);
+  await until(async () => (await events('sidePanel.onOpened')).length === 1, 'sidePanel.onOpened');
+  check('sidePanel.onOpened est émis', (await events('sidePanel.onOpened'))[0].args[0].windowId === w.win.id);
+
+  // En-tête d'Orbe : nom, largeur réglable à la souris, fermeture.
+  const head = panel.records.get(w).chrome;
+  const headTitle = await until(() => head.webContents.executeJavaScript('document.getElementById("title").textContent'), 'en-tête du panneau');
+  check('l’en-tête d’Orbe nomme l’extension', headTitle === ext.name && head.getBounds().x === pb.x - 8 && head.getBounds().y === r1.y, headTitle);
+  const cb = w.win.getContentBounds();
+  await head.webContents.executeJavaScript(`orbePanel.send('resize', { screenX: ${cb.x + cb.width - 8 - 320} }); orbePanel.send('resizeEnd')`);
+  await until(() => PW() === 320, 'largeur du panneau');
+  check('tirer le bord gauche règle la largeur (320)', w.contentRect().width === r0.width - 328 && shown.view.getBounds().width === 320 && viewA().width === r0.width - 328, shown.view.getBounds());
+  panel.setWidth(w, 40);
+  check('la largeur est bornée (260 au moins)', PW() === 260 && w.contentRect().width === r0.width - 268);
+  panel.setWidth(w, 300);
+  await sleep(400);
+  const savedUi = JSON.parse(require('fs').readFileSync(path.join(require('electron').app.getPath('userData'), 'Extensions', 'api-state.json'), 'utf8'))._ui;
+  check('…et retenue sur le disque', !!savedUi && savedUi.panelWidth === 300, savedUi);
+
+  // Page propre à un onglet : elle remplace le panneau global sur cet onglet.
+  await call('sidePanel.setOptions', { tabId: created.id, path: 'panel.html?onglet=1' });
+  const optionsB = await call('sidePanel.getOptions', { tabId: created.id });
+  check('sidePanel.setOptions : réglage propre à un onglet', optionsB.path === 'panel.html?onglet=1' && optionsB.tabId === created.id && (await call('sidePanel.getOptions', { tabId: rtA.wc.id })).path === 'panel.html', optionsB);
+  w.activate(bId);
+  await until(() => panel.shownIn(w) && panel.shownIn(w).url === ext.url + 'panel.html?onglet=1', 'panneau propre à l’onglet');
+  check('panneau global ouvert : l’onglet qui a sa propre page la montre', panel.shownIn(w).tabId === created.id && w.contentRect().width === r0.width - 308 && !inWindow(shown.view));
+  w.activate(a.id);
+  await until(() => panel.shownIn(w) === shown, 'retour au panneau global');
+  check('…et les autres onglets gardent le panneau global', !shown.wc.isDestroyed() && inWindow(shown.view));
+  await head.webContents.executeJavaScript('document.getElementById("close").click()');
+  await until(() => !panel.shownIn(w) && shown.wc.isDestroyed(), 'fermeture du panneau');
+  check('le bouton de fermeture referme le panneau et rend la place aux pages', w.contentRect().width === r0.width && viewA().width === r0.width && shown.wc.isDestroyed() && !inWindow(head) && panel.records.get(w).tabs.size === 0);
+  await until(async () => (await events('sidePanel.onClosed')).length >= 1, 'sidePanel.onClosed');
+  check('sidePanel.onClosed est émis', true);
+
+  await call('sidePanel.open', { tabId: created.id });
+  check('sidePanel.open({ tabId }) : rien sur un autre onglet', !panel.shownIn(w) && w.contentRect().width === r0.width);
+  w.activate(bId);
+  await until(() => panel.shownIn(w), 'panneau de l’onglet');
+  check('…le panneau apparaît sur son onglet', panel.shownIn(w).tabId === created.id && panel.shownIn(w).url.endsWith('?onglet=1') && w.contentRect().width === r0.width - 308);
+  w.activate(a.id);
+  await until(() => !panel.shownIn(w), 'panneau masqué');
+  check('…et disparaît quand on le quitte', w.contentRect().width === r0.width && viewA().width === r0.width);
+  await call('sidePanel.setOptions', { tabId: created.id, enabled: false });
+  w.activate(bId);
+  await sleep(200);
+  check('setOptions({ enabled: false }) ferme le panneau', !panel.shownIn(w) && panel.records.get(w).tabs.size === 0);
+  check('sidePanel.open refuse un panneau désactivé', await call('sidePanel.open', { tabId: created.id }).then(() => false, (e) => /No active side panel/.test(e.message)));
+  check('setOptions refuse une page hors de l’extension', await call('sidePanel.setOptions', { path: 'https://exemple.fr/' }).then(() => false, () => true));
+  w.activate(a.id);
+  await sleep(100);
+
+  await call('sidePanel.setPanelBehavior', { openPanelOnActionClick: true });
+  check('setPanelBehavior et getPanelBehavior', (await call('sidePanel.getPanelBehavior')).openPanelOnActionClick === true);
+  check('openPanelOnActionClick : le bouton ouvre le panneau, pas la fenêtre surgissante', extHost.openPopup(w, ext.id) === true && !!panel.shownIn(w) && extHost.popups.size === 0 && w.contentRect().width === r0.width - 308);
+  check('second clic : le panneau se referme', extHost.openPopup(w, ext.id) === true && !panel.shownIn(w) && w.contentRect().width === r0.width);
+  await call('sidePanel.setPanelBehavior', { openPanelOnActionClick: false });
+  await call('sidePanel.open', { windowId: w.win.id });
+  const closing = panel.shownIn(w);
+  await until(() => closing.wc.executeJavaScript('document.readyState === "complete"'), 'panneau chargé');
+  closing.wc.executeJavaScript('window.close()').catch(() => {});
+  check('window.close() dans le panneau le referme', await until(() => !panel.shownIn(w) && w.contentRect().width === r0.width, 'window.close()', 4000).catch(() => false));
+  await call('sidePanel.open', { windowId: w.win.id });
+  await call('sidePanel.close', { windowId: w.win.id });
+  check('sidePanel.close', !panel.shownIn(w) && w.contentRect().width === r0.width);
+
+  // Une extension qui ne déclare pas ces autorisations n'obtient rien.
+  const bare = await ses.extensions.loadExtension(path.join(__dirname, 'ext-fixture-sans'));
+  const barePage = new BrowserWindow({ show: false, webPreferences: { session: ses, sandbox: true, contextIsolation: true } });
+  await barePage.loadURL(bare.url + 'page.html');
+  check('sans l’autorisation, ni sidePanel ni debugger ni identity ni tabGroups n’existent', await barePage.webContents.executeJavaScript('typeof chrome.permissions === "object" && typeof chrome.sidePanel === "undefined" && typeof chrome.debugger === "undefined" && typeof chrome.identity === "undefined" && typeof chrome.tabGroups === "undefined"'));
+  const refused = await Promise.all([['sidePanel.open', [{ windowId: w.win.id }]], ['debugger.attach', [{ tabId: rtA.wc.id }, '1.3']], ['identity.launchWebAuthFlow', [{ url: base + '/auth' }]], ['tabGroups.query', [{}]], ['downloads.download', [{ url: base + '/fichier.txt' }]]].map(([n, args]) => extApi.call(ses, bare.id, n, args)));
+  check('…et un appel forcé est refusé par le processus principal', refused.every((r) => /autorisation/.test(r.error || '')) && !panel.shownIn(w) && extHost.debug.sessions.size === 0, refused);
+  barePage.destroy();
+
+  // Débogueur (chrome.debugger) : celui d'Electron, avec un bandeau visible.
+  const dbg = extHost.debug;
+  const target = { tabId: rtA.wc.id };
+  await call('debugger.attach', target, '1.3');
+  check('debugger.attach branche le débogueur d’Electron sur l’onglet', dbg.sessions.has(rtA.wc.id) && rtA.wc.debugger.isAttached());
+  const banner = await until(() => dbg.banners.get(w) && dbg.banners.get(w).shown && dbg.banners.get(w), 'bandeau');
+  const bannerText = await until(() => banner.view.webContents.executeJavaScript('document.getElementById("banner").hidden ? "" : document.getElementById("text").textContent'), 'texte du bandeau');
+  const bb = banner.view.getBounds();
+  check('un bandeau signale l’onglet piloté et nomme l’extension', bannerText.includes(ext.name) && inWindow(banner.view) && bb.y === w.contentRect().y + 8 && bb.x >= w.contentRect().x && bb.x + bb.width <= w.contentRect().x + w.contentRect().width, { bannerText, bb });
+  const evald = await call('debugger.sendCommand', target, 'Runtime.evaluate', { expression: 'document.title + (6 * 7)', returnByValue: true });
+  check('debugger.sendCommand exécute une commande du protocole', !!evald.result && evald.result.value === 'Page a42', evald);
+  await call('debugger.sendCommand', target, 'Runtime.enable');
+  await until(async () => (await events('debugger.onEvent')).some((e) => e.args[1] === 'Runtime.executionContextCreated' && e.args[0].tabId === rtA.wc.id), 'debugger.onEvent');
+  check('debugger.onEvent relaie les événements du protocole', true);
+  check('debugger.getTargets', (await call('debugger.getTargets')).some((t) => t.tabId === rtA.wc.id && t.attached === true && t.type === 'page'));
+  check('un second attachement est refusé', await call('debugger.attach', target, '1.3').then(() => false, (e) => /already attached/.test(e.message)));
+  const denied = await Promise.all([['Target.getTargets', {}], ['Browser.getVersion', {}], ['Page.navigate', { url: 'file:///etc/hosts' }], ['Page.navigate', { url: 'orbe://app/settings.html' }]].map(([m, p]) => call('debugger.sendCommand', target, m, p).then(() => 'accepté', (e) => e.message)));
+  check('les commandes qui sortent de l’onglet sont refusées', denied.every((m) => /refusée/.test(m)), denied);
+  const protoErr = await call('debugger.sendCommand', target, 'Runtime.inexistante').then(() => '', (e) => e.message);
+  check('une erreur du protocole revient à l’extension', protoErr.length > 0 && !/refusée/.test(protoErr), protoErr);
+  await call('debugger.detach', target);
+  check('debugger.detach libère l’onglet et retire le bandeau', !dbg.sessions.size && !rtA.wc.debugger.isAttached() && !banner.shown && !inWindow(banner.view));
+  check('…après quoi les commandes sont refusées', await call('debugger.sendCommand', target, 'Runtime.evaluate', { expression: '1' }).then(() => false, (e) => /not attached/.test(e.message)));
+  await call('debugger.attach', target, '1.3');
+  await until(() => banner.shown, 'bandeau');
+  await banner.view.webContents.executeJavaScript('document.getElementById("stop").click()');
+  await until(async () => (await events('debugger.onDetach')).some((e) => e.args[0].tabId === rtA.wc.id && e.args[1] === 'canceled_by_user'), 'debugger.onDetach');
+  check('le bouton « Arrêter » détache le débogueur et prévient l’extension (onDetach)', !dbg.sessions.size && !rtA.wc.debugger.isAttached() && !banner.shown && (await events('debugger.onDetach')).length === 1);
+  const doomed = await call('tabs.create', { url: base + '/debogue', active: false });
+  await call('debugger.attach', { tabId: doomed.id }, '1.3');
+  await call('tabs.remove', doomed.id);
+  await until(async () => (await events('debugger.onDetach')).some((e) => e.args[0].tabId === doomed.id && e.args[1] === 'target_closed'), 'target_closed');
+  check('onglet fermé pendant le débogage : onDetach(target_closed)', !dbg.sessions.size);
+
+  // Groupes d'onglets : tenus en mémoire.
+  const gid = await call('tabs.group', { tabIds: [rtA.wc.id, created.id] });
+  check('tabs.group crée un groupe, visible dans tabs.get et tabs.query', typeof gid === 'number' && (await call('tabs.get', rtA.wc.id)).groupId === gid && (await call('tabs.query', {})).filter((t) => t.groupId === gid).length === 2);
+  const g1 = await call('tabGroups.update', gid, { title: 'Travail', color: 'purple' });
+  check('tabGroups.update, get et query', g1.title === 'Travail' && g1.color === 'purple' && (await call('tabGroups.get', gid)).windowId === w.win.id && (await call('tabGroups.query', { title: 'Travail' })).length === 1 && (await call('tabGroups.query', { title: 'Autre' })).length === 0, g1);
+  check('constantes de tabGroups', await page('chrome.tabGroups.Color.BLUE === "blue" && chrome.tabGroups.TAB_GROUP_ID_NONE === -1'));
+  await call('tabs.ungroup', [rtA.wc.id, created.id]);
+  check('tabs.ungroup défait le groupe', (await call('tabs.get', rtA.wc.id)).groupId === -1 && await call('tabGroups.get', gid).then(() => false, (e) => /No group/.test(e.message)));
+  await until(async () => (await events('tabGroups.onRemoved')).length === 1, 'tabGroups.onRemoved');
+  check('tabGroups.onCreated, onUpdated et onRemoved sont émis', (await events('tabGroups.onCreated')).length === 1 && (await events('tabGroups.onUpdated')).length === 1);
+
+  // Connexion à un service tiers (chrome.identity).
+  const redirect = `https://${ext.id}.chromiumapp.org/`;
+  check('identity.getRedirectURL', await page('chrome.identity.getRedirectURL("retour")') === redirect + 'retour');
+  const flow = (p) => call('identity.launchWebAuthFlow', { url: `${base}/${p}?to=${encodeURIComponent(redirect + 'retour?code=42')}`, interactive: false });
+  check('launchWebAuthFlow rend l’adresse de retour (redirection HTTP)', await flow('auth').catch((e) => e.message) === redirect + 'retour?code=42');
+  check('…et quand la page redirige par script', await flow('authjs').catch((e) => e.message) === redirect + 'retour?code=42');
+  check('sans redirection ni interaction : « User interaction required »', await call('identity.launchWebAuthFlow', { url: base + '/connexion', interactive: false }).then(() => false, (e) => /interaction required/i.test(e.message)));
+  check('launchWebAuthFlow refuse une adresse qui n’est pas web', await call('identity.launchWebAuthFlow', { url: 'file:///etc/hosts', interactive: false }).then(() => false, () => true));
+  check('identity.getAuthToken est refusé proprement', await call('identity.getAuthToken', { interactive: false }).then(() => false, (e) => /OAuth2/.test(e.message)) && /OAuth2/.test((await sw({ type: 'callback', path: 'identity.getAuthToken', args: [{}] })).lastError || ''));
+  check('aucune fenêtre de connexion ne reste ouverte', BrowserWindow.getAllWindows().filter((x) => x !== pilot && !x.isDestroyed()).length === 0);
+
+  // Raccourcis des commandes (chrome.commands).
+  const keysOf = Object.fromEntries((await call('commands.getAll')).map((c) => [c.name, c.shortcut]));
+  check('commands : raccourci attribué, sauf s’il est pris par Orbe', keysOf.essai === (process.platform === 'darwin' ? '⌥⇧Y' : 'Alt+Shift+Y') && keysOf.prise === '' && keysOf._execute_action !== '', keysOf);
+  const press = (keyCode) => { for (const type of ['keyDown', 'keyUp']) rtA.wc.sendInputEvent({ type, keyCode, modifiers: ['alt', 'shift'] }); };
+  press('Y');
+  await until(async () => (await events('commands.onCommand')).length === 1, 'commands.onCommand');
+  const cmd = (await events('commands.onCommand'))[0].args;
+  check('le raccourci, frappé dans la page, émet commands.onCommand avec l’onglet', cmd[0] === 'essai' && cmd[1].id === rtA.wc.id, cmd);
+  const primary = process.platform === 'darwin' ? { meta: true, control: false } : { meta: false, control: true };
+  check('un raccourci d’Orbe ne va jamais à une extension', extHost.more.onKey(w, { type: 'keyDown', code: 'KeyT', alt: false, shift: false, ...primary }) === false && (await events('commands.onCommand')).length === 1);
+  press('U');
+  await until(() => extHost.popups.size === 1, '_execute_action');
+  check('« _execute_action » agit comme un clic sur le bouton', true);
+  extHost.closePopup(w);
+  await until(() => extHost.popups.size === 0, 'fermeture de la fenêtre surgissante');
+
+  // Zoom, téléchargements, réglages d'entreprise, quota de captures.
+  await call('tabs.setZoom', rtA.wc.id, 1.5);
+  check('tabs.setZoom et getZoom agissent sur l’onglet d’Orbe', Math.abs(rtA.wc.getZoomFactor() - 1.5) < 0.01 && Math.abs(await call('tabs.getZoom', rtA.wc.id) - 1.5) < 0.01 && Math.abs(await call('tabs.getZoom') - 1.5) < 0.01);
+  await call('tabs.setZoom', 0);
+  check('tabs.setZoom(0) remet le zoom par défaut', Math.abs(rtA.wc.getZoomFactor() - 1) < 0.01);
+  const dl = await call('downloads.download', { url: base + '/fichier.txt', filename: '../../essai.txt' });
+  await until(async () => (await events('downloads.onChanged')).some((e) => e.args[0].id === dl && e.args[0].state.current === 'complete'), 'downloads.onChanged');
+  const got = (await call('downloads.search', { id: dl }))[0];
+  check('downloads.download puis search : fichier dans le dossier des téléchargements, sous le nom demandé', got.state === 'complete' && path.dirname(got.filename) === require('electron').app.getPath('downloads') && path.basename(got.filename) === 'essai.txt' && require('fs').readFileSync(got.filename, 'utf8') === 'bonjour', got);
+  check('storage.managed.get rend un objet vide, comme Chrome sans stratégie', JSON.stringify(await call('storage.managed.get', null)) === '{}');
+  await sleep(1100);
+  const shots = await Promise.all([1, 2, 3].map(() => call('tabs.captureVisibleTab').then(() => 'ok', (e) => e.message)));
+  check('captureVisibleTab : pas plus de deux captures par seconde, comme Chrome', /MAX_CAPTURE_VISIBLE_TAB_CALLS_PER_SECOND/.test(shots[2]) && !/MAX_CAPTURE/.test(shots[0]), shots);
+
   // divers
   check('fontSettings.getFontList', (await call('fontSettings.getFontList')).some((f) => f.fontId === 'Arial'));
-  check('commands.getAll lit le manifeste', (await call('commands.getAll')).map((c) => c.name).join() === 'essai');
+  const cmds = await call('commands.getAll');
+  check('commands.getAll lit le manifeste', cmds.map((c) => c.name).sort().join() === '_execute_action,essai,prise', cmds);
   await call('storage.sync.set', { cle: 'valeur' });
   await call('storage.local.set', { ici: 1 });
   const syncAll = await call('storage.sync.get', null);
