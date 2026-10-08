@@ -80,6 +80,7 @@ cd orbe
 npm start        # lance le navigateur
 npm test         # tests de bout en bout (72 vérifications)
 npm run test:ui  # tests d'interface Playwright, souris et clavier réels (137 vérifications)
+# tests au clavier réel (prennent le clavier) : voir tests/natif/
 npm run build    # fabrique ~/.orbe-dev/dist/Orbe.app (-- --install pour /Applications)
 ```
 
