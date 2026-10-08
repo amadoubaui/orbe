@@ -6,6 +6,17 @@
 <title>Orbe</title>
 <link rel="stylesheet" href="base.css">
 <link rel="stylesheet" href="page.css">
+<style>
+/* Tableaux : une grille de vignettes. */
+.boards { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 14px; }
+.board { position: relative; padding: 0; overflow: hidden; }
+.board:hover { box-shadow: var(--active-shadow), 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent); }
+.board .thumb { height: 132px; display: grid; place-items: center; background: var(--pill); border-bottom: 0.5px solid var(--line); }
+.board .thumb img { max-width: 100%; max-height: 132px; display: block; }
+.board .meta { padding: 9px 12px 10px; }
+.board .del { position: absolute; top: 8px; right: 8px; opacity: 0; background: var(--panel); }
+.board:hover .del { opacity: 1; }
+</style>
 </head>
 <body>
 <main>
@@ -15,6 +26,7 @@
     <button data-tab="archive" data-t="lib.archive"></button>
     <button data-tab="downloads" data-t="lib.downloads"></button>
     <button data-tab="media" data-t="lib.media"></button>
+    <button data-tab="easels" data-t="lib.easels"></button>
     <span style="flex:1"></span>
     <button id="clear"></button>
   </div>

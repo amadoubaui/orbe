@@ -46,6 +46,11 @@ interface entièrement en français (anglais disponible dans les réglages).
   trousseau du système, import et export CSV (Safari / iCloud, Chrome). Le
   modèle de menace est dans [docs/mots-de-passe.md](docs/mots-de-passe.md).
 - **Notes** (⌃⌘N) et **médias** dans la bibliothèque.
+- **Tableaux** (⌃⇧E), les « Easels » d'Arc : un plan infini où poser textes,
+  images collées ou déposées, formes, flèches, traits et pense-bêtes ;
+  « Capturer vers un tableau » (⌥⇧⌘2) y envoie une zone de la page, avec un
+  lien vers sa source. Un fichier par tableau, images à part, listés dans la
+  bibliothèque. Pas encore de capture « vivante » ni de partage.
 - **Archive** : ⌘W archive l'onglet, ⇧⌘T le rouvre, les onglets inactifs sont
   archivés automatiquement (12 h par défaut).
 - **Petite fenêtre** (⌥⌘N), **navigation privée** (⇧⌘N), plusieurs fenêtres
@@ -78,6 +83,7 @@ Identiques à ceux d'Arc. La liste complète est dans l'application :
 | Petite fenêtre / navigation privée | ⌥⌘N / ⇧⌘N |
 | Historique / bibliothèque / téléchargements | ⌘Y / ⇧⌘L / ⇧⌘J |
 | Capturer la page | ⇧⌘2 |
+| Nouveau tableau / capturer vers un tableau | ⌃⇧E / ⌥⇧⌘2 |
 | Réglages | ⌘, |
 
 ## Lancer Orbe depuis les sources

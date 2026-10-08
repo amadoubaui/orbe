@@ -60,17 +60,17 @@ function build() {
     {
       label: t('menu.file'),
       submenu: [
-        item('newTab'), item('newWindow'), item('newIncognito'), item('newLittle'), item('newNote'), item('reopen'),
+        item('newTab'), item('newWindow'), item('newIncognito'), item('newLittle'), item('newNote'), item('newEasel'), item('reopen'),
         sep, item('commandBar'),
         sep, item('closeTab'), item('closeWindow'),
-        sep, item('capture'), item('captureFull'), item('savePage'), item('print'),
+        sep, item('capture'), item('captureFull'), item('captureToEasel'), item('savePage'), item('print'),
       ],
     },
     {
       label: t('menu.edit'),
       submenu: [
         item('undo'),
-        { label: t('edit.redo'), role: 'redo' },
+        item('redo'),
         sep,
         { label: t('edit.cut'), role: 'cut' },
         { label: t('edit.copy'), role: 'copy' },
@@ -179,7 +179,7 @@ function build() {
         },
         { label: t('window.minimize'), role: 'minimize' },
         { label: t('window.zoom'), role: 'zoom' },
-        sep, item('library'), item('downloads'), item('media'), item('notes'),
+        sep, item('library'), item('downloads'), item('media'), item('notes'), item('easels'),
         sep, { label: t('window.front'), role: 'front' },
       ],
     },

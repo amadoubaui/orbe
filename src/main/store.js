@@ -15,7 +15,7 @@ const SPACE_COLORS = ['#7c6cf0', '#3b82f6', '#06b6d4', '#10b981', '#84cc16', '#f
 const uid = () => crypto.randomBytes(6).toString('base64url');
 // Une icône « data: » volumineuse n'a pas sa place dans l'historique.
 const lightIcon = (u) => !!u && !(u.startsWith('data:') && u.length > 2048);
-const INTERNAL_PAGE = /^orbe:\/\/app\/(library|shortcuts|welcome|notes)\.html/;
+const INTERNAL_PAGE = /^orbe:\/\/app\/(library|shortcuts|welcome|notes|easel)\.html/;
 
 const DEFAULT_SETTINGS = {
   lang: 'fr',
