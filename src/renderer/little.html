@@ -12,12 +12,15 @@ body { background: color-mix(in srgb, color-mix(in srgb, var(--accent) var(--tin
 #u:focus { text-align: left; outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent); }
 #open { height: 28px; padding: 0 12px; border-radius: 8px; background: var(--accent); color: #fff; font-weight: 600; -webkit-app-region: no-drag; white-space: nowrap; }
 #open[disabled] { opacity: 0.4; }
+#open { border-radius: 8px 0 0 8px; margin-right: -7px; }
+#open-in { height: 28px; width: 24px; border-radius: 0 8px 8px 0; background: color-mix(in srgb, var(--accent) 82%, #000); color: #fff; -webkit-app-region: no-drag; }
 </style>
 </head>
 <body>
 <div id="bar">
   <input id="u" spellcheck="false" autocomplete="off" data-t-ph="cmd.placeholder">
   <button id="open" data-t="little.open"></button>
+  <button id="open-in" title="⌥⌘O">▾</button>
 </div>
 <script src="common.js"></script>
 <script src="little.js"></script>

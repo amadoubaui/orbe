@@ -1,6 +1,6 @@
 // Petite fenêtre (⌥⌘N) : une page seule, sans barre latérale, pour un coup
 // d'œil rapide. Un bouton l'envoie dans la fenêtre principale.
-const { BaseWindow, WebContentsView, clipboard } = require('electron');
+const { BaseWindow, WebContentsView, clipboard, Menu } = require('electron');
 const { store } = require('./store');
 const sessions = require('./sessions');
 const suggest = require('./suggest');
@@ -9,12 +9,14 @@ const { trusted, UI_PRELOAD, INTERNAL } = require('./window');
 const BAR = 42;
 const PAD = 6;
 const littles = new Map(); // id webContents de la barre -> LittleWindow
-const hooks = { openInOrbe: () => {} };
+const hooks = { openInOrbe: () => {}, profileId: () => 'default', spaces: () => [] };
 
 class LittleWindow {
   static ownerOf(wc) { return littles.get(wc.id) || null; }
 
   constructor(input) {
+    // Même profil (cookies, connexions) que l'Espace affiché à l'ouverture.
+    this.profileId = hooks.profileId();
     this.url = input ? suggest.resolve(input) : '';
     this.title = '';
     this.loading = false;
@@ -56,7 +58,7 @@ class LittleWindow {
     const url = suggest.resolve(input);
     this.url = url;
     if (!this.view) {
-      this.view = new WebContentsView({ webPreferences: { session: sessions.mainSession(), sandbox: true, contextIsolation: true } });
+      this.view = new WebContentsView({ webPreferences: { session: sessions.profileSession(this.profileId), sandbox: true, contextIsolation: true } });
       this.view.setBackgroundColor('#ffffff');
       this.view.setBorderRadius(9);
       this.win.contentView.addChildView(this.view);
@@ -82,6 +84,16 @@ class LittleWindow {
     this.ui.webContents.send('state', { lang: s.lang, appearance: s.appearance, url: this.url, title: this.title, loading: this.loading });
   }
 
+  // « Ouvrir dans… » : choix de l'Espace de destination (⌥⌘O dans Arc).
+  openInMenu() {
+    if (!this.url) return;
+    const items = hooks.spaces().map((sp) => ({
+      label: `${sp.icon}  ${sp.name}`,
+      click: () => { hooks.openInOrbe(this.url, sp.id); this.win.close(); },
+    }));
+    if (items.length) Menu.buildFromTemplate(items).popup({ window: this.win });
+  }
+
   openInOrbe() {
     if (!this.url) return;
     hooks.openInOrbe(this.url);
@@ -92,6 +104,7 @@ class LittleWindow {
     if (action === 'ready') return this.send();
     if (action === 'navigate') return this.load(String(a));
     if (action === 'openInOrbe') return this.openInOrbe();
+    if (action === 'openInMenu') return this.openInMenu();
     return undefined;
   }
 
@@ -112,6 +125,7 @@ class LittleWindow {
       case 'print': if (wc) wc.print(); return true;
       // Comme dans Arc : ⌘O envoie la page dans la fenêtre principale.
       case 'expandPeek': case 'togglePin': this.openInOrbe(); return true;
+      case 'openInSpace': this.openInMenu(); return true;
       default: return false;
     }
   }

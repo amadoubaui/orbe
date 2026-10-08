@@ -293,6 +293,7 @@ const fr = {
   'ctx.reload': 'Actualiser',
   'ctx.inspect': 'Inspecter',
 
+  'little.openIn': 'Ouvrir dans un Espace…',
   'little.open': 'Ouvrir dans Orbe',
   'err.title': 'Impossible d’ouvrir cette page',
   'err.retry': 'Réessayer',
@@ -574,6 +575,7 @@ const en = {
   'ctx.forward': 'Forward',
   'ctx.reload': 'Reload',
   'ctx.inspect': 'Inspect',
+  'little.openIn': 'Open in a Space…',
   'little.open': 'Open in Orbe',
   'err.title': 'This page can’t be opened',
   'err.retry': 'Try again',

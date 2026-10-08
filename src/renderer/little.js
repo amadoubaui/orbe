@@ -18,5 +18,6 @@ u.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') u.blur();
 });
 open.onclick = () => O.send('openInOrbe');
+document.getElementById('open-in').onclick = () => O.send('openInMenu');
 O.send('ready');
 if (!url) u.focus();

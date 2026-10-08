@@ -313,7 +313,16 @@ app.whenReady().then(async () => {
   commands.hooks.settingsChanged = broadcastSettings;
   win.hooks.openLittle = (url) => new little.LittleWindow(url);
   win.hooks.changed = () => menu.refresh();
-  little.hooks.openInOrbe = (url) => { openUrl.direct = true; try { openUrl(url); } finally { openUrl.direct = false; } };
+  little.hooks.openInOrbe = (url, spaceId) => {
+    openUrl.direct = true;
+    try {
+      const w = OrbeWindow.primary;
+      if (w && spaceId) w.switchSpace(spaceId);
+      openUrl(url);
+    } finally { openUrl.direct = false; }
+  };
+  little.hooks.profileId = () => { const w = OrbeWindow.primary; return w ? w.space.profileId : 'default'; };
+  little.hooks.spaces = () => store.state.spaces.map((sp) => ({ id: sp.id, name: sp.name, icon: sp.icon }));
   sessions.hooks.ownerWindow = (wc) => { const o = wc && OrbeWindow.ownerOf(wc); return o ? o.win : null; };
   sessions.hooks.onDownload = (phase, d, wc) => {
     const owner = (wc && OrbeWindow.ownerOf(wc)) || OrbeWindow.primary;

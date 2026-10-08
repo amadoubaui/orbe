@@ -148,6 +148,7 @@ function build() {
         item('newFolder'),
         item('duplicate'),
         item('expandPeek', { enabled: !!w && !!w.peekState }),
+        item('openInSpace', { visible: false, acceleratorWorksWhenHidden: true }),
         item('toggleMute', { labelKey: tab && tab.muted ? 'tabs.unmute' : 'tabs.mute' }),
         sep, item('nextTab'), item('prevTab'),
         sep, item('clearToday'),

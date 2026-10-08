@@ -60,6 +60,7 @@ const COMMANDS = [
   // Onglets
   { name: 'togglePin', label: 'tabs.pin', accel: 'Cmd+D', keys: '⌘D', run: (w) => w.togglePin() },
   { name: 'newFolder', label: 'tabs.newFolder', run: (w) => w.newFolder() },
+  { name: 'openInSpace', label: 'little.openIn', accel: 'Alt+Cmd+O', keys: '⌥⌘O', palette: false, run: () => {} },
   { name: 'expandPeek', label: 'peek.expand', accel: 'Cmd+O', keys: '⌘O', palette: false, run: (w) => w.expandPeek() },
   { name: 'nextTab', label: 'tabs.next', accel: 'Alt+Cmd+Down', keys: '⌥⌘↓', run: (w) => w.stepTab(1) },
   { name: 'prevTab', label: 'tabs.prev', accel: 'Alt+Cmd+Up', keys: '⌥⌘↑', run: (w) => w.stepTab(-1) },
