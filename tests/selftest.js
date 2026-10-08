@@ -399,6 +399,13 @@ module.exports = async function selftest({ first: w, OrbeWindow, store, win, lit
     await shot('win-barre-outils');
     commands.setSetting('showToolbar', false);
     await until(() => ui('!document.body.classList.contains("toolbar")'), 'barre d’outils masquée');
+    // Thème sombre : capture seulement (symboles clairs des boutons de fenêtre).
+    if (shots) {
+      commands.setSetting('appearance', 'dark');
+      await until(() => ui('matchMedia("(prefers-color-scheme: dark)").matches'), 'interface en sombre');
+      await shot('win-sombre');
+      commands.setSetting('appearance', 'auto');
+    }
   }
 
   // Téléchargement
