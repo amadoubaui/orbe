@@ -56,7 +56,19 @@ class Store {
     }
     // Copie de secours : une fois par lancement, à partir d'un fichier lisible.
     if (raw) { try { fs.copyFileSync(this.file, this.file + '.bak'); } catch {} }
+    // L'historique vit dans son propre fichier : il est gros et change à chaque
+    // page, alors que l'état (onglets, Espaces) est petit et s'écrit souvent.
+    this.historyFile = path.join(dir, 'history.json');
+    if (raw && raw.history && Object.keys(raw.history).length) this.historyDirty = true; // ancien format : à déplacer
+    else {
+      let h = null;
+      try { h = JSON.parse(fs.readFileSync(this.historyFile, 'utf8')); } catch {
+        try { h = JSON.parse(fs.readFileSync(this.historyFile + '.bak', 'utf8')); } catch {}
+      }
+      if (h && typeof h === 'object') { raw = raw || {}; raw.history = h; try { fs.copyFileSync(this.historyFile, this.historyFile + '.bak'); } catch {} }
+    }
     this.state = this.normalize(raw || {});
+    if (this.historyDirty) this.saveHistory();
     return this.state;
   }
 
@@ -75,7 +87,10 @@ class Store {
     for (const id of Object.keys(s.favs)) if (!profileIds.has(id)) delete s.favs[id];
     for (const id of profileIds) s.favs[id] = (s.favs[id] || []).filter((tid) => s.tabs[tid] && !favSeen.has(tid) && favSeen.add(tid));
     s.archive = s.archive || [];
-    s.history = s.history || {};
+    // Non énumérable : JSON.stringify(état) ne l'emporte pas dans orbe.json.
+    const history = s.history && typeof s.history === 'object' ? s.history : {};
+    delete s.history;
+    Object.defineProperty(s, 'history', { value: history, writable: true, enumerable: false, configurable: true });
     s.downloads = s.downloads || [];
     // Un téléchargement interrompu par la fermeture ne reprendra pas.
     for (const d of s.downloads) if (d.state === 'progressing') d.state = 'interrupted';
@@ -145,9 +160,45 @@ class Store {
     if (this.dirty) { this.dirty = false; this.save(); }
   }
 
+  // Historique : écrit à part, rarement (20 s après la dernière visite, ou tout
+  // de suite avec `now`), sans jamais bloquer une écriture de l'état.
+  saveHistory(now = false) {
+    if (!this.historyFile) return;
+    this.historyDirty = true;
+    if (this.historyTimer) { if (!now) return; clearTimeout(this.historyTimer); }
+    this.historyTimer = setTimeout(() => { this.historyTimer = null; this.writeHistory(); }, now ? 0 : 20000);
+    if (this.historyTimer.unref) this.historyTimer.unref();
+  }
+
+  async writeHistory() {
+    if (this.historyWriting) { this.historyAgain = true; return; }
+    this.historyWriting = true;
+    this.historyDirty = false;
+    const tmp = this.historyFile + '.tmp';
+    try {
+      await fs.promises.writeFile(tmp, JSON.stringify(this.state.history));
+      await fs.promises.rename(tmp, this.historyFile);
+    } catch (err) {
+      this.historyDirty = true;
+      console.error('[orbe] historique : sauvegarde impossible', err);
+    }
+    this.historyWriting = false;
+    if (this.historyAgain) { this.historyAgain = false; this.saveHistory(); }
+  }
+
   // Écriture immédiate, à la fermeture de l'application.
   flush() {
     if (!this.file) return;
+    if (this.historyTimer) { clearTimeout(this.historyTimer); this.historyTimer = null; }
+    if (this.historyDirty && this.historyFile) {
+      try {
+        fs.writeFileSync(this.historyFile + '.sync.tmp', JSON.stringify(this.state.history));
+        fs.renameSync(this.historyFile + '.sync.tmp', this.historyFile);
+        this.historyDirty = false;
+      } catch (err) {
+        console.error('[orbe] historique : sauvegarde impossible', err);
+      }
+    }
     if (this.timer) { clearTimeout(this.timer); this.timer = null; }
     this.dirty = false;
     const tmp = this.file + '.sync.tmp';
@@ -176,7 +227,7 @@ class Store {
       this.state.history = Object.fromEntries(all.map((x) => [x.url, x]));
       this.historyCount = all.length;
     }
-    this.save();
+    this.saveHistory();
   }
 
   touchHistory(url, patch) {
@@ -184,7 +235,7 @@ class Store {
     if (!e) return;
     if (patch.title) e.title = String(patch.title).slice(0, 300);
     if (lightIcon(patch.favicon)) e.favicon = patch.favicon;
-    this.save(true);
+    this.saveHistory();
   }
 
   archive(entry) {

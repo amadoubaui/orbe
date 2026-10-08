@@ -215,7 +215,7 @@ async function globalAction(action, a, sender) {
       };
     }
     case 'lib:clear':
-      if (a === 'history') { s.history = {}; store.historyCount = 0; }
+      if (a === 'history') { s.history = {}; store.historyCount = 0; store.saveHistory(true); }
       if (a === 'archive') s.archive = [];
       if (a === 'downloads') s.downloads = s.downloads.filter((d) => d.state === 'progressing');
       store.save();
@@ -310,6 +310,7 @@ async function globalAction(action, a, sender) {
         await ses.clearCache();
       }
       s.history = {};
+      store.saveHistory(true);
       store.historyCount = 0;
       store.save();
       return true;

@@ -660,6 +660,16 @@ module.exports = async function selftest(ctx) {
   w.remember();
   store.flush();
   const saved = JSON.parse(fs.readFileSync(store.file, 'utf8'));
+  const histFile = path.join(path.dirname(store.file), 'history.json');
+  check('historique enregistré dans son propre fichier, hors de l’état', fs.existsSync(histFile) && Object.keys(JSON.parse(fs.readFileSync(histFile, 'utf8'))).length === Object.keys(store.state.history).length && !('history' in JSON.parse(fs.readFileSync(store.file, 'utf8'))));
+  // Ancien format (historique dans orbe.json) : repris tel quel au chargement.
+  const { Store: StoreClass } = { Store: store.constructor };
+  const old = new StoreClass();
+  const oldDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'orbe-ancien-'));
+  fs.writeFileSync(path.join(oldDir, 'orbe.json'), JSON.stringify({ history: { 'https://exemple.org/': { url: 'https://exemple.org/', visits: 3, last: 1 } } }));
+  old.load(oldDir);
+  old.flush();
+  check('ancien fichier : l’historique est déplacé sans perte', old.state.history['https://exemple.org/'].visits === 3 && JSON.parse(fs.readFileSync(path.join(oldDir, 'history.json'), 'utf8'))['https://exemple.org/'].visits === 3 && !('history' in JSON.parse(fs.readFileSync(path.join(oldDir, 'orbe.json'), 'utf8'))));
   check('état enregistré sur disque', saved.spaces.length === 2 && Object.keys(saved.tabs).length === Object.keys(tabs()).length && saved.window.spaceId === w.spaceId);
 
   server.close();

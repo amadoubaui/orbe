@@ -445,7 +445,7 @@ navigation active — le double en comptant la copie `.bak` refaite à chaque é
 
 ### Points
 
-- ⬜ **PERF-1 — Historique dans son propre fichier, en journal d'ajouts.**
+- ✅ **PERF-1 — Historique dans son propre fichier, en journal d'ajouts.** *(fait le 8 oct. : history.json à part, écrit au plus toutes les 20 s)*
   *Problème* : voir ci-dessus ; l'historique fait 90 % du fichier et change à chaque page.
   *Changement* (`store.js`) :
   1. `orbe.json` ne contient plus `history` (ni, dans un second temps, `archive`).
