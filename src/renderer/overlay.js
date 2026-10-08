@@ -238,7 +238,12 @@ $('backdrop').addEventListener('mousedown', () => {
   if (mode === 'command' || mode === 'theme') send('closeOverlay');
   else if (mode === 'peek') send('peekClose');
 });
+// Bascule d'onglets : Tab ne déplace pas le focus, relâcher ⌃ valide.
+document.addEventListener('keyup', (e) => {
+  if (mode === 'switcher' && e.key === 'Control') send('switcherCommit');
+});
 document.addEventListener('keydown', (e) => {
+  if (mode === 'switcher' && e.key === 'Tab') e.preventDefault();
   if (e.key !== 'Escape') return;
   if (mode === 'find') send('findClose');
   else if (mode === 'peek') send('peekClose');

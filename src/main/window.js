@@ -180,7 +180,7 @@ class OrbeWindow {
     const wc = view.webContents;
     trusted.add(wc);
     wcOwner.set(wc.id, this);
-    wc.on('before-input-event', (e, input) => this.onInput(e, input));
+    wc.on('before-input-event', (e, input) => this.onInput(e, input, true));
     wc.on('will-navigate', (e) => e.preventDefault());
     wc.setWindowOpenHandler(() => ({ action: 'deny' }));
     wc.loadURL(INTERNAL + page);
@@ -638,7 +638,7 @@ class OrbeWindow {
   }
 
   focusContent() {
-    if (this.modalMode && this.modalMode !== 'switcher') return this.modal.webContents.focus();
+    if (this.modalMode) return this.modal.webContents.focus();
     if (this.peekState) return this.peekState.view.webContents.focus();
     const wc = this.activeWc;
     if (wc) wc.focus();
@@ -1125,13 +1125,15 @@ class OrbeWindow {
 
   // --- Vues flottantes ------------------------------------------------------
   showModal(mode, payload, focus = true) {
+    const shown = !!this.modalMode;
     this.modalMode = mode;
     const [W, H] = this.win.getContentSize();
-    this.win.contentView.addChildView(this.modal); // repasse au premier plan
+    // Déjà affichée : ne pas la rattacher, cela lui ferait perdre le clavier.
+    if (!shown) this.win.contentView.addChildView(this.modal); // repasse au premier plan
     this.modal.setBounds({ x: 0, y: 0, width: W, height: H });
     this.modal.setVisible(true);
     this.modal.webContents.send('overlay', { mode, ...payload });
-    if (focus) this.modal.webContents.focus();
+    if (focus && !(shown && this.modal.webContents.isFocused())) this.modal.webContents.focus();
   }
 
   hideModal() {
@@ -1229,7 +1231,9 @@ class OrbeWindow {
       const tab = this.data.tabs[id];
       return { id, title: tab.customTitle || tab.title || suggest.strip(tab.url), favicon: this.incognito ? '' : tab.favicon };
     });
-    this.showModal('switcher', { items, index: s.index }, false);
+    // La vue de la bascule prend le clavier : c'est elle qui verra le
+    // relâchement de ⌃ (remettre une vue au premier plan retire le clavier à la page).
+    this.showModal('switcher', { items, index: s.index }, true);
   }
 
   switcherCommit() {
@@ -1240,9 +1244,11 @@ class OrbeWindow {
     if (id) this.activate(id);
   }
 
-  onInput(e, input) {
+  onInput(e, input, fromUi) {
     if (input.type === 'keyDown' && input.key === 'Tab' && input.control && !input.meta && !input.alt) {
-      e.preventDefault();
+      // Dans une vue de l'interface, on laisse passer la touche : la bloquer ici
+      // ferait aussi disparaître le relâchement de ⌃ qui valide la bascule.
+      if (!fromUi) e.preventDefault();
       this.switcherStep(input.shift ? -1 : 1);
     } else if (input.type === 'keyUp' && input.key === 'Control' && this.switcher) {
       this.switcherCommit();
@@ -1725,6 +1731,7 @@ class OrbeWindow {
       case 'suggest': return this.suggest(String(a || ''));
       case 'run': return this.runItem(a.item, { background: !!a.background });
       case 'closeOverlay': return this.hideModal();
+      case 'switcherCommit': return this.switcherCommit();
       case 'find': return this.find(String(a.text || ''), a);
       case 'findClose': return this.closeFind();
       case 'theme': return this.setTheme(a);
