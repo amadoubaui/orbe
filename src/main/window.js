@@ -1657,7 +1657,7 @@ class OrbeWindow {
     let actions = [];
     try { actions = require('./ext-host').actionsFor(this) || []; } catch {}
     const extItems = actions.map((x) => ({
-      label: x.badge ? `${x.title}  (${x.badge})` : x.title,
+      label: x.badgeText ? `${x.title}  (${x.badgeText})` : x.title,
       enabled: x.enabled !== false,
       click: () => require('./ext-host').openPopup(this, x.id, { x: 12, y: 86 }),
     }));
@@ -1913,6 +1913,10 @@ class OrbeWindow {
         blocked: wc && settings.adblock ? (adblock.stats().blockedByTab.get(wc.id) || 0) : 0,
         shield: !settings.adblock ? 'off' : (tab && adblock.isSiteAllowed(tab.url) ? 'allowed' : 'on'),
       },
+      // Boutons des extensions, sous l'adresse.
+      extensions: (() => {
+        try { return (require('./ext-host').actionsFor(this) || []).map((x) => ({ id: x.id, title: x.title, icon: typeof x.icon === 'string' ? x.icon : '', badge: x.badgeText, badgeColor: x.badgeColor, badgeTextColor: x.badgeTextColor, enabled: x.enabled })); } catch { return []; }
+      })(),
       dividers: (() => {
         const ids = this.visibleIds();
         if (ids.length < 2 || this.htmlFullscreen) return [];

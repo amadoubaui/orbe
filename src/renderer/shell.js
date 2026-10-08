@@ -185,6 +185,30 @@ function render(s) {
       : '';
   }
 
+  // Boutons des extensions : icône, pastille, clic = fenêtre de l'extension.
+  const exts = $('exts');
+  const extSig = JSON.stringify(s.extensions || []);
+  if (exts._sig !== extSig) {
+    exts._sig = extSig;
+    exts.textContent = '';
+    for (const x of s.extensions || []) {
+      const b = document.createElement('button');
+      b.className = 'ext' + (x.enabled === false ? ' off' : '');
+      b.title = x.title;
+      b.dataset.ext = x.id;
+      b.appendChild(/^data:image\//.test(x.icon) ? Object.assign(document.createElement('img'), { src: x.icon, draggable: false }) : letterIcon(x.title));
+      if (x.badge) {
+        const badge = document.createElement('span');
+        badge.className = 'badge';
+        badge.textContent = String(x.badge).slice(0, 4);
+        badge.style.background = x.badgeColor || '';
+        badge.style.color = x.badgeTextColor || '';
+        b.appendChild(badge);
+      }
+      exts.appendChild(b);
+    }
+  }
+
   const media = $('media');
   media.hidden = !s.media;
   if (s.media) {
@@ -320,6 +344,12 @@ sidebar.addEventListener('contextmenu', (e) => {
 $('media-open').onclick = () => S && S.media && send('activate', S.media.id);
 $('media-play').onclick = () => send('mediaToggle');
 $('media-mute').onclick = () => S && S.media && send('toggleMute', S.media.id);
+$('exts').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-ext]');
+  if (!b) return;
+  const r = b.getBoundingClientRect();
+  send('ext:popup', { id: b.dataset.ext, x: Math.round(r.left), y: Math.round(r.bottom + 6) });
+});
 $('b-sidebar').onclick = () => send('toggleSidebar');
 $('b-menu').onclick = () => send('command', 'appMenu');
 $('url').onclick = () => send('openCommand', 'edit');

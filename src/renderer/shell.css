@@ -394,3 +394,12 @@ html.win body:not(.toolbar):not(.fullscreen) #empty { top: 32px; }
 
 .divider.v { width: auto; height: 8px; cursor: row-resize; }
 .divider.v::after { width: 34px; height: 3px; }
+
+/* Boutons des extensions, sous l'adresse. */
+#exts { display: flex; flex-wrap: wrap; gap: 4px; flex: none; }
+#exts:not(:empty) { margin-top: 6px; }
+.ext { width: 30px; height: 28px; border-radius: 8px; display: grid; place-items: center; position: relative; transition: background 120ms; }
+.ext:hover { background: var(--hover); }
+.ext img { width: 16px; height: 16px; }
+.ext.off { opacity: 0.45; }
+.ext .badge { position: absolute; right: 0; bottom: 0; min-width: 12px; padding: 0 3px; border-radius: 6px; font-size: 8.5px; font-weight: 700; line-height: 12px; }
