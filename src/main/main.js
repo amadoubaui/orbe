@@ -185,6 +185,9 @@ async function globalAction(action, a, sender) {
           .map((h) => ({ url: h.url, title: h.title || h.url, favicon: h.favicon || '', at: h.last })),
         archive: s.archive.filter(match).slice(0, 400),
         downloads: s.downloads.filter(match).slice(0, 200).map((d) => ({ ...d, exists: d.state === 'completed' && fs.existsSync(d.path) })),
+        // Médias : images, vidéos et sons téléchargés, plus les captures d'Orbe.
+        media: s.downloads.filter((d) => d.state === 'completed' && /\.(png|jpe?g|gif|webp|avif|svg|mp4|mov|webm|mp3|wav|m4a)$/i.test(d.name) && match(d)).slice(0, 200)
+          .map((d) => ({ ...d, exists: fs.existsSync(d.path) })).filter((d) => d.exists),
       };
     }
     case 'lib:clear':
@@ -203,6 +206,21 @@ async function globalAction(action, a, sender) {
       if (d) shell.openPath(d.path);
       return true;
     }
+    case 'notes:list':
+      return s.notes.slice().sort((x, y) => y.at - x.at);
+    case 'notes:save': {
+      const text = String((a && a.text) || '').slice(0, 200000);
+      let note = s.notes.find((n) => n.id === (a && a.id));
+      if (!note) { note = { id: require('./store').uid(), text: '', at: Date.now() }; s.notes.push(note); }
+      note.text = text;
+      note.at = Date.now();
+      store.save();
+      return note;
+    }
+    case 'notes:delete':
+      s.notes = s.notes.filter((n) => n.id !== a);
+      store.save();
+      return true;
     case 'ext:list':
       return extensionList();
     case 'ext:install': {
@@ -284,7 +302,7 @@ function setupIpc() {
     if (!ok(e) || typeof action !== 'string') return undefined;
     if (action.startsWith('boost:')) return boostAction(action, payload);
     if (action === 'welcome:info') return { arc: require('./import-arc').available() };
-    if (/^(lib|settings|shortcuts|ext):/.test(action)) return globalAction(action, payload, e.sender);
+    if (/^(lib|settings|shortcuts|ext|notes):/.test(action)) return globalAction(action, payload, e.sender);
     const owner = OrbeWindow.ownerOf(e.sender) || little.LittleWindow.ownerOf(e.sender) || OrbeWindow.primary;
     return owner ? owner.handle(action, payload) : undefined;
   });

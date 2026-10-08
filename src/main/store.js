@@ -15,7 +15,7 @@ const SPACE_COLORS = ['#7c6cf0', '#3b82f6', '#06b6d4', '#10b981', '#84cc16', '#f
 const uid = () => crypto.randomBytes(6).toString('base64url');
 // Une icône « data: » volumineuse n'a pas sa place dans l'historique.
 const lightIcon = (u) => !!u && !(u.startsWith('data:') && u.length > 2048);
-const INTERNAL_PAGE = /^orbe:\/\/app\/(library|shortcuts|welcome)\.html/;
+const INTERNAL_PAGE = /^orbe:\/\/app\/(library|shortcuts|welcome|notes)\.html/;
 
 const DEFAULT_SETTINGS = {
   lang: 'fr',
@@ -78,6 +78,7 @@ class Store {
     if (from < 2) for (const tab of Object.values(s.tabs)) if (INTERNAL_PAGE.test(tab.url || '')) tab.internal = true;
     s.permissions = s.permissions || {};
     s.boosts = s.boosts || {};
+    s.notes = Array.isArray(s.notes) ? s.notes : [];
     s.window = s.window || {};
     if (!Array.isArray(s.spaces) || !s.spaces.length) {
       s.spaces = [this.makeSpace(this.t('spaces.firstName', s.settings.lang), '🏠', SPACE_COLORS[0])];

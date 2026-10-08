@@ -71,6 +71,9 @@ const COMMANDS = [
   // Archive
   { name: 'back', label: 'archive.back', accel: 'Cmd+[', keys: '⌘[', palette: false, run: (w) => wc(w) && wc(w).navigationHistory.goBack() },
   { name: 'forward', label: 'archive.forward', accel: 'Cmd+]', keys: '⌘]', palette: false, run: (w) => wc(w) && wc(w).navigationHistory.goForward() },
+  { name: 'newNote', label: 'notes.new', accel: 'Ctrl+Cmd+N', keys: '⌃⌘N', run: (w) => w.openInternal('notes.html#new') },
+  { name: 'notes', label: 'notes.title', run: (w) => w.openInternal('notes.html') },
+  { name: 'media', label: 'lib.media', run: (w) => w.openInternal('library.html#media') },
   { name: 'history', label: 'archive.history', accel: 'Cmd+Y', keys: '⌘Y', run: (w) => w.openInternal('library.html#history') },
   { name: 'viewArchive', label: 'archive.view', run: (w) => w.openInternal('library.html#archive') },
   { name: 'clearArchive', label: 'archive.clear', palette: false, run: () => { store.state.archive = []; store.save(); } },

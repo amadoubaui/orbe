@@ -59,7 +59,7 @@ function build() {
     {
       label: t('menu.file'),
       submenu: [
-        item('newTab'), item('newWindow'), item('newIncognito'), item('newLittle'), item('reopen'),
+        item('newTab'), item('newWindow'), item('newIncognito'), item('newLittle'), item('newNote'), item('reopen'),
         sep, item('commandBar'),
         sep, item('closeTab'), item('closeWindow'),
         sep, item('capture'), item('captureFull'), item('savePage'), item('print'),
@@ -178,7 +178,7 @@ function build() {
         },
         { label: t('window.minimize'), role: 'minimize' },
         { label: t('window.zoom'), role: 'zoom' },
-        sep, item('library'), item('downloads'),
+        sep, item('library'), item('downloads'), item('media'), item('notes'),
         sep, { label: t('window.front'), role: 'front' },
       ],
     },

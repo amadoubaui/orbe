@@ -31,7 +31,7 @@ const t = (key, vars) => store.t(key, null, vars);
 const isInternal = (url) => (url || '').startsWith(INTERNAL);
 const isErrorPage = (url) => (url || '').startsWith(INTERNAL + 'error.html');
 // Pages internes pouvant s'ouvrir dans un onglet, avec accès à l'interface.
-const INTERNAL_PAGES = new Set(['library.html', 'shortcuts.html', 'welcome.html']);
+const INTERNAL_PAGES = new Set(['library.html', 'shortcuts.html', 'welcome.html', 'notes.html']);
 // Adresse fournie par une page web (lien, image, glisser-déposer) : seuls
 // http et https sont acceptés, jamais file:, orbe: ou chrome:.
 const webUrl = (u) => (/^https?:\/\//i.test(u || '') ? u : null);

@@ -463,6 +463,17 @@ module.exports = async function selftest({ first: w, OrbeWindow, store, win, lit
   if (shots) fs.writeFileSync(path.join(shots, 'reglages.png'), (await sw2.webContents.capturePage()).toPNG());
   sw2.close();
 
+  // Notes
+  w.run('newNote');
+  const noteTab = w.activeId;
+  const nwc = win.live.get(noteTab).wc;
+  await until(() => store.state.notes.length === 1 && nwc.executeJavaScript('document.querySelectorAll("#items .note").length === 1'), 'note créée');
+  await nwc.executeJavaScript(`(() => { const e = document.getElementById('editor'); e.textContent = 'Idées pour Orbe'; e.dispatchEvent(new InputEvent('input')); })()`);
+  await until(() => store.state.notes[0].text.startsWith('Idées pour Orbe'), 'note enregistrée');
+  check('⌃⌘N crée une note, enregistrée au fil de la frappe', tabs()[noteTab].internal === true);
+  w.close(noteTab);
+  w.activate(a.id);
+
   // Page d'accueil
   const wel = w.openInternal('welcome.html');
   await until(() => win.live.get(wel.id).wc.executeJavaScript('document.querySelector("h1").textContent === "Bienvenue dans Orbe" && document.querySelectorAll("[data-cmd]").length >= 3'), 'page d’accueil');

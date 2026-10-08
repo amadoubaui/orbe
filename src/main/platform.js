@@ -25,6 +25,7 @@ const WIN_ACCEL = {
   'Ctrl+Cmd+F': 'F11', // Plein écran
   'Shift+Cmd+2': 'Alt+Shift+2', // Capture (Ctrl+Shift+2 vise le volet 2)
   'Ctrl+Shift+Cmd+C': 'Alt+Shift+C', // Copier en citation
+  'Ctrl+Cmd+N': 'Alt+Shift+N', // Nouvelle note (Ctrl+N ouvre une fenêtre)
   // ⌃1…⌃9 change d'Espace sur macOS ; Ctrl+1…9 vise les onglets sous Windows.
   ...Object.fromEntries([1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => [`Ctrl+${n}`, `Alt+${n}`])),
 };

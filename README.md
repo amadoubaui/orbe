@@ -40,6 +40,7 @@ interface entièrement en français (anglais disponible dans les réglages).
   Store, signature vérifiée (Réglages → Extensions). Seules les extensions
   simples fonctionnent, et en partie.
 - **Boosts** : CSS personnalisé par site et « Zap » pour masquer un élément.
+- **Notes** (⌃⌘N) et **médias** dans la bibliothèque.
 - **Archive** : ⌘W archive l'onglet, ⇧⌘T le rouvre, les onglets inactifs sont
   archivés automatiquement (12 h par défaut).
 - **Petite fenêtre** (⌥⌘N), **navigation privée** (⇧⌘N), plusieurs fenêtres
@@ -82,7 +83,7 @@ Il faut [Node.js](https://nodejs.org) 20 ou plus récent.
 git clone https://github.com/amadoubaui/orbe.git
 cd orbe
 npm start        # lance le navigateur
-npm test         # tests de bout en bout (84 vérifications)
+npm test         # tests de bout en bout (85 vérifications)
 npm run test:ui  # tests d'interface Playwright, souris et clavier réels (138 vérifications)
 # tests au clavier réel (prennent le clavier) : voir tests/natif/
 npm run build    # fabrique ~/.orbe-dev/dist/Orbe.app (-- --install pour /Applications)

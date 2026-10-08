@@ -1,6 +1,6 @@
 // Bibliothèque : historique, archive des onglets fermés, téléchargements.
-const KINDS = ['history', 'archive', 'downloads'];
-const CLEAR = { history: 'lib.clearHistory', archive: 'lib.clearArchive', downloads: 'lib.clearDownloads' };
+const KINDS = ['history', 'archive', 'downloads', 'media'];
+const CLEAR = { history: 'lib.clearHistory', archive: 'lib.clearArchive', downloads: 'lib.clearDownloads', media: 'lib.clearDownloads' };
 const list = document.getElementById('list');
 const q = document.getElementById('q');
 let kind = KINDS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'history';
@@ -48,11 +48,12 @@ function draw() {
       list.append(h, card);
     }
     const line = document.createElement('div');
-    line.className = 'line' + (kind === 'downloads' ? '' : ' click');
+    const files = kind === 'downloads' || kind === 'media';
+    line.className = 'line' + (files ? '' : ' click');
     line.dataset.i = i;
     const body = document.createElement('div');
     body.className = 'grow';
-    if (kind === 'downloads') {
+    if (files) {
       const pct = r.total ? Math.round((r.received / r.total) * 100) : 0;
       const status = r.state === 'progressing' ? `${t('lib.inProgress')} — ${pct} %` : (r.state === 'completed' ? size(r.total || r.received) : t('lib.failed'));
       body.innerHTML = `<div class="name">${esc(r.name)}</div><div class="sub">${esc(status)} · ${esc(host(r.url))}</div>`
@@ -87,14 +88,14 @@ document.querySelector('.tabs').addEventListener('click', (e) => {
   history.replaceState(null, '', '#' + kind);
   load();
 });
-document.getElementById('clear').onclick = async () => { await O.send('lib:clear', kind); load(); };
+document.getElementById('clear').onclick = async () => { await O.send('lib:clear', kind === 'media' ? 'downloads' : kind); load(); };
 q.addEventListener('input', load);
 list.addEventListener('click', (e) => {
   const line = e.target.closest('.line');
   if (!line) return;
   const r = rows[Number(line.dataset.i)];
   const act = e.target.closest('[data-do]');
-  if (kind === 'downloads') {
+  if (kind === 'downloads' || kind === 'media') {
     if (act) O.send(act.dataset.do === 'open' ? 'lib:openFile' : 'lib:reveal', r.id);
   } else O.send('open', r.url);
 });
