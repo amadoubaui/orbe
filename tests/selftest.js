@@ -267,12 +267,13 @@ module.exports = async function selftest(ctx) {
     await sleep(100);
     w.toggleSidebar(true);
     w.win.setContentSize(cw - 60, ch);
-    await until(() => w.win.getContentSize()[0] === cw - 60, 'fenêtre rétrécie');
+    await until(() => w.win.getContentSize()[0] !== cw, 'fenêtre rétrécie');
     await sleep(350);
-    check('fenêtre redimensionnée pendant le retour de la barre : la page suit', same(view().getBounds(), pane()) && pane().width === docked.width - 60);
+    const narrow = w.win.getContentSize()[0];
+    check('fenêtre redimensionnée pendant le retour de la barre : la page suit', narrow < cw && same(view().getBounds(), pane()) && pane().width === docked.width - (cw - narrow));
     w.win.setContentSize(cw, ch);
     await until(() => w.win.getContentSize()[0] === cw, 'fenêtre rétablie');
-    await sleep(120);
+    await sleep(350);
     // Vue scindée : les deux volets glissent ensemble
     const solo = w.activeId;
     const mate = w.orderedIds().find((x) => x !== solo);
@@ -375,12 +376,13 @@ module.exports = async function selftest(ctx) {
     const same = (r1, r2) => r1.x === r2.x && r1.y === r2.y && r1.width === r2.width && r1.height === r2.height;
     const kids = () => w.win.contentView.children;
     const final = w.peekRect();
-    const inside = (r) => r.x >= final.x && r.y >= final.y && r.x + r.width <= final.x + final.width && r.y + r.height <= final.y + final.height;
-    const point = { x: final.x + 40, y: final.y + final.height - 30 };
+    const zone = w.contentRect();
+    const inside = (r) => r.x >= zone.x && r.y >= zone.y && r.x + r.width <= zone.x + zone.width && r.y + r.height <= zone.y + zone.height;
+    const point = { x: final.x + 240, y: final.y + final.height - 30 };
     const seed = w.peekSeed(final, point);
     const centre = w.peekSeed(final, null);
-    check('aperçu : départ autour du lien cliqué, ou du centre à défaut',
-      inside(seed) && seed.width < final.width / 2 && seed.x === final.x && seed.y + seed.height === final.y + final.height
+    check('aperçu : départ autour du lien cliqué (sans sortir de la zone des pages), ou du centre à défaut',
+      inside(seed) && seed.width < final.width / 2 && Math.abs(seed.x + seed.width / 2 - point.x) <= 1 && seed.y + seed.height === zone.y + zone.height
       && inside(centre) && Math.abs((centre.x + centre.width / 2) - (final.x + final.width / 2)) <= 1 && centre.width > final.width * 0.9);
     const v1 = w.openPeek(base + '/b', a.id, undefined, point);
     await until(() => w.peekState && w.peekState.title === 'Page B', 'aperçu animé ouvert');

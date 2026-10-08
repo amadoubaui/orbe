@@ -1271,17 +1271,18 @@ class OrbeWindow {
     return { x: rect.x + m, y: rect.y + 16, width: Math.max(200, rect.width - 2 * m), height: Math.max(120, rect.height - 16) };
   }
 
-  // Rectangle de départ (et de retour) : une petite carte autour du point cliqué,
-  // ou la carte à peine réduite, centrée, quand ce point n'est pas connu.
-  peekSeed(final, point) {
+  // Rectangle de départ (et de retour) : une petite carte autour du point cliqué
+  // (sans sortir de la zone des pages), ou la carte à peine réduite, centrée,
+  // quand ce point n'est pas connu.
+  peekSeed(final, point, zone = this.contentRect()) {
     const k = point ? 0.3 : 0.94;
     const width = Math.round(final.width * k);
     const height = Math.round(final.height * k);
     const cx = point ? point.x : final.x + final.width / 2;
     const cy = point ? point.y : final.y + final.height / 2;
     return {
-      x: clamp(Math.round(cx - width / 2), final.x, final.x + final.width - width),
-      y: clamp(Math.round(cy - height / 2), final.y, final.y + final.height - height),
+      x: clamp(Math.round(cx - width / 2), zone.x, Math.max(zone.x, zone.x + zone.width - width)),
+      y: clamp(Math.round(cy - height / 2), zone.y, Math.max(zone.y, zone.y + zone.height - height)),
       width,
       height,
     };
