@@ -601,7 +601,7 @@ Orbe : une seule page de réglages (`settings.html`), sans volets. Test : self �
 | REG-17 | Profiles → Privacy and Security, mots de passe, cartes, Clear Browsing Data | binaire | 🟡 | volet Confidentialité : mots de passe, effacement des données, autorisations des sites | Pas de cartes bancaires |
 | REG-18 | Max → toutes les fonctions d'IA | binaire | ➖ | | Écarté |
 | REG-19 | Links → Air Traffic Control | binaire | ✅ | self « aiguillage » | |
-| REG-20 | Links → Open a Peek window when clicking on links to other sites (favoris et épinglés) | binaire | 🟡 | `peekLinks` ; aperçu : ui 16 | La coupure du réglage n’a pas de test |
+| REG-20 | Links → Open a Peek window when clicking on links to other sites (favoris et épinglés) | binaire | ✅ | `peekLinks` ; aperçu : ui 16 ; ui 19 « onglet épinglé : un lien vers un autre site s’ouvre en aperçu, ou dans l’onglet si le réglage est coupé » | |
 | REG-21 | Links → Open a Peek window when clicking on links with Shift held | binaire | ✅ | `peekShift` ; ui 19 « ⇧-clic sur un lien : aperçu, sauf si le réglage est coupé » | Le ⇧clic levait une erreur avant ce chantier (Electron ne fournit pas de contenu à adopter sans `window.opener`) : corrigé |
 | REG-22 | Links → Links from other apps open in Little Arc | binaire | ✅ | Espace affiché en dernier, petite fenêtre, ou un Espace précis ; self « lien d’une autre application : ouvert dans l’Espace choisi » ; ui 19 | |
 | REG-23 | Links → Open Little Arc when clicking on links with ⌥⌘ held | binaire | ✅ | `littleAltClick` ; ui 19 « ⌥⌘-clic sur un lien : petite fenêtre… » | Dans l’essai, ⌥ est envoyée par Electron et le clic par Playwright ; ⌥ doit être enfoncée pendant que la page a le clavier |
@@ -880,7 +880,7 @@ Arc : `menu` pour ceux de la barre de menus, sinon la source indiquée. Orbe : `
 
 ## Bilan chiffré
 
-650 lignes au total : 227 ✅, 174 🟡, 216 ⬜, 33 ➖.
+650 lignes au total : 228 ✅, 173 🟡, 216 ⬜, 33 ➖.
 
 | Domaine | ✅ | 🟡 | ⬜ | ➖ | Total |
 | --- | --- | --- | --- | --- | --- |
@@ -900,7 +900,7 @@ Arc : `menu` pour ceux de la barre de menus, sinon la source indiquée. Orbe : `
 | Tableaux et capture (TAB) | 8 | 2 | 8 | 1 | 19 |
 | Notes (NOT) | 1 | 2 | 2 | 0 | 5 |
 | Extensions et site (EXT) | 3 | 8 | 11 | 0 | 22 |
-| Réglages (REG) | 28 | 4 | 0 | 12 | 44 |
+| Réglages (REG) | 29 | 3 | 0 | 12 | 44 |
 | Menus (MEN) | 46 | 20 | 27 | 3 | 96 |
 | Raccourcis (RAC) | 29 | 9 | 8 | 2 | 48 |
 | Import et accueil (IMP) | 2 | 4 | 8 | 0 | 14 |

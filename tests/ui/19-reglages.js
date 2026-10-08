@@ -313,6 +313,25 @@ module.exports = {
       await r.click('#littleAltClick');
     });
 
+    await t.verifier('onglet épinglé : un lien vers un autre site s’ouvre en aperçu, ou dans l’onglet si le réglage est coupé', async () => {
+      await surLaPage();
+      await ctx.principal(({ w }) => w.togglePin(w.activeId));
+      await jusqua(async () => (await ctx.titres('#pinned')).includes('Page à liens'), 'onglet épinglé');
+      await sleep(150);
+      await pageL.mouse.click(boite.x + boite.width / 2, boite.y + boite.height / 2);
+      await jusqua(apercu, 'aperçu ouvert');
+      await ctx.principal(({ w }) => w.dismissPeek());
+      await jusqua(async () => !(await apercu()), 'aperçu refermé');
+      await sleep(300);
+      await r.click('#peekLinks');
+      await jusqua(async () => (await reglage('peekLinks')) === false, 'réglage coupé');
+      await pageL.mouse.click(boite.x + boite.width / 2, boite.y + boite.height / 2);
+      await jusqua(async () => /^http:\/\/localhost:\d+\/b$/.test((await ctx.etat()).actifUrl), 'le lien est suivi dans l’onglet');
+      assert.equal(await apercu(), false);
+      await r.click('#peekLinks');
+      await jusqua(async () => (await reglage('peekLinks')) === true, 'réglage rétabli');
+    });
+
     // --- Import ---------------------------------------------------------------------
     await t.verifier('volet Import : dit ce que chaque import apporte ; les signets d’un fichier HTML arrivent dans un nouvel Espace', async () => {
       await r.click('#tab-import');

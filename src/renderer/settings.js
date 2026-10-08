@@ -575,5 +575,12 @@ O.on('settings', (s) => {
 // Raccourcis changés : celui de la petite fenêtre est rappelé dans le volet Liens.
 O.on('keys', async () => { if (!DATA) return; const d = await O.send('settings:get'); DATA.littleKeys = d.littleKeys; DATA.allow = d.allow; drawLittleKeys(); });
 // Retour dans la fenêtre : profils, Espaces et exceptions ont pu changer ailleurs.
-window.addEventListener('focus', async () => { if (DATA && !recording) draw(await O.send('settings:get')); });
+// Rien n'est redessiné si rien n'a changé : le clic qui ramène la fenêtre au
+// premier plan vise peut-être déjà une liste.
+const outside = (d) => JSON.stringify([d.profiles, d.spaces, d.allow, d.isDefault, d.arc, d.littleKeys]);
+window.addEventListener('focus', async () => {
+  if (!DATA || recording) return;
+  const d = await O.send('settings:get');
+  if (outside(d) !== outside(DATA)) draw(d);
+});
 init();
