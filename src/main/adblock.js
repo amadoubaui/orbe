@@ -122,7 +122,9 @@ function parse(text) {
     if (nl === -1) return new Set();
     i = nl + 1;
   }
-  const set = new Set(text.slice(i).split('\n'));
+  // Fins de ligne Windows tolérées (dépôt cloné avec conversion automatique).
+  const body = text.slice(i);
+  const set = new Set(body.includes('\r') ? body.split(/\r?\n/) : body.split('\n'));
   set.delete('');
   return set;
 }
