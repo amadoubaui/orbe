@@ -18,10 +18,12 @@ const pendingUrls = [];
 let settingsWindow = null;
 
 app.setName('Orbe');
-if (SELFTEST) app.setPath('userData', fs.mkdtempSync(path.join(os.tmpdir(), 'orbe-test-')));
+// Profil de données isolé : pour les tests, ou via ORBE_USER_DATA.
+if (process.env.ORBE_USER_DATA) app.setPath('userData', path.resolve(process.env.ORBE_USER_DATA));
+else if (SELFTEST) app.setPath('userData', fs.mkdtempSync(path.join(os.tmpdir(), 'orbe-test-')));
 sessions.registerScheme();
 
-if (!SELFTEST && !app.requestSingleInstanceLock()) app.quit();
+if (!SELFTEST && !process.env.ORBE_USER_DATA && !app.requestSingleInstanceLock()) app.quit();
 
 function openUrl(url) {
   if (!app.isReady()) return pendingUrls.push(url);
@@ -222,7 +224,7 @@ app.whenReady().then(async () => {
   menu.build();
 
   const first = newWindow();
-  if (firstRun && !SELFTEST) first.newTab(INTERNAL + 'shortcuts.html');
+  if (firstRun && !SELFTEST && !process.env.ORBE_NO_WELCOME) first.newTab(INTERNAL + 'shortcuts.html');
   for (const url of pendingUrls.splice(0)) openUrl(url);
 
   setTimeout(win.archiveStale, 30e3);
