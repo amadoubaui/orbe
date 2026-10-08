@@ -126,6 +126,11 @@ simples, pour un démarrage rapide et une interface fluide.
 Voir [docs/feuille-de-route.md](docs/feuille-de-route.md). Les prochains
 chantiers : extensions Chrome, synchronisation, puis la version Windows.
 
+## Soutenir le projet
+
+Orbe est gratuit et libre. Si tu veux aider à financer les mises à jour et les
+nouvelles fonctions : [buymeacoffee.com/amadouba](https://buymeacoffee.com/amadouba).
+
 ## Licence
 
 Le code est sous licence [MIT](LICENSE). La liste de blocage

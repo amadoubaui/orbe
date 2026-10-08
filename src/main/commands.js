@@ -6,6 +6,9 @@ const { store } = require('./store');
 const platform = require('./platform');
 const easels = require('./easels');
 
+// Page de soutien de l'auteur d'Orbe.
+const SUPPORT_URL = 'https://buymeacoffee.com/amadouba';
+
 const hooks = { newWindow: () => {}, newLittle: () => {}, openSettings: () => {}, settingsChanged: null, openBoost: () => {}, openPasswords: () => {} };
 
 const wc = (w) => w.activeWc;
@@ -97,6 +100,7 @@ const COMMANDS = [
   { name: 'zap', label: 'boost.zapCmd', run: (w) => { const p = w.activeRt; if (p && !w.incognito) require('./boosts').zap(p.wc); } },
   { name: 'importArc', label: 'app.importArc', run: (w) => importArc(w) },
   { name: 'newProfile', label: 'spaces.newProfile', palette: false, run: (w) => w.newProfile() },
+  { name: 'support', label: 'support.menu', run: (w) => w.newTab(SUPPORT_URL) },
   { name: 'welcome', label: 'help.welcome', run: (w) => w.openInternal('welcome.html') },
   { name: 'shortcuts', label: 'help.shortcuts', run: (w) => w.openInternal('shortcuts.html') },
   // Menu de l'application, ouvert depuis la barre latérale (Windows : pas de barre de menus).

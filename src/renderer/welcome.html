@@ -14,6 +14,9 @@ h1 { font-size: 30px; margin-bottom: 8px; }
 .lead { color: var(--dim); font-size: 15px; margin: 0 0 28px; line-height: 1.5; }
 .line { min-height: 56px; }
 .line b { display: block; font-weight: 600; }
+.support { margin-top: 14px; border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); }
+.support .line { align-items: center; padding: 14px; }
+.sub.wrap { white-space: normal; display: block; margin-top: 4px; line-height: 1.45; }
 .keys { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
 .keys .line { border-top: 0.5px solid var(--line); }
 .keys .line:nth-child(-n+2) { border-top: 0; }
@@ -30,6 +33,13 @@ h1 { font-size: 30px; margin-bottom: 8px; }
     <div class="line" id="row-import"><div class="grow"><b data-t="welcome.import"></b><span class="sub" data-t="welcome.importHint"></span></div><button class="btn primary" data-cmd="importArc" data-t="import.go"></button></div>
     <div class="line"><div class="grow"><b data-t="set.default"></b><span class="sub" data-t="welcome.defaultHint"></span></div><button class="btn" data-cmd="defaultBrowser" data-t="set.makeDefault"></button></div>
     <div class="line"><div class="grow"><b data-t="set.title"></b><span class="sub" data-t="welcome.settingsHint"></span></div><button class="btn" data-cmd="settings" data-key="settings">⌘,</button></div>
+  </div>
+
+  <div class="card support">
+    <div class="line">
+      <div class="grow"><b data-t="support.title"></b><span class="sub wrap" data-t="support.body"></span></div>
+      <button class="btn primary" data-cmd="support" data-t="support.button"></button>
+    </div>
   </div>
 
   <h2 data-t="welcome.start"></h2>

@@ -202,7 +202,8 @@ module.exports = async function easelTests(ctx) {
   check('un clic dans la bibliothèque rouvre le tableau, capture comprise', true);
   w.activate(libId);
   await lib('document.querySelector("#list .board [data-do=delete]").click()');
-  await until(() => !fs.existsSync(file) && !fs.existsSync(dir), 'fichiers du tableau supprimés');
+  // Sous Windows, la suppression peut tarder (verrous, antivirus) : marge élargie.
+  await until(() => !fs.existsSync(file) && !fs.existsSync(dir), 'fichiers du tableau supprimés', 30000);
   await until(() => win.live.get(reopened).wc.executeJavaScript('!document.getElementById("gone").hidden'), 'page du tableau prévenue');
   await sleep(900);
   check('suppression : fichier et images retirés, la page ouverte ne le recrée pas', easels.list().every((b) => b.id !== id) && !fs.existsSync(file)
