@@ -9,6 +9,7 @@ const sessions = require('./sessions');
 const suggest = require('./suggest');
 const adblock = require('./adblock');
 const boosts = require('./boosts');
+const platform = require('./platform');
 
 const PAD = 8;
 const GAP = 8;
@@ -128,11 +129,8 @@ class OrbeWindow {
       y: b.y != null ? b.y + offset : undefined,
       minWidth: 520,
       minHeight: 360,
-      titleBarStyle: 'hidden',
-      trafficLightPosition: TRAFFIC,
-      vibrancy: 'sidebar',
+      ...platform.windowChrome({ traffic: TRAFFIC, color: this.space.color, dark: nativeTheme.shouldUseDarkColors, translucent: store.state.settings.translucent }),
       visualEffectState: 'followWindow',
-      backgroundColor: '#00000000',
       show: false,
     });
     windows.set(this.win.id, this);
@@ -170,8 +168,7 @@ class OrbeWindow {
   // Feux tricolores : masqués avec la barre latérale ; macOS oublie leur
   // position personnalisée quand on les réaffiche.
   setButtons(visible) {
-    this.win.setWindowButtonVisibility(visible);
-    if (visible) this.win.setWindowButtonPosition(TRAFFIC);
+    platform.setButtons(this.win, visible, TRAFFIC);
   }
 
   makeUiView(page) {
@@ -294,7 +291,7 @@ class OrbeWindow {
     if (this.htmlFullscreen) return { x: 0, y: 0, width: W, height: H };
     const sw = this.sidebarWidth;
     const docked = this.sidebarVisible && this.p === 1 && !this.anim;
-    const top = PAD + (store.state.settings.showToolbar ? TOOLBAR_H : 0);
+    const top = platform.topInset(this.win, PAD, store.state.settings.showToolbar) + (store.state.settings.showToolbar ? TOOLBAR_H : 0);
     return {
       x: Math.round(PAD + (sw - PAD) * this.p),
       y: top,
@@ -1840,6 +1837,7 @@ class OrbeWindow {
         ? { count: downloads.length, progress: downloads.reduce((a, x) => a + (x.total ? x.received / x.total : 0), 0) / downloads.length }
         : null,
     };
+    platform.syncChrome(this.win, { color: space.color, dark: payload.dark, toolbar: settings.showToolbar, translucent: settings.translucent });
     this.ui.webContents.send('state', payload);
     if (this.floatView && !this.floatView.webContents.isDestroyed()) this.floatView.webContents.send('state', payload);
   }

@@ -9,6 +9,9 @@ if (location.protocol === 'orbe:') {
     locales: boot.locales,
     lang: boot.lang,
     settings: boot.settings,
+    // Système (« mac », « win ») et raccourcis dans sa notation, par nom de commande.
+    platform: boot.platform || 'mac',
+    keys: boot.keys || {},
     send: (action, payload) => ipcRenderer.invoke('orbe', action, payload),
     on: (event, fn) => {
       if (!EVENTS.includes(event)) return;

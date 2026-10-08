@@ -1,0 +1,68 @@
+# Tests d'Orbe sur macOS et Windows, à chaque envoi.
+# Sous Windows s'ajoutent la fabrication de l'application et des captures
+# d'écran, publiées comme pièces jointes de l'exécution.
+name: Tests
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  tests:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Bloqueur de publicités
+        run: node tests/adblock.test.js
+
+      - name: Extensions
+        run: node --test tests/extensions.test.js
+
+      # L'écran par défaut des machines Windows est trop petit pour la fenêtre.
+      - name: Écran en 1920 × 1080 (Windows)
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        shell: pwsh
+        run: Set-DisplayResolution -Width 1920 -Height 1080 -Force
+
+      - name: Dossier des captures
+        shell: bash
+        run: mkdir -p "$RUNNER_TEMP/captures" && echo "ORBE_SHOTS=$RUNNER_TEMP/captures" >> "$GITHUB_ENV"
+
+      - name: Tests de bout en bout
+        run: node scripts/dev.js --selftest
+
+      - name: Fabrication de l'application (Windows)
+        if: runner.os == 'Windows'
+        run: node scripts/build-win.js --icon
+
+      - name: L'application fabriquée démarre (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: ORBE_SCENARIO=tests/smoke.js "$HOME/.orbe-dev/dist/Orbe-win32-x64/Orbe.exe" --selftest
+
+      - name: Captures d'écran
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: captures-${{ matrix.os }}
+          path: ${{ runner.temp }}/captures
+          if-no-files-found: ignore
+
+      - name: Application Windows (zip)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Orbe-win32-x64
+          path: ~/.orbe-dev/dist/Orbe-win32-x64.zip
+          compression-level: 0

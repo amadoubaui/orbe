@@ -17,13 +17,18 @@ function installed() {
   try { return JSON.parse(fs.readFileSync(pkg, 'utf8')).version; } catch { return null; }
 }
 
+// Sous Windows, npm est un script « npm.cmd » : il lui faut un interpréteur.
+function npm(args, cwd) {
+  execFileSync('npm', args, { cwd, stdio: 'inherit', shell: process.platform === 'win32' });
+}
+
 function ensure() {
   if (installed() !== version) {
     console.log(`Installation d'Electron ${version} dans ${runtime}…`);
     fs.mkdirSync(runtime, { recursive: true });
     const manifest = path.join(runtime, 'package.json');
     if (!fs.existsSync(manifest)) fs.writeFileSync(manifest, '{"name":"orbe-runtime","private":true}\n');
-    execFileSync('npm', ['install', `electron@${version}`, '--no-audit', '--no-fund'], { cwd: runtime, stdio: 'inherit' });
+    npm(['install', `electron@${version}`, '--no-audit', '--no-fund'], runtime);
   }
   return path.join(runtime, 'node_modules', 'electron', 'cli.js');
 }
@@ -34,4 +39,4 @@ if (require.main === module) {
   child.on('exit', (code) => process.exit(code == null ? 1 : code));
 }
 
-module.exports = { ensure, runtime, version, root };
+module.exports = { ensure, npm, runtime, version, root };

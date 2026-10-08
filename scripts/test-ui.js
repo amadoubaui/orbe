@@ -4,10 +4,10 @@
 //   node scripts/test-ui.js [filtre…]
 // Comme le moteur, playwright-core est installé une fois dans ~/.orbe-dev, hors
 // du projet (rien n'est ajouté au dépôt, qui peut rester sur un disque réseau).
-const { execFileSync, spawn } = require('child_process');
+const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const { ensure, runtime, root } = require('./dev');
+const { ensure, npm, runtime, root } = require('./dev');
 
 function ensurePlaywright() {
   const pkg = path.join(runtime, 'node_modules', 'playwright-core', 'package.json');
@@ -16,7 +16,7 @@ function ensurePlaywright() {
   fs.mkdirSync(runtime, { recursive: true });
   const manifest = path.join(runtime, 'package.json');
   if (!fs.existsSync(manifest)) fs.writeFileSync(manifest, '{"name":"orbe-runtime","private":true}\n');
-  execFileSync('npm', ['install', 'playwright-core', '--no-audit', '--no-fund'], { cwd: runtime, stdio: 'inherit' });
+  npm(['install', 'playwright-core', '--no-audit', '--no-fund'], runtime);
 }
 
 ensure(); // Electron

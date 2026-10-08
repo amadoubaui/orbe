@@ -4,6 +4,7 @@ const { Menu, BaseWindow, app } = require('electron');
 const { store } = require('./store');
 const { OrbeWindow } = require('./window');
 const commands = require('./commands');
+const platform = require('./platform');
 
 const t = (k, v) => store.t(k, null, v);
 let lastSignature = '';
@@ -45,8 +46,7 @@ function build() {
         item('settings'),
         item('defaultBrowser'),
         sep,
-        item('importArc'),
-        sep,
+        ...(platform.arcSidebarFile() || platform.isMac ? [item('importArc'), sep] : []),
         { label: t('app.services'), role: 'services' },
         sep,
         { label: t('app.hide'), role: 'hide' },
@@ -135,7 +135,7 @@ function build() {
           label: `${sp.icon}  ${sp.name}`,
           type: 'checkbox',
           checked: !!w && sp.id === w.spaceId,
-          accelerator: i < 9 ? `Ctrl+${i + 1}` : undefined,
+          accelerator: i < 9 ? platform.accel(`Ctrl+${i + 1}`) : undefined,
           click: () => { const win = OrbeWindow.focused || OrbeWindow.primary; if (win) win.switchSpace(sp.id); },
         })),
       ],
@@ -156,7 +156,7 @@ function build() {
           label: `Onglet ${n}`,
           visible: false,
           acceleratorWorksWhenHidden: true,
-          accelerator: `Cmd+${n}`,
+          accelerator: platform.accel(`Cmd+${n}`),
           click: () => { const win = OrbeWindow.focused; if (win) win.tabAt(n); },
         })),
       ],
@@ -183,7 +183,7 @@ function build() {
     },
     { label: t('menu.help'), role: 'help', submenu: [item('welcome'), item('shortcuts'), item('github')] },
   ];
-  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+  Menu.setApplicationMenu(Menu.buildFromTemplate(platform.menuTemplate(template)));
 }
 
 // Appelé à chaque changement d'état : ne reconstruit le menu que si ce qu'il

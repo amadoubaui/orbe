@@ -1,6 +1,7 @@
 // Petite fenêtre (⌥⌘N) : une page seule, sans barre latérale, pour un coup
 // d'œil rapide. Un bouton l'envoie dans la fenêtre principale.
-const { BaseWindow, WebContentsView, clipboard } = require('electron');
+const { BaseWindow, WebContentsView, clipboard, nativeTheme } = require('electron');
+const platform = require('./platform');
 const { store } = require('./store');
 const sessions = require('./sessions');
 const suggest = require('./suggest');
@@ -23,10 +24,7 @@ class LittleWindow {
       height: 640,
       minWidth: 380,
       minHeight: 260,
-      titleBarStyle: 'hidden',
-      trafficLightPosition: { x: 14, y: 13 },
-      vibrancy: 'sidebar',
-      backgroundColor: '#00000000',
+      ...platform.windowChrome({ traffic: { x: 14, y: 13 }, dark: nativeTheme.shouldUseDarkColors }),
     });
     this.win.orbeLittle = this;
     this.ui = new WebContentsView({ webPreferences: { preload: UI_PRELOAD, sandbox: true, contextIsolation: true } });

@@ -88,7 +88,7 @@ input.addEventListener('keydown', (e) => {
     if (items.length) select(sel <= 0 ? items.length - 1 : sel - 1);
   } else if (e.key === 'Enter') {
     e.preventDefault();
-    run(e.metaKey);
+    run(modKey(e));
   }
 });
 
@@ -100,7 +100,7 @@ list.addEventListener('click', (e) => {
   const row = e.target.closest('.cmd');
   if (!row) return;
   sel = Number(row.dataset.i);
-  run(e.metaKey);
+  run(modKey(e));
 });
 
 function openCommand(p) {

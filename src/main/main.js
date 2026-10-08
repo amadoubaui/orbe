@@ -16,6 +16,9 @@ const menu = require('./menu');
 const adblock = require('./adblock');
 const extensions = require('./extensions');
 const boosts = require('./boosts');
+const platform = require('./platform');
+
+platform.adaptLocales(locales);
 
 const SELFTEST = process.argv.includes('--selftest');
 const pendingUrls = [];
@@ -32,6 +35,8 @@ if (SELFTEST) {
   app.setPath('downloads', dl);
 }
 sessions.registerScheme();
+// Hors macOS, un lien ouvert avec Orbe arrive en argument de la ligne de commande.
+if (!platform.isMac) for (const x of process.argv.slice(1)) if (/^https?:\/\//i.test(x)) pendingUrls.push(x);
 
 if (!SELFTEST && !process.env.ORBE_USER_DATA && !app.requestSingleInstanceLock()) app.quit();
 
@@ -59,9 +64,7 @@ function openSettings() {
     minimizable: false,
     maximizable: false,
     fullscreenable: false,
-    titleBarStyle: 'hiddenInset',
-    vibrancy: 'sidebar',
-    backgroundColor: '#00000000',
+    ...platform.windowChrome({ inset: true, dark: nativeTheme.shouldUseDarkColors }),
     show: false,
     webPreferences: { preload: UI_PRELOAD, sandbox: true, contextIsolation: true },
   });
@@ -82,7 +85,7 @@ function openBoost(w) {
   boostTarget = rt.wc;
   if (boostWindow && !boostWindow.isDestroyed()) { boostWindow.webContents.reload(); return boostWindow.focus(); }
   boostWindow = new BrowserWindow({
-    width: 380, height: 460, minWidth: 300, minHeight: 320, titleBarStyle: 'hiddenInset', vibrancy: 'sidebar', backgroundColor: '#00000000',
+    width: 380, height: 460, minWidth: 300, minHeight: 320, ...platform.windowChrome({ inset: true, dark: nativeTheme.shouldUseDarkColors }),
     alwaysOnTop: true, fullscreenable: false, webPreferences: { preload: UI_PRELOAD, sandbox: true, contextIsolation: true },
   });
   trusted.add(boostWindow.webContents);
@@ -152,10 +155,10 @@ function shortcutGroups() {
   const fr = store.state.settings.lang === 'fr';
   return [
     group(t('menu.tabs'), ['newTab', 'commandBar', 'closeTab', 'reopen', 'togglePin', 'nextTab', 'prevTab', 'clearToday'], [
-      { label: fr ? 'Aller à l’onglet 1 à 9' : 'Go to tab 1 to 9', keys: '⌘1 … ⌘9' },
-      { label: fr ? 'Onglets récents (maintenir ⌃)' : 'Recent tabs (hold ⌃)', keys: '⌃⇥' },
+      { label: fr ? 'Aller à l’onglet 1 à 9' : 'Go to tab 1 to 9', keys: platform.keys('⌘1 … ⌘9') },
+      { label: platform.keys(fr ? 'Onglets récents (maintenir ⌃)' : 'Recent tabs (hold ⌃)'), keys: platform.keys('⌃⇥') },
     ]),
-    group(t('menu.spaces'), ['nextSpace', 'prevSpace'], [{ label: fr ? 'Aller à l’Espace 1 à 9' : 'Go to Space 1 to 9', keys: '⌃1 … ⌃9' }]),
+    group(t('menu.spaces'), ['nextSpace', 'prevSpace'], [{ label: fr ? 'Aller à l’Espace 1 à 9' : 'Go to Space 1 to 9', keys: platform.keys('⌃1 … ⌃9') }]),
     group(t('menu.window'), ['newWindow', 'newIncognito', 'newLittle', 'closeWindow', 'toggleSidebar', 'toggleToolbar', 'addSplit', 'closeSplit', 'fullscreen', 'library', 'downloads', 'settings']),
     group(fr ? 'Page' : 'Page', ['back', 'forward', 'reload', 'forceReload', 'stop', 'find', 'findNext', 'findPrev', 'copyUrl', 'copyUrlMarkdown', 'capture', 'savePage', 'print', 'zoomIn', 'zoomOut', 'actualSize', 'history']),
     group(t('view.developer'), ['devtools', 'inspect', 'console', 'source']),
@@ -208,7 +211,7 @@ async function globalAction(action, a, sender) {
     case 'ext:popup': {
       const p = extensions.popupFor(String(a));
       if (!p) return false;
-      const w = new BrowserWindow({ width: 400, height: 600, title: p.title, webPreferences: { session: sessions.mainSession(), sandbox: true, contextIsolation: true } });
+      const w = new BrowserWindow({ width: 400, height: 600, title: p.title, autoHideMenuBar: true, webPreferences: { session: sessions.mainSession(), sandbox: true, contextIsolation: true } });
       w.loadURL(p.url).catch(() => {});
       return true;
     }
@@ -266,7 +269,7 @@ async function globalAction(action, a, sender) {
 function setupIpc() {
   const ok = (e) => trusted.has(e.sender) && e.senderFrame && e.senderFrame.url.startsWith(INTERNAL);
   ipcMain.on('i18n', (e) => {
-    e.returnValue = ok(e) ? { locales, lang: store.state.settings.lang, settings: store.state.settings } : null;
+    e.returnValue = ok(e) ? { locales, lang: store.state.settings.lang, settings: store.state.settings, platform: platform.name, keys: Object.fromEntries(commands.COMMANDS.filter((c) => c.keys).map((c) => [c.name, c.keys])) } : null;
   });
   ipcMain.handle('orbe', async (e, action, payload) => {
     if (!ok(e) || typeof action !== 'string') return undefined;

@@ -2,6 +2,12 @@
 const O = window.orbe;
 let lang = O.lang || 'fr';
 
+// Classe « mac » ou « win » sur <html> : les feuilles de style adaptent
+// l'habillage (boutons de fenêtre, police) dans un bloc à part.
+document.documentElement.classList.add(O.platform || 'mac');
+// Touche « principale » d'un événement clavier ou souris : ⌘ sur macOS, Ctrl ailleurs.
+const modKey = (e) => (O.platform === 'mac' || !O.platform ? e.metaKey : e.ctrlKey);
+
 function t(key, vars) {
   let s = (O.locales[lang] && O.locales[lang][key]) || O.locales.fr[key] || key;
   if (vars) for (const k of Object.keys(vars)) s = s.replace(`{${k}}`, vars[k]);
@@ -12,6 +18,8 @@ function applyI18n(root = document) {
   for (const el of root.querySelectorAll('[data-t]')) el.textContent = t(el.dataset.t);
   for (const el of root.querySelectorAll('[data-t-title]')) el.title = t(el.dataset.tTitle);
   for (const el of root.querySelectorAll('[data-t-ph]')) el.placeholder = t(el.dataset.tPh);
+  // Raccourci d'une commande, dans la notation du système.
+  for (const el of root.querySelectorAll('[data-key]')) if (O.keys && O.keys[el.dataset.key]) el.textContent = O.keys[el.dataset.key];
 }
 
 // Renvoie true si la langue a changé (la page doit alors se redessiner).
