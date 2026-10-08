@@ -44,8 +44,9 @@ async function compose(win, background) {
     const rect = view.getBounds();
     if (!rect.width || !rect.height) continue;
     let img;
-    try { img = await wc.capturePage(); } catch { continue; }
-    if (img.isEmpty()) continue;
+    // Une vue qui n'a encore rien peint ne répond jamais : on borne l'attente.
+    try { img = await Promise.race([wc.capturePage(), new Promise((res) => setTimeout(() => res(null), 2000))]); } catch { continue; }
+    if (!img || img.isEmpty()) continue;
     img = img.resize({ width: rect.width, height: rect.height });
     const size = img.getSize();
     blit(out, W, H, img.toBitmap(), size.width, size.height, rect.x, rect.y);
