@@ -210,13 +210,27 @@ function popupAppMenu(win) {
 }
 
 // --- Navigateur par défaut ------------------------------------------------------
-// Windows ne laisse pas une application se déclarer elle-même : on s'inscrit
-// comme candidat, puis on ouvre la page des applications par défaut.
+// Windows ne laisse pas une application se déclarer elle-même : Orbe s'inscrit
+// comme navigateur dans le registre de l'utilisateur (win-default.js), puis
+// ouvre la page des applications par défaut, où le choix se fait à la main.
 function makeDefault() {
   const { app, shell } = require('electron');
+  if (isWin) {
+    const wd = require('./win-default');
+    return wd.register()
+      .catch((err) => console.error('[orbe] inscription comme navigateur', err.message))
+      .then(() => shell.openExternal(wd.settingsUrl()).catch(() => {}));
+  }
   app.setAsDefaultProtocolClient('http');
   app.setAsDefaultProtocolClient('https');
-  if (isWin) shell.openExternal('ms-settings:defaultapps').catch(() => {});
+}
+
+// Windows : retire l'inscription (et celle, plus ancienne, des protocoles).
+function undoDefault() {
+  if (!isWin) return Promise.resolve(false);
+  const { app } = require('electron');
+  for (const scheme of ['http', 'https']) { try { app.removeAsDefaultProtocolClient(scheme); } catch {} }
+  return require('./win-default').unregister().then(() => true, (err) => { console.error('[orbe] retrait de l’inscription', err.message); return false; });
 }
 
 // --- Chemins ------------------------------------------------------------------
@@ -240,5 +254,5 @@ module.exports = {
   isMac, isWin, name: isMac ? 'mac' : isWin ? 'win' : 'linux',
   accel, keys, label, adaptCommands, adaptLocales, WIN_ACCEL,
   windowChrome, setButtons, topInset, syncChrome, tint, materialSupported, CAPTION_H,
-  menuTemplate, popupAppMenu, makeDefault, arcSidebarFile,
+  menuTemplate, popupAppMenu, makeDefault, undoDefault, arcSidebarFile,
 };
