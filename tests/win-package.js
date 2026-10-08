@@ -6,7 +6,8 @@
 //     NODE_OPTIONS et --inspect ne doivent plus rien faire, alors qu'ils
 //     fonctionnent avec le moteur d'origine (témoin) ;
 //  3. les informations de version, relues par PowerShell ;
-//  4. l'icône, extraite par Windows (System.Drawing) et comparée à assets/orbe.ico.
+//  4. l'icône, extraite par Windows (System.Drawing) et comparée à assets/orbe.ico,
+//     à chacune de ses sept tailles.
 // Les images extraites vont dans ORBE_SHOTS (pièces jointes de l'exécution).
 const { spawnSync, execFileSync } = require('child_process');
 const fs = require('fs');
@@ -116,6 +117,31 @@ if (process.platform === 'win32') {
   info(`icône extraite de Orbe.exe : ${got.size}, couleur moyenne ${mean(got.img)} ; assets/orbe.ico : ${mean(ref)} ; electron.exe : ${mean(before.img)}`);
   check(dOrbe < 6, 'icône de Orbe.exe = assets/orbe.ico', `écart moyen ${dOrbe.toFixed(2)} sur 255`);
   check(dElectron > 4 * Math.max(dOrbe, 1), 'témoin : l’icône d’electron.exe est bien différente', `écart moyen ${dElectron.toFixed(2)} sur 255`);
+
+  // Les autres tailles, demandées une à une à Windows (PrivateExtractIcons) :
+  // chacune doit se charger et correspondre à l'image de même taille du .ico.
+  const sizes = entries.map((e) => e.width || 256).filter((n) => n !== got.img.width);
+  const each = `param($f, $dir)
+Add-Type -AssemblyName System.Drawing
+Add-Type -Namespace Orbe -Name Native -MemberDefinition '[DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern uint PrivateExtractIcons(string file, int index, int cx, int cy, IntPtr[] icons, uint[] ids, uint count, uint flags);'
+foreach ($s in ${sizes.join(', ')}) {
+  $h = New-Object IntPtr[] 1
+  $ids = New-Object uint32[] 1
+  $n = [Orbe.Native]::PrivateExtractIcons($f, 0, $s, $s, $h, $ids, 1, 0)
+  if ($n -lt 1 -or $n -eq [uint32]::MaxValue -or $h[0] -eq [IntPtr]::Zero) { Write-Output "$($s):absente"; continue }
+  $b = [System.Drawing.Icon]::FromHandle($h[0]).ToBitmap()
+  $b.Save((Join-Path $dir "icone-Orbe.exe-$s.png"), [System.Drawing.Imaging.ImageFormat]::Png)
+  Write-Output "$($s):$($b.Width)x$($b.Height)"
+}`;
+  const sizeReport = ps(each, [exe, shots]).trim().split(/\r?\n/);
+  for (const size of sizes) {
+    const file = path.join(shots, `icone-Orbe.exe-${size}.png`);
+    const line = sizeReport.find((l) => l.startsWith(size + ':')) || `${size}:?`;
+    if (!fs.existsSync(file)) { check(false, `icône ${size} × ${size} chargée par Windows`, line); continue; }
+    const img = decodePng(fs.readFileSync(file));
+    const d = img.width === size ? gap(img, decodePng(entries.find((e) => (e.width || 256) === size).data)) : NaN;
+    check(d < 6, `icône ${size} × ${size} chargée par Windows = assets/orbe.ico`, `${line.split(':')[1]}, écart moyen ${d.toFixed(2)} sur 255`);
+  }
 }
 
 fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5 });

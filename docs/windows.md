@@ -129,8 +129,9 @@ affiche sections, ressources et version, et vérifie leur cohérence.
 Vérifié : `tests/pe-resources.test.js` (sur le vrai `electron.exe`) ; en
 intégration continue, l'application démarre, PowerShell relit
 `(Get-Item Orbe.exe).VersionInfo`, et l'icône extraite par Windows
-(`Icon.ExtractAssociatedIcon`) est comparée pixel à pixel à `assets/orbe.ico`
-(`tests/win-package.js`, image jointe à l'exécution).
+(`Icon.ExtractAssociatedIcon`, puis chaque taille par `PrivateExtractIcons`)
+est comparée pixel à pixel à `assets/orbe.ico` (`tests/win-package.js`,
+images jointes à l'exécution).
 
 ## Fusibles
 
@@ -170,7 +171,11 @@ clés partagées, sans toucher aux autres inscriptions.
 Vérifié en intégration continue avec l'application fabriquée
 (`tests/win-default.js`, puis relecture indépendante par `reg query` et
 PowerShell) : rien avant le clic, toutes les valeurs après, plus rien après le
-retrait, les autres inscriptions intactes.
+retrait, les autres inscriptions intactes. Ce que la machine ne dit pas : si
+Orbe apparaît bien dans la page des Paramètres. L'ancienne interface de
+Windows pour le demander (`IApplicationAssociationRegistration`) a été
+essayée : elle répond « oui » à tout, même à un nom inconnu ; elle ne prouve
+donc rien et n'est pas utilisée.
 
 ## Non vérifié sur un vrai poste Windows
 
@@ -186,9 +191,9 @@ devant l'écran. Restent à voir sur un vrai poste :
   le registre est vérifié, mais personne n'a encore vu Orbe dans la page des
   Paramètres ni cliqué sur « Définir par défaut » ; de même pour l'ouverture
   d'un lien depuis une autre application une fois Orbe choisi ;
-- l'icône dans l'Explorateur, la barre des tâches et le menu Démarrer à
-  toutes les tailles et échelles (l'intégration continue ne compare que
-  l'icône de 32 pixels extraite par Windows) ;
+- l'icône telle que l'affichent l'Explorateur, la barre des tâches et le menu
+  Démarrer (l'intégration continue vérifie que Windows charge chacune des
+  sept tailles à l'identique, pas leur rendu à l'écran) ;
 - l'avertissement SmartScreen tel qu'il s'affiche pour une archive
   téléchargée, et la réaction des antivirus à un exécutable non signé dont
   les ressources ont été réécrites ;

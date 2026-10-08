@@ -102,14 +102,6 @@ jobs:
           if ($cmd -ne "`"$exe`" `"%1`"") { throw "Commande inattendue : $cmd" }
           Write-Host "Commande d'ouverture : $cmd"
 
-      # Windows lui-même reconnaît-il l'inscription ? Question posée à son
-      # registre des associations (celui que lisent les Paramètres). Indicatif.
-      - name: Navigateur par défaut — Orbe vu par Windows (indicatif)
-        if: runner.os == 'Windows'
-        continue-on-error: true
-        shell: pwsh
-        run: ./tests/win-registered.ps1
-
       - name: Navigateur par défaut — retrait (Windows)
         if: runner.os == 'Windows'
         shell: bash
