@@ -52,6 +52,12 @@ module.exports = async function extApiTest({ first: w, OrbeWindow, win, extApi, 
   const a = w.newTab(base + '/a');
   await until(() => w.data.tabs[a.id].title === 'Page a', 'page a');
   const rtA = win.live.get(a.id);
+  // Juste après le chargement de l'extension, Chromium peut ne pas avoir encore
+  // transmis ses scripts de contenu au nouveau processus : on recharge alors la page.
+  for (let i = 0; i < 4; i++) {
+    if (await until(() => rtA.wc.executeJavaScript('!!document.documentElement.dataset.orbeTab'), 'script de contenu', 1500).catch(() => false)) break;
+    rtA.wc.reload();
+  }
   // Page d'extension pilotée par le test : ni onglet, ni fenêtre surgissante.
   const pilot = new BrowserWindow({ show: false, webPreferences: { session: ses, sandbox: true, contextIsolation: true } });
   await pilot.loadURL(ext.url + 'options.html');
