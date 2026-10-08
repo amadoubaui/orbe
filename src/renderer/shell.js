@@ -171,7 +171,10 @@ function render(s) {
   $('space-icon').textContent = s.space.icon;
 
   reconcile($('fav'), s.favorites, true);
-  $('fav').style.gridTemplateColumns = `repeat(${Math.min(Math.max(s.favorites.length, 1), 4)}, 1fr)`;
+  // Comme dans Arc (relevé sur l'application) : jusqu'à 4 favoris sur une ligne,
+  // puis une grille aussi carrée que possible (9 favoris = 3 × 3), 4 colonnes au plus.
+  const nf = s.favorites.length;
+  $('fav').style.gridTemplateColumns = `repeat(${nf <= 4 ? Math.max(nf, 1) : Math.min(4, Math.ceil(Math.sqrt(nf)))}, 1fr)`;
   reconcile($('pinned'), s.pinned);
   reconcile($('today'), s.today);
   $('b-clear').classList.toggle('can', s.today.length > (s.today.some((x) => x.active) ? 1 : 0));

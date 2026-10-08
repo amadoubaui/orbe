@@ -98,3 +98,17 @@ suit. Colonne « Orbe » : ✅ fait, 🟡 partiel, ⏳ à venir.
 - Barre latérale masquée : elle réapparaît en approchant le bord gauche.
 - La page est posée dans un cadre aux coins arrondis, sur un fond à la couleur
   de l'Espace.
+
+## Dimensions relevées sur Arc (capture à la résolution native, octobre 2026)
+
+| Élément | Arc | Orbe |
+| --- | --- | --- |
+| Largeur de la barre latérale (réglage de l'utilisateur) | 228 pt | réglable, 250 pt par défaut |
+| Marge intérieure de la barre | 8 pt | 8 pt |
+| Pastille d'adresse | 35 pt de haut, coins de 11 pt | 36 pt, coins de 11 pt |
+| Tuile de favori | 65 × 47 pt, coins de 14 pt, espacement de 8 pt | pleine largeur × 47 pt, coins de 14 pt, 8 pt |
+| Colonnes de favoris | 3 × 3 pour 9 favoris, 4 colonnes pour 11 | même règle |
+| Pas des lignes d'onglets | 41 pt | 41 pt (37 + 4) |
+| Texte des onglets | environ 14 pt, graisse moyenne | 14 px, graisse 500 |
+| Retrait du contenu d'un dossier | 16 pt | 16 pt |
+| Marge autour de la page | environ 10 pt | 8 pt |
