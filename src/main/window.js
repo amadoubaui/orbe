@@ -1653,7 +1653,17 @@ class OrbeWindow {
     const web = !!tab && /^https?:/i.test(tab.url);
     const wc = this.activeWc;
     const n = wc ? (adblock.stats().blockedByTab.get(wc.id) || 0) : 0;
+    // Extensions installées : un clic ouvre leur fenêtre, ancrée sous l'adresse.
+    let actions = [];
+    try { actions = require('./ext-host').actionsFor(this) || []; } catch {}
+    const extItems = actions.map((x) => ({
+      label: x.badge ? `${x.title}  (${x.badge})` : x.title,
+      enabled: x.enabled !== false,
+      click: () => require('./ext-host').openPopup(this, x.id, { x: 12, y: 86 }),
+    }));
     this.popup([
+      ...extItems,
+      ...(extItems.length ? [{ type: 'separator' }] : []),
       { label: t('adblock.count', { n }), enabled: false },
       { type: 'separator' },
       { label: t('adblock.thisSite'), type: 'checkbox', checked: on && web && !adblock.isSiteAllowed(tab.url), enabled: on && web, click: () => this.toggleSiteBlocking() },

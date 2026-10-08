@@ -9,7 +9,7 @@ interface entièrement en français (anglais disponible dans les réglages).
 > Projet libre et indépendant, sans lien avec The Browser Company. Orbe ne
 > contient aucun code ni aucune ressource d'Arc : tout est réécrit.
 
-État : **version 0.6, macOS et Windows**. La version Windows est validée en intégration continue, pas encore essayée sur une machine réelle : voir [docs/windows.md](docs/windows.md).
+État : **version 0.7, macOS et Windows**. La version Windows est validée en intégration continue, pas encore essayée sur une machine réelle : voir [docs/windows.md](docs/windows.md).
 
 ![Orbe : barre latérale, favoris, onglets épinglés et barre de commande](docs/captures/barre-de-commande.png)
 
@@ -36,9 +36,10 @@ interface entièrement en français (anglais disponible dans les réglages).
   changes d'onglet ; un lecteur miniature dans la barre latérale pilote le son.
 - **Bloqueur de publicités et de traqueurs** intégré (24 000 domaines, moins
   d'une microseconde par requête), avec exception par site depuis le bouclier.
-- **Extensions Chrome (expérimental)** : installation depuis le Chrome Web
-  Store, signature vérifiée (Réglages → Extensions). Seules les extensions
-  simples fonctionnent, et en partie.
+- **Extensions Chrome** : installation depuis le Chrome Web Store, signature
+  vérifiée (Réglages → Extensions). Vérifiées : Dark Reader, Wappalyzer et
+  uBlock Origin Lite. Leur fenêtre s'ouvre depuis le bouclier, à côté de
+  l'adresse. Les extensions à panneau latéral ne fonctionnent pas encore.
 - **Boosts** : CSS personnalisé par site et « Zap » pour masquer un élément.
 - **Notes** (⌃⌘N) et **médias** dans la bibliothèque.
 - **Archive** : ⌘W archive l'onglet, ⇧⌘T le rouvre, les onglets inactifs sont
