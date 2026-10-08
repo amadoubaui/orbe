@@ -4,6 +4,7 @@
 const { dialog } = require('electron');
 const { store } = require('./store');
 const platform = require('./platform');
+const easels = require('./easels');
 
 const hooks = { newWindow: () => {}, newLittle: () => {}, openSettings: () => {}, settingsChanged: null, openBoost: () => {}, openPasswords: () => {} };
 
@@ -17,12 +18,14 @@ const COMMANDS = [
   { name: 'newLittle', label: 'file.newLittle', accel: 'Alt+Cmd+N', keys: '⌥⌘N', global: true, run: () => hooks.newLittle('') },
   // ⌘Z : annule l'archivage quand on n'est pas en train d'écrire, sinon annulation classique.
   { name: 'undo', label: 'edit.undo', accel: 'Cmd+Z', keys: '⌘Z', palette: false, run: (w) => undo(w) },
+  { name: 'redo', label: 'edit.redo', accel: 'Shift+Cmd+Z', keys: '⇧⌘Z', palette: false, run: () => redo() },
   { name: 'reopen', label: 'file.reopen', accel: 'Shift+Cmd+T', keys: '⇧⌘T', run: (w) => w.reopenClosed() },
   { name: 'commandBar', label: 'file.commandBar', accel: 'Cmd+L', keys: '⌘L', palette: false, run: (w) => w.openCommand('edit') },
   { name: 'closeTab', label: 'file.closeTab', accel: 'Cmd+W', keys: '⌘W', run: (w) => (w.peekState ? w.closePeek() : (w.activeId ? w.close() : w.win.close())) },
   { name: 'closeWindow', label: 'file.closeWindow', accel: 'Shift+Cmd+W', keys: '⇧⌘W', run: (w) => w.win.close() },
   { name: 'capture', label: 'file.capture', accel: 'Shift+Cmd+2', keys: '⇧⌘2', run: (w) => w.capture() },
   { name: 'captureFull', label: 'file.captureFull', run: (w) => w.captureFull() },
+  { name: 'captureToEasel', label: 'easel.capture', accel: 'Alt+Shift+Cmd+2', keys: '⌥⇧⌘2', run: (w) => easels.capture(w) },
   { name: 'savePage', label: 'file.savePage', accel: 'Shift+Cmd+S', keys: '⇧⌘S', run: (w) => w.savePage() },
   { name: 'print', label: 'file.print', accel: 'Cmd+P', keys: '⌘P', run: (w) => wc(w) && wc(w).print() },
   // Édition
@@ -73,6 +76,8 @@ const COMMANDS = [
   { name: 'back', label: 'archive.back', accel: 'Cmd+[', keys: '⌘[', palette: false, run: (w) => wc(w) && wc(w).navigationHistory.goBack() },
   { name: 'forward', label: 'archive.forward', accel: 'Cmd+]', keys: '⌘]', palette: false, run: (w) => wc(w) && wc(w).navigationHistory.goForward() },
   { name: 'newNote', label: 'notes.new', accel: 'Ctrl+Cmd+N', keys: '⌃⌘N', run: (w) => w.openInternal('notes.html#new') },
+  { name: 'newEasel', label: 'easel.new', accel: 'Ctrl+Shift+E', keys: '⌃⇧E', run: (w) => easels.open(w) },
+  { name: 'easels', label: 'easel.title', run: (w) => w.openInternal('library.html#easels') },
   { name: 'notes', label: 'notes.title', run: (w) => w.openInternal('notes.html') },
   { name: 'media', label: 'lib.media', run: (w) => w.openInternal('library.html#media') },
   { name: 'history', label: 'archive.history', accel: 'Cmd+Y', keys: '⌘Y', run: (w) => w.openInternal('library.html#history') },
@@ -106,12 +111,19 @@ function makeDefault() {
 
 async function undo(w) {
   const target = require('electron').webContents.getFocusedWebContents();
+  // Un tableau au premier plan annule lui-même (ses éléments, ou le texte en cours de saisie).
+  if (easels.history(target, 'undo')) return;
   let typing = false;
   if (target) {
     typing = await target.executeJavaScript('(() => { const e = document.activeElement; return !!e && (e.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(e.tagName)); })()').catch(() => true);
   }
   if (typing || !w.closed.length) { if (target) target.undo(); return; }
   w.reopenClosed();
+}
+
+function redo() {
+  const target = require('electron').webContents.getFocusedWebContents();
+  if (target && !easels.history(target, 'redo')) target.redo();
 }
 
 async function importArc(w) {

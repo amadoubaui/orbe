@@ -19,6 +19,7 @@ const extApi = require('./ext-api');
 const extHost = require('./ext-host');
 const boosts = require('./boosts');
 const passwords = require('./passwords');
+const easels = require('./easels');
 const platform = require('./platform');
 
 platform.adaptLocales(locales);
@@ -190,8 +191,8 @@ function shortcutGroups() {
       { label: platform.keys(fr ? 'Onglets récents (maintenir ⌃)' : 'Recent tabs (hold ⌃)'), keys: platform.keys('⌃⇥') },
     ]),
     group(t('menu.spaces'), ['nextSpace', 'prevSpace'], [{ label: fr ? 'Aller à l’Espace 1 à 9' : 'Go to Space 1 to 9', keys: platform.keys('⌃1 … ⌃9') }]),
-    group(t('menu.window'), ['newWindow', 'newIncognito', 'newLittle', 'closeWindow', 'toggleSidebar', 'toggleToolbar', 'addSplit', 'closeSplit', 'fullscreen', 'library', 'downloads', 'settings']),
-    group(fr ? 'Page' : 'Page', ['back', 'forward', 'reload', 'forceReload', 'stop', 'find', 'findNext', 'findPrev', 'copyUrl', 'copyUrlMarkdown', 'capture', 'savePage', 'print', 'zoomIn', 'zoomOut', 'actualSize', 'history']),
+    group(t('menu.window'), ['newWindow', 'newIncognito', 'newLittle', 'closeWindow', 'toggleSidebar', 'toggleToolbar', 'addSplit', 'closeSplit', 'fullscreen', 'library', 'downloads', 'newEasel', 'settings']),
+    group(fr ? 'Page' : 'Page', ['back', 'forward', 'reload', 'forceReload', 'stop', 'find', 'findNext', 'findPrev', 'copyUrl', 'copyUrlMarkdown', 'capture', 'captureToEasel', 'savePage', 'print', 'zoomIn', 'zoomOut', 'actualSize', 'history']),
     group(t('view.developer'), ['devtools', 'inspect', 'console', 'source']),
   ];
 }
@@ -326,6 +327,7 @@ function setupIpc() {
     if (!ok(e) || typeof action !== 'string') return undefined;
     if (action.startsWith('boost:')) return boostAction(action, payload);
     if (action.startsWith('pw:')) return passwords.action(action, payload, e.sender);
+    if (action.startsWith('easel:')) return easels.action(action, payload, e.sender);
     if (action === 'welcome:info') return { arc: require('./import-arc').available() };
     if (/^(lib|settings|shortcuts|ext|notes):/.test(action)) return globalAction(action, payload, e.sender);
     const owner = OrbeWindow.ownerOf(e.sender) || little.LittleWindow.ownerOf(e.sender) || OrbeWindow.primary;

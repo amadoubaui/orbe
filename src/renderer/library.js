@@ -1,6 +1,6 @@
-// Bibliothèque : historique, archive des onglets fermés, téléchargements.
-const KINDS = ['history', 'archive', 'downloads', 'media'];
-const CLEAR = { history: 'lib.clearHistory', archive: 'lib.clearArchive', downloads: 'lib.clearDownloads', media: 'lib.clearDownloads' };
+// Bibliothèque : historique, archive des onglets fermés, téléchargements, tableaux.
+const KINDS = ['history', 'archive', 'downloads', 'media', 'easels'];
+const CLEAR = { history: 'lib.clearHistory', archive: 'lib.clearArchive', downloads: 'lib.clearDownloads', media: 'lib.clearDownloads', easels: 'easel.new' };
 const list = document.getElementById('list');
 const q = document.getElementById('q');
 let kind = KINDS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'history';
@@ -32,9 +32,10 @@ function draw() {
   document.getElementById('clear').textContent = t(CLEAR[kind]);
   list.textContent = '';
   if (!rows.length) {
-    list.innerHTML = `<div class="empty">${esc(t('lib.empty'))}</div>`;
+    list.innerHTML = `<div class="empty">${esc(t(kind === 'easels' ? 'easel.empty' : 'lib.empty'))}</div>`;
     return;
   }
+  if (kind === 'easels') return drawBoards();
   let card = null;
   let day = '';
   rows.forEach((r, i) => {
@@ -73,7 +74,43 @@ function draw() {
   });
 }
 
+// Tableaux : vignette, titre, date ; un clic ouvre le tableau dans un onglet.
+function drawBoards() {
+  const grid = document.createElement('div');
+  grid.className = 'boards';
+  rows.forEach((r, i) => {
+    const card = document.createElement('div');
+    card.className = 'card board';
+    card.dataset.i = i;
+    const thumb = document.createElement('div');
+    thumb.className = 'thumb';
+    if (r.thumb) { const img = document.createElement('img'); img.src = r.thumb; img.alt = ''; img.draggable = false; thumb.appendChild(img); }
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    const name = document.createElement('div');
+    name.className = 'name';
+    name.textContent = r.title || t('easel.untitled');
+    const sub = document.createElement('div');
+    sub.className = 'sub muted';
+    sub.textContent = `${dayLabel(r.updated)} · ${t('easel.items', { n: r.count })}`;
+    meta.append(name, sub);
+    const del = document.createElement('button');
+    del.className = 'btn del';
+    del.dataset.do = 'delete';
+    del.textContent = t('easel.delete');
+    card.append(thumb, meta, del);
+    grid.appendChild(card);
+  });
+  list.appendChild(grid);
+}
+
 async function load() {
+  if (kind === 'easels') {
+    const needle = q.value.trim().toLowerCase();
+    rows = ((await O.send('easel:list')) || []).filter((b) => !needle || (b.title || t('easel.untitled')).toLowerCase().includes(needle));
+    draw();
+    return;
+  }
   const data = await O.send('lib:get', { q: q.value });
   rows = (data && data[kind]) || [];
   draw();
@@ -88,9 +125,20 @@ document.querySelector('.tabs').addEventListener('click', (e) => {
   history.replaceState(null, '', '#' + kind);
   load();
 });
-document.getElementById('clear').onclick = async () => { await O.send('lib:clear', kind === 'media' ? 'downloads' : kind); load(); };
+document.getElementById('clear').onclick = async () => {
+  // Onglet Tableaux : le bouton crée un tableau et l'ouvre.
+  if (kind === 'easels') { await O.send('easel:open'); return; }
+  await O.send('lib:clear', kind === 'media' ? 'downloads' : kind);
+  load();
+};
 q.addEventListener('input', load);
-list.addEventListener('click', (e) => {
+list.addEventListener('click', async (e) => {
+  const board = e.target.closest('.board');
+  if (board && kind === 'easels') {
+    const b = rows[Number(board.dataset.i)];
+    if (e.target.closest('[data-do=delete]')) { await O.send('easel:delete', b.id); load(); } else O.send('easel:open', b.id);
+    return;
+  }
   const line = e.target.closest('.line');
   if (!line) return;
   const r = rows[Number(line.dataset.i)];

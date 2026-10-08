@@ -625,6 +625,9 @@ module.exports = async function selftest(ctx) {
   await shot('clair');
   commands.setSetting('appearance', 'auto');
 
+  // Tableaux (tests/easels.js)
+  await require('./easels')({ ...ctx, check });
+
   // Mots de passe (tests/passwords.js)
   await require('./passwords')({ ...ctx, check });
 
