@@ -228,7 +228,11 @@ module.exports = async function selftest(ctx) {
 
   // Mouvements des pages : animation du système (View.setBounds animé), sans minuteur
   {
-    const moving = win.motion(1) > 0; // faux si « Réduire les animations » est actif
+    // Les machines d'intégration sous Windows ont les animations coupées : on les
+    // impose pour toute la suite, afin que le chemin animé y soit essayé aussi.
+    const system = win.motion(1) > 0;
+    win.forceMotion(true);
+    const moving = win.motion(1) > 0;
     const view = () => win.live.get(w.activeId).view;
     const same = (r1, r2) => r1.x === r2.x && r1.y === r2.y && r1.width === r2.width && r1.height === r2.height;
     const pane = (i = 0) => { const p = w.paneRects(w.contentRect(), w.visibleIds())[i]; return { x: p.x, y: p.y, width: p.width, height: p.height }; };
@@ -247,7 +251,24 @@ module.exports = async function selftest(ctx) {
       win.motionStats.animated - before.animated === (moving ? 1 : 0) && win.motionStats.direct - before.direct === (moving ? 0 : 1) && !w.anim);
     await sleep(320);
     check('retour de la barre : la page finit à sa place exacte', same(view().getBounds(), docked) && same(docked, { ...hidden, x: docked.x, width: hidden.width - (docked.x - hidden.x) }));
-    console.log(`  – animation native des vues : ${moving ? `demandée (${win.MOTION.sidebarIn} ms) ; position lue aussitôt après l’appel : x=${during.x} (départ ${hidden.x}, arrivée ${docked.x}) ; arrivée signalée à ${landed} ms` : 'coupée (« Réduire les animations »)'}`);
+    console.log(`  – animation native des vues (${process.platform}, « Réduire les animations » ${system ? 'inactif' : 'actif, ignoré pour l’essai'}) : ${win.MOTION.sidebarIn} ms demandées ; position lue aussitôt après l’appel : x=${during.x} (départ ${hidden.x}, arrivée ${docked.x}) ; arrivée signalée à ${landed} ms`);
+    // Trajet plus long, pour voir si le système anime vraiment : cote lue à mi-course.
+    {
+      const probe = { ...docked, x: docked.x + 120 };
+      const t1 = Date.now();
+      let end = 0;
+      view().once('bounds-changed', () => { end = Date.now() - t1; });
+      view().setBounds(probe, { animate: { duration: 400, easing: 'linear' } });
+      await sleep(200);
+      const mid = view().getBounds().x;
+      await sleep(400);
+      const fin = view().getBounds().x;
+      console.log(`  – trajet d’essai de 400 ms : cote à 200 ms x=${mid}, à 600 ms x=${fin} (départ ${docked.x}, cible ${probe.x}) ; fin signalée à ${end} ms`);
+      check('trajet animé : la vue arrive à sa cible', fin === probe.x);
+      view().setBounds(docked, { animate: { duration: 1 } });
+      await sleep(150);
+      check('retour par un appel animé de 1 ms : cote exacte', same(view().getBounds(), docked));
+    }
     // Interruptions : la dernière demande l'emporte, les cotes lues sont les bonnes
     w.toggleSidebar(false);
     await sleep(100);

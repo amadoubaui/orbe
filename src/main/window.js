@@ -51,8 +51,12 @@ const stats = { animated: 0, direct: 0 }; // appels à setBounds, pour les mesur
 let nativeAnim = true;
 
 // « Réduire les animations » (réglage du système) : toutes les durées passent à 0.
+// Les essais peuvent imposer l'un ou l'autre (`forceMotion`), le réglage des
+// machines d'intégration n'étant pas le même d'un système à l'autre.
+let motionForced = null;
+function forceMotion(on) { motionForced = on; }
 function motion(ms) {
-  if (process.env.ORBE_NO_MOTION) return 0;
+  if (motionForced !== null) return motionForced ? ms : 0;
   try { if (systemPreferences.getAnimationSettings().prefersReducedMotion) return 0; } catch {}
   return ms;
 }
@@ -2246,4 +2250,4 @@ function archiveStale() {
   if (count) { store.save(); for (const w of windows.values()) w.layout(); OrbeWindow.pushAll(); }
 }
 
-module.exports = { OrbeWindow, windows, live, trusted, hooks, archiveStale, INTERNAL, UI_PRELOAD, isInternal, MOTION, motion, motionStats: stats };
+module.exports = { OrbeWindow, windows, live, trusted, hooks, archiveStale, INTERNAL, UI_PRELOAD, isInternal, MOTION, motion, forceMotion, motionStats: stats };
