@@ -182,6 +182,12 @@ module.exports = async function selftest({ first: w, OrbeWindow, store, win, lit
   await until(() => ui('document.querySelectorAll("#dividers .divider").length === 1'), 'poignée de séparation');
   const reread = store.normalize(JSON.parse(JSON.stringify(store.state)));
   check('vue scindée : enregistrée avec l’Espace (retrouvée au redémarrage)', reread.spaces[0].splits.length === 1 && reread.spaces[0].splits[0].join() === [a.id, b.id].join());
+  w.run('splitDirection');
+  const va = win.live.get(a.id).view.getBounds();
+  const vb = win.live.get(b.id).view.getBounds();
+  check('vue scindée empilée : les volets sont l’un au-dessus de l’autre', va.x === vb.x && va.width === vb.width && vb.y > va.y && w.isVertical(w.groupOf(a.id)));
+  w.run('splitDirection');
+  check('retour côte à côte', win.live.get(b.id).view.getBounds().x > win.live.get(a.id).view.getBounds().x);
   await shot('scinde');
   w.run('closeSplit');
   w.dragZone(true);

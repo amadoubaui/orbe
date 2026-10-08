@@ -98,7 +98,7 @@ function build() {
         sep,
         item('stop'), item('reload'), item('forceReload'), item('clearCookies'), item('clearCache'),
         sep,
-        item('addSplit'), item('closeSplit'),
+        item('addSplit'), item('splitDirection'), item('closeSplit'),
         ...[1, 2, 3, 4].map((n) => item('pane' + n, { label: `${t('view.pane')} ${n}`, visible: false, acceleratorWorksWhenHidden: true })),
         sep,
         item('boost'), item('zap'),

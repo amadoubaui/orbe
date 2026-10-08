@@ -206,7 +206,8 @@ function render(s) {
     list.forEach((d, i) => {
       let h = dv.children[i];
       if (!h) { h = document.createElement('div'); h.className = 'divider'; h.dataset.i = i; dv.appendChild(h); }
-      h.style.cssText = `left:${d.x}px;top:${d.y}px;height:${d.h}px`;
+      h.className = 'divider' + (d.v ? ' v' : '');
+      h.style.cssText = d.v ? `left:${d.x}px;top:${d.y}px;width:${d.w}px` : `left:${d.x}px;top:${d.y}px;height:${d.h}px`;
     });
   }
 
@@ -397,18 +398,19 @@ $('dividers').addEventListener('pointerdown', (e) => {
   h.classList.add('on');
   const i = Number(h.dataset.i);
   let frame = 0;
-  let x = e.clientX;
+  const vertical = h.classList.contains('v');
+  let x = vertical ? e.clientY : e.clientX;
   const move = (ev) => {
-    x = ev.clientX;
-    h.style.left = (x - 4) + 'px';
-    if (!frame) frame = requestAnimationFrame(() => { frame = 0; send('splitResize', { i, x }); });
+    x = vertical ? ev.clientY : ev.clientX;
+    if (vertical) h.style.top = (x - 4) + 'px'; else h.style.left = (x - 4) + 'px';
+    if (!frame) frame = requestAnimationFrame(() => { frame = 0; send('splitResize', { i, at: x }); });
   };
   const up = () => {
     h.removeEventListener('pointermove', move);
     h.removeEventListener('pointerup', up);
     h.classList.remove('on');
     splitDrag = false;
-    send('splitResize', { i, x });
+    send('splitResize', { i, at: x });
   };
   h.addEventListener('pointermove', move);
   h.addEventListener('pointerup', up);

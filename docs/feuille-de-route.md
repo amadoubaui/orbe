@@ -25,7 +25,6 @@ animations des onglets, Boosts et Zap, extensions Chrome (expérimental).
 
 ## Écarts avec Arc encore ouverts
 
-- Scission verticale.
 - Bibliothèque : aperçu des fichiers récents au survol.
 - Easels (tableaux libres).
 

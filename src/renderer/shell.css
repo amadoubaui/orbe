@@ -391,3 +391,6 @@ html.win body.toolbar:not(.fullscreen) #toolbar { right: 146px; }
 html.win body.toolbar:not(.docked) #toolbar { padding-left: 0; }
 html.win body:not(.toolbar):not(.fullscreen) #empty { top: 32px; }
 /* ==== Fin du bloc plateformes ============================================== */
+
+.divider.v { width: auto; height: 8px; cursor: row-resize; }
+.divider.v::after { width: 34px; height: 3px; }

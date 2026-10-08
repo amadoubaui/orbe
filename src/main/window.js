@@ -301,37 +301,65 @@ class OrbeWindow {
   }
 
   // Largeur de chaque volet : parts égales, ou celles réglées à la souris.
+  // Vue scindée empilée (volets l'un au-dessus de l'autre) ? Mémorisé par Espace,
+  // sous l'identifiant du premier onglet du groupe.
+  isVertical(group) {
+    if (!group) return false;
+    for (const sp of this.data.spaces) if ((sp.splits || []).includes(group)) return !!(sp.splitDirs && sp.splitDirs[group[0]] === 'v');
+    return false;
+  }
+
+  toggleSplitDirection() {
+    const group = this.activeId && this.groupOf(this.activeId);
+    if (!group) return;
+    const sp = this.data.spaces.find((x) => (x.splits || []).includes(group));
+    if (!sp) return;
+    const dirs = sp.splitDirs || (sp.splitDirs = {});
+    if (dirs[group[0]] === 'v') delete dirs[group[0]]; else dirs[group[0]] = 'v';
+    delete group.ratios;
+    this.layout();
+    this.changed();
+  }
+
+  // Rectangle de chaque volet : parts égales, ou celles réglées à la souris.
   paneRects(rect, ids) {
     const n = ids.length;
     if (!n) return [];
     const group = n > 1 ? this.groupOf(ids[0]) : null;
+    const vertical = this.isVertical(group);
     let ratios = group && group.ratios && group.ratios.length === n ? group.ratios : null;
     if (!ratios) ratios = ids.map(() => 1 / n);
-    const usable = rect.width - GAP * (n - 1);
+    const start = vertical ? rect.y : rect.x;
+    const total = vertical ? rect.height : rect.width;
+    const usable = total - GAP * (n - 1);
     const out = [];
-    let x = rect.x;
+    let pos = start;
     ratios.forEach((r, i) => {
-      const width = i === n - 1 ? rect.x + rect.width - x : Math.round(usable * r);
-      out.push({ x: Math.round(x), width: Math.max(60, width) });
-      x += width + GAP;
+      const size = Math.max(60, i === n - 1 ? start + total - pos : Math.round(usable * r));
+      out.push(vertical
+        ? { x: rect.x, y: Math.round(pos), width: rect.width, height: size, vertical }
+        : { x: Math.round(pos), y: rect.y, width: size, height: rect.height, vertical });
+      pos += size + GAP;
     });
     return out;
   }
 
-  // Déplace la séparation entre les volets i et i+1 jusqu'à l'abscisse x.
-  resizeSplit(i, x) {
+  // Déplace la séparation entre les volets i et i+1 jusqu'à la position donnée
+  // (abscisse, ou ordonnée pour une vue empilée).
+  resizeSplit(i, at) {
     const ids = this.visibleIds();
     const group = ids.length > 1 ? this.groupOf(ids[0]) : null;
     if (!group || !(i >= 0 && i < ids.length - 1)) return;
     const rect = this.contentRect();
     const panes = this.paneRects(rect, ids);
-    const usable = rect.width - GAP * (ids.length - 1);
-    const ratios = panes.map((p) => p.width / usable);
+    const vertical = panes[0].vertical;
+    const usable = (vertical ? rect.height : rect.width) - GAP * (ids.length - 1);
+    const ratios = panes.map((p) => (vertical ? p.height : p.width) / usable);
     const pair = ratios[i] + ratios[i + 1];
     const min = Math.min(0.15, pair / 2);
-    const left = clamp((x - GAP / 2 - panes[i].x) / usable, min, pair - min);
-    ratios[i] = left;
-    ratios[i + 1] = pair - left;
+    const first = clamp((at - GAP / 2 - (vertical ? panes[i].y : panes[i].x)) / usable, min, pair - min);
+    ratios[i] = first;
+    ratios[i + 1] = pair - first;
     group.ratios = ratios;
     this.layout();
     this.sendState();
@@ -353,7 +381,7 @@ class OrbeWindow {
       shown.add(rt.view);
       if (!this.attached || !this.attached.has(rt.view)) this.win.contentView.addChildView(rt.view, 1);
       rt.view.setBorderRadius(this.htmlFullscreen ? 0 : RADIUS);
-      rt.view.setBounds({ x: panes[i].x, y: rect.y, width: panes[i].width, height: rect.height });
+      rt.view.setBounds({ x: panes[i].x, y: panes[i].y, width: panes[i].width, height: panes[i].height });
     });
     for (const view of this.attached || []) {
       if (!shown.has(view)) {
@@ -372,7 +400,7 @@ class OrbeWindow {
     if (this.findOpen && this.findView) {
       const i = Math.max(0, ids.indexOf(this.activeId));
       const right = panes[i] ? panes[i].x + panes[i].width : rect.x + paneW;
-      this.findView.setBounds({ x: Math.round(right - 372), y: rect.y + 10, width: 360, height: 50 });
+      this.findView.setBounds({ x: Math.round(right - 372), y: (panes[i] ? panes[i].y : rect.y) + 10, width: 360, height: 50 });
     }
     if (this.toastView) {
       this.toastView.setBounds({ x: Math.round(rect.x + rect.width / 2 - 190), y: rect.y + 12, width: 380, height: 46 });
@@ -769,6 +797,7 @@ class OrbeWindow {
     if (!g) return;
     g.splice(g.indexOf(id), 1);
     delete g.ratios;
+    for (const sp of this.data.spaces) if (sp.splitDirs) delete sp.splitDirs[id];
     if (g.length < 2) {
       for (const sp of this.data.spaces) {
         const i = (sp.splits || []).indexOf(g);
@@ -1875,7 +1904,9 @@ class OrbeWindow {
         const ids = this.visibleIds();
         if (ids.length < 2 || this.htmlFullscreen) return [];
         const rect = this.contentRect();
-        return this.paneRects(rect, ids).slice(0, -1).map((p) => ({ x: p.x + p.width, y: rect.y, h: rect.height }));
+        return this.paneRects(rect, ids).slice(0, -1).map((p) => (p.vertical
+          ? { v: true, x: p.x, y: p.y + p.height, w: p.width }
+          : { x: p.x + p.width, y: rect.y, h: rect.height }));
       })(),
       media: this.mediaId ? {
         id: this.mediaId,
@@ -1936,7 +1967,7 @@ class OrbeWindow {
       case 'dragZone': return this.dragZone(!!a);
       case 'dragZoneOver': if (this.dropView && !this.dropView.webContents.isDestroyed()) this.dropView.webContents.send('overlay', { mode: 'drop', label: t('view.addSplit'), over: !!a }); return undefined;
       case 'dropSplit': return this.dropSplit(String(a));
-      case 'splitResize': return this.resizeSplit(Number(a.i), Number(a.x));
+      case 'splitResize': return this.resizeSplit(Number(a.i), Number(a.at != null ? a.at : a.x));
       case 'peekClose': return this.closePeek();
       case 'peekExpand': return this.expandPeek();
       case 'peekSplit': return this.expandPeek({ split: true });
