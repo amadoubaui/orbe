@@ -449,7 +449,11 @@ class OrbeWindow {
     };
     wc.on('did-navigate', (e, url) => navigated(url));
     wc.on('did-navigate-in-page', (e, url, isMainFrame) => { if (isMainFrame) navigated(url); });
-    wc.on('audio-state-changed', () => OrbeWindow.pushAll());
+    wc.on('audio-state-changed', () => {
+      const owner = rt.owner;
+      if (wc.isCurrentlyAudible()) { rt.playing = true; if (!owner.visibleIds().includes(rt.id)) owner.mediaId = rt.id; }
+      OrbeWindow.pushAll();
+    });
     wc.on('context-menu', (e, params) => rt.owner.pageMenu(rt, params));
     wc.on('before-input-event', (e, input) => rt.owner.onInput(e, input));
     wc.on('found-in-page', (e, result) => rt.owner.sendFind(result));
@@ -544,6 +548,12 @@ class OrbeWindow {
     const loc = this.locate(id);
     if (!loc || loc.node.type === 'folder') return;
     if (loc.space && loc.space.id !== this.spaceId) this.spaceId = loc.space.id;
+    // En quittant un onglet qui joue du son, il passe dans le lecteur miniature.
+    for (const prevId of this.visibleIds()) {
+      const prevRt = live.get(prevId);
+      if (prevId !== id && prevRt && !prevRt.wc.isDestroyed() && prevRt.wc.isCurrentlyAudible()) { prevRt.playing = true; this.mediaId = prevId; }
+    }
+    if (this.mediaId === id) this.mediaId = null;
     this.activeBySpace[this.space.id] = id;
     const tab = this.data.tabs[id];
     tab.lastActiveAt = Date.now();
@@ -705,6 +715,19 @@ class OrbeWindow {
       tab.homeUrl = tab.homeUrl || tab.url;
     }
     this.changed();
+  }
+
+  // Lecture / pause du média de l'onglet en arrière-plan.
+  mediaToggle() {
+    const rt = this.mediaId && live.get(this.mediaId);
+    if (!rt || rt.wc.isDestroyed()) return;
+    rt.playing = !rt.playing;
+    rt.wc.executeJavaScript(`(() => {
+      const all = [...document.querySelectorAll('video, audio')];
+      const m = all.find((x) => !x.paused) || all.find((x) => x.currentTime > 0) || all[0];
+      if (m) { if (m.paused) m.play(); else m.pause(); }
+    })()`, true).catch(() => {});
+    OrbeWindow.pushAll();
   }
 
   resetPinned(id = this.activeId) {
@@ -1065,7 +1088,7 @@ class OrbeWindow {
     }
     for (const list of Object.values(this.data.favs)) for (const id of list) tabs.push(this.data.tabs[id]);
     const items = suggest.local(q, { tabs, commands: this.commandList(), activeId: this.commandMode === 'edit' ? this.activeId : null });
-    return this.incognito ? items.filter((i) => i.kind !== 'history') : items;
+    return this.incognito ? items.filter((i) => i.kind !== 'history').map((i) => ({ ...i, favicon: '' })) : items;
   }
 
   async suggest(q) {
@@ -1439,6 +1462,9 @@ class OrbeWindow {
     const downloads = store.state.downloads.filter((x) => x.state === 'progressing');
     const dir = this.spaceDir || 0;
     this.spaceDir = 0;
+    const mediaRt = this.mediaId && live.get(this.mediaId);
+    const mediaTab = mediaRt && !mediaRt.wc.isDestroyed() && d.tabs[this.mediaId];
+    if (!mediaTab || this.visibleIds().includes(this.mediaId)) this.mediaId = null;
     this.ui.webContents.send('state', {
       lang: settings.lang,
       appearance: settings.appearance,
@@ -1463,6 +1489,14 @@ class OrbeWindow {
         canBack: !!(wc && wc.navigationHistory.canGoBack()),
         canForward: !!(wc && wc.navigationHistory.canGoForward()),
       },
+      media: this.mediaId ? {
+        id: this.mediaId,
+        title: mediaTab.customTitle || mediaTab.title || suggest.strip(mediaTab.url),
+        url: mediaTab.url,
+        favicon: mediaTab.favicon,
+        playing: mediaRt.wc.isCurrentlyAudible() || (!!mediaRt.playing && !mediaTab.muted),
+        muted: !!mediaTab.muted,
+      } : null,
       downloads: downloads.length
         ? { count: downloads.length, progress: downloads.reduce((a, x) => a + (x.total ? x.received / x.total : 0), 0) / downloads.length }
         : null,
@@ -1487,6 +1521,7 @@ class OrbeWindow {
       case 'toggleFolder': return this.toggleFolder(a);
       case 'move': return this.move(a);
       case 'toggleMute': return this.toggleMute(a);
+      case 'mediaToggle': return this.mediaToggle();
       case 'resetPinned': return this.resetPinned(a);
       case 'command': return this.run(a);
       case 'dropUrl': return this.newTab(String(a));

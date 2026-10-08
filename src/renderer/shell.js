@@ -10,7 +10,9 @@ const icon = (name, cls = 'i') => `<svg class="${cls}"><use href="#i-${name}"/><
 
 // --- Rendu ------------------------------------------------------------------
 function setIcon(el, it) {
-  const key = it.loading ? 'L' : (it.favicon || '#' + it.title.charAt(0));
+  // Navigation privée : aucune icône n'est téléchargée par l'interface.
+  const src = S && S.incognito ? '' : (it.favicon || guessIcon(it.url));
+  const key = it.loading ? 'L' : (src || '#' + it.title.charAt(0));
   if (el._icon === key) return;
   el._icon = key;
   const slot = el._ic;
@@ -20,7 +22,7 @@ function setIcon(el, it) {
     sp.className = 'spinner';
     slot.appendChild(sp);
   } else {
-    slot.appendChild(faviconEl(it.favicon, it.title));
+    slot.appendChild(faviconEl(src, it.title));
   }
 }
 
@@ -144,6 +146,19 @@ function render(s) {
       : '';
   }
 
+  const media = $('media');
+  media.hidden = !s.media;
+  if (s.media) {
+    if (media._id !== s.media.id + s.media.favicon) {
+      media._id = s.media.id + s.media.favicon;
+      $('media-icon').textContent = '';
+      $('media-icon').appendChild(faviconEl(s.media.favicon || guessIcon(s.media.url), s.media.title));
+    }
+    $('media-title').textContent = s.media.title;
+    $('media-play-icon').setAttribute('href', s.media.playing ? '#i-pause' : '#i-play');
+    $('media-mute-icon').setAttribute('href', s.media.muted ? '#i-mute' : '#i-sound');
+  }
+
   const lib = $('b-library');
   lib.classList.toggle('downloading', !!s.downloads);
   if (s.downloads) lib.querySelector('circle').style.strokeDashoffset = String(75.4 * (1 - s.downloads.progress));
@@ -248,6 +263,9 @@ sidebar.addEventListener('contextmenu', (e) => {
   else send('sidebarMenu');
 });
 
+$('media-open').onclick = () => S && S.media && send('activate', S.media.id);
+$('media-play').onclick = () => send('mediaToggle');
+$('media-mute').onclick = () => S && S.media && send('toggleMute', S.media.id);
 $('b-sidebar').onclick = () => send('toggleSidebar');
 $('url').onclick = () => send('openCommand', 'edit');
 $('tb-url').onclick = () => send('openCommand', 'edit');

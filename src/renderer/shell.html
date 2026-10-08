@@ -21,6 +21,8 @@
   <symbol id="i-chevron" viewBox="0 0 16 16"><path d="m6 4 4 4-4 4"/></symbol>
   <symbol id="i-sound" viewBox="0 0 16 16"><path d="M3 6.4h2L7.8 4v8L5 9.6H3z"/><path d="M10.2 6.2a2.6 2.6 0 0 1 0 3.6M11.9 4.6a5 5 0 0 1 0 6.8"/></symbol>
   <symbol id="i-mute" viewBox="0 0 16 16"><path d="M3 6.4h2L7.8 4v8L5 9.6H3z"/><path d="m10.5 6.3 3 3.4m0-3.4-3 3.4"/></symbol>
+  <symbol id="i-play" viewBox="0 0 16 16"><path d="M5.5 3.8v8.4L12 8z" fill="currentColor"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 16 16"><path d="M5.6 4v8M10.4 4v8" stroke-width="2.2"/></symbol>
   <symbol id="i-search" viewBox="0 0 16 16"><circle cx="7.2" cy="7.2" r="3.8"/><path d="m10.2 10.2 3 3"/></symbol>
   <symbol id="i-reset" viewBox="0 0 16 16"><path d="M4 8h8M4 8l3-3M4 8l3 3"/></symbol>
 </svg>
@@ -48,6 +50,11 @@
     <button id="b-newtab" class="row"><span class="ic"><svg class="i"><use href="#i-plus"/></svg></span><span class="title" data-t="side.newTab"></span></button>
     <div id="today" class="list" data-drop="today"></div>
     <div id="blank"></div>
+  </div>
+  <div id="media" hidden>
+    <button id="media-open"><span id="media-icon"></span><span id="media-title"></span></button>
+    <button class="ib" id="media-play"><svg class="i"><use id="media-play-icon" href="#i-pause"/></svg></button>
+    <button class="ib" id="media-mute"><svg class="i"><use id="media-mute-icon" href="#i-sound"/></svg></button>
   </div>
   <div id="incognito"><b data-t="incognito.title"></b><span data-t="incognito.body"></span></div>
   <div id="bottom">

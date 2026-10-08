@@ -45,12 +45,24 @@ function letterIcon(text) {
   return span;
 }
 
+// Icône probable d'un site dont la page n'a pas encore été chargée :
+// demandée au site lui-même, jamais à un service tiers.
+function guessIcon(pageUrl) {
+  try {
+    const u = new URL(pageUrl);
+    return u.protocol === 'https:' ? u.origin + '/favicon.ico' : '';
+  } catch {
+    return '';
+  }
+}
+
 function faviconEl(url, fallbackText) {
   if (!url || !/^(https?|data):/i.test(url)) return letterIcon(fallbackText);
   const img = document.createElement('img');
   img.className = 'favicon';
   img.draggable = false;
   img.decoding = 'async';
+  img.loading = 'lazy';
   img.onerror = () => img.replaceWith(letterIcon(fallbackText));
   img.src = url;
   return img;
