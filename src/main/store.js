@@ -24,6 +24,7 @@ const DEFAULT_SETTINGS = {
   showToolbar: false,
   sidebarWidth: 250,
   maxLiveTabs: 14,
+  externalLinks: 'window',
 };
 
 class Store {

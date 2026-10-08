@@ -21,12 +21,19 @@ app.setName('Orbe');
 // Profil de données isolé : pour les tests, ou via ORBE_USER_DATA.
 if (process.env.ORBE_USER_DATA) app.setPath('userData', path.resolve(process.env.ORBE_USER_DATA));
 else if (SELFTEST) app.setPath('userData', fs.mkdtempSync(path.join(os.tmpdir(), 'orbe-test-')));
+// En test, rien n'est écrit dans le vrai dossier Téléchargements.
+if (SELFTEST) {
+  const dl = path.join(app.getPath('userData'), 'Telechargements');
+  fs.mkdirSync(dl, { recursive: true });
+  app.setPath('downloads', dl);
+}
 sessions.registerScheme();
 
 if (!SELFTEST && !process.env.ORBE_USER_DATA && !app.requestSingleInstanceLock()) app.quit();
 
 function openUrl(url) {
   if (!app.isReady()) return pendingUrls.push(url);
+  if (store.state.settings.externalLinks === 'little' && !openUrl.direct) return new little.LittleWindow(url);
   let w = OrbeWindow.primary;
   if (!w) w = new OrbeWindow();
   w.newTab(url);
@@ -85,7 +92,13 @@ const SETTABLE = {
   appearance: (v) => ['auto', 'light', 'dark'].includes(v),
   translucent: (v) => typeof v === 'boolean',
   maxLiveTabs: (v) => Number.isInteger(v) && v >= 4 && v <= 60,
+  externalLinks: (v) => v === 'window' || v === 'little',
 };
+
+function profileList() {
+  const s = store.state;
+  return s.profiles.map((p) => ({ id: p.id, name: p.name, spaces: s.spaces.filter((sp) => sp.profileId === p.id).map((sp) => `${sp.icon} ${sp.name}`) }));
+}
 
 function shortcutGroups() {
   const t = (k) => store.t(k);
@@ -138,12 +151,30 @@ async function globalAction(action, a, sender) {
     case 'shortcuts:get':
       return shortcutGroups();
     case 'settings:get':
-      return { settings: s.settings, engines: Object.entries(suggest.ENGINES).map(([id, e]) => ({ id, name: e.name })), version: app.getVersion(), chrome: process.versions.chrome };
+      return { settings: s.settings, profiles: profileList(), engines: Object.entries(suggest.ENGINES).map(([id, e]) => ({ id, name: e.name })), version: app.getVersion(), chrome: process.versions.chrome };
     case 'settings:set':
       for (const [k, v] of Object.entries(a || {})) if (SETTABLE[k] && SETTABLE[k](v)) s.settings[k] = v;
       store.save();
       broadcastSettings();
       return s.settings;
+    case 'settings:renameProfile': {
+      const p = s.profiles.find((x) => x.id === (a && a.id));
+      const name = String((a && a.name) || '').trim().slice(0, 40);
+      if (p && name) { p.name = name; store.save(); menu.refresh(true); }
+      return profileList();
+    }
+    case 'settings:deleteProfile': {
+      const i = s.profiles.findIndex((x) => x.id === a);
+      if (i < 0 || a === 'default' || s.spaces.some((sp) => sp.profileId === a)) return profileList();
+      // Les favoris du profil rejoignent l'archive ; ses cookies sont effacés.
+      for (const id of s.favs[a] || []) { store.archive(s.tabs[id]); delete s.tabs[id]; }
+      delete s.favs[a];
+      s.profiles.splice(i, 1);
+      sessions.profileSession(a).clearStorageData().catch(() => {});
+      store.save();
+      menu.refresh(true);
+      return profileList();
+    }
     case 'settings:makeDefault':
       commands.makeDefault();
       return true;
@@ -210,7 +241,7 @@ app.whenReady().then(async () => {
   commands.hooks.openSettings = openSettings;
   win.hooks.openLittle = (url) => new little.LittleWindow(url);
   win.hooks.changed = () => menu.refresh();
-  little.hooks.openInOrbe = openUrl;
+  little.hooks.openInOrbe = (url) => { openUrl.direct = true; try { openUrl(url); } finally { openUrl.direct = false; } };
   sessions.hooks.ownerWindow = (wc) => { const o = wc && OrbeWindow.ownerOf(wc); return o ? o.win : null; };
   sessions.hooks.onDownload = (phase, d, wc) => {
     const owner = (wc && OrbeWindow.ownerOf(wc)) || OrbeWindow.primary;
@@ -232,7 +263,7 @@ app.whenReady().then(async () => {
 
   if (SELFTEST) {
     try {
-      await require('../../tests/selftest')({ first, OrbeWindow, store, win, little, commands, menu });
+      await require('../../tests/selftest')({ first, OrbeWindow, store, win, little, commands, menu, openSettings });
       store.flush();
       app.exit(0);
     } catch (err) {

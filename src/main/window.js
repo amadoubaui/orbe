@@ -1266,6 +1266,34 @@ class OrbeWindow {
     this.toast(t('toast.captured'));
   }
 
+  // Capture de la page entière, au-delà de la zone visible.
+  async captureFull() {
+    const wc = this.activeWc;
+    if (!wc) return;
+    const dbg = wc.debugger;
+    if (dbg.isAttached()) return this.capture();
+    try {
+      dbg.attach('1.3');
+      const metrics = await dbg.sendCommand('Page.getLayoutMetrics');
+      const size = metrics.cssContentSize || metrics.contentSize;
+      const shot = await dbg.sendCommand('Page.captureScreenshot', {
+        format: 'png',
+        captureBeyondViewport: true,
+        clip: { x: 0, y: 0, width: Math.ceil(size.width), height: Math.min(Math.ceil(size.height), 20000), scale: 1 },
+      });
+      const png = Buffer.from(shot.data, 'base64');
+      clipboard.write([new ClipboardItem({ 'image/png': new Blob([png], { type: 'image/png' }) })]).catch(() => {});
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+      fs.writeFile(path.join(app.getPath('downloads'), `Orbe ${stamp}.png`), png, () => {});
+      this.toast(t('toast.captured'));
+    } catch (err) {
+      console.error('[orbe] capture', err);
+    } finally {
+      try { dbg.detach(); } catch {}
+    }
+    return undefined;
+  }
+
   async savePage() {
     const wc = this.activeWc;
     if (!wc) return;

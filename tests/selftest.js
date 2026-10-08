@@ -27,6 +27,7 @@ function serve() {
     if (url.pathname === '/a') return res.end(page('Page A', '<h1>Alpha</h1><p>orbe orbe orbe</p><a id="pop" href="/c" target="_blank">ouvrir C</a>'));
     if (url.pathname === '/b') return res.end(page('Page B', '<h1>Bravo</h1>'));
     if (url.pathname === '/c') return res.end(page('Page C', '<h1>Charlie</h1><script>document.title = window.opener ? "C avec opener" : "C sans opener"</script>'));
+    if (url.pathname === '/long') return res.end(page('Page longue', '<div style="height:4000px;background:linear-gradient(#fde,#def)">haut</div><p>bas</p>'));
     if (url.pathname === '/file.txt') { res.setHeader('content-disposition', 'attachment; filename="orbe-test.txt"'); return res.end('bonjour'); }
     res.statusCode = 404;
     return res.end(page('404', 'introuvable'));
@@ -34,7 +35,7 @@ function serve() {
   return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server)));
 }
 
-module.exports = async function selftest({ first: w, OrbeWindow, store, win, little, commands }) {
+module.exports = async function selftest({ first: w, OrbeWindow, store, win, little, commands, openSettings }) {
   const results = [];
   let failed = 0;
   const check = (name, ok, detail = '') => {
@@ -297,6 +298,26 @@ module.exports = async function selftest({ first: w, OrbeWindow, store, win, lit
   const dl = store.state.downloads[0];
   check('téléchargement enregistré', fs.existsSync(dl.path) && fs.readFileSync(dl.path, 'utf8') === 'bonjour');
   fs.unlinkSync(dl.path);
+
+  // Capture de la page entière
+  const tall = w.newTab(base + '/long');
+  await until(() => titleOf(tall.id) === 'Page longue', 'page longue chargée');
+  const dlDir = require('electron').app.getPath('downloads');
+  const pngBefore = fs.readdirSync(dlDir).filter((f) => f.endsWith('.png')).length;
+  await w.captureFull();
+  await until(() => fs.readdirSync(dlDir).filter((f) => f.endsWith('.png')).length === pngBefore + 1, 'capture enregistrée');
+  const png = fs.readdirSync(dlDir).filter((f) => f.endsWith('.png')).map((f) => path.join(dlDir, f)).sort().pop();
+  const pngSize = await until(() => { const sz = require('electron').nativeImage.createFromPath(png).getSize(); return sz.height ? sz : null; }, 'capture lisible');
+  check('capture de la page entière (au-delà de la zone visible)', pngSize.height >= 4000, JSON.stringify(pngSize));
+  w.close(tall.id);
+  w.activate(a.id);
+
+  // Réglages
+  const sw2 = openSettings();
+  await until(async () => (await sw2.webContents.executeJavaScript('document.querySelectorAll("#profiles .line").length')) === w.data.profiles.length, 'réglages affichés');
+  check('les réglages listent les profils', await sw2.webContents.executeJavaScript('document.getElementById("lang").value') === 'fr');
+  if (shots) fs.writeFileSync(path.join(shots, 'reglages.png'), (await sw2.webContents.capturePage()).toPNG());
+  sw2.close();
 
   // Bibliothèque (page interne)
   w.run('history');

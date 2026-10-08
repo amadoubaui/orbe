@@ -28,3 +28,5 @@ select { height: 28px; border-radius: 7px; border: 0.5px solid var(--line); back
 input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); }
 .bar { height: 3px; border-radius: 2px; background: var(--pill); overflow: hidden; margin-top: 5px; }
 .bar i { display: block; height: 100%; background: var(--accent); }
+.pname { width: 100%; border: 0; outline: 0; background: none; padding: 2px 0; font-weight: 500; user-select: text; border-radius: 4px; }
+.pname:focus { background: var(--pill); padding: 2px 6px; }

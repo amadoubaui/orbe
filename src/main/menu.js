@@ -62,7 +62,7 @@ function build() {
         item('newTab'), item('newWindow'), item('newIncognito'), item('newLittle'), item('reopen'),
         sep, item('commandBar'),
         sep, item('closeTab'), item('closeWindow'),
-        sep, item('capture'), item('savePage'), item('print'),
+        sep, item('capture'), item('captureFull'), item('savePage'), item('print'),
       ],
     },
     {

@@ -33,6 +33,8 @@ h1 { font-size: 20px; }
       </select></div>
     <div class="line"><div class="grow"><div data-t="set.memory"></div><div class="sub" data-t="set.memoryHint"></div></div>
       <select id="maxLiveTabs"><option>6</option><option>10</option><option>14</option><option>20</option><option>30</option><option>50</option></select></div>
+    <div class="line"><span class="grow" data-t="set.external"></span>
+      <select id="externalLinks"><option value="window" data-t="set.externalWindow"></option><option value="little" data-t="set.externalLittle"></option></select></div>
     <div class="line"><span class="grow" data-t="set.default"></span><button class="btn" id="makeDefault" data-t="set.makeDefault"></button></div>
   </div>
 
@@ -42,6 +44,10 @@ h1 { font-size: 20px; }
       <select id="appearance"><option value="auto" data-t="view.auto"></option><option value="light" data-t="view.light"></option><option value="dark" data-t="view.dark"></option></select></div>
     <div class="line"><span class="grow" data-t="set.translucent"></span><input type="checkbox" id="translucent"></div>
   </div>
+
+  <h2 data-t="set.profiles"></h2>
+  <div class="card" id="profiles"></div>
+  <p class="muted" style="margin:8px 4px 0;font-size:12px" data-t="set.profilesHint"></p>
 
   <h2 data-t="set.privacy"></h2>
   <div class="card">
