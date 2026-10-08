@@ -219,12 +219,26 @@ la confirmation d'identité, avertit, puis écrit le fichier en `0600`.
   **et** un `ORBE_USER_DATA` distinct du vrai dossier de données : c'est ce
   qu'utilise l'essai de fumée de l'intégration continue. Le mode test ne peut
   donc jamais s'appliquer au vrai profil.
-- **Fusibles d'Electron (macOS)** : `scripts/build-mac.js` coupe `RunAsNode`,
+- **Fusibles d'Electron (macOS et Windows)** : `scripts/build-mac.js` et
+  `scripts/build-win.js` coupent `RunAsNode`,
   `EnableNodeOptionsEnvironmentVariable` et `EnableNodeCliInspectArguments`
-  dans le binaire (sans dépendance), avant la signature, puis relit leur état
-  (`npm run build -- --fuses`). Sans cela, un autre programme pourrait lancer
-  Orbe.app comme un simple Node.js et demander la clé du coffre sous son
-  identité. **Pas encore fait pour la version Windows** (`scripts/build-win.js`).
+  dans le binaire (`scripts/fuses.js`, sans dépendance), puis relisent leur
+  état (`npm run build -- --fuses`, `node scripts/build-win.js --fuses`). Sur
+  macOS, avant la signature. Sans cela, un autre programme pourrait lancer
+  Orbe comme un simple Node.js et demander la clé du coffre sous son identité.
+  Sous Windows, l'intégration continue le vérifie sur l'application fabriquée
+  (`tests/win-package.js`) : `ELECTRON_RUN_AS_NODE=1 Orbe.exe script.js`
+  n'exécute pas le script, `NODE_OPTIONS=--require` ne charge rien,
+  `--inspect` et `--inspect-brk` n'ouvrent aucun port, alors que le moteur
+  d'origine, pris comme témoin, obéit.
+- **Limite sous Windows** : `Orbe.exe` n'est pas signé, et le dossier d'Orbe
+  est modifiable par l'utilisateur. Un programme qui tourne déjà sous le même
+  compte peut donc remplacer `Orbe.exe` ou le code placé à côté
+  (`resources\app`), et DPAPI lui ouvrirait le coffre de toute façon (voir
+  « Ce qui n'est pas protégé »). Les fusibles ferment la voie la plus simple,
+  pas celle-là. Les fusibles d'intégrité (`OnlyLoadAppFromAsar`,
+  `EnableEmbeddedAsarIntegrityValidation`) ne sont pas posés : ils demandent
+  une archive asar et, pour avoir un sens, un exécutable signé.
 
 ## Tests
 
@@ -252,7 +266,9 @@ pages de connexion, sans rien saisir.
 
 Points encore ouverts :
 
-1. Fusibles d'Electron dans la version Windows.
+1. Sous Windows : exécutable non signé et code modifiable à côté de lui
+   (les fusibles `RunAsNode`, `NODE_OPTIONS` et `--inspect` sont coupés et
+   vérifiés, pas ceux d'intégrité).
 2. Copie confidentielle dans le presse-papiers (demande un module natif).
 3. Hébergeurs mutualisés absents de la liste des suffixes publics.
 4. Un champ recouvert par un autre élément mais réellement cliqué ouvre la

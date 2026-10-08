@@ -46,6 +46,7 @@ function build() {
         item('settings'),
         item('passwords'),
         item('defaultBrowser'),
+        ...(platform.isWin ? [item('undoDefaultBrowser')] : []),
         sep,
         ...(platform.arcSidebarFile() || platform.isMac ? [item('importArc'), sep] : []),
         { label: t('app.services'), role: 'services' },

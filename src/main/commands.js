@@ -84,7 +84,9 @@ const COMMANDS = [
   // Application
   { name: 'settings', label: 'app.settings', accel: 'Cmd+,', keys: '⌘,', global: true, run: () => hooks.openSettings() },
   { name: 'passwords', label: 'pw.title', global: true, run: () => hooks.openPasswords() },
-  { name: 'defaultBrowser', label: 'app.defaultBrowser', global: true, run: (w) => { makeDefault(); if (w) w.toast(store.t('toast.defaultBrowser')); } },
+  { name: 'defaultBrowser', label: 'app.defaultBrowser', global: true, run: (w) => { makeDefault(); if (w) w.toast(store.t(platform.isWin ? 'toast.defaultBrowserWin' : 'toast.defaultBrowser')); } },
+  // Windows : retire l'inscription d'Orbe comme navigateur (registre de l'utilisateur).
+  ...(platform.isWin ? [{ name: 'undoDefaultBrowser', label: 'app.undoDefaultBrowser', global: true, run: async (w) => { const ok = await platform.undoDefault(); if (w && ok) w.toast(store.t('toast.undoDefaultBrowser')); } }] : []),
   { name: 'toggleSiteBlocking', label: 'adblock.toggleSite', run: (w) => w.toggleSiteBlocking() },
   { name: 'boost', label: 'boost.edit', run: (w) => hooks.openBoost(w) },
   { name: 'zap', label: 'boost.zapCmd', run: (w) => { const p = w.activeRt; if (p && !w.incognito) require('./boosts').zap(p.wc); } },
@@ -101,7 +103,7 @@ platform.adaptCommands(COMMANDS);
 const byName = new Map(COMMANDS.map((c) => [c.name, c]));
 
 function makeDefault() {
-  platform.makeDefault();
+  return platform.makeDefault();
 }
 
 async function undo(w) {
