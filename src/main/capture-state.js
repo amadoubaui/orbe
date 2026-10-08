@@ -7,11 +7,14 @@
 //  - il s'allume quand Orbe accorde l'accès à la page ;
 //  - il s'éteint quand la page est remplacée (navigation, rechargement),
 //    détruite, ou arrêtée par l'utilisateur ;
-//  - pour le partage de l'onglet lui-même, `webContents.isBeingCaptured()` dit
-//    la vérité : le témoin s'éteint dès que la capture cesse.
+//  - pour le partage de l'onglet lui-même, `webContents.isBeingCaptured()` permet
+//    d'observer la fin : le témoin s'éteint quand plus rien ne capte la page.
+//    Ce compteur inclut les captures d'Orbe (vignettes, `capturePage`) : il peut
+//    donc retarder l'extinction, jamais la provoquer à tort.
 // Il peut donc rester allumé après qu'une page a rendu la caméra d'elle-même
 // (jamais l'inverse) : un témoin qu'une page pourrait éteindre ne vaudrait rien.
 const KINDS = ['screen', 'camera', 'microphone'];
+const SETTLE = 4000;
 const states = new Map(); // id webContents -> { wc, kinds: Map(kind -> { at, self }), timer }
 const hooks = { changed: () => {} };
 
@@ -22,7 +25,6 @@ function entry(wc) {
   st = { wc, kinds: new Map(), timer: null };
   states.set(id, st);
   const drop = () => { clearAll(wc); };
-  st.onNav = (details) => { if (details.isMainFrame && !details.isSameDocument) drop(); };
   // La page a changé pour de bon : ses flux sont fermés par Chromium.
   wc.on('did-navigate', drop);
   wc.on('render-process-gone', drop);
@@ -37,14 +39,14 @@ function mark(wc, kind, { self = false } = {}) {
   const st = entry(wc);
   st.kinds.set(kind, { at: Date.now(), self });
   if (self && !st.timer) {
-    let seen = false;
+    let idle = 0;
     st.timer = setInterval(() => {
       if (wc.isDestroyed()) return;
-      const on = wc.isBeingCaptured();
-      if (on) seen = true;
       const k = st.kinds.get('screen');
-      // Capture finie (ou jamais commencée au bout de quelques secondes).
-      if (!k || !k.self || (!on && (seen || Date.now() - k.at > 4000))) {
+      // Le flux met un instant à démarrer : rien n'est conclu avant quelques
+      // secondes, puis il faut deux relevés de suite sans aucune capture.
+      idle = wc.isBeingCaptured() || (k && Date.now() - k.at < SETTLE) ? 0 : idle + 1;
+      if (!k || !k.self || idle >= 2) {
         clearInterval(st.timer);
         st.timer = null;
         if (k && k.self) { st.kinds.delete('screen'); hooks.changed(); }
