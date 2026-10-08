@@ -12,7 +12,8 @@ const passwords = require('./passwords');
 
 const RENDERER_DIR = path.join(__dirname, '../renderer');
 const configured = new WeakSet();
-const hooks = { onDownload: () => {}, ownerWindow: () => null };
+const hooks = { onDownload: () => {}, ownerWindow: () => null, downloadDir: () => '' };
+const profileIds = new WeakMap(); // session -> identifiant du profil
 
 // À appeler avant app.ready.
 function registerScheme() {
@@ -104,7 +105,8 @@ function configure(ses, { persist }) {
   });
 
   ses.on('will-download', (event, item, wc) => {
-    const dir = app.getPath('downloads');
+    // Dossier choisi dans les réglages (par profil), sinon celui du système.
+    const dir = hooks.downloadDir(ses) || app.getPath('downloads');
     const parsed = path.parse(item.getFilename());
     let target = path.join(dir, parsed.base);
     for (let i = 1; fs.existsSync(target); i++) target = path.join(dir, `${parsed.name} (${i})${parsed.ext}`);
@@ -140,6 +142,7 @@ function profileSession(id) {
   const ses = configure(session.fromPartition(partition), { persist: true });
   // Mots de passe : rattachés au profil ; jamais en navigation privée.
   passwords.attach(ses, id || 'default');
+  profileIds.set(ses, id || 'default');
   return ses;
 }
 
@@ -156,4 +159,4 @@ function setupDefaultSession() {
   session.defaultSession.setPermissionRequestHandler((wc, p, cb) => cb(false));
 }
 
-module.exports = { registerScheme, setupDefaultSession, mainSession, profileSession, incognitoSession, hooks, originOf };
+module.exports = { registerScheme, setupDefaultSession, mainSession, profileSession, incognitoSession, hooks, originOf, profileIdOf: (ses) => profileIds.get(ses) || '' };

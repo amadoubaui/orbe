@@ -11,7 +11,10 @@ const ENGINES = {
   brave: { name: 'Brave', search: 'https://search.brave.com/search?q=%s', suggest: 'https://search.brave.com/api/suggest?q=%s' },
 };
 
-const engine = () => ENGINES[store.state.settings.searchEngine] || ENGINES.google;
+// `profileId()` : profil dont les réglages s'appliquent (celui de l'Espace affiché).
+const hooks = { profileId: () => 'default' };
+const pref = (key) => require('./prefs').get(key, hooks.profileId());
+const engine = () => ENGINES[pref('searchEngine')] || ENGINES.google;
 const searchUrl = (q) => engine().search.replace('%s', encodeURIComponent(q));
 
 // Renvoie une URL si la saisie ressemble à une adresse, sinon null.
@@ -107,7 +110,7 @@ function local(query, { tabs, commands, activeId }) {
 // Suggestions du moteur de recherche, asynchrones et annulables.
 async function remote(query, signal) {
   const q = query.trim();
-  if (!q || !store.state.settings.suggestions || toUrl(q)) return [];
+  if (!q || !pref('suggestions') || toUrl(q)) return [];
   try {
     const res = await net.fetch(engine().suggest.replace('%s', encodeURIComponent(q)), { signal });
     if (!res.ok) return [];
@@ -120,4 +123,4 @@ async function remote(query, signal) {
   }
 }
 
-module.exports = { ENGINES, resolve, toUrl, searchUrl, strip, local, remote };
+module.exports = { ENGINES, resolve, toUrl, searchUrl, strip, local, remote, hooks };

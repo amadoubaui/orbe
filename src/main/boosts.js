@@ -3,6 +3,8 @@
 const { store } = require('./store');
 
 const applied = new WeakMap(); // webContents -> clé du CSS inséré
+// `extraCss(wc)` : CSS ajouté par Orbe à la page (bandeaux de cookies, couleurs du thème).
+const hooks = { extraCss: () => '' };
 
 function hostOf(url) {
   try {
@@ -50,7 +52,7 @@ async function applyNow(wc) {
   if (!wc || wc.isDestroyed()) return;
   const old = applied.get(wc);
   if (old) { applied.delete(wc); await wc.removeInsertedCSS(old).catch(() => {}); }
-  const css = cssFor(hostOf(wc.getURL()));
+  const css = (store.state.settings.boostsEnabled === false ? '' : cssFor(hostOf(wc.getURL()))) + hooks.extraCss(wc);
   if (!css.trim() || wc.isDestroyed()) return;
   const key = await wc.insertCSS(css).catch(() => null);
   if (key) applied.set(wc, key);
@@ -102,4 +104,4 @@ async function zap(wc) {
   return sel;
 }
 
-module.exports = { hostOf, get, set, apply, zap, cssFor };
+module.exports = { hostOf, get, set, apply, zap, cssFor, hooks };
