@@ -656,7 +656,11 @@ module.exports = async function finitionsTests(ctx) {
   check('⌘F rouvre la recherche simple : une seule ligne, et le remplacement n’y est pas accepté', w.findView.getBounds().height === 50 && (await w.handle('findReplace', { text: 'chat', with: 'x', all: true })) === 0 && (await js('document.getElementById("bas").textContent')) === 'un chat en bas');
   w.closeFind();
   // Aller à la sélection.
-  await js('(() => { getSelection().selectAllChildren(document.getElementById("bas")); scrollTo(0, 0); })()');
+  // La fermeture de la recherche rend la main à la page un instant plus tard (elle
+  // peut encore défiler vers la dernière occurrence ou défaire la sélection) : on
+  // attend que la sélection posée ici tienne, page remontée, avant de demander le saut.
+  const posed = () => js('(() => { const s = getSelection(); const ok = s.rangeCount === 1 && document.getElementById("bas").contains(s.anchorNode) && !s.isCollapsed && scrollY === 0; if (!ok) { s.selectAllChildren(document.getElementById("bas")); scrollTo(0, 0); } return ok; })()');
+  await until(async () => (await posed()) && (await sleep(120), await posed()), 'sélection posée, page en haut');
   check('la sélection est hors de l’écran', (await js('scrollY')) === 0);
   commands.run(w, 'jumpToSelection');
   await until(() => js('scrollY > 1000'), 'page défilée jusqu’à la sélection');
