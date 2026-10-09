@@ -659,6 +659,9 @@ html.win body:not(.toolbar):not(.fullscreen) #empty { top: 32px; }
 
 /* Boutons des extensions, sous l'adresse. */
 #exts { display: flex; flex-wrap: wrap; gap: 4px; flex: none; }
+/* Barre d'outils : les extensions à droite de l'adresse, sur une ligne. */
+#tb-exts { display: flex; gap: 2px; flex: none; align-items: center; -webkit-app-region: no-drag; }
+#tb-exts:empty { display: none; }
 #exts:not(:empty) { margin-top: 6px; }
 .ext { width: 30px; height: 28px; border-radius: 8px; display: grid; place-items: center; position: relative; transition: background 120ms, transform var(--spring-bouncy); }
 .ext:hover { background: var(--hover); }

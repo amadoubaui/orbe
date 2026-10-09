@@ -436,6 +436,22 @@ module.exports = async function finitions2Tests(ctx) {
     await ui(`document.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))`);
   }
 
+  // --- Barre d'outils : extensions à droite de l'adresse (DIV-1) ------------------------------------
+  {
+    const seen = await ui(`(() => {
+      const s0 = S;
+      const ext = [{ id: 'abcdefghijklmnop', title: 'Essai <i>', icon: '', enabled: true, badge: '7' }];
+      render({ ...s0, toolbar: true, extensions: ext });
+      const on = { tb: document.querySelectorAll('#tb-exts .ext').length, side: document.querySelectorAll('#exts .ext').length, title: document.querySelector('#tb-exts .ext').title, tags: document.querySelector('#tb-exts .ext i') ? 1 : 0, badge: document.querySelector('#tb-exts .badge').textContent, after: document.getElementById('tb-url').nextElementSibling.id };
+      render({ ...s0, toolbar: false, extensions: ext });
+      const off = { tb: document.querySelectorAll('#tb-exts .ext').length, side: document.querySelectorAll('#exts .ext').length };
+      render(s0);
+      return { on, off, rest: document.querySelectorAll('#tb-exts .ext, #exts .ext').length === (s0.extensions || []).length };
+    })()`);
+    check('barre d’outils affichée : les boutons d’extension sont à droite de l’adresse (et plus sous la pastille) ; masquée, ils reviennent sous l’adresse',
+      seen.on.tb === 1 && seen.on.side === 0 && seen.on.title === 'Essai <i>' && seen.on.tags === 0 && seen.on.badge === '7' && seen.on.after === 'tb-exts' && seen.off.tb === 0 && seen.off.side === 1 && seen.rest === true, JSON.stringify(seen));
+  }
+
   // --- Remise en état ---------------------------------------------------------------------
   w.switchSpace(space.id);
   for (const id of Object.keys(d.tabs)) if (mine(d.tabs[id])) { OrbeWindow.destroyView(id); delete d.tabs[id]; }

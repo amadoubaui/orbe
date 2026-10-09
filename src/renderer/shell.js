@@ -408,10 +408,14 @@ function render(s) {
   drawSpaces(s.spaces, s.space.id);
 
   // Boutons des extensions : icône, pastille, clic = fenêtre de l'extension.
-  const exts = $('exts');
+  // Barre d'outils affichée : ils sont à sa droite (comme dans Arc), et non plus sous l'adresse.
+  const exts = s.toolbar && !FLOATING ? $('tb-exts') : $('exts');
   const extSig = JSON.stringify(s.extensions || []);
   if (exts._sig !== extSig) {
     exts._sig = extSig;
+    const idle = exts === $('exts') ? $('tb-exts') : $('exts');
+    idle._sig = '';
+    idle.textContent = '';
     exts.textContent = '';
     for (const x of s.extensions || []) {
       const b = document.createElement('button');
@@ -795,19 +799,21 @@ sidebar.addEventListener('contextmenu', (e) => {
 $('trace-note').onclick = () => send('trace:stop');
 $('update-open').onclick = () => send('update:show');
 $('update-close').onclick = () => send('update:dismiss');
-$('exts').addEventListener('contextmenu', (e) => {
-  const b = e.target.closest('[data-ext]');
-  if (!b) return;
-  e.preventDefault();
-  e.stopPropagation();
-  send('ext:menu', { id: b.dataset.ext });
-});
-$('exts').addEventListener('click', (e) => {
-  const b = e.target.closest('[data-ext]');
-  if (!b) return;
-  const r = b.getBoundingClientRect();
-  send('ext:popup', { id: b.dataset.ext, x: Math.round(r.left), y: Math.round(r.bottom + 6) });
-});
+for (const box of [$('exts'), $('tb-exts')]) {
+  box.addEventListener('contextmenu', (e) => {
+    const b = e.target.closest('[data-ext]');
+    if (!b) return;
+    e.preventDefault();
+    e.stopPropagation();
+    send('ext:menu', { id: b.dataset.ext });
+  });
+  box.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-ext]');
+    if (!b) return;
+    const r = b.getBoundingClientRect();
+    send('ext:popup', { id: b.dataset.ext, x: Math.round(r.left), y: Math.round(r.bottom + 6) });
+  });
+}
 $('b-sidebar').onclick = () => send('toggleSidebar');
 $('b-menu').onclick = () => send('command', 'appMenu');
 $('url').onclick = () => send('openCommand', 'edit');

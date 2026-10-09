@@ -778,7 +778,7 @@ Arc : `menu` pour ceux de la barre de menus, sinon la source indiquée. Orbe : `
 | RAC-36 | ⌃⌘F | Plein écran | menu | ✅ | ⌃⌘F (F11 sous Windows) ; self fin « Plein écran (⌃⌘F) demande le plein écran de la fenêtre » |
 | RAC-37 | ⌘O / ⌥⌘O | Dans un aperçu ou une petite fenêtre : ouvrir en onglet, choisir l'Espace | HC 19235387524503 | ✅ | ⌥⌘O sans effet dans la fenêtre principale d'Orbe (corps vide) |
 | RAC-38 | ⌥⌘V | Coller l'adresse dans un nouvel onglet | HC 20498377604887 | ✅ | voir ONG-25 ; self lat ; ui 22 |
-| RAC-39 | ⌘E | Faire défiler les extensions | HC 19434259167767 | ⬜ | |
+| RAC-39 | ⌘E | Faire défiler les extensions | HC 19434259167767 | ✅ | Voir EXT-4 : ⌘E ouvre l’extension suivante, referme après la dernière ; ext « ⌘E : une extension après l’autre… » (3 vérifications) |
 | RAC-40 | ⌥⌘⌫ | Supprimer la suggestion désignée | HC 20498377604887 | ✅ | ⌥⌘⌫ (Ctrl+Alt+⌫ sous Windows) oublie la suggestion désignée ; self cmd ; ui 24 |
 | RAC-41 | ⌥⌘G | ChatGPT | HC 19335160678679 | ➖ | |
 | RAC-42 | ⌃⌘J | Rejoindre la prochaine réunion | HC 24158102740631 | ➖ | |
@@ -812,7 +812,7 @@ Arc : `menu` pour ceux de la barre de menus, sinon la source indiquée. Orbe : `
 
 | Id | Ce que fait Arc | Preuve Arc | État | Preuve Orbe | Note |
 | --- | --- | --- | --- | --- | --- |
-| DIV-1 | Barre d'outils (⇧⌘D) : précédent, suivant, actualiser, adresse, extensions épinglées à droite | HC 25625617866263 | 🟡 | bandeau de 38 px sans extensions ; ui 07 | |
+| DIV-1 | Barre d'outils (⇧⌘D) : précédent, suivant, actualiser, adresse, extensions épinglées à droite | HC 25625617866263 | ✅ | bandeau de 38 px sans extensions ; ui 07 | Bandeau de 38 px : précédent, suivant, actualiser, adresse, et les boutons d’extension à droite de l’adresse (ils quittent alors le dessous de la pastille) ; self fin2 « barre d’outils affichée : les boutons d’extension… » ; ui 07 ; ui 14 « barre d’outils affichée (⇧⌘D) : le bouton de l’extension passe à droite de l’adresse… » |
 | DIV-2 | Clic droit sur la barre d'outils : Show Full URL, copier, capture, partager | HC 20498377604887 | ✅ | adresse entière, copier (aussi en Markdown), capture, partager (feuille de partage de macOS), masquer ; self « clic droit sur la barre d’outils… » (trois vérifications). Feuille de partage non vérifiée à la main | |
 | DIV-3 | En vue scindée, la barre d'outils montre l'adresse de chaque volet | HC 20498377604887 | ✅ | chaque volet porte sa petite barre avec son adresse (la barre d’outils garde celle du volet actif) ; self, ui 12 (voir SCI-5) | |
 | DIV-4 | Recherche dans la page | menu | ✅ | self « ⌘F trouve le texte dans la page » ; ui 08 | |
