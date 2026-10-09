@@ -400,6 +400,42 @@ module.exports = async function finitions2Tests(ctx) {
     w.changed();
   }
 
+  // --- Infobulles maison, avec le raccourci (BL-18) ---------------------------------------------
+  {
+    const shortcuts = ctx.shortcuts || require('../src/main/shortcuts');
+    const over = (id) => ui(`document.getElementById(${JSON.stringify(id)}).dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))`);
+    const tip = () => ui(`(() => { const el = document.getElementById('tip'); const r = el.getBoundingClientRect(); return { on: !el.hidden && el.classList.contains('on'), text: document.getElementById('tip-text').textContent, key: document.getElementById('tip-key').hidden ? '' : document.getElementById('tip-key').textContent, left: r.left, right: r.right, top: r.top, sw: S.sidebar.width, events: getComputedStyle(el).pointerEvents }; })()`);
+    check('boutons de la barre : plus d’infobulle native (pas de « title »), un nom pour les aides techniques',
+      await ui(`['b-sidebar', 'b-back', 'b-forward', 'b-reload', 'b-library', 'b-clear', 'b-newtab'].every((id) => { const el = document.getElementById(id); return !el.title && el.getAttribute('aria-label') === t(el.dataset.tip); })`));
+    await over('b-sidebar');
+    await sleep(200);
+    check('survol bref : pas encore d’infobulle', (await tip()).on === false);
+    await until(async () => (await tip()).on, 'infobulle affichée');
+    const t1 = await tip();
+    const btn = await ui(`(() => { const r = document.getElementById('b-sidebar').getBoundingClientRect(); return { bottom: r.bottom }; })()`);
+    check('survol d’une demi-seconde : infobulle maison avec le nom et le raccourci, sous le bouton, dans la barre latérale, sans prendre les clics',
+      t1.text === T('side.sidebar') && t1.key === shortcuts.keysOf('toggleSidebar') && t1.key.length > 0 && t1.left >= 6 && t1.right <= t1.sw - 5 && t1.top >= btn.bottom && t1.events === 'none', JSON.stringify(t1));
+    await over('b-menu');
+    await until(async () => { const x = await tip(); return x.on && x.text === T('side.menu'); }, 'infobulle du menu');
+    check('bouton sans raccourci : le nom seul', (await tip()).key === '');
+    await ui(`document.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))`);
+    check('un clic referme l’infobulle', (await tip()).on === false);
+    // Raccourci changé par l'utilisateur : l'infobulle le suit.
+    const free = ['Alt+Cmd+F9', 'Alt+Shift+Cmd+F9', 'Ctrl+Alt+Cmd+F9'].find((a) => !shortcuts.owner(shortcuts.canon(a), 'library'));
+    const r = free ? shortcuts.assign('library', free) : { error: 'pris' };
+    if (!r.ok) outils.ignorer('raccourci modifié : l’infobulle montre le nouveau', 'aucun raccourci libre pour l’essai');
+    else {
+      await until(() => ui(`KEYS.library === ${JSON.stringify(r.keys)}`), 'raccourci reçu par la coque');
+      await over('b-library');
+      await until(async () => { const x = await tip(); return x.on && x.text === T('side.library'); }, 'infobulle de la Bibliothèque');
+      const t2 = await tip();
+      check('raccourci modifié dans les réglages : l’infobulle montre le nouveau ; au bas de la barre elle se place au-dessus du bouton', t2.key === r.keys
+        && await ui(`document.getElementById('tip').getBoundingClientRect().bottom <= document.getElementById('b-library').getBoundingClientRect().top`), JSON.stringify(t2));
+      shortcuts.reset('library');
+    }
+    await ui(`document.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))`);
+  }
+
   // --- Remise en état ---------------------------------------------------------------------
   w.switchSpace(space.id);
   for (const id of Object.keys(d.tabs)) if (mine(d.tabs[id])) { OrbeWindow.destroyView(id); delete d.tabs[id]; }

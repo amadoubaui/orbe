@@ -43,17 +43,17 @@
 <div id="tint"></div>
 <aside id="sidebar">
   <div id="top">
-    <button class="ib" id="b-sidebar" data-t-title="side.toggle"><svg class="i"><use href="#i-sidebar"/></svg></button>
-    <button class="ib" id="b-menu" data-t-title="side.menu"><svg class="i"><use href="#i-more"/></svg></button>
+    <button class="ib" id="b-sidebar" data-tip="side.sidebar" data-tip-key="toggleSidebar"><svg class="i"><use href="#i-sidebar"/></svg></button>
+    <button class="ib" id="b-menu" data-tip="side.menu"><svg class="i"><use href="#i-more"/></svg></button>
     <span class="grow drag"></span>
-    <button class="ib" id="b-back" data-t-title="side.back"><svg class="i"><use href="#i-back"/></svg></button>
-    <button class="ib" id="b-forward" data-t-title="side.forward"><svg class="i"><use href="#i-forward"/></svg></button>
-    <button class="ib" id="b-reload" data-t-title="side.reload"><svg class="i"><use id="reload-icon" href="#i-reload"/></svg></button>
+    <button class="ib" id="b-back" data-tip="side.back" data-tip-key="back"><svg class="i"><use href="#i-back"/></svg></button>
+    <button class="ib" id="b-forward" data-tip="side.forward" data-tip-key="forward"><svg class="i"><use href="#i-forward"/></svg></button>
+    <button class="ib" id="b-reload" data-tip="side.reload" data-tip-key="reload"><svg class="i"><use id="reload-icon" href="#i-reload"/></svg></button>
   </div>
   <div id="url-row">
     <button id="lock" hidden><svg class="i"><use id="lock-icon" href="#i-lock"/></svg><span id="lock-text"></span></button>
     <button id="url"><span id="url-text"></span></button>
-    <button id="url-copy" data-t-title="side.copyLink" hidden><svg class="i"><use href="#i-link"/></svg></button>
+    <button id="url-copy" data-tip="side.copyLink" data-tip-key="copyUrl" hidden><svg class="i"><use href="#i-link"/></svg></button>
     <button id="popup-note" class="note" hidden><svg class="i"><use href="#i-popup"/></svg></button>
     <button id="capture-note" class="note" hidden><svg class="i"><use id="capture-icon" href="#i-screen"/></svg></button>
     <button id="shield" data-t-title="adblock.title"><svg class="i"><use href="#i-shield"/></svg><span id="shield-n"></span></button>
@@ -71,9 +71,9 @@
     <div id="pinned" class="list" data-drop="pinned"></div>
     <div id="divider">
       <span class="rule"></span>
-      <button id="b-clear" data-t="side.clear"></button>
+      <button id="b-clear" data-t="side.clear" data-tip="tabs.clearToday" data-tip-key="clearToday"></button>
     </div>
-    <button id="b-newtab" class="row"><span class="ic"><svg class="i"><use href="#i-plus"/></svg></span><span class="title" data-t="side.newTab"></span></button>
+    <button id="b-newtab" class="row" data-tip="side.newTab" data-tip-key="newTab"><span class="ic"><svg class="i"><use href="#i-plus"/></svg></span><span class="title" data-t="side.newTab"></span></button>
     <div id="today" class="list" data-drop="today"></div>
     <div id="blank"></div>
   </div>
@@ -86,12 +86,12 @@
   <div id="incognito"><b data-t="incognito.title"></b><span data-t="incognito.body"></span></div>
   <div id="blank-note"><b data-t="blank.title"></b><span data-t="blank.body"></span></div>
   <div id="bottom">
-    <button class="ib" id="b-library" data-t-title="side.library">
+    <button class="ib" id="b-library" data-tip="side.library" data-tip-key="library">
       <svg class="i"><use href="#i-library"/></svg>
       <svg id="dl-ring" viewBox="0 0 28 28"><circle cx="14" cy="14" r="12"/></svg>
     </button>
     <div id="spaces" class="grow"></div>
-    <button class="ib" id="b-plus" data-t-title="side.newSpace"><svg class="i"><use href="#i-plus"/></svg></button>
+    <button class="ib" id="b-plus" data-tip="side.plus"><svg class="i"><use href="#i-plus"/></svg></button>
   </div>
   <div id="resize"></div>
 </aside>
@@ -109,6 +109,7 @@
 <div id="pane-bars"></div>
 <div id="dividers"></div>
 <div id="drop-line"></div>
+<div id="tip" role="tooltip" hidden><span id="tip-text"></span><kbd id="tip-key"></kbd></div>
 
 <script src="common.js"></script>
 <script src="theme.js"></script>

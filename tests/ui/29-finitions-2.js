@@ -266,6 +266,34 @@ module.exports = {
       assert.ok(noms.includes('💼 Travail  ·  Bureau'), JSON.stringify(noms));
     });
 
+    // --- Infobulles maison ---------------------------------------------------------------------
+    await t.verifier('pointeur posé sur « actualiser » : infobulle maison avec le raccourci ; elle suit le bouton survolé et s’efface quand le pointeur s’en va', async () => {
+      const tip = shell.locator('#tip');
+      await shell.mouse.move(600, 500);
+      const b = await ctx.centre(shell.locator('#b-reload'));
+      await shell.mouse.move(b.x, b.y, { steps: 4 });
+      await jusqua(() => tip.evaluate((el) => !el.hidden && el.classList.contains('on')), 'infobulle affichée');
+      assert.equal(await shell.locator('#tip-text').textContent(), await ctx.texte('side.reload'));
+      assert.equal(await shell.locator('#tip-key').textContent(), await shell.evaluate(() => KEYS.reload));
+      assert.ok((await shell.locator('#tip-key').textContent()).length > 0);
+      const boite = await tip.boundingBox();
+      const barre = await shell.locator('#sidebar').boundingBox();
+      assert.ok(boite.x >= barre.x && boite.x + boite.width <= barre.x + barre.width, 'l’infobulle tient dans la barre latérale : ' + JSON.stringify([boite, barre]));
+      assert.ok(boite.y >= b.box.y + b.box.height, 'sous le bouton');
+      assert.equal(await shell.locator('#b-reload').getAttribute('title'), null);
+      await ctx.capture('infobulle');
+      // Bouton grisé voisin (aucune page précédente) : l'infobulle d'« actualiser » ne reste pas.
+      assert.equal(await shell.locator('#b-forward').isDisabled(), true);
+      const g = await ctx.centre(shell.locator('#b-forward'));
+      await shell.mouse.move(g.x, g.y, { steps: 3 });
+      await jusqua(() => tip.evaluate((el) => el.hidden), 'infobulle effacée sur un bouton grisé');
+      const c = await ctx.centre(shell.locator('#b-sidebar'));
+      await shell.mouse.move(c.x, c.y, { steps: 3 });
+      await jusqua(async () => (await tip.evaluate((el) => !el.hidden)) && (await shell.locator('#tip-text').textContent()) === (await ctx.texte('side.sidebar')), 'infobulle de la barre latérale');
+      await shell.mouse.move(600, 500, { steps: 3 });
+      await jusqua(() => tip.evaluate((el) => el.hidden), 'infobulle effacée');
+    });
+
     // --- Échap en plein écran -------------------------------------------------------------
     const plein = () => ctx.principal(({ w }) => w.win.isFullScreen());
     await ctx.menu('Ctrl+Cmd+F');
