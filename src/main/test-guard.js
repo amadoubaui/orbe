@@ -79,6 +79,7 @@ function guardDialogs(dialog) {
 }
 
 // --- Appels executeJavaScript sans réponse -----------------------------------
+const orphans = new WeakMap(); // page -> appels en attente, à rendre si elle est détruite
 function trackScripts(app) {
   let patched = false;
   app.on('web-contents-created', (e, wc) => {
@@ -96,7 +97,22 @@ function trackScripts(app) {
       let p;
       try { p = real.call(this, code, ...rest); } catch (err) { done(); throw err; }
       p.then(done, done);
-      return p;
+      // Page détruite avant d'avoir répondu (le script ferme sa propre fenêtre, par
+      // exemple) : Electron ne règle jamais la promesse, et qui l'attend attend
+      // toujours. En test, elle est alors rendue sans valeur, et le fait est noté.
+      return new Promise((resolve, reject) => {
+        const lost = () => { if (state.scripts.has(token)) { note(`page n° ${id} détruite avant la réponse à : ${state.scripts.get(token).code}`); done(); resolve(undefined); } };
+        let waiting = orphans.get(this);
+        if (!waiting) {
+          waiting = new Set();
+          orphans.set(this, waiting);
+          const all = waiting;
+          try { this.once('destroyed', () => { for (const fn of [...all]) fn(); all.clear(); }); } catch {}
+        }
+        waiting.add(lost);
+        const settle = (fn) => (v) => { waiting.delete(lost); fn(v); };
+        p.then(settle(resolve), settle(reject));
+      });
     };
   });
 }

@@ -573,7 +573,9 @@ module.exports = async function reglagesTests(ctx) {
   await until(() => sw.isDestroyed(), 'fenêtre fermée');
   const sw3 = openSettings();
   await until(async () => sw3.isVisible() && (await sw3.webContents.executeJavaScript('(document.querySelector("#tabs [aria-selected=true]") || {dataset:{}}).dataset.pane')) === 'extensions', 'dernier volet rouvert');
-  await sw3.webContents.executeJavaScript('window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); 1');
+  // Sans attendre la réponse : Échap ferme la fenêtre, qui peut être détruite avant
+  // d'avoir répondu — la promesse n'était alors jamais réglée (essai bloqué).
+  sw3.webContents.executeJavaScript('window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); 1').catch(() => {});
   await until(() => sw3.isDestroyed(), 'fermeture par Échap');
   check('la fenêtre rouvre sur le dernier volet ; Échap la ferme', true);
   store.state.window.settingsPane = 'general';
