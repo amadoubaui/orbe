@@ -263,7 +263,8 @@ async function lancer() {
   // `vers` peut être une fonction : la cible est alors visée une fois le
   // glisser commencé, car les zones vides (favoris, épinglés) s'agrandissent à
   // ce moment-là et décalent les listes — comme quelqu'un qui vise à l'œil.
-  ctx.glisser = async (de, vers, { pause = 120 } = {}) => {
+  // `avantLacher` : appelé pointeur arrivé, bouton encore enfoncé.
+  ctx.glisser = async (de, vers, { pause = 120, avantLacher = null } = {}) => {
     const m = ctx.shell.mouse;
     const geste = (async () => {
       await m.move(de.x, de.y);
@@ -287,6 +288,7 @@ async function lancer() {
       dossier: !!document.querySelector('.drop-into'),
       enCours: document.body.classList.contains('dragging'),
     }));
+    if (avantLacher) await delai(avantLacher(), 8000, 'avant de lâcher');
     await delai(m.up(), 5000, 'déposer');
     await sleep(60);
     return repere;
@@ -324,6 +326,21 @@ async function lancer() {
     await ctx.shell.keyboard.press('Escape'); // au cas où la coque se croirait encore en plein glisser
     return { evenements, enCours, intercepte: !!donnees };
   };
+
+  // Vitesse des animations de la coque (1 : normale ; 0.1 : dix fois plus
+  // lentes). Rend certain, sur n'importe quelle machine, qu'un geste tombe au
+  // milieu d'une animation — ce qui n'arrive sinon que sur une machine chargée.
+  let cdpCoque = null;
+  const coque = async () => cdpCoque || (cdpCoque = await ctx.shell.context().newCDPSession(ctx.shell));
+  ctx.vitesseAnimations = async (taux) => {
+    const cdp = await coque();
+    await cdp.send('Animation.enable');
+    await cdp.send('Animation.setPlaybackRate', { playbackRate: taux });
+  };
+  // ORBE_UI_CPU=4 : la coque tourne quatre fois plus lentement pendant tout le
+  // groupe (machine chargée simulée).
+  const frein = Number(process.env.ORBE_UI_CPU || 0);
+  if (frein > 1) await (await coque()).send('Emulation.setCPUThrottlingRate', { rate: frein });
 
   ctx.centre = async (loc, dx = 0.5, dy = 0.5) => {
     const b = await jusqua(() => loc.boundingBox(), 'élément visible');

@@ -797,11 +797,25 @@ function structSig(s) {
   return out;
 }
 
+// Mène à leur terme les animations qui déplacent encore des lignes : retour
+// après un glisser abandonné, ligne qui apparaît ou se replie, ressort de la
+// ligne pressée. Le relevé lit la position des lignes à l'écran ; fait au milieu
+// d'une de ces animations (geste enchaîné, machine chargée), il plaçait les
+// lignes là où elles n'étaient que de passage, et le dépôt tombait à côté.
+function settleRows() {
+  for (const a of scroller.getAnimations({ subtree: true })) {
+    if (a.transitionProperty === 'transform' || a.animationName === 'row-in' || a.animationName === 'row-out') {
+      try { a.finish(); } catch {}
+    }
+  }
+}
+
 // Relevé fait au premier survol : chaque ligne visible des épinglés et
 // d'Aujourd'hui (et ce qui les sépare), de haut en bas, avec sa position dans
 // le contenu défilant. Ensuite le glisser ne lit plus la mise en page : il
 // compare le pointeur à ces positions, quel que soit le nombre de lignes.
 function measure() {
+  settleRows();
   const sr = scroller.getBoundingClientRect();
   const scroll = scroller.scrollTop;
   const base = sr.top - scroll;
@@ -819,9 +833,13 @@ function measure() {
   const scan = (el, to, folderId, inOrigin) => {
     const r = el.getBoundingClientRect();
     const gap = parseFloat(getComputedStyle(el).rowGap) || 0;
-    const zone = { to, folderId, top: r.top - base, bottom: r.bottom - base, left: r.left, width: r.width, gap, kids: [], count: el.children.length, end: 0 };
-    for (let i = 0; i < el.children.length; i++) {
-      const child = el.children[i];
+    const zone = { to, folderId, top: r.top - base, bottom: r.bottom - base, left: r.left, width: r.width, gap, kids: [], count: 0, end: 0 };
+    let i = -1;
+    for (const child of el.children) {
+      // Ligne fermée qui finit de se replier : elle n'est plus dans la liste et
+      // ne compte pas dans les positions.
+      if (child.classList.contains('out')) continue;
+      i += 1;
       const key = child.dataset.key;
       const origin = inOrigin || (!!key && dragged.has(key));
       const a = flow.length;
@@ -835,6 +853,7 @@ function measure() {
         zone.kids.push({ i, a, top: flow[a].top, bottom: flow[a].top + flow[a].h });
       }
     }
+    zone.count = i + 1;
     zone.end = flow.length;
     return zone;
   };
@@ -928,6 +947,10 @@ function endDrag() {
   showTarget(null);
   b.classList.remove('dragging');
   for (const el of document.querySelectorAll('.dragging-self')) el.classList.remove('dragging-self');
+  // Sans « parting », les lignes gardent la transition de leur état pressé : le
+  // décalage qu'on vient de retirer s'animerait quand même (les lignes, déjà à
+  // leur place, sautaient d'un cran puis revenaient). On coupe court.
+  if (settled) settleRows();
   drag = null;
 }
 
