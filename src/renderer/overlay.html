@@ -68,6 +68,16 @@
   <button id="theme-done" data-t="theme.done"></button>
 </div>
 
+<!-- Sélecteur d'icône (Espace, dossier, onglet) : recherche, teintes de peau, émojis par rubrique. -->
+<div id="icons" class="panel" hidden>
+  <div id="icons-head">
+    <input id="icons-input" spellcheck="false" autocomplete="off" data-t-ph="icons.search">
+    <div id="icons-tones" role="radiogroup" data-t-title="icons.tone"></div>
+  </div>
+  <div id="icons-list"></div>
+  <button id="icons-reset" data-t="icons.reset"></button>
+</div>
+
 <div id="find" class="panel" hidden>
   <input id="find-input" spellcheck="false" autocomplete="off" data-t-ph="find.placeholder">
   <span id="find-count"></span>
@@ -94,6 +104,7 @@
 
 <script src="common.js"></script>
 <script src="theme.js"></script>
+<script src="emojis.js"></script>
 <script src="overlay.js"></script>
 </body>
 </html>

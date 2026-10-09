@@ -133,7 +133,7 @@ module.exports = async function fenetresTests(ctx) {
   {
     const tpl = w.paneMenuTemplate(B);
     check('menu d’un volet : copier l’adresse, actualiser, déplacer, agrandir, empiler, séparer, fermer',
-      labels(tpl).join('|') === ['edit.copyUrl', 'ctx.reload', 'pane.moveLeft', 'pane.moveRight', 'view.expandSplit', 'pane.stacked', 'view.separateSplit', 'tabs.separateAll', 'view.closeSplit'].map((k) => t(k)).join('|'), labels(tpl).join('|'));
+      labels(tpl).join('|') === ['edit.copyUrl', 'ctx.reload', 'tabs.duplicate', 'tabs.mute', 'pane.moveLeft', 'pane.moveRight', 'view.expandSplit', 'pane.stacked', 'view.separateSplit', 'tabs.separateAll', 'view.closeSplit'].map((k) => t(k)).join('|'), labels(tpl).join('|'));
     item(tpl, 'pane.moveRight').click();
     check('menu d’un volet : « Déplacer vers la droite »', w.visibleIds().join() === [A, C, B].join());
     item(w.paneMenuTemplate(B), 'pane.moveLeft').click();

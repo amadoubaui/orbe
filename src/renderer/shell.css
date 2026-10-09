@@ -250,6 +250,9 @@ body.dragging #fav:empty { min-height: 40px; border: 1.5px dashed var(--line); b
 .row.active { background: var(--active); box-shadow: var(--active-shadow); }
 .row.shown { background: color-mix(in srgb, var(--active) 55%, transparent); }
 .row .ic { width: 16px; height: 16px; display: grid; place-items: center; flex: none; color: var(--dim); }
+/* Icône choisie par l'utilisateur (émoji) à la place de celle du site ou du dossier. */
+.ic .emoji, .more .emoji { font-size: 13px; line-height: 16px; width: 16px; text-align: center; color: var(--fg); }
+.tile .ic .emoji { font-size: 19px; line-height: 22px; width: 22px; }
 .row .title { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .row.tab:not(.live):not(.active) .title { color: var(--secondary, color-mix(in srgb, var(--fg) 78%, transparent)); }
 .row .act {

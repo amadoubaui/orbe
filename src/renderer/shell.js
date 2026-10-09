@@ -18,17 +18,21 @@ const FLOATING = location.hash === '#flottant';
 if (FLOATING) document.documentElement.classList.add('floating');
 
 const icon = (name, cls = 'i') => `<svg class="${cls}"><use href="#i-${name}"/></svg>`;
+const emojiEl = (text) => Object.assign(document.createElement('span'), { className: 'emoji', textContent: text });
 
 // --- Rendu ------------------------------------------------------------------
 function setIcon(el, it) {
   // Navigation privée : aucune icône n'est téléchargée par l'interface.
   const src = S && S.incognito ? '' : (it.favicon || guessIcon(it.url));
-  const key = it.loading ? 'L' : (src || '#' + it.title.charAt(0));
+  // Icône choisie par l'utilisateur (un émoji) : elle remplace celle du site.
+  const key = it.loading ? 'L' : (it.icon ? 'E' + it.icon : (src || '#' + it.title.charAt(0)));
   if (el._icon === key) return;
   el._icon = key;
   const slot = el._ic;
   slot.textContent = '';
-  if (it.loading) {
+  if (it.icon && !it.loading) {
+    slot.appendChild(emojiEl(it.icon));
+  } else if (it.loading) {
     const sp = document.createElement('span');
     sp.className = 'spinner';
     slot.appendChild(sp);
@@ -66,14 +70,52 @@ function tabRow(el, it) {
     el._title.textContent = label;
     el.title = label;
   }
-  const moreKey = it.partners ? it.partners.map((p) => p.id + p.favicon).join(',') : '';
+  const moreKey = it.partners ? it.partners.map((p) => p.id + p.favicon + (p.icon || '')).join(',') : '';
   if (el._mk !== moreKey) {
     el._mk = moreKey;
     el._more.textContent = '';
-    for (const p of it.partners || []) el._more.appendChild(faviconEl(S && S.incognito ? '' : (p.favicon || guessIcon(p.url)), p.title));
+    for (const p of it.partners || []) el._more.appendChild(p.icon ? emojiEl(p.icon) : faviconEl(S && S.incognito ? '' : (p.favicon || guessIcon(p.url)), p.title));
   }
   if (el._m !== it.muted) { el._m = it.muted; el._snd.setAttribute('href', it.muted ? '#i-mute' : '#i-sound'); }
   setIcon(el, it);
+  keepRow(el, it);
+}
+
+// --- Lignes inchangées : on n'y repasse pas (PERF-26) --------------------------
+// Chaque état reçu décrit toutes les lignes, alors que presque aucune ne change.
+// Une ligne garde la description qui l'a dessinée ; si la nouvelle est la même, et
+// que rien d'autre n'a touché la ligne depuis (classes posées par un geste, une
+// animation, la sélection), elle est laissée telle quelle. Comparaison champ par
+// champ, sans rien allouer : à 1 000 onglets, c'est ce passage qui coûtait.
+const ROW_FIELDS = ['title', 'url', 'favicon', 'icon', 'loading', 'audible', 'muted', 'live', 'changed', 'grouped', 'active', 'shown', 'split'];
+const rowStats = { drawn: 0, kept: 0 };
+function keepRow(el, it) {
+  el._vm = it;
+  el._cls = el.className;
+  el._sel = sel.has(it.id);
+  el._flash = flashId === it.id;
+  el._edit = editing === it.id;
+  el._inc = !!(S && S.incognito);
+  rowStats.drawn += 1;
+}
+function sameList(a, b, same) {
+  const n = a ? a.length : 0;
+  if (n !== (b ? b.length : 0)) return false;
+  for (let i = 0; i < n; i++) if (!same(a[i], b[i])) return false;
+  return true;
+}
+const samePartner = (a, b) => a.id === b.id && a.title === b.title && a.favicon === b.favicon && a.icon === b.icon && a.url === b.url;
+const sameValue = (a, b) => a === b;
+function rowKept(el, it) {
+  const was = el._vm;
+  if (!was) return false;
+  for (let i = 0; i < ROW_FIELDS.length; i++) if (was[ROW_FIELDS[i]] !== it[ROW_FIELDS[i]]) return false;
+  if (!sameList(was.capture, it.capture, sameValue) || !!was.partners !== !!it.partners || !sameList(was.partners, it.partners, samePartner)) return false;
+  if (el._sel !== sel.has(it.id) || el._flash !== (flashId === it.id) || el._edit !== (editing === it.id) || el._inc !== !!(S && S.incognito)) return false;
+  // Une classe ajoutée ou retirée hors du rendu (glisser, apparition, pression) : la ligne est redessinée, comme avant.
+  if (el.className !== el._cls) return false;
+  rowStats.kept += 1;
+  return true;
 }
 
 function folderRow(el, it) {
@@ -88,6 +130,12 @@ function folderRow(el, it) {
   }
   el.className = 'folder' + (it.open ? ' open' : '');
   if (editing !== it.id && el._t !== it.name) { el._t = it.name; el._title.textContent = it.name; }
+  // Icône du dossier : l'émoji choisi, sinon le dessin du dossier.
+  if ((el._fi || '') !== (it.icon || '')) {
+    el._fi = it.icon || '';
+    const slot = el._head.firstChild;
+    if (it.icon) { slot.textContent = ''; slot.appendChild(emojiEl(it.icon)); } else slot.innerHTML = icon('folder');
+  }
   reconcile(el._children, it.children);
 }
 
@@ -101,10 +149,29 @@ function tileEl(el, it) {
   el.className = 'tile' + (it.active ? ' active' : '') + (it.live ? ' live' : '') + (it.audible ? ' audible' : '') + (sel.has(it.id) ? ' sel' : '') + (flashId === it.id ? ' flash' : '');
   el.title = it.title;
   setIcon(el, it);
+  keepRow(el, it);
 }
 
 // Met à jour une liste en réutilisant les éléments existants (clé = id).
 function reconcile(container, items, tile) {
+  // Cas de loin le plus courant : mêmes lignes, même ordre. Rien à ranger ni à
+  // retirer ; chaque ligne est seulement comparée à sa nouvelle description.
+  if (container.childElementCount === items.length) {
+    let el = container.firstElementChild;
+    let i = 0;
+    for (; el && el._key === items[i].id; el = el.nextElementSibling) i += 1;
+    if (i === items.length) {
+      el = container.firstElementChild;
+      for (i = 0; el; el = el.nextElementSibling, i++) {
+        const it = items[i];
+        if (it.type === 'folder') folderRow(el, it);
+        else if (rowKept(el, it)) el._vm = it;
+        else if (tile) tileEl(el, it);
+        else tabRow(el, it);
+      }
+      return;
+    }
+  }
   const old = new Map();
   for (const el of container.children) old.set(el.dataset.key, el);
   let prev = null;
@@ -116,11 +183,13 @@ function reconcile(container, items, tile) {
     else {
       el = document.createElement('div');
       el.dataset.key = key;
+      el._key = key;
       if (it.type !== 'folder') el.dataset.id = it.id;
       fresh = animate ? el : null;
     }
-    if (tile) tileEl(el, it);
-    else if (it.type === 'folder') folderRow(el, it);
+    if (it.type === 'folder') folderRow(el, it);
+    else if (rowKept(el, it)) el._vm = it; // rien à refaire
+    else if (tile) tileEl(el, it);
     else tabRow(el, it);
     if (fresh === el) { el.classList.add('in'); fresh = null; }
     const ref = prev ? prev.nextSibling : container.firstChild;
@@ -132,6 +201,7 @@ function reconcile(container, items, tile) {
     // Une ligne seulement déplacée (encore présente ailleurs) part sans délai.
     if (!flip || !el.dataset.key || tile || present.has(el.dataset.key)) { el.remove(); continue; }
     el.dataset.key = '';
+    el._key = '';
     el.removeAttribute('data-id');
     flip.gone.push(el);
   }
@@ -779,6 +849,7 @@ function ghostNode(it) {
     el.className = 'folder' + (it.open ? ' open' : '');
     el.innerHTML = `<div class="row"><span class="ic">${icon('folder')}</span><span class="title"></span>${icon('chevron', 'i chev')}</div><div class="children"></div>`;
     el.querySelector('.title').textContent = it.name;
+    if (it.icon) { const slot = el.querySelector('.ic'); slot.textContent = ''; slot.appendChild(emojiEl(it.icon)); }
     for (const child of it.children) el.lastChild.appendChild(ghostNode(child));
   } else {
     tabRow(el, it);
@@ -1192,7 +1263,14 @@ let target = null; // destination affichée
 let intoEl = null; // dossier mis en évidence
 
 // Ordre et forme des listes : sert à savoir si un nouvel état les a changées.
+// Calculée une fois par état (jusqu'à trois lectures par rendu).
+const structSigs = new WeakMap();
 function structSig(s) {
+  let sig = structSigs.get(s);
+  if (sig === undefined) structSigs.set(s, sig = structSigOf(s));
+  return sig;
+}
+function structSigOf(s) {
   let out = String(s.activeId);
   const walk = (list) => {
     for (const it of list) {

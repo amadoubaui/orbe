@@ -62,7 +62,7 @@ Règle appliquée pour ✅ : le code existe **et** un test nommé le couvre. Du 
 | BL-5 | Mode étroit : la barre très resserrée garde précédent/suivant | HC 20498417809815 | ⬜ | minimum 200 px | À étudier, faible priorité |
 | BL-6 | ⌘S masque et réaffiche la barre | menu ; M-3, M-4 | ✅ | W:animate ; self « ⌘S masque… », « ⌘S la réaffiche » | |
 | BL-7 | La bascule ⌘S est quasi instantanée (0 à 50 ms) | M-3, M-4 | ✅ | Orbe anime sur 180 ms (W:415-428, SC:20) | Fait le 8 oct. (cotes et durées d'Arc) |
-| BL-8 | ⌘S est sans effet quand aucun onglet n'est ouvert | M-5 | 🟡 | non vérifié dans Orbe | Dans Orbe, ⌘S reste actif sans onglet (l’accueil s’étend, ui 07) ; choix à trancher |
+| BL-8 | ⌘S est sans effet quand aucun onglet n'est ouvert | M-5 | ✅ | non vérifié dans Orbe | Tranché comme Arc : sans onglet, ⌘S ne masque pas la barre (masquée, il la ramène toujours) et l’action n’est pas proposée dans la barre de commande ; le bouton de la barre garde son effet. self fin « ⌘S sans onglet… » (3) ; ui 26, ui 24 |
 | BL-9 | Barre masquée : approcher le bord gauche la fait apparaître par-dessus la page, y compris en plein écran | howtogeek | ✅ | W:setPeek ; self « survol du bord : la barre flotte, la page ne bouge pas » | Plein écran non testé |
 | BL-10 | Marge de 10 pt autour de la page | M-2 | ✅ | 8 px (W:14-16) | Fait le 8 oct. (cotes et durées d'Arc) |
 | BL-11 | La page est dans un cadre coloré aux coins arrondis, volontairement visible | inverse (entretien) ; observé | ✅ | W:layout, rayon 10 ; ui 02 | Rayon exact d'Arc non mesuré |
@@ -93,7 +93,7 @@ Règle appliquée pour ✅ : le code existe **et** un test nommé le couvre. Du 
 | BL-36 | État vide des favoris : « Drag to add Favorites » | binaire | ✅ | zone en pointillés pendant un glisser seulement | Invitation affichée dans la zone en pointillés pendant un glisser (pas en permanence) ; ui 23 |
 | BL-37 | Pastilles de notification sur les favoris (Gmail, Slack, WhatsApp, X, Agenda) | https://arc.net/integrations ; binaire (couleurs de badge) | ⬜ | aucun code | Lire le titre « (3) » de l'onglet |
 | BL-38 | Favori d'un site de musique qui joue : icône animée par des notes | HC 20498417809815 | 🟡 | point de 4 px si audible | |
-| BL-39 | Icône d'un favori personnalisable | HC 20498293324823 | ⬜ | aucun code | |
+| BL-39 | Icône d'un favori personnalisable | HC 20498293324823 | ✅ | aucun code | Menu de l’onglet (épinglé, favori ou du jour) → « Changer l’icône… » : sélecteur d’émojis (recherche français/anglais, teintes de peau, clavier) ; l’émoji remplace l’icône du site sur la ligne ou la tuile ; « Réinitialiser le nom et l’icône » ; ⌘Z. Texte vérifié dans le processus principal (icons.js). self fin (14 vérifications) ; ui 26 |
 | BL-40 | Titre de l'Espace cliquable pour renommer ; « … » au survol | HC 20498377604887 | ✅ | double-clic ; ui 03 | Clic sur le texte du nom = renommer ; « … » au survol = menu de l’Espace ; ui 22 (3 vérifications) |
 | BL-41 | Chevron pour replier la section épinglée | HC 19231060187159 ; menu « Collapse Pinned Tabs » | ✅ | aucun code | Chevron dans l’en-tête et menu Présentation ; seul l’onglet affiché reste visible ; self lat ; ui 22 |
 | BL-42 | Séparateur avec « Clear » au survol | HC 20498377604887 | ✅ | SH `#b-clear` ; ui 02 | |
@@ -106,7 +106,7 @@ Règle appliquée pour ✅ : le code existe **et** un test nommé le couvre. Du 
 | BL-49 | « / » sur un épinglé qui a quitté son adresse ; clic sur l'icône = retour | HC 25625148480279 | ✅ | SH:36-37 ; aucun test | ui 22 « épinglé sorti de son adresse : / sur la ligne ; clic sur l’icône = retour » ; self lat |
 | BL-50 | ⌘clic sur l'icône d'un épinglé : retour à l'adresse, l'ancienne page part dans un nouvel onglet | HC 20498293324823 | ✅ | aucun code | W:resetPinnedAside ; ui 22 (⌘clic réel) ; self lat |
 | BL-51 | Double-clic sur un onglet pour le renommer | HC 19231060187159 ; binaire « Double-click to rename » | ✅ | épinglés seulement ; ui 03 | Dossiers, épinglés et onglets du jour ; ui 03, ui 22 |
-| BL-52 | Icône d'un onglet personnalisable (émoji) ; « Reset Name and Icon » | HC 20498293324823 ; binaire | ⬜ | aucun code | |
+| BL-52 | Icône d'un onglet personnalisable (émoji) ; « Reset Name and Icon » | HC 20498293324823 ; binaire | ✅ | aucun code | Menu de l’onglet (épinglé, favori ou du jour) → « Changer l’icône… » : sélecteur d’émojis (recherche français/anglais, teintes de peau, clavier) ; l’émoji remplace l’icône du site sur la ligne ou la tuile ; « Réinitialiser le nom et l’icône » ; ⌘Z. Texte vérifié dans le processus principal (icons.js). self fin (14 vérifications) ; ui 26 |
 | BL-53 | Sélection multiple (⇧clic, ⌘clic) ; ⌘W et ⇧⌘C agissent sur la sélection ; menu commun, glisser le lot | HC 20498417809815 | ✅ | `SH:setSel`, `W:checkIds` (listes d’identifiants vérifiées) ; self « sélection : … » (tests/barre.js) ; ui 16 | La sélection part de l’onglet affiché, comme dans Chrome (non vérifié sur Arc) ; ⌘D et Suppr agissent aussi sur elle ; menu de la sélection : copier les liens, dupliquer, épingler, favoris, dossier, déplacer vers un Espace, archiver |
 | BL-54 | Rangée du bas : Bibliothèque, icônes des Espaces, « + » | observé | ✅ | `#bottom` ; ui 06 | |
 | BL-55 | « + » du bas : New Space, New Folder, New Split View, New Easel, New Boost, New Note | HC 19231142050071 ; binaire (icônes `add-space`, `folder`, `split-add-right`…) | ✅ | menu : onglet, dossier, Espace, thème | Onglet, dossier, Espace, vue scindée, tableau, note, Boost ; ui 22 ; self lat |
@@ -125,10 +125,10 @@ Règle appliquée pour ✅ : le code existe **et** un test nommé le couvre. Du 
 | BL-72 | Un dossier fermé laisse voir l'onglet actif qu'il contient | HC 20498377604887 | ✅ | SC:378-380 ; ui 05 | |
 | BL-73 | Ouverture/fermeture animée | non vérifié | 🟡 | chevron animé, contenu sans animation | Animer la hauteur |
 | BL-74 | Aperçu du dossier au survol : liste cherchable de ses onglets | HC 19228419623447 | ⬜ | aucun code | |
-| BL-75 | Icône du dossier modifiable (« Change Icon ») | HC 20498377604887 | ⬜ | aucun code | |
+| BL-75 | Icône du dossier modifiable (« Change Icon ») | HC 20498377604887 | ✅ | aucun code | Menu du dossier → « Changer l’icône… » : même sélecteur ; l’émoji remplace le dessin du dossier ; ⌘Z. self fin ; ui 26 |
 | BL-76 | Un dossier fermé ne s'ouvre pas quand on glisse dessus ; animation de dépôt | HC 20498377604887 | 🟡 | dépôt géré (ui 04), sans animation | |
-| BL-77 | Supprimer un dossier archive ses onglets, avec message et annulation | binaire « Deleting this folder will archive the tabs inside it. » | 🟡 | W:deleteFolder : le contenu remonte, sans message | Comportement différent d'Arc |
-| BL-78 | Dossier transformable en Espace, et Espace en dossier | binaire « Turn into Folder » | ⬜ | aucun code | |
+| BL-77 | Supprimer un dossier archive ses onglets, avec message et annulation | binaire « Deleting this folder will archive the tabs inside it. » | ✅ | W:deleteFolder : le contenu remonte, sans message | Comme dans Arc : un dossier garni demande confirmation (« Les onglets qu’il contient iront dans l’archive »), ses onglets (sous-dossiers compris) sont archivés, un message rappelle ⌘Z, qui remet le dossier, ses onglets et ses vues scindées ; vide, il part sans question. self fin (8) ; ui 26, ui 18 |
+| BL-78 | Dossier transformable en Espace, et Espace en dossier | binaire « Turn into Folder » | ✅ | aucun code | Menu du dossier → « Transformer en Espace » (Espace à son nom et son icône, juste après, même profil) ; menu de l’Espace → « Transformer en dossier » (dossier dans l’Espace voisin, onglets du jour joints). Aucun onglet fermé ni rechargé, vues scindées conservées, ⌘Z / ⇧⌘Z. self fin (9) |
 | BL-79 | « New Folder from Selection » | binaire | ✅ | `W:folderFromSelection` ; self « Nouveau dossier avec la sélection » ; ui 16 | Le dossier prend la place du premier onglet épinglé de la sélection |
 | BL-80 | Commandes « Expand All Folders » / « Collapse All Folders » | binaire | ✅ | aucun code | Commandes de la barre de commande et du menu du vide de la barre ; self lat |
 | BL-81 | Dossiers vivants GitHub (demandes de fusion) | HC 22731612065815 | ➖ | | Dépend d'un service tiers ; hors du socle |
@@ -160,7 +160,7 @@ Règle appliquée pour ✅ : le code existe **et** un test nommé le couvre. Du 
 | BL-111 | Onglet : Copy link as Markdown | binaire | ✅ | absent du menu (commande ⌥⇧⌘C existe) | W:tabMenuTemplate ; self lat (chaque article actionné, ⌘Z vérifié) ; ui 22 pour le lien Markdown et « au-dessus » |
 | BL-112 | Onglet : Duplicate | HC 19231060187159 | ✅ | W:duplicate ; aucun test | W:tabMenuTemplate ; self lat (chaque article actionné, ⌘Z vérifié) ; ui 22 pour le lien Markdown et « au-dessus » |
 | BL-113 | Onglet : Rename | HC 19231060187159 | ✅ | ui 03 | |
-| BL-114 | Onglet : Change Icon | HC 20498417809815 | ⬜ | | |
+| BL-114 | Onglet : Change Icon | HC 20498417809815 | ✅ | | Menu de l’onglet (épinglé, favori ou du jour) → « Changer l’icône… » : sélecteur d’émojis (recherche français/anglais, teintes de peau, clavier) ; l’émoji remplace l’icône du site sur la ligne ou la tuile ; « Réinitialiser le nom et l’icône » ; ⌘Z. Texte vérifié dans le processus principal (icons.js). self fin (14 vérifications) ; ui 26 |
 | BL-115 | Onglet : Mute / Unmute | binaire | ✅ | W:toggleMute ; aucun test | W:tabMenuTemplate ; self lat (chaque article actionné, ⌘Z vérifié) ; ui 22 pour le lien Markdown et « au-dessus » |
 | BL-116 | Onglet : Move to (favoris, Espaces, dossiers) | HC 19230755904151 | ✅ | vers un Espace (self) et favoris ; pas vers un dossier | W:tabMenuTemplate ; self lat (chaque article actionné, ⌘Z vérifié) ; ui 22 pour le lien Markdown et « au-dessus » |
 | BL-117 | Onglet : Pin / Unpin | binaire | ✅ | self ⌘D | |
@@ -173,12 +173,12 @@ Règle appliquée pour ✅ : le code existe **et** un test nommé le couvre. Du 
 | BL-124 | Onglet : Share | HC 19228534606743 | ➖ | | Demande un serveur de partage |
 | BL-125 | Épinglé : Edit Pinned Page → Replace Pinned URL with Current, Edit… | HC 25541939922199 ; binaire | 🟡 | W:tabMenuTemplate | « Remplacer l’adresse épinglée par l’adresse actuelle » fait et testé (self lat) ; la boîte « Edit… » (saisir une autre adresse) reste à faire |
 | BL-126 | Épinglé : Close and Keep Pinned | binaire | ✅ | ⌘W le fait (self) ; pas d'entrée de menu | W:tabMenuTemplate ; self lat (chaque article actionné, ⌘Z vérifié) ; ui 22 pour le lien Markdown et « au-dessus » |
-| BL-127 | Vue scindée : Separate All Tabs, muet par onglet, Duplicate | HC 19335393146775 | 🟡 | W:separateAll | « Séparer tous les onglets » fait (self lat) ; muet par onglet et « Dupliquer » propres à chaque volet restent à faire |
+| BL-127 | Vue scindée : Separate All Tabs, muet par onglet, Duplicate | HC 19335393146775 | ✅ | W:separateAll | « Séparer tous les onglets » (self lat) ; menu « ⋯ » d’un volet : « Dupliquer » et « Couper le son » propres au volet. self fin (3), self fen (menu d’un volet) |
 | BL-128 | Dossier : Rename | HC 19228419623447 | ✅ | ui 05 | |
 | BL-129 | Dossier : Delete | HC 19228419623447 | ✅ | self « dossier supprimé » | |
-| BL-130 | Dossier : Duplicate, Change Icon, Copy All Links, Copy All Links as Markdown, New Nested Folder, Paste URL as New Tab, Close This Folder | HC 20498377604887 ; binaire | 🟡 | W:folderMenuTemplate | Tout sauf « Change Icon » : dupliquer, copier tous les liens (aussi en Markdown), sous-dossier, coller l’adresse, replier ; self lat (12 vérifications) ; ui 23 |
+| BL-130 | Dossier : Duplicate, Change Icon, Copy All Links, Copy All Links as Markdown, New Nested Folder, Paste URL as New Tab, Close This Folder | HC 20498377604887 ; binaire | ✅ | W:folderMenuTemplate | Tout y est, « Changer l’icône… » compris (voir BL-75) ; self lat (12 vérifications), self fin ; ui 23, ui 26 |
 | BL-131 | Espace : Rename, Edit Theme Color, Change Space Icon, Profile, Delete | HC 19228534606743 ; binaire | ✅ | W:spaceMenu (renommer, thème, supprimer) ; aucun test du menu | Renommer, thème, icône (ouvre l’éditeur de thème), profil, en-tête, supprimer ; self lat ; ui 22 |
-| BL-132 | Espace : Show/Hide Space Header, Manage Spaces, Export | binaire | 🟡 | W:spaceMenuTemplate | En-tête affiché ou masqué : fait (self lat, voir ESP-18) ; « Manage Spaces » et « Export » restent à faire |
+| BL-132 | Espace : Show/Hide Space Header, Manage Spaces, Export | binaire | 🟡 | W:spaceMenuTemplate | En-tête affiché ou masqué (self lat, ESP-18) ; « Gérer les Espaces… » ouvre la section Espaces de la Bibliothèque (self fin ; ui 26) ; « Export » reste à faire |
 | BL-133 | Zone vide : thème, profil | HC 19228064149143 | ✅ | W:sidebarMenu | Thème, profil, dossiers à déplier ou replier ; self lat ; ui 22 (clic droit réel) |
 | BL-134 | Favori : Show Unread Badge, Show Hover Preview | binaire | ⬜ | | |
 
@@ -231,11 +231,11 @@ Actions de la barre de commande relevées dans Arc (libellés du binaire et du c
 | CMD-49 | New Space ; Manage Spaces ; Focus on <Espace> | ✅ | « Gérer les Espaces… » ouvre la section Espaces de la Bibliothèque ; self cmd, self bib ; ui 24, ui 25 |
 | CMD-50 | Add Split View ; Add Right/Left/Top/Bottom Split | 🟡 | Sans choix du côté |
 | CMD-51 | Convert to Horizontal/Vertical Split View | ✅ | self « vue scindée empilée » |
-| CMD-52 | New Window ; New Blank Window ; New Incognito Window ; Open Little Arc | 🟡 | Pas de fenêtre vierge |
+| CMD-52 | New Window ; New Blank Window ; New Incognito Window ; Open Little Arc | ✅ | Fenêtre, fenêtre vierge, navigation privée, petite fenêtre ; self fin « barre de commande : Nouvelle fenêtre vierge… » |
 | CMD-53 | View Archive ; Clear Archive ; Open Library ; View Downloads | ✅ | « Vider l'archive » proposé, avec confirmation ; self cmd |
 | CMD-54 | Capture ; Capture Full Page ; Capture in Portrait Mode | 🟡 | Pas de mode portrait |
 | CMD-55 | New Easel ; New Note ; New Note (in Split) | ✅ | « Nouvelle note à côté de la page » ; self cmd |
-| CMD-56 | New Boost ; View Boosts | 🟡 | |
+| CMD-56 | New Boost ; View Boosts | ✅ | « Modifier le Boost de ce site » (le crée s’il n’existe pas) et « Voir les Boosts » ; self fin (barre de commande), self fen |
 | CMD-57 | Turn on Developer Mode for this site | ✅ | « Mode développeur » du site (⌃D) ; self cmd (liste des actions) |
 | CMD-58 | Settings ; Link Preferences ; Edit Keyboard Shortcuts ; Air Traffic Control ; Manage Passwords | ✅ | Réglages des liens (routage), raccourcis, mots de passe ; self cmd (liste des actions) |
 | CMD-59 | Add Extension ; Manage Extensions | ✅ | « Gérer les extensions… » (volet où l'on en ajoute) ; self cmd (liste des actions) |
@@ -261,13 +261,13 @@ Actions de la barre de commande relevées dans Arc (libellés du binaire et du c
 | ESP-10 | Au-delà du dernier Espace : résistance élastique, puis création d'un Espace | inverse | ⬜ | | |
 | ESP-11 | Revenir dans un Espace réactive son dernier onglet | HC 20498377604887 | ✅ | W:210 ; self « ⌥⌘← revient… avec son onglet » | |
 | ESP-12 | Renommer : clic sur le titre, ou menu Spaces → Rename Space | HC 20498377604887 ; menu | ✅ | ui 03 | |
-| ESP-13 | Icône : sélecteur d'émojis avec recherche et teintes de peau | HC 20498293324823 ; binaire `ARC_Emojis` | 🟡 | icône émoji (choix limité) | |
-| ESP-14 | Supprimer : confirmation qui nomme l'Espace ; « This will archive all the tabs and folders inside it. » | HC 20498377604887 ; binaire | ✅ | W:deleteSpace ; aucun test | Question testée (self lat). Orbe supprime les épinglés et archive les onglets du jour ; Arc archive tout |
+| ESP-13 | Icône : sélecteur d'émojis avec recherche et teintes de peau | HC 20498293324823 ; binaire `ARC_Emojis` | ✅ | icône émoji (choix limité) | Sélecteur d’émojis : 493 émojis en dix rubriques, recherche par mots-clés (français et anglais, sans accents), six teintes de peau (retenue), flèches et Entrée. Menu de l’Espace → « Changer l’icône de l’Espace… ». self fin ; ui 26 |
+| ESP-14 | Supprimer : confirmation qui nomme l'Espace ; « This will archive all the tabs and folders inside it. » | HC 20498377604887 ; binaire | ✅ | W:deleteSpace ; aucun test | Comme dans Arc : la question nomme l’Espace et annonce « Tous ses onglets et ses dossiers iront dans l’archive » ; épinglés et contenu des dossiers sont archivés comme les onglets du jour ; ⌘Z rétablit l’Espace et retire ses onglets de l’archive. self lat, self fin (3), self barre |
 | ESP-15 | ⌘Z annule la suppression ou la création d'un Espace | binaire (« Undo/Redo prompt for deleting a space ») | ✅ | `W:removeSpace` ; self « ⌘Z rétablit l’Espace : même rang, épinglés, dossier, onglets du jour, thème », « ⌘Z défait la création d’un Espace » ; ui 18 | Les pages de l’Espace rétabli se rechargent à la demande ; pas de message « Undo/Redo » à l’écran, seulement le menu |
 | ESP-16 | Réordonner les Espaces | binaire « Drag to Reorder Space » | ✅ | | Voir BL-102 ; ui 23 ; self lat |
-| ESP-17 | Gestionnaire d'Espaces (Manage Spaces…) dans la Bibliothèque | menu ; HC 20498377604887 | ⬜ | | |
+| ESP-17 | Gestionnaire d'Espaces (Manage Spaces…) dans la Bibliothèque | menu ; HC 20498377604887 | ✅ | | « Gérer les Espaces… » (menu Espaces, menu de l’Espace, barre de commande) ouvre la section Espaces de la Bibliothèque (renommer, thème, supprimer, nouvel Espace : ui 25). self fin (2) ; ui 26 |
 | ESP-18 | Masquer l'en-tête de l'Espace | binaire « Hide Space Header » | ✅ | | Menu de l’Espace, propre à chaque Espace ; self lat (3 vérifications) |
-| ESP-19 | Message à la création d'un Espace | HC 20498417809815 | ⬜ | | |
+| ESP-19 | Message à la création d'un Espace | HC 20498417809815 | ✅ | | Message « Nouvel Espace créé » ; self fin |
 | ESP-20 | Profil : identifiants, historique, cookies, favoris, extensions et délai d'archivage séparés | HC 19227964556183 | ✅ | self « le profil a sa propre session » | Extensions et délai par profil à vérifier |
 | ESP-21 | Attribuer un profil à un Espace | menu « Change Profile » | ✅ | self « nouveau profil attribué à l'Espace » | |
 | ESP-22 | File → New Profile | menu | ✅ | M | |
@@ -295,12 +295,12 @@ Actions de la barre de commande relevées dans Arc (libellés du binaire et du c
 | ONG-15 | ⌥⌘↓ / ⌥⌘↑ | menu | ✅ | self ; nat | |
 | ONG-16 | ⌘1 … ⌘8, ⌘9 = neuvième ou dernier, favoris inclus ou non (réglage) | binaire ; HC 25619402657303 | ✅ | self « ⌘2 active le deuxième onglet » ; pas de réglage | Réglages tabKeysFavorites et tabKeysNinthLast ; self (reglages) « ⌘1…⌘9 : favoris comptés ou non, ⌘9 dernier ou neuvième » |
 | ONG-17 | Onglets en arrière-plan suspendus ; pas ceux qui utilisent le micro | HC 20498293324823 | ✅ | W:trimLive + hooks.busy ; self « mise en veille au-delà de la limite », « un onglet qui capte n’est pas mis en veille » |  |
-| ONG-18 | Certains sites restent vivants (Slack, Gmail, Agenda, Notion, Spotify, WhatsApp…) | binaire `web_content_behavior.json` (`keepaliveAllowList`) | ⬜ | | Reprendre la liste |
+| ONG-18 | Certains sites restent vivants (Slack, Gmail, Agenda, Notion, Spotify, WhatsApp…) | binaire `web_content_behavior.json` (`keepaliveAllowList`) | ✅ | | Liste des sites qui restent vivants reprise d’Arc et complétée (keepalive.js : courrier, messageries, agendas, musique, documents) : épargnés par la veille d’ancienneté et de mémoire, la limite en nombre choisie reste tenue ; self fin (3) |
 | ONG-19 | Favoris chargés seulement s'ils ont servi récemment | HC 20498377604887 | 🟡 | chargés au clic | |
 | ONG-20 | Un onglet n'existe qu'en un exemplaire entre les fenêtres (« Tab Handoff ») | HC 20498377604887 | ✅ | self « un onglet n'est actif que dans une seule fenêtre » | |
 | ONG-21 | Les fenêtres d'un même Espace montrent les mêmes onglets | HC 25590417429783 | 🟡 | à vérifier | |
 | ONG-22 | Session restaurée au redémarrage | HC 20498293324823 ; binaire | ✅ | self « état enregistré sur disque » | Une seule fenêtre mémorisée |
-| ONG-23 | Page « onglet planté » | HC 20498377604887 ; binaire `ARC_SadTab` | ⬜ | rechargé à l'activation | |
+| ONG-23 | Page « onglet planté » | HC 20498377604887 ; binaire `ARC_SadTab` | ✅ | rechargé à l'activation | Feuille « La page a planté » avec « Recharger » (essentials.js) ; self ess « page plantée… » |
 | ONG-24 | Mode économie de batterie sous 20 % | HC 20498377604887 | ⬜ | | |
 | ONG-25 | ⌥⌘V : colle l'adresse du presse-papiers dans un nouvel onglet | HC 20498377604887 | ✅ | | Jamais file:, orbe: ni javascript: ; self lat ; ui 22 |
 | ONG-26 | « Reveal Tab in Sidebar » | menu | ✅ | | La barre revient, les dossiers s’ouvrent, la ligne défile et s’illumine ; self lat ; ui 22 |
@@ -648,7 +648,7 @@ Relevé complet d'Arc par l'accessibilité. Orbe : `menu.js` ; test self « les 
 | MEN-9 | Arc → Sign Out | | ➖ | Pas de compte |
 | MEN-10 | File → New Tab… | ⌘T | ✅ | |
 | MEN-11 | File → New Window | ⌘N | ✅ | |
-| MEN-12 | File → Blank Window | ⌃⌘N | ⬜ | Dans Orbe, « Nouvelle fenêtre » ouvre déjà une fenêtre sans onglet ; ⌃⌘N est libre (la note a pris ⌃⇧N) |
+| MEN-12 | File → Blank Window | ⌃⌘N | ✅ | « Nouvelle fenêtre vierge » (⌃⌘N ; Alt+Maj+B sous Windows) : fenêtre hors des Espaces — ses onglets ne sont enregistrés dans aucun Espace et ne reviennent pas au redémarrage ; même session (cookies, historique, archive) que les fenêtres ordinaires, à la différence de la navigation privée ; ni nouvel Espace, ni profil, ni favoris. self fin (8) ; ui 26 |
 | MEN-13 | File → New Incognito Window | ⇧⌘N | ✅ | |
 | MEN-14 | File → New Little Arc Window | ⌥⌘N | ✅ | |
 | MEN-15 | File → Restore Last Closed Tab | ⇧⌘T | ✅ | |
@@ -672,10 +672,10 @@ Relevé complet d'Arc par l'accessibilité. Orbe : `menu.js` ; test self « les 
 | MEN-33 | Edit → Find → Find and Replace | ⌥⌘F | ⬜ | |
 | MEN-34 | Edit → Find → Find Next / Find Previous | ⌘G / ⇧⌘G | ✅ | |
 | MEN-35 | Edit → Find → Use Selection to Find | | ✅ | La barre de recherche s’ouvre sur le texte sélectionné ; self lat (2 vérifications) |
-| MEN-36 | Edit → Find → Jump to Selection | ⌘J | ⬜ | |
-| MEN-37 | Edit → Spelling and Grammar (sous-menu complet) | | ⬜ | Suggestions au clic droit seulement |
-| MEN-38 | Edit → Substitutions, Transformations, Speech | | ⬜ | Rôles natifs à ajouter (une ligne chacun) |
-| MEN-39 | Edit → Format → Font → Bold, Italic, Underline | ⌘B, ⌘I, ⌘U | ⬜ | À peser : ⌘B, ⌘I, ⌘U au menu passeraient avant les sites (éditeurs en ligne) qui gèrent eux-mêmes ces touches |
+| MEN-36 | Edit → Find → Jump to Selection | ⌘J | ✅ | « Aller à la sélection » (⌘J ; Alt+Maj+J sous Windows) : la sélection revient au milieu de l’écran ; self fin (3) |
+| MEN-37 | Edit → Spelling and Grammar (sous-menu complet) | | 🟡 | Sous-menu « Orthographe et grammaire » avec « Vérifier l’orthographe lors de la saisie » (seul rôle qu’Electron expose ; self fin) ; fenêtre d’orthographe, grammaire et correction automatique de macOS : non exposées par Electron ; suggestions au clic droit |
+| MEN-38 | Edit → Substitutions, Transformations, Speech | | ✅ | Substitutions et Parole : rôles de macOS (afficher, guillemets, tirets, remplacement ; lire, arrêter). Transformations : majuscules, minuscules, capitales sur la sélection du champ de texte, sur tous les systèmes. self fin (5) |
+| MEN-39 | Edit → Format → Font → Bold, Italic, Underline | ⌘B, ⌘I, ⌘U | ✅ | Tranché : Édition → Format → Police → Gras, Italique, Souligné, sans raccourci attaché au menu. ⌘B, ⌘I et ⌘U restent donc aux pages : un éditeur en ligne les gère lui-même, et Chromium les applique déjà dans les zones de texte enrichi ; le menu ne peut jamais passer avant un site. Un clic sur l’article applique la mise en forme ; un raccourci peut être choisi dans les réglages. self fin (3 : articles sans raccourci, mise en forme au clic, « ⌘B dans une page qui le gère elle-même ») |
 | MEN-40 | View → Appearance → Automatic, Light, Dark | | ✅ | |
 | MEN-41 | View → Hide Sidebar | ⌘S | ✅ | |
 | MEN-42 | View → Show Toolbar | ⇧⌘D | ✅ | ui 07 |
@@ -693,7 +693,7 @@ Relevé complet d'Arc par l'accessibilité. Orbe : `menu.js` ; test self « les 
 | MEN-54 | View → Cast | | ➖ | Electron n’embarque pas le routeur de médias de Chrome (Cast) |
 | MEN-55 | View → Developer → View Source | ⌥⌘U | ✅ | self lat : onglet « view-source: » chargé depuis le site |
 | MEN-56 | View → Developer → Developer Tools, Inspect Elements, JavaScript Console | ⌥⌘I, ⌥⌘C, ⌥⌘J | ✅ | self lat : outils ouverts puis refermés, console, inspecteur |
-| MEN-57 | View → Developer → Network Inspector | | ⬜ | |
+| MEN-57 | View → Developer → Network Inspector | | ✅ | Présentation → Développeur → « Inspecteur réseau » : outils de développement sur l’onglet Réseau ; self fin |
 | MEN-58 | View → Developer → Allow JavaScript from Apple Events | | ➖ | Pas d’AppleScript dans Orbe |
 | MEN-59 | View → Developer → Turn on Developer Mode for this site | ⌃D | ✅ | W:toggleDevMode ; self (reglages) « mode développeur d’un site… », « ⌃D sur macOS… » |
 | MEN-60 | View → Enter Full Screen | ⌃⌘F | 🟡 | Non testé |
@@ -703,7 +703,7 @@ Relevé complet d'Arc par l'accessibilité. Orbe : `menu.js` ; test self « les 
 | MEN-64 | Spaces → Change Profile | | ✅ | |
 | MEN-65 | Spaces → Next Space / Previous Space | ⌥⌘→ / ⌥⌘← | ✅ | |
 | MEN-66 | Spaces → liste des Espaces | ⌃1 … ⌃9 | ✅ | |
-| MEN-67 | Spaces → Manage Spaces… | | ⬜ | |
+| MEN-67 | Spaces → Manage Spaces… | | ✅ | « Gérer les Espaces… » (menu Espaces, menu de l’Espace, barre de commande) ouvre la section Espaces de la Bibliothèque (renommer, thème, supprimer, nouvel Espace : ui 25). self fin (2) ; ui 26 |
 | MEN-68 | Tabs → New Tab… | ⌘T | ✅ | |
 | MEN-69 | Tabs → Pin Tab | ⌘D | ✅ | |
 | MEN-70 | Tabs → New Folder… | | ✅ | |
@@ -718,7 +718,7 @@ Relevé complet d'Arc par l'accessibilité. Orbe : `menu.js` ; test self « les 
 | MEN-79 | Extensions → une ligne par extension | | ✅ | Une ligne par extension, même effet que son bouton ; self lat (liste d’extensions simulée) |
 | MEN-80 | Extensions → Add Extension…, Manage Extensions… | | ✅ | Les deux articles ouvrent le volet Extensions des réglages, où se fait l’ajout ; self lat |
 | MEN-81 | Window → Stay On Top | | ✅ | Commande stayOnTop, article coché ; self lat (2 vérifications) |
-| MEN-82 | Window → Minimize ⌘M, Minimize All ⌥⌘M, Zoom | | 🟡 | Rôles natifs partiels |
+| MEN-82 | Window → Minimize ⌘M, Minimize All ⌥⌘M, Zoom | | ✅ | Placer dans le Dock (⌘M), Tout placer dans le Dock (⌥⌘M, macOS), Réduire/agrandir ; self fin (2) |
 | MEN-83 | Window → disposition en moitiés et quarts (fournie par macOS) | | 🟡 | À vérifier : macOS l'ajoute au menu de rôle `window` |
 | MEN-84 | Window → Open Library… | ⇧⌘L | ✅ | |
 | MEN-85 | Window → View Downloads… | ⇧⌘J | ✅ | |
@@ -728,10 +728,10 @@ Relevé complet d'Arc par l'accessibilité. Orbe : `menu.js` ; test self « les 
 | MEN-89 | Window → Bring All to Front, liste des fenêtres | | ✅ | Rôle natif |
 | MEN-90 | Help → Getting Started | | ✅ | « Bienvenue dans Orbe » ; self « la page d'accueil s'affiche » |
 | MEN-91 | Help → Essential Keyboard Shortcuts | | ✅ | self (reglages) « page des raccourcis, barre de commande et pages de l’interface : même nouveau raccourci » |
-| MEN-92 | Help → Contact the Team, Visit Help Center | | 🟡 | Liens vers GitHub |
-| MEN-93 | Help → Restore Data | | ⬜ | |
-| MEN-94 | Help → Export Arc Notes | | ⬜ | |
-| MEN-95 | Help → Troubleshooting → Record Trace, Open Task Manager, Reveal Arc Data, Copy Arc Info | | 🟡 | « Afficher les données d’Orbe » et « Copier les infos d’Orbe » faits (self lat) ; « Record Trace » et « Open Task Manager » restent à faire |
+| MEN-92 | Help → Contact the Team, Visit Help Center | | ✅ | Centre d’aide, « Signaler un problème », nouveautés : pages du dépôt GitHub (Orbe n’a pas d’équipe d’assistance) ; self cmd (barre de commande et exécution) |
+| MEN-93 | Help → Restore Data | | ✅ | Aide → Dépannage → « Restaurer une sauvegarde » (sauvegardes locales de l’état) ; self lat (menu), self bib (sauvegardes) |
+| MEN-94 | Help → Export Arc Notes | | ✅ | Aide → « Exporter les notes… » ; self bib (5 vérifications) |
+| MEN-95 | Help → Troubleshooting → Record Trace, Open Task Manager, Reveal Arc Data, Copy Arc Info | | 🟡 | « Afficher les données d’Orbe », « Copier les infos d’Orbe » (self lat) et « Enregistrer une trace… » (trace de Chromium rangée dans Téléchargements ; self fin, 2) ; « Open Task Manager » reste à faire |
 | MEN-96 | Menu du Dock : New Incognito Window, Show/Hide All Little Arc Windows | HC 20498377604887 | ✅ | Navigation privée ; masquer ou afficher toutes les petites fenêtres ; self lat (modèle du menu actionné ; l’affichage dans le Dock lui-même n’est pas lisible par un test) |
 
 ## RAC — Raccourcis
@@ -743,7 +743,7 @@ Arc : `menu` pour ceux de la barre de menus, sinon la source indiquée. Orbe : `
 | RAC-1 | ⌘T | Barre de commande, nouvel onglet | menu | ✅ | |
 | RAC-2 | ⌘L | Modifier l'adresse | menu | ✅ | |
 | RAC-3 | ⌘N / ⇧⌘N / ⌥⌘N | Fenêtre, fenêtre privée, petite fenêtre | menu | ✅ | |
-| RAC-4 | ⌃⌘N | Fenêtre vierge | menu | ⬜ | ⌃⌘N est libre depuis que la note a pris ⌃⇧N |
+| RAC-4 | ⌃⌘N | Fenêtre vierge | menu | ✅ | « Nouvelle fenêtre vierge » (⌃⌘N ; Alt+Maj+B sous Windows) : fenêtre hors des Espaces — ses onglets ne sont enregistrés dans aucun Espace et ne reviennent pas au redémarrage ; même session (cookies, historique, archive) que les fenêtres ordinaires, à la différence de la navigation privée ; ni nouvel Espace, ni profil, ni favoris. self fin (8) ; ui 26 |
 | RAC-5 | ⌘W / ⇧⌘W | Archiver l'onglet, fermer la fenêtre | menu | ✅ | |
 | RAC-6 | ⇧⌘T | Rouvrir | menu | ✅ | |
 | RAC-7 | ⌘Z / ⇧⌘Z | Annuler, rétablir (actions de la barre) | menu | ✅ | ui 18 (annuler et rétablir, geste par geste) ; self barre « ⌘Z défait toute la suite… », « ⇧⌘Z refait toute la suite… » |
@@ -779,7 +779,7 @@ Arc : `menu` pour ceux de la barre de menus, sinon la source indiquée. Orbe : `
 | RAC-37 | ⌘O / ⌥⌘O | Dans un aperçu ou une petite fenêtre : ouvrir en onglet, choisir l'Espace | HC 19235387524503 | ✅ | ⌥⌘O sans effet dans la fenêtre principale d'Orbe (corps vide) |
 | RAC-38 | ⌥⌘V | Coller l'adresse dans un nouvel onglet | HC 20498377604887 | ✅ | voir ONG-25 ; self lat ; ui 22 |
 | RAC-39 | ⌘E | Faire défiler les extensions | HC 19434259167767 | ⬜ | |
-| RAC-40 | ⌥⌘⌫ | Supprimer la suggestion désignée | HC 20498377604887 | ⬜ | |
+| RAC-40 | ⌥⌘⌫ | Supprimer la suggestion désignée | HC 20498377604887 | ✅ | ⌥⌘⌫ (Ctrl+Alt+⌫ sous Windows) oublie la suggestion désignée ; self cmd ; ui 24 |
 | RAC-41 | ⌥⌘G | ChatGPT | HC 19335160678679 | ➖ | |
 | RAC-42 | ⌃⌘J | Rejoindre la prochaine réunion | HC 24158102740631 | ➖ | |
 | RAC-43 | ⌘, / ⌘H / ⌥⌘H / ⌘M / ⌥⌘M / ⌘Q | Réglages et raccourcis du système | menu | ✅ | |
@@ -820,7 +820,7 @@ Arc : `menu` pour ceux de la barre de menus, sinon la source indiquée. Orbe : `
 | DIV-6 | Messages (toasts) au-dessus de la page, cliquables | HC 20498417809815 | ✅ | self « message (toast) : affiché par-dessus la page », « message cliquable : le clic lance son action et le fait disparaître » ; « Nouvel onglet créé » mène à l’onglet | |
 | DIV-7 | Copie de l'adresse sans les paramètres de pistage (« Super Copy », cas d'Amazon et d'Instagram) | HC 20498293324823 ; binaire « without any trackers » | ✅ | utm_*, fbclid, gclid, igshid, etc. retirés à la copie (⇧⌘C, Markdown, citation, menus) ; fiche Amazon réduite à son produit ; self « copie d’adresse : paramètres de pistage retirés… », « ⇧⌘C et ⌥⇧⌘C copient l’adresse sans ses paramètres de pistage » | |
 | DIV-8 | Fenêtre privée | menu | ✅ | self (deux vérifications) | |
-| DIV-9 | Fenêtre vierge (hors Espaces, non synchronisée) | menu ; HC 20498377604887 | ⬜ | | |
+| DIV-9 | Fenêtre vierge (hors Espaces, non synchronisée) | menu ; HC 20498377604887 | ✅ | | « Nouvelle fenêtre vierge » (⌃⌘N ; Alt+Maj+B sous Windows) : fenêtre hors des Espaces — ses onglets ne sont enregistrés dans aucun Espace et ne reviennent pas au redémarrage ; même session (cookies, historique, archive) que les fenêtres ordinaires, à la différence de la navigation privée ; ni nouvel Espace, ni profil, ni favoris. self fin (8) ; ui 26 |
 | DIV-10 | Stay On Top | menu | ✅ | self « Toujours au premier plan : la fenêtre passe au-dessus des autres, puis revient » | |
 | DIV-11 | Plein écran : nouvelles fenêtres en plein écran, barre au survol | HC 20498377604887 | 🟡 | natif | |
 | DIV-12 | Page d'erreur | non vérifié | ✅ | self (deux vérifications) ; ui 09 | |

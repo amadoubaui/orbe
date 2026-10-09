@@ -211,11 +211,11 @@ function resetAll() {
 
 // Regroupement par menu, pour le volet « Raccourcis » des réglages.
 const GROUPS = [
-  ['menu.file', ['newTab', 'newWindow', 'newIncognito', 'newLittle', 'newNote', 'newEasel', 'reopen', 'commandBar', 'closeTab', 'closeWindow', 'capture', 'captureFull', 'captureToEasel', 'savePage', 'print', 'share']],
-  ['menu.edit', ['undo', 'redo', 'copyUrl', 'copyUrlMarkdown', 'copyUrlQuote', 'pasteUrl', 'find', 'findNext', 'findPrev', 'useSelectionFind']],
+  ['menu.file', ['newTab', 'newWindow', 'newBlank', 'newIncognito', 'newLittle', 'newNote', 'newEasel', 'reopen', 'commandBar', 'closeTab', 'closeWindow', 'capture', 'captureFull', 'captureToEasel', 'savePage', 'print', 'share']],
+  ['menu.edit', ['undo', 'redo', 'copyUrl', 'copyUrlMarkdown', 'copyUrlQuote', 'pasteUrl', 'find', 'findNext', 'findPrev', 'useSelectionFind', 'jumpToSelection', 'formatB', 'formatI', 'formatU', 'transformUpper', 'transformLower', 'transformCapitalize']],
   ['menu.view', ['toggleSidebar', 'toggleToolbar', 'collapsePinned', 'stop', 'reload', 'forceReload', 'clearCookies', 'clearCache', 'addSplit', 'splitDirection', 'closeSplit', 'separateSplit', 'separateAll', 'expandSplit', 'nextPane', 'prevPane', 'pane1', 'pane2', 'pane3', 'pane4', 'boost', 'zap', 'boosts', 'actualSize', 'zoomIn', 'zoomOut', 'fullscreen']],
-  ['view.developer', ['source', 'devtools', 'inspect', 'console', 'toggleDevMode']],
-  ['menu.spaces', ['newSpace', 'editTheme', 'renameSpace', 'newProfile', 'deleteSpace', 'nextSpace', 'prevSpace']],
+  ['view.developer', ['source', 'devtools', 'inspect', 'console', 'network', 'toggleDevMode']],
+  ['menu.spaces', ['newSpace', 'editTheme', 'renameSpace', 'newProfile', 'deleteSpace', 'manageSpaces', 'nextSpace', 'prevSpace']],
   ['menu.tabs', ['togglePin', 'newFolder', 'duplicate', 'expandPeek', 'openInSpace', 'toggleMute', 'nextTab', 'prevTab', 'revealTab', 'clearToday', 'resetTabs', 'expandFolders', 'collapseFolders']],
   ['menu.archive', ['back', 'forward', 'history', 'viewArchive', 'clearArchive']],
   ['menu.window', ['stayOnTop', 'library', 'downloads', 'media', 'notes', 'easels']],

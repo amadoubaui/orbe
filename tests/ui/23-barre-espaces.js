@@ -138,7 +138,7 @@ module.exports = {
       await ctx.principal(({ w }) => { w.menuVu = null; });
       await ctx.clic(shell, tete, { button: 'right' });
       const vu = await jusqua(() => ctx.principal(({ w }) => w.menuVu && w.menuVu.filter((x) => x.label).map((x) => x.label)), 'menu du dossier');
-      const attendu = await Promise.all(['tabs.renameFolder', 'tabs.duplicateFolder', 'tabs.copyAllLinks', 'tabs.copyAllLinksMarkdown', 'tabs.newNestedFolder', 'tabs.pasteUrlTab', 'tabs.closeFolder', 'tabs.deleteFolder'].map((k) => ctx.texte(k)));
+      const attendu = await Promise.all(['tabs.renameFolder', 'tabs.changeIcon', 'tabs.duplicateFolder', 'tabs.copyAllLinks', 'tabs.copyAllLinksMarkdown', 'tabs.newNestedFolder', 'tabs.pasteUrlTab', 'tabs.closeFolder', 'tabs.folderToSpace', 'tabs.deleteFolder'].map((k) => ctx.texte(k)));
       assert.deepEqual(vu, attendu);
     });
 
