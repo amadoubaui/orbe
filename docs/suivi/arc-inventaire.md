@@ -461,7 +461,7 @@ Aucun geste n'a été rejoué sur Arc pendant cet inventaire (ils demandent la m
 | GES-5 | Image dans l'image : pincer pour redimensionner, deux doigts pour déplacer, ⌘défilement pour zoomer, double-clic pour revenir à l'onglet | HC 20498417809815 | ⬜ | fenêtre native | |
 | GES-6 | Tableaux : pincer pour zoomer | HC 20498293324823 | ✅ | `easel.js` : pincement (Ctrl + molette, tel que Chromium le transmet) = zoom centré sur le pointeur ; ui 15 « pincement » |  |
 | GES-7 | Capture : zoomer et déplacer l'image avant de l'enregistrer | binaire « Zoom and pan to edit your screenshot » | ⬜ | | |
-| GES-8 | Lecteur miniature : glisser vers le haut pour chercher précisément | binaire « Drag upwards to seek precisely » | ⬜ | | |
+| GES-8 | Lecteur miniature : glisser vers le haut pour chercher précisément | binaire « Drag upwards to seek precisely » | ✅ | | lecteurs empilés (4 au plus), titre/artiste/pochette de mediaSession (tenus pour hostiles : textContent, pochette recodée), titre défilant, croix, recherche en glissant, fine quand le pointeur monte ; self tests/medias.js (23 vérif.), ui 26-medias (11 vérif., médiane 8,3 ms, 0 mise en page) |
 | GES-9 | Défilement élastique des listes de la barre | non vérifié | ✅ | SH `BOUNCE` : au bout de la liste elle se laisse tirer (72 px au plus, de moins en moins) et revient au ressort ; ui 23 « rebond élastique » (molette simulée) | Raideur et retour à régler main sur le pavé |
 
 ## BIB — Bibliothèque, archive, téléchargements, médias
@@ -491,7 +491,7 @@ Aucun geste n'a été rejoué sur Arc pendant cet inventaire (ils demandent la m
 | BIB-21 | « Downloads in progress » à la fermeture | binaire | ✅ | | Question « Des téléchargements sont en cours » avant de quitter ; self bib (4 vérifications) |
 | BIB-22 | Téléchargements renommés automatiquement | HC 19335160678679 | ➖ | | Fonction d'IA, écartée |
 | BIB-23 | Sauvegardes locales de la barre, Help → Restore Data (10 du jour, 1 par jour sur 10 jours…) | HC 25625071960215 ; menu | ✅ | `backups.js` | Copie à chaque lancement puis chaque heure (10 du jour, 1 par jour sur 10 jours) ; Aide → Dépannage → « Restaurer une sauvegarde » (relance) ; self bib (5 vérifications) |
-| BIB-24 | Lecteur audio miniature en bas de la barre en quittant un onglet qui joue ; plusieurs lecteurs empilés ; titre défilant ; croix | HC 19234766331799 | 🟡 | un seul média, lecture/pause et muet ; aucun test | |
+| BIB-24 | Lecteur audio miniature en bas de la barre en quittant un onglet qui joue ; plusieurs lecteurs empilés ; titre défilant ; croix | HC 19234766331799 | ✅ | un seul média, lecture/pause et muet ; aucun test | lecteurs empilés (4 au plus), titre/artiste/pochette de mediaSession (tenus pour hostiles : textContent, pochette recodée), titre défilant, croix, recherche en glissant, fine quand le pointeur monte ; self tests/medias.js (23 vérif.), ui 26-medias (11 vérif., médiane 8,3 ms, 0 mise en page) |
 | BIB-25 | Lecteur : précédent/suivant (Spotify), ±15 s, volume de l'onglet, micro | binaire | ⬜ | | `navigator.mediaSession` |
 | BIB-26 | Touches multimédia du clavier | HC 20498417809815 | 🟡 | défaut de Chromium, non testé | |
 | BIB-27 | Image dans l'image automatique en quittant un onglet vidéo ; pas si l'onglet est muet | HC 19234766331799 ; binaire | ✅ | self (deux vérifications) | |

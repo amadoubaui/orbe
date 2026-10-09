@@ -1102,6 +1102,9 @@ module.exports = async function selftest(ctx) {
   // Bibliothèque : archive, téléchargements, Espaces, Boosts ; notes (tests/bibliotheque.js)
   await require('./bibliotheque')({ ...ctx, check });
 
+  // Médias : lecteurs miniatures de la barre latérale (tests/medias.js)
+  await require('./medias')({ ...ctx, check });
+
   // Correctifs de la revue de sécurité : quarantaine, sauvegardes, aiguillage, Boosts, adresses étroites.
   await require('./securite')({ ...ctx, check });
 

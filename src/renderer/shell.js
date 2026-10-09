@@ -354,18 +354,7 @@ function render(s) {
   upd.hidden = !s.update;
   if (s.update) $('update-open').textContent = t('update.note', { version: s.update.version });
 
-  const media = $('media');
-  media.hidden = !s.media;
-  if (s.media) {
-    if (media._id !== s.media.id + s.media.favicon) {
-      media._id = s.media.id + s.media.favicon;
-      $('media-icon').textContent = '';
-      $('media-icon').appendChild(faviconEl(s.media.favicon || guessIcon(s.media.url), s.media.title));
-    }
-    $('media-title').textContent = s.media.title;
-    $('media-play-icon').setAttribute('href', s.media.playing ? '#i-pause' : '#i-play');
-    $('media-mute-icon').setAttribute('href', s.media.muted ? '#i-mute' : '#i-sound');
-  }
+  renderPlayers(s.players || []);
 
   // Poignées entre les volets d'une vue scindée (dans l'espace qui les sépare).
   const dv = $('dividers');
@@ -672,9 +661,6 @@ sidebar.addEventListener('contextmenu', (e) => {
   else send('sidebarMenu');
 });
 
-$('media-open').onclick = () => S && S.media && send('activate', S.media.id);
-$('media-play').onclick = () => send('mediaToggle');
-$('media-mute').onclick = () => S && S.media && send('toggleMute', S.media.id);
 $('update-open').onclick = () => send('update:show');
 $('update-close').onclick = () => send('update:dismiss');
 $('exts').addEventListener('contextmenu', (e) => {

@@ -88,6 +88,7 @@ function configure(ses, { persist }) {
   certs.attach(ses);
   downloads.attach(ses, { persist, hooks });
   swipe.attach(ses); // balayage à deux doigts : précédent / suivant
+  require('./media').attach(ses); // lecteur miniature : piste précédente / suivante du site
   // Extensions installées : rechargées dans chaque profil à chaque démarrage.
   if (persist) {
     extApi.attach(ses); // API chrome.* manquantes, avant le premier chargement

@@ -252,6 +252,8 @@ function noteDownload(phase, d, wc) {
   if (!downloading.has(wc.id)) downloading.set(wc.id, new Set());
   downloading.get(wc.id).add(d.id);
 }
+// Lecteurs miniatures de la barre latérale (src/main/media.js).
+const media = require('./media').make({ live, pushAll: () => OrbeWindow.pushAll(), windows: () => OrbeWindow.all, strip: (u) => suggest.strip(u) });
 const prewoken = new Map(); // origine -> instant de la dernière pré-connexion (voir `prewake`)
 
 let pushScheduled = false;
@@ -559,7 +561,7 @@ class OrbeWindow {
       if (w.data !== data) continue;
       w.leaveSplit(id);
       for (const sid of Object.keys(w.activeBySpace)) if (w.activeBySpace[sid] === id) delete w.activeBySpace[sid];
-      if (w.mediaId === id) w.mediaId = null;
+      media.drop(w, id);
     }
   }
 
@@ -1081,7 +1083,7 @@ class OrbeWindow {
     wc.setVisualZoomLevelLimits(1, 5).catch(() => {});
     wc.on('audio-state-changed', () => {
       const owner = rt.owner;
-      if (wc.isCurrentlyAudible()) { rt.playing = true; if (!owner.visibleIds().includes(rt.id)) owner.mediaId = rt.id; }
+      if (wc.isCurrentlyAudible()) { rt.playing = true; if (!owner.visibleIds().includes(rt.id)) media.add(owner, rt.id); }
       OrbeWindow.pushAll();
     });
     wc.on('context-menu', (e, params) => rt.owner.pageMenu(rt, params));
@@ -1359,11 +1361,11 @@ class OrbeWindow {
       }
       if (prevId !== id && prevRt && !prevRt.wc.isDestroyed() && prevRt.wc.isCurrentlyAudible()) {
         prevRt.playing = true;
-        this.mediaId = prevId;
+        media.add(this, prevId);
         if (!(this.groupOf(id) || []).includes(prevId) && !this.data.tabs[prevId].muted) this.pip(prevRt, true);
       }
     }
-    if (this.mediaId === id) this.mediaId = null;
+    media.drop(this, id);
     const backRt = live.get(id);
     if (backRt && backRt.pip) this.pip(backRt, false);
     this.activeBySpace[this.space.id] = id;
@@ -1591,18 +1593,11 @@ class OrbeWindow {
     rt.wc.executeJavaScript(code, true).catch(() => {});
   }
 
-  // Lecture / pause du média de l'onglet en arrière-plan.
-  mediaToggle() {
-    const rt = this.mediaId && live.get(this.mediaId);
-    if (!rt || rt.wc.isDestroyed()) return;
-    rt.playing = !rt.playing;
-    rt.wc.executeJavaScript(`(() => {
-      const all = [...document.querySelectorAll('video, audio')];
-      const m = all.find((x) => !x.paused) || all.find((x) => x.currentTime > 0) || all[0];
-      if (m) { if (m.paused) m.play(); else m.pause(); }
-    })()`, true).catch(() => {});
-    OrbeWindow.pushAll();
-  }
+  // Lecteurs miniatures : lecture / pause du plus récent (ancien geste), ou un
+  // geste précis sur l'un d'eux ({ id, act, value } — vérifié par media.act).
+  mediaToggle() { return media.act(this, { act: 'toggle' }); }
+  mediaAct(a) { return media.act(this, a); }
+  get mediaId() { return media.players(this)[0] || null; }
 
   resetPinned(id = this.activeId) {
     const tab = id && this.data.tabs[id];
@@ -3780,9 +3775,6 @@ class OrbeWindow {
     const downloads = store.state.downloads.filter((x) => x.state === 'progressing');
     const dir = this.spaceDir || 0;
     this.spaceDir = 0;
-    const mediaRt = this.mediaId && live.get(this.mediaId);
-    const mediaTab = mediaRt && !mediaRt.wc.isDestroyed() && d.tabs[this.mediaId];
-    if (!mediaTab || this.visibleIds().includes(this.mediaId)) this.mediaId = null;
     const payload = {
       lang: settings.lang,
       appearance: settings.appearance,
@@ -3839,14 +3831,7 @@ class OrbeWindow {
           return { id: ids[i], x: p.x, y: p.y, w: p.width, h: p.height, bar: p.bar, active: ids[i] === activeId, internal: isInternal(pt.url), url: pt.url, title: pt.customTitle || pt.title || '', favicon: this.incognito ? '' : (pt.favicon || '') };
         });
       })(),
-      media: this.mediaId && settings.mediaControls !== false ? {
-        id: this.mediaId,
-        title: mediaTab.customTitle || mediaTab.title || suggest.strip(mediaTab.url),
-        url: mediaTab.url,
-        favicon: mediaTab.favicon,
-        playing: mediaRt.wc.isCurrentlyAudible() || (!!mediaRt.playing && !mediaTab.muted),
-        muted: !!mediaTab.muted,
-      } : null,
+      players: media.payload(this, settings),
       downloads: downloads.length
         ? { count: downloads.length, progress: downloads.reduce((a, x) => a + (x.total ? x.received / x.total : 0), 0) / downloads.length }
         : null,
@@ -3911,6 +3896,7 @@ class OrbeWindow {
       }
       case 'toggleMute': return this.toggleMute(a);
       case 'mediaToggle': return this.mediaToggle();
+      case 'mediaAct': return this.mediaAct(a);
       case 'resetPinned': return this.resetPinned(a);
       case 'command': return this.run(a);
       case 'dropUrl': {
@@ -4010,4 +3996,4 @@ function archiveStale() {
   if (count) { store.save(); for (const w of windows.values()) w.layout(); OrbeWindow.pushAll(); }
 }
 
-module.exports = { OrbeWindow, windows, live, trusted, hooks, lostAfterStay: () => lastLost, applyBoosts, cleanUrl, mdLink, isMeetingUrl, SPLIT_BAR, archiveStale, tabMemory, noteDownload, uiRetryDelay, UI_PREFS, STATUS_MAX, ICON_MAX, thumbs: { keep: keepThumb, MAX: THUMBS }, INTERNAL, UI_PRELOAD, isInternal, MOTION, motion, forceMotion, motionStats: stats, boundsOf, inFlight, resumed };
+module.exports = { OrbeWindow, windows, live, media, trusted, hooks, lostAfterStay: () => lastLost, applyBoosts, cleanUrl, mdLink, isMeetingUrl, SPLIT_BAR, archiveStale, tabMemory, noteDownload, uiRetryDelay, UI_PREFS, STATUS_MAX, ICON_MAX, thumbs: { keep: keepThumb, MAX: THUMBS }, INTERNAL, UI_PRELOAD, isInternal, MOTION, motion, forceMotion, motionStats: stats, boundsOf, inFlight, resumed };
