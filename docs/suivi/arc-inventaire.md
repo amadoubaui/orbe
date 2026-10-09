@@ -98,7 +98,7 @@ Règle appliquée pour ✅ : le code existe **et** un test nommé le couvre. Du 
 | BL-45 | Pas des lignes d'onglet de 41 pt, texte d'environ 14 pt | `docs/analyse-arc.md` | ✅ | SC `.row` ; ui 11 | |
 | BL-46 | Croix de fermeture au survol d'une ligne | observé (habituel) ; binaire (infobulle) | ✅ | ui 02 | |
 | BL-47 | Bouton haut-parleur sur un onglet qui joue ; clic = muet | binaire « mutes the tab » | 🟡 | SH:61,308 ; aucun test | Ajouter un test |
-| BL-48 | Indicateur animé micro/caméra ; onglet partagé surligné en jaune | HC 25590627478935 | ⬜ | aucun code | |
+| BL-48 | Indicateur animé micro/caméra ; onglet partagé surligné en jaune | HC 25590627478935 | 🟡 | témoin caméra / micro / écran sur la ligne de l’onglet et dans la pastille d’adresse (capture-state.js) ; self « le témoin apparaît dans la pastille d’adresse et sur la ligne de l’onglet » ; ui « témoin de partage… » | Pas d’animation ni de surlignage jaune ; le témoin reste allumé jusqu’au changement de page (Electron ne dit pas si un flux est encore ouvert) |
 | BL-49 | « / » sur un épinglé qui a quitté son adresse ; clic sur l'icône = retour | HC 25625148480279 | 🟡 | SH:36-37 ; aucun test | Ajouter un test |
 | BL-50 | ⌘clic sur l'icône d'un épinglé : retour à l'adresse, l'ancienne page part dans un nouvel onglet | HC 20498293324823 | ⬜ | aucun code | |
 | BL-51 | Double-clic sur un onglet pour le renommer | HC 19231060187159 ; binaire « Double-click to rename » | 🟡 | épinglés seulement ; ui 03 | Étendre aux onglets du jour |
@@ -290,7 +290,7 @@ Actions de la barre de commande relevées dans Arc (libellés du binaire et du c
 | ONG-14 | Dans le sélecteur, ⌃ maintenu + W ferme l'onglet désigné | HC 25619402657303 | ⬜ | | |
 | ONG-15 | ⌥⌘↓ / ⌥⌘↑ | menu | ✅ | self ; nat | |
 | ONG-16 | ⌘1 … ⌘8, ⌘9 = neuvième ou dernier, favoris inclus ou non (réglage) | binaire ; HC 25619402657303 | 🟡 | self « ⌘2 active le deuxième onglet » ; pas de réglage | |
-| ONG-17 | Onglets en arrière-plan suspendus ; pas ceux qui utilisent le micro | HC 20498293324823 | 🟡 | W:trimLive ; self « mise en veille au-delà de la limite » | Garde micro/caméra absente |
+| ONG-17 | Onglets en arrière-plan suspendus ; pas ceux qui utilisent le micro | HC 20498293324823 | ✅ | W:trimLive + hooks.busy ; self « mise en veille au-delà de la limite », « un onglet qui capte n’est pas mis en veille » |  |
 | ONG-18 | Certains sites restent vivants (Slack, Gmail, Agenda, Notion, Spotify, WhatsApp…) | binaire `web_content_behavior.json` (`keepaliveAllowList`) | ⬜ | | Reprendre la liste |
 | ONG-19 | Favoris chargés seulement s'ils ont servi récemment | HC 20498377604887 | 🟡 | chargés au clic | |
 | ONG-20 | Un onglet n'existe qu'en un exemplaire entre les fenêtres (« Tab Handoff ») | HC 20498377604887 | ✅ | self « un onglet n'est actif que dans une seule fenêtre » | |
@@ -473,7 +473,7 @@ Aucun geste n'a été rejoué sur Arc pendant cet inventaire (ils demandent la m
 | BIB-7 | Médias du Bureau, de Documents et de Téléchargements à côté des captures ; filtre « Show media from: » | binaire | ⬜ | téléchargements et captures d'Orbe, en liste | Grille de vignettes |
 | BIB-8 | Les vidéos se lisent en aperçu | HC 20498417809815 | ⬜ | | |
 | BIB-9 | Supprimer un élément l'envoie à la corbeille | HC 20498293324823 ; binaire « Move to Trash » | 🟡 | à vérifier | |
-| BIB-10 | Menu d'un téléchargement : Open, Copy, Show in Finder, Hide from Arc, Move to Trash, Cancel | binaire « Download Context Menu » | 🟡 | boutons Ouvrir / Afficher ; self « téléchargement enregistré » | Annuler, pause, masquer |
+| BIB-10 | Menu d'un téléchargement : Open, Copy, Show in Finder, Hide from Arc, Move to Trash, Cancel | binaire « Download Context Menu » | 🟡 | Ouvrir, Afficher, Pause, Reprendre, Réessayer, Annuler (downloads.js) ; self « pause depuis la Bibliothèque », « annulation… » ; ui « Bibliothèque : pause, reprise et annulation » | Copier, masquer, corbeille |
 | BIB-11 | Envoyer une capture par iMessage ou AirDrop ; ouvrir dans Aperçu | binaire | ⬜ | | Feuille de partage macOS |
 | BIB-12 | Regroupement par période (« Earlier This Week »…) | binaire | 🟡 | groupes par jour dans `library.js` ; pas de test du regroupement | |
 | BIB-13 | Archive : recherche et filtres (fermé à la main ou d'office, par Espace, Little Arc) | allthings ; binaire « How was the tab closed? », « Where was the tab? » | 🟡 | recherche seule | Enregistrer la cause de fermeture |
@@ -482,7 +482,7 @@ Aucun geste n'a été rejoué sur Arc pendant cet inventaire (ils demandent la m
 | BIB-16 | Clear Archive avec confirmation « This action is permanent. » | binaire ; menu | 🟡 | sans confirmation | |
 | BIB-17 | État vide de l'archive : « Nothing here yet! » | binaire | ⬜ | | |
 | BIB-18 | View History ⌘Y | menu | ✅ | self | |
-| BIB-19 | Emplacement des téléchargements par profil : dossier, « Other… », « Ask every time » | warren ; binaire `arc.promptForDownload` | ⬜ | toujours Téléchargements | |
+| BIB-19 | Emplacement des téléchargements par profil : dossier, « Other… », « Ask every time » | warren ; binaire `arc.promptForDownload` | ✅ | réglage « Dossier des téléchargements », général ou propre à un profil (prefs.js), et « Toujours demander où enregistrer » (downloads.js) ; self « dossier des téléchargements propre à un profil », « dossier propre au profil : il prime sur le dossier général… », « Toujours demander où enregistrer… » | |
 | BIB-20 | Avertissements de sécurité du système sur les fichiers téléchargés | HC 20498377604887 | 🟡 | non vérifié | |
 | BIB-21 | « Downloads in progress » à la fermeture | binaire | ⬜ | | |
 | BIB-22 | Téléchargements renommés automatiquement | HC 19335160678679 | ➖ | | Fonction d'IA, écartée |
@@ -560,10 +560,10 @@ Aucun geste n'a été rejoué sur Arc pendant cet inventaire (ils demandent la m
 | EXT-6 | Extension qui plante : désactivée avec un message | HC 20498377604887 ; binaire | ⬜ | | |
 | EXT-7 | Raccourcis des extensions | binaire « Extension Shortcuts » | 🟡 | à vérifier dans `ext-api.js` | |
 | EXT-8 | Centre de contrôle du site : un panneau avec autorisations, mode développeur, aperçus, Boosts, extensions, capture, effacement du cache et des cookies | HC 19434259167767 | 🟡 | menu natif du bouclier (W:shieldMenu) | Vrai panneau |
-| EXT-9 | Demande d'autorisation dans une bulle : « Allow %@ to access your %@? », « Click the lock to change this any time » | binaire `PermissionRequestPopoverView` | 🟡 | boîte de dialogue native | Bulle ancrée |
-| EXT-10 | Autorisations : notifications, stockage, téléchargements multiples, détection d'inactivité, `mailto:` | binaire | 🟡 | caméra/micro, position, notifications, MIDI, presse-papiers | |
-| EXT-11 | Partage d'écran | binaire (« tab is being screen-shared ») | ⬜ | `getDisplayMedia` non pris en charge | Manque fonctionnel réel (visioconférence) |
-| EXT-12 | « This tab is using your camera or microphone » | binaire | ⬜ | | |
+| EXT-9 | Demande d'autorisation dans une bulle : « Allow %@ to access your %@? », « Click the lock to change this any time » | binaire `PermissionRequestPopoverView` | 🟡 | feuille d’Orbe posée sur l’onglet (sheets.js), pas une boîte native ; self « caméra : la question est une feuille d’Orbe… » ; ui « demande d’autorisation : feuille sur l’onglet » | Feuille centrée sur la page, pas une bulle ancrée au cadenas |
+| EXT-10 | Autorisations : notifications, stockage, téléchargements multiples, détection d'inactivité, `mailto:` | binaire | 🟡 | caméra, micro (séparés, avec l’accord du système), position, notifications, MIDI, presse-papiers, fenêtres surgissantes, liens `mailto:` et autres applications ; vue par site avec réinitialisation ; self « informations du site : autorisations accordées et refusées » | Stockage, téléchargements multiples, détection d’inactivité |
+| EXT-11 | Partage d'écran | binaire (« tab is being screen-shared ») | ✅ | sélecteur d’Orbe : cet onglet, écrans, fenêtres, vignettes, son (display-media.js) ; self « sélecteur : « Cet onglet », puis les écrans et fenêtres », « « Cet onglet » : la page reçoit un flux vidéo », « une source absente de la liste proposée est refusée » ; ui « partage d’écran : sélecteur d’Orbe » | Écran et fenêtre réels, et question de macOS : à vérifier à la main (application signée) |
+| EXT-12 | « This tab is using your camera or microphone » | binaire | ✅ | témoin + menu « Arrêter (recharge la page) » ; self « témoin : la page utilise la caméra », « « Arrêter » recharge la page » ; ui « « Arrêter » recharge la page et l’éteint » | Voir BL-48 pour la limite du témoin |
 | EXT-13 | Bloqueur : uBlock Origin installé d'office ; bloqueur natif en option ; « Block Cookie Banners » | HC 19335714372759 ; binaire | ✅ | bloqueur intégré ; self « le bloqueur annule la requête tierce… », `tests/adblock.test.js` | Bandeaux de cookies non traités |
 | EXT-14 | Exception par site | binaire | ✅ | self | |
 | EXT-15 | Traduction proposée quand la page est dans une autre langue | HC 25626093607703 ; binaire | ⬜ | | |
@@ -572,7 +572,7 @@ Aucun geste n'a été rejoué sur Arc pendant cet inventaire (ils demandent la m
 | EXT-18 | Mots de passe : gestionnaire, import depuis Chrome ou Safari | binaire | ✅ | self (plus de 70 vérifications), `tests/passwords.js` | |
 | EXT-19 | Clés d'accès du trousseau iCloud | HC 20498293324823 (v1.120) | ⬜ | | |
 | EXT-20 | Cartes bancaires et remplissage automatique | warren | ⬜ | | |
-| EXT-21 | Erreurs de certificat, authentification HTTP | non vérifié (comportement de Chromium) | ⬜ | aucun gestionnaire | Manque fonctionnel |
+| EXT-21 | Erreurs de certificat, authentification HTTP | non vérifié (comportement de Chromium) | ✅ | avertissement de certificat (certs.js), feuille d’identifiants HTTP et proxy, choix du certificat client (auth.js) ; self « certificat refusé : avertissement d’Orbe… », « site HSTS : « Continuer quand même » n’est pas proposé », « l’exception n’est jamais écrite sur disque », « bons identifiants : la page protégée s’affiche » ; ui « certificat refusé… », « identifiant et mot de passe tapés au clavier » | À faire : proposer les comptes du gestionnaire de mots de passe pour l’authentification HTTP (docs/securite-navigation.md) ; vrai proxy à vérifier à la main |
 | EXT-22 | Gestionnaire de tâches | menu Help → Troubleshooting | ⬜ | | |
 
 ## REG — Réglages
@@ -826,14 +826,20 @@ Arc : `menu` pour ceux de la barre de menus, sinon la source indiquée. Orbe : `
 | DIV-16 | Menu de page, vidéo : image dans l'image | HC 19234766331799 | ⬜ | | |
 | DIV-17 | Menu de page : traduire, « Customize Page » (Boost) | HC 25626093607703 ; binaire | ⬜ | | |
 | DIV-18 | Menu de page : Inspecter | non vérifié | 🟡 | présent | |
-| DIV-19 | Boîte « quitter la page ? » (`beforeunload`) | non vérifié (Chromium) | ⬜ | toujours ignorée | Risque de perte de saisie |
-| DIV-20 | Fenêtres surgissantes bloquées | non vérifié (Chromium) | ⬜ | tout devient onglet | |
-| DIV-21 | Lecture de PDF | non vérifié (Chromium) | 🟡 | visionneuse de Chromium, non testée | |
+| DIV-19 | Boîte « quitter la page ? » (`beforeunload`) | non vérifié (Chromium) | ✅ | question « Quitter la page ? » à la navigation, à la fermeture de l’onglet, de plusieurs onglets et de la fenêtre (unload.js) ; self « fermer l’onglet puis « Rester » : l’onglet revient… », « archiver plusieurs onglets : une question par page… », « fermer la fenêtre puis « Rester »… » ; ui « page modifiée au clavier… » | Aperçu fermé sans question |
+| DIV-20 | Fenêtres surgissantes bloquées | non vérifié (Chromium) | ✅ | bloquées sans geste, mention dans la pastille, « Ouvrir quand même », « Toujours autoriser pour ce site » (popups.js) ; self « window.open sans geste : bloqué », « après un vrai clic : la fenêtre s’ouvre, avec window.opener » ; ui « fenêtre ouverte sans geste : bloquée… » | Heuristique de geste documentée dans popups.js |
+| DIV-21 | Lecture de PDF | non vérifié (Chromium) | ✅ | visionneuse de Chromium (aucun réglage à changer) ; PDF téléchargé ouvert dans un onglet ; self « un PDF s’affiche dans la visionneuse de Chromium », « PDF téléchargé : ouvert dans un onglet » |  |
 | DIV-22 | Vidéos protégées (Netflix, etc.) | non vérifié | ⬜ | seulement avec le moteur optionnel | Limite connue |
 | DIV-23 | La boîte « Quitter » montre l'icône choisie | HC 20498293324823 | ➖ | | Détail lié aux icônes |
 | DIV-24 | Aperçus au survol des favoris (Gmail, Agenda, Notion, Linear, Figma) et agenda vivant | HC 19335284431639, 24158102740631 | ➖ | | Services tiers, écartés pour l'instant |
 | DIV-25 | Partage d'Espaces, de dossiers, d'onglets par lien | HC 19228534606743 | ➖ | | Demande un serveur |
 | DIV-26 | Résumés au survol des liens, questions à la page | HC 19335160678679 | ➖ | | Fonctions d'IA |
+| DIV-27 | Cadenas / « Non sécurisé » dans la pastille d’adresse ; clic : résumé du certificat | usage courant des navigateurs | ✅ | certs.state + feuille « site » ; self « pastille d’adresse : « Non sécurisé » pendant l’avertissement », « résumé du certificat pour le cadenas » ; ui « après « continuer » : la pastille reste « Non sécurisé » » |  |
+| DIV-28 | Page plantée (« La page a planté », Recharger) ; page qui ne répond plus (Attendre / Recharger) | usage courant des navigateurs | ✅ | essentials.js (render-process-gone, unresponsive) ; self « page plantée : feuille… », « page qui ne répond plus… » |  |
+| DIV-29 | Liens vers d’autres applications (`mailto:`, `tel:`, liens d’application) : question, mémorisée par site et par schéma | usage courant des navigateurs | ✅ | permissions.js (openExternal) ; self « lien mailto: : Orbe demande avant d’ouvrir une autre application », « schémas dangereux… : jamais ouverts » |  |
+| DIV-30 | Appareils USB, HID, série, Bluetooth demandés par une page | usage courant des navigateurs | 🟡 | demande annulée proprement avec un message, jamais d’appareil choisi d’office ; self « Bluetooth : la demande est annulée tout de suite… », « USB… », « port série… » | Pas de sélecteur d’appareil |
+| DIV-31 | Certificat client demandé par un site : choix explicite | usage courant des navigateurs | ✅ | auth.js ; self « certificat client : Electron n’envoie pas le premier d’office ; Orbe demande lequel » | Vrai certificat du trousseau : à vérifier à la main |
+| DIV-32 | Téléchargements : reprise après interruption (même après fermeture), mise en garde pour les exécutables | usage courant des navigateurs | ✅ | downloads.js ; self « « Reprendre » demande la suite au serveur (Range)… », « interrompu par la fermeture d’Orbe : repris… », « ouvrir un exécutable demande confirmation… » |  |
 
 ## À faire ensuite : les 30 premiers, par gain ressenti rapporté à l'effort
 
@@ -858,7 +864,7 @@ Arc : `menu` pour ceux de la barre de menus, sinon la source indiquée. Orbe : `
 19. **ANI-9, BL-57** — le téléchargement saute dans l'icône de la Bibliothèque ; détail du téléchargement en cours avec annulation.
 20. **BIB-4, BIB-6, BIB-7** — fichiers récents au survol de l'icône, à glisser dehors ; médias en grille.
 21. ✅ **REG-26, RAC-48** — raccourcis modifiables. *(fait : self « réglages », ui 19)*
-22. **EXT-11, EXT-21, DIV-19** — partage d'écran, erreurs de certificat et authentification HTTP, boîte `beforeunload` : trois trous de fonctionnement d'un navigateur de tous les jours.
+22. ~~**EXT-11, EXT-21, DIV-19**~~ — fait (branche `essentiels`) : partage d'écran, erreurs de certificat et authentification HTTP, boîte `beforeunload`, avec les fenêtres surgissantes (DIV-20) et les points DIV-27 à DIV-32. Notes de sécurité : `docs/securite-navigation.md`.
 23. **EXT-8, EXT-9** — vrai panneau de contrôle du site et bulle d'autorisation.
 24. **BL-3, BL-4, BL-14, BL-20, BL-21, BL-22** — petits gestes de la barre : double-clic sur le bord, tirer pour masquer, double-clic dans le vide, historique sur appui long, ⌘clic.
 25. **BL-125, BL-121, BL-122, BL-111, BL-130** — compléter les menus contextuels (remplacer l'adresse épinglée, archiver au-dessus, archiver les autres, copier en Markdown, menu du dossier).

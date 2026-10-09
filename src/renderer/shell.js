@@ -40,17 +40,23 @@ function tabRow(el, it) {
     el._built = true;
     el.innerHTML = `<span class="ic" data-act="icon"></span><span class="more"></span><span class="slash">/</span><span class="title"></span>`
       + `<button class="act reset" data-act="reset">${icon('reset')}</button>`
+      + `<button class="act cap" data-act="capture">${icon('screen')}</button>`
       + `<button class="act snd" data-act="mute">${icon('sound')}</button>`
       + `<button class="act x" data-act="close">${icon('x')}</button>`;
     el._ic = el.firstChild;
     el._title = el.children[3];
     el._more = el.children[1];
     el._snd = el.querySelector('.snd use');
+    el._cap = el.querySelector('.cap use');
     el.draggable = true;
   }
   el.className = 'row tab' + (it.active ? ' active' : '') + (it.shown ? ' shown' : '') + (it.live ? ' live' : '')
     + (it.audible ? ' audible' : '') + (it.muted ? ' muted' : '') + (it.changed ? ' changed' : '') + (it.partners ? ' split' : '') + (it.grouped ? ' grouped' : '')
+    + (it.capture && it.capture.length ? ' capturing' : '')
     + (sel.has(it.id) ? ' sel' : '');
+  // Témoin de capture : écran, caméra ou micro (le premier de la liste).
+  const cap = (it.capture && it.capture[0]) || '';
+  if (el._c !== cap) { el._c = cap; if (cap) { el._cap.setAttribute('href', '#i-' + cap); el._cap.closest('button').title = it.capture.map((k) => t('capture.' + k)).join(' · '); } }
   // Vue scindée : une seule ligne, avec les icônes et les titres de chaque volet.
   const label = it.partners ? [it.title, ...it.partners.map((p) => p.title)].join('  |  ') : it.title;
   if (editing !== it.id && el._t !== label) {
@@ -185,6 +191,20 @@ function render(s) {
   shield.hidden = !s.activeId || s.nav.internal || false;
   shield.className = s.nav.shield;
   $('shield-n').textContent = s.nav.shield === 'on' && s.nav.blocked ? (s.nav.blocked > 99 ? '99+' : String(s.nav.blocked)) : '';
+  // Connexion : cadenas discret en https, « Non sécurisé » en http ou avec un certificat refusé.
+  const sec = s.activeId && !s.nav.internal ? (s.nav.security || '') : '';
+  const lock = $('lock');
+  lock.hidden = !(sec === 'secure' || sec === 'insecure' || sec === 'broken');
+  lock.className = sec;
+  $('lock-icon').setAttribute('href', sec === 'secure' ? '#i-lock' : '#i-warn');
+  $('lock-text').textContent = sec === 'secure' ? '' : t('site.notSecure');
+  lock.title = sec ? t('site.sec.' + sec) : '';
+  const blocked = s.activeId ? (s.nav.popups || 0) : 0;
+  $('popup-note').hidden = !blocked;
+  $('popup-note').title = t('popup.blocked');
+  const caps = s.activeId ? (s.nav.capture || []) : [];
+  $('capture-note').hidden = !caps.length;
+  if (caps.length) { $('capture-icon').setAttribute('href', '#i-' + caps[0]); $('capture-note').title = caps.map((k) => t('capture.' + k)).join(' · '); }
   // Adresse entière, ou seulement le site (réglage « Afficher l'adresse entière »).
   $('tb-url-text').textContent = s.nav.internal ? label : ((s.fullUrl === false ? label : s.nav.url) || t('side.search'));
   for (const p of ['b', 'tb']) {
@@ -371,6 +391,7 @@ sidebar.addEventListener('click', (e) => {
     const id = row.dataset.id;
     if (act.dataset.act === 'close') send('close', id);
     else if (act.dataset.act === 'mute') send('toggleMute', id);
+    else if (act.dataset.act === 'capture') send('captureMenu', id);
     else if (act.dataset.act === 'reset') send('resetPinned', id);
     // Clic sur l'icône d'un épinglé sorti de son adresse : retour à celle-ci.
     else if (act.dataset.act === 'icon') send(row.classList.contains('changed') ? 'resetPinned' : (row.dataset.folder ? 'toggleFolder' : 'activate'), id);
@@ -427,6 +448,9 @@ $('b-sidebar').onclick = () => send('toggleSidebar');
 $('b-menu').onclick = () => send('command', 'appMenu');
 $('url').onclick = () => send('openCommand', 'edit');
 $('shield').onclick = () => send('shieldMenu');
+$('lock').onclick = () => send('siteInfo');
+$('popup-note').onclick = () => send('popupMenu');
+$('capture-note').onclick = () => send('captureMenu');
 $('tb-url').onclick = () => send('openCommand', 'edit');
 $('b-newtab').onclick = () => send('openCommand', 'new');
 $('b-clear').onclick = () => send('command', 'clearToday');

@@ -30,7 +30,12 @@ const trusted = new WeakSet(); // webContents autorisés à parler au processus 
 const wcOwner = new Map(); // id webContents (coque, flottants) -> OrbeWindow
 // `rightInset(fenêtre)` : place réservée à droite des pages (panneau latéral d'une
 // extension) ; `layout(fenêtre)` : appelé à la fin de chaque mise en page.
-const hooks = { changed: () => {}, openLittle: () => {}, openSettings: () => {}, extensionMenu: () => [], rightInset: () => 0, layout: () => {} };
+const hooks = {
+  changed: () => {}, openLittle: () => {}, openSettings: () => {}, extensionMenu: () => [], rightInset: () => 0, layout: () => {},
+  // Raccords posés par essentials.js (feuilles d'onglet, certificats, « quitter la page ? », fenêtres surgissantes…).
+  sheetFocus: () => null, leave: () => true, closeAll: async () => true, quitState: { quitting: false }, input: () => {}, popup: () => true, navigated: () => {},
+  busy: () => false, tabState: () => [], navState: () => ({}), failed: () => false, gone: () => {}, hung: () => {}, action: () => undefined, siteMenu: () => [],
+};
 
 const t = (key, vars) => store.t(key, null, vars);
 // Ce qu'une première fenêtre reprend de la session précédente : l'Espace affiché
@@ -224,7 +229,9 @@ class OrbeWindow {
     this.win.on('leave-full-screen', () => { this.layout(); OrbeWindow.pushAll(); });
     this.win.on('focus', () => { this.focusContent(); hooks.changed(); });
     this.win.on('blur', () => { if (this.peek) this.setPeek(false); });
-    this.win.on('close', () => {
+    this.win.on('close', (e) => {
+      // Les pages qui ont quelque chose à perdre (beforeunload) sont consultées d'abord.
+      if (this.askUnload(e)) return;
       this.remember();
       // La fenêtre se ferme sans plus porter aucune vue : sous Windows, détruire
       // une fenêtre avec ses vues encore attachées (parfois en cours d'animation,
@@ -671,6 +678,8 @@ class OrbeWindow {
       // vers un autre site s'ouvre en aperçu, sans quitter la page épinglée.
       let lastClick = 0;
       wc.on('before-mouse-event', (e, mouse) => {
+        // Vraie entrée de l'utilisateur : compte comme geste (fenêtres surgissantes, beforeunload).
+        if (mouse.type === 'mouseDown' || mouse.type === 'mouseUp') hooks.input(rt, mouse);
         if (mouse.type !== 'mouseUp' || mouse.button !== 'left') return;
         lastClick = Date.now();
         rt.click = { x: mouse.x, y: mouse.y, at: lastClick }; // d'où partira un éventuel aperçu
@@ -690,6 +699,8 @@ class OrbeWindow {
     // Page fermée par elle-même (window.close) ou processus disparu.
     wc.once('destroyed', () => {
       if (live.get(rt.id) !== rt) return;
+      // Fermeture de la fenêtre : la page s'en va, l'onglet reste dans la barre.
+      if (rt.windowClosing) { live.delete(rt.id); return; }
       const owner = rt.owner;
       if (owner.htmlFullscreen) owner.htmlFullscreen = false;
       if (!owner.win.isDestroyed()) owner.close(rt.id);
@@ -714,11 +725,12 @@ class OrbeWindow {
       let hostChanged = true;
       try { hostChanged = new URL(url).host !== new URL(tab.url).host; } catch {}
       if (hostChanged) tab.favicon = '';
+      rt.failed = false;
       tab.url = url;
       if (!incognito) store.visit(url, tab.title, tab.favicon);
       touch();
     };
-    wc.on('did-navigate', (e, url) => navigated(url));
+    wc.on('did-navigate', (e, url) => { hooks.navigated(rt); navigated(url); });
     if (!incognito) wc.on('dom-ready', () => boosts.apply(wc));
     wc.on('did-navigate-in-page', (e, url, isMainFrame) => { if (isMainFrame) navigated(url); });
     wc.on('update-target-url', (e, url) => rt.owner.linkStatus(rt, url));
@@ -728,7 +740,7 @@ class OrbeWindow {
       OrbeWindow.pushAll();
     });
     wc.on('context-menu', (e, params) => rt.owner.pageMenu(rt, params));
-    wc.on('before-input-event', (e, input) => rt.owner.onInput(e, input));
+    wc.on('before-input-event', (e, input) => { if (input.type === 'keyDown' && !rt.internal) hooks.input(rt, input); rt.owner.onInput(e, input); });
     // ⌥ tenue pendant un clic : les événements de souris ne disent pas les touches
     // de modification, on suit donc la touche elle-même.
     wc.on('before-input-event', (e, input) => { rt.alt = !!input.alt; });
@@ -737,17 +749,25 @@ class OrbeWindow {
     wc.on('focus', () => rt.owner.paneFocused(rt.id));
     wc.on('enter-html-full-screen', () => { rt.owner.htmlFullscreen = true; rt.fullscreen = true; rt.owner.layout(); });
     wc.on('leave-html-full-screen', () => { rt.owner.htmlFullscreen = false; rt.fullscreen = false; rt.owner.layout(); });
-    wc.on('will-prevent-unload', (e) => e.preventDefault());
+    wc.on('will-prevent-unload', (e) => rt.owner.pageObjects(e, rt));
     wc.on('did-fail-load', (e, code, desc, url, isMainFrame) => {
       if (!isMainFrame || code === -3 || isInternal(url)) return;
+      // Lien vers une autre application (mailto:, tel:…) : la page affichée reste en place.
+      if (!/^(https?|file|view-source|about|data|blob|chrome):/i.test(url)) return;
       tab.url = url;
+      // Certificat refusé : avertissement d'Orbe, pas la page d'erreur ordinaire.
+      if (hooks.failed(rt, { code, desc, url })) { rt.failed = true; touch(); return; }
       const q = new URLSearchParams({ url, desc, code: String(code), title: t('err.title'), retry: t('err.retry') });
       wc.loadURL(INTERNAL + 'error.html?' + q).catch(() => {});
     });
-    wc.on('render-process-gone', () => { rt.crashed = true; });
+    wc.on('render-process-gone', (e, details) => { rt.crashed = true; hooks.gone(rt, details); });
+    wc.on('unresponsive', () => hooks.hung(rt, true));
+    wc.on('responsive', () => hooks.hung(rt, false));
     wc.setWindowOpenHandler((details) => {
       const owner = rt.owner;
       if (!/^(https?|about|blob|data):/i.test(details.url) && details.url !== '') return { action: 'deny' };
+      // Ouverture sans geste de l'utilisateur : bloquée, avec une mention dans la pastille d'adresse (popups.js).
+      if (!rt.internal && !hooks.popup(rt, details)) { OrbeWindow.pushAll(); return { action: 'deny' }; }
       if (details.disposition === 'background-tab') {
         // ⌥⌘clic (Alt+Ctrl+clic ailleurs) : petite fenêtre, comme dans Arc.
         if (store.state.settings.littleAltClick !== false && rt.alt && /^https?:/i.test(details.url) && !owner.incognito) {
@@ -793,7 +813,66 @@ class OrbeWindow {
     if (rt.fullscreen) owner.htmlFullscreen = false;
     try { owner.win.contentView.removeChildView(rt.view); } catch {}
     if (owner.attached) owner.attached.delete(rt.view);
-    if (!rt.wc.isDestroyed()) rt.wc.close({ waitForBeforeUnload: false });
+    if (rt.wc.isDestroyed()) return;
+    // Fermeture demandée par l'utilisateur d'une page où il a agi : elle peut
+    // demander à ne pas être quittée (voir pageObjects). Une page qui ne répond
+    // pas ne retient rien.
+    const ask = !!rt.pendingClose;
+    rt.wc.close({ waitForBeforeUnload: ask });
+    if (ask) setTimeout(() => { if (rt.pendingClose && !rt.wc.isDestroyed()) rt.wc.close({ waitForBeforeUnload: false }); }, 4000).unref();
+  }
+
+  // La page refuse d'être quittée (beforeunload) : la question est posée. Pour un
+  // onglet en cours de fermeture, « Rester » le fait revenir, page intacte.
+  pageObjects(e, rt) {
+    const leave = hooks.leave(this, rt.wc);
+    if (leave) { e.preventDefault(); return; }
+    const pending = rt.pendingClose;
+    rt.pendingClose = null;
+    if (rt.unloadAnswer) { rt.windowClosing = false; rt.unloadAnswer(false); }
+    if (pending) setImmediate(() => this.reviveClosed(rt, pending));
+  }
+
+  reviveClosed(rt, { rec, tab }) {
+    const id = rt.id;
+    if (this.win.isDestroyed() || rt.wc.isDestroyed()) return;
+    if (live.has(id) && live.get(id) !== rt) OrbeWindow.destroyView(id);
+    live.set(id, rt);
+    rt.owner = this;
+    if (rec && !this.data.tabs[id]) {
+      this.restoreClosed([rec]);
+      // Les écouteurs de la page tiennent l'objet d'origine : c'est lui qui revient.
+      this.data.tabs[id] = Object.assign(tab, this.data.tabs[id]);
+    } else if (!this.data.tabs[id]) {
+      live.delete(id);
+      rt.wc.close({ waitForBeforeUnload: false });
+      return;
+    }
+    tab.url = rt.wc.getURL() || tab.url;
+    this.activate(id);
+  }
+
+  // Fermeture de la fenêtre : chaque page où l'utilisateur a agi peut s'y
+  // opposer. Renvoie true si la fermeture est suspendue le temps de demander.
+  askUnload(e) {
+    if (this.unloadChecked) return false;
+    const rts = [...live.values()].filter((rt) => rt.owner === this && rt.touched && !rt.crashed && !rt.internal && !rt.wc.isDestroyed());
+    if (!rts.length) return false;
+    e.preventDefault();
+    if (this.unloading) return true;
+    this.unloading = true;
+    const visible = this.visibleIds();
+    rts.sort((a, b) => visible.includes(b.id) - visible.includes(a.id));
+    hooks.closeAll(rts, (rt) => { rt.windowClosing = true; rt.wc.close({ waitForBeforeUnload: true }); }).then((ok) => {
+      this.unloading = false;
+      const quitting = hooks.quitState.quitting;
+      hooks.quitState.quitting = false;
+      if (this.win.isDestroyed()) return;
+      if (!ok) { this.layout(); OrbeWindow.pushAll(); return; }
+      this.unloadChecked = true;
+      if (quitting) app.quit(); else this.win.close();
+    });
+    return true;
   }
 
   // Met en veille les onglets les plus anciens au-delà de la limite.
@@ -803,7 +882,7 @@ class OrbeWindow {
     const visible = new Set();
     for (const w of windows.values()) for (const id of w.visibleIds()) visible.add(id);
     const idle = [...live.values()]
-      .filter((rt) => !visible.has(rt.id) && !rt.wc.isDestroyed() && !rt.wc.isCurrentlyAudible() && !rt.wc.isDevToolsOpened())
+      .filter((rt) => !visible.has(rt.id) && !rt.wc.isDestroyed() && !rt.wc.isCurrentlyAudible() && !rt.wc.isDevToolsOpened() && !hooks.busy(rt))
       .sort((a, b) => a.lastUsed - b.lastUsed);
     while (live.size > max && idle.length) OrbeWindow.destroyView(idle.shift().id);
   }
@@ -882,6 +961,9 @@ class OrbeWindow {
   focusContent() {
     if (this.modalMode) return this.modal.webContents.focus();
     if (this.peekState) return this.peekState.view.webContents.focus();
+    // Une feuille posée sur l'onglet actif (question, avertissement) garde le clavier.
+    const sheet = hooks.sheetFocus(this);
+    if (sheet) return sheet.focus();
     const wc = this.activeWc;
     if (wc) wc.focus();
     else if (!this.ui.webContents.isDestroyed()) this.ui.webContents.focus();
@@ -934,7 +1016,7 @@ class OrbeWindow {
 
   // ⌘W : un onglet du jour est archivé ; un onglet épinglé est simplement
   // déchargé et reste dans la barre latérale.
-  close(id = this.activeId, { silent = false } = {}) {
+  close(id = this.activeId, { silent = false, ask = true } = {}) {
     const loc = id && this.locate(id);
     if (!loc || loc.node.type === 'folder') return;
     const space = loc.space || this.space;
@@ -956,6 +1038,9 @@ class OrbeWindow {
     } else if (tab.homeUrl) {
       tab.url = tab.homeUrl;
     }
+    // Page où l'utilisateur a agi : elle sera consultée (beforeunload) avant de disparaître.
+    const closing = ask ? live.get(id) : null;
+    if (closing && closing.touched && !closing.crashed && !closing.internal) closing.pendingClose = { rec, tab };
     OrbeWindow.destroyView(id);
     OrbeWindow.forget(id, this.data);
     if (wasActive && next) this.activeBySpace[space.id] = next;
@@ -1796,7 +1881,7 @@ class OrbeWindow {
     on('page-favicon-updated', (e, icons) => { state.favicon = icons[0] || ''; });
     on('did-navigate', (e, u) => { state.url = u; });
     on('did-navigate-in-page', (e, u, main) => { if (main) state.url = u; });
-    on('will-prevent-unload', (e) => e.preventDefault());
+    on('will-prevent-unload', (e) => { if (hooks.leave(this, wc)) e.preventDefault(); });
     on('destroyed', () => { if (this.peekState === state) this.closePeek(); });
     const guard = (e, u) => { if (isInternal(u)) e.preventDefault(); };
     on('will-navigate', guard);
@@ -2352,10 +2437,9 @@ class OrbeWindow {
       { label: t('boost.edit'), enabled: web && !this.incognito, click: () => this.run('boost') },
       { label: t('boost.zapCmd'), enabled: web && !this.incognito, click: () => this.run('zap') },
       { type: 'separator' },
+      ...hooks.siteMenu(this),
       { label: t('view.clearCookies'), enabled: web, click: () => this.clearAndReload('cookies') },
-      { label: t('site.resetPerms'), enabled: web, click: () => {
-        try { delete store.state.permissions[new URL(tab.url).origin]; store.save(); } catch {}
-      } },
+      { label: t('site.resetPerms'), enabled: web, click: () => hooks.action(this, 'resetSitePerms') },
     ]);
   }
 
@@ -2364,7 +2448,7 @@ class OrbeWindow {
     const wc = this.activeWc;
     if (!wc) return;
     const tab = this.activeId && this.data.tabs[this.activeId];
-    if (tab && this.activeRt && wc === this.activeRt.wc && isErrorPage(wc.getURL())) wc.loadURL(tab.url).catch(() => {});
+    if (tab && this.activeRt && wc === this.activeRt.wc && (isErrorPage(wc.getURL()) || this.activeRt.failed)) wc.loadURL(tab.url).catch(() => {});
     else if (ignoreCache) wc.reloadIgnoringCache();
     else wc.reload();
   }
@@ -2574,6 +2658,7 @@ class OrbeWindow {
         loading: !!(alive && rt.loading),
         audible: !!(alive && rt.wc.isCurrentlyAudible()),
         muted: !!tab.muted,
+        capture: alive ? hooks.tabState(rt) : [],
         live: !!alive,
         changed: !!tab.homeUrl && !samePage(tab.homeUrl, tab.url),
         split: g ? this.splits.indexOf(g) + 1 : 0,
@@ -2643,6 +2728,8 @@ class OrbeWindow {
         canForward: !!(wc && wc.navigationHistory.canGoForward()),
         blocked: wc && settings.adblock ? (adblock.stats().blockedByTab.get(wc.id) || 0) : 0,
         shield: !settings.adblock ? 'off' : (tab && adblock.isSiteAllowed(tab.url) ? 'allowed' : 'on'),
+        // Connexion (cadenas, « Non sécurisé »), fenêtres surgissantes bloquées, captures en cours.
+        ...hooks.navState(this, this.activeRt, tab),
       },
       // Boutons des extensions, sous l'adresse.
       extensions: (() => {
@@ -2722,7 +2809,7 @@ class OrbeWindow {
       case 'peekExpand': return this.expandPeek();
       case 'peekSplit': return this.expandPeek({ split: true });
       case 'open': return webUrl(String(a)) ? this.newTab(String(a)) : undefined;
-      default: return undefined;
+      default: return hooks.action(this, action, a);
     }
   }
 }
@@ -2747,7 +2834,7 @@ function archiveStale() {
       const rt = live.get(id);
       if (activeIds.has(id) || (tab.lastActiveAt || 0) > limit) continue;
       if (rt && !rt.wc.isDestroyed() && rt.wc.isCurrentlyAudible()) continue;
-      any.close(id, { silent: true });
+      any.close(id, { silent: true, ask: false });
       count += 1;
     }
   }

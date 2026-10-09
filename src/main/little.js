@@ -86,7 +86,8 @@ class LittleWindow {
       const nav = (u) => { this.url = u; store.visit(u, this.title, ''); this.send(); };
       wc.on('did-navigate', (e, u) => nav(u));
       wc.on('did-navigate-in-page', (e, u, main) => { if (main) nav(u); });
-      wc.on('will-prevent-unload', (e) => e.preventDefault());
+      // « Quitter la page ? » : la question est posée (unload.js).
+      wc.on('will-prevent-unload', (e) => { if (require('./unload').confirm(this.win, wc)) e.preventDefault(); });
       wc.setWindowOpenHandler((d) => { if (/^https?:/i.test(d.url)) hooks.openInOrbe(d.url); return { action: 'deny' }; });
       this.layout();
     }

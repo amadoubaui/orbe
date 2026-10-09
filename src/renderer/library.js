@@ -56,13 +56,25 @@ function draw() {
     body.className = 'grow';
     if (files) {
       const pct = r.total ? Math.round((r.received / r.total) * 100) : 0;
-      const status = r.state === 'progressing' ? `${t('lib.inProgress')} — ${pct} %` : (r.state === 'completed' ? size(r.total || r.received) : t('lib.failed'));
+      const running = r.state === 'progressing';
+      const progress = `${pct} %${r.total ? ' — ' + size(r.received) + ' / ' + size(r.total) : (r.received ? ' — ' + size(r.received) : '')}`;
+      let status = t('lib.failed');
+      if (running) status = `${t(r.paused ? 'dl.paused' : (r.stalled ? 'dl.stalled' : 'lib.inProgress'))} — ${progress}`;
+      else if (r.state === 'completed') status = size(r.total || r.received);
+      else if (r.state === 'cancelled') status = t('dl.cancelled');
+      else if (r.received) status = `${t('lib.failed')} — ${progress}`;
       body.innerHTML = `<div class="name">${esc(r.name)}</div><div class="sub">${esc(status)} · ${esc(host(r.url))}</div>`
-        + (r.state === 'progressing' ? `<div class="bar"><i style="width:${pct}%"></i></div>` : '');
+        + (r.danger ? `<div class="sub danger">${esc(t('dl.dangerNote'))}</div>` : '')
+        + (running ? `<div class="bar"><i style="width:${pct}%"></i></div>` : '');
+      line.dataset.state = r.state;
       line.append(letterIcon(r.name), body);
-      if (r.exists) {
-        line.insertAdjacentHTML('beforeend', `<button class="btn" data-do="open">${esc(t('lib.open'))}</button><button class="btn" data-do="reveal">${esc(t('lib.reveal'))}</button>`);
-      }
+      const btn = (act, key) => `<button class="btn" data-do="${act}">${esc(t(key))}</button>`;
+      let buttons = '';
+      // En cours : pause ou reprise, et annulation. Interrompu ou annulé : reprise (ou nouveau départ).
+      if (running && kind === 'downloads') buttons += (r.paused || r.stalled ? btn('resume', 'dl.resume') : btn('pause', 'dl.pause')) + btn('cancel', 'dl.cancel');
+      else if ((r.state === 'interrupted' || r.state === 'cancelled') && kind === 'downloads') buttons += btn('resume', r.state === 'interrupted' && r.canResume ? 'dl.resume' : 'dl.retry');
+      if (r.exists) buttons += btn('open', 'lib.open') + btn('reveal', 'lib.reveal');
+      line.insertAdjacentHTML('beforeend', buttons);
     } else {
       body.innerHTML = `<div class="name">${esc(r.title)}</div><div class="sub">${esc(r.url)}</div>`;
       const at = document.createElement('span');
@@ -115,7 +127,8 @@ async function load() {
   rows = (data && data[kind]) || [];
   draw();
   clearTimeout(timer);
-  if (kind === 'downloads' && rows.some((r) => r.state === 'progressing')) timer = setTimeout(load, 700);
+  // Tant qu'un téléchargement avance, la liste se rafraîchit (sauf pendant un clic sur un bouton).
+  if (kind === 'downloads' && rows.some((r) => r.state === 'progressing' && !r.paused)) timer = setTimeout(load, 700);
 }
 
 document.querySelector('.tabs').addEventListener('click', (e) => {
@@ -144,7 +157,10 @@ list.addEventListener('click', async (e) => {
   const r = rows[Number(line.dataset.i)];
   const act = e.target.closest('[data-do]');
   if (kind === 'downloads' || kind === 'media') {
-    if (act) O.send(act.dataset.do === 'open' ? 'lib:openFile' : 'lib:reveal', r.id);
+    const what = act && act.dataset.do;
+    if (what === 'open') O.send('lib:openFile', r.id);
+    else if (what === 'reveal') O.send('lib:reveal', r.id);
+    else if (what) { await O.send('dl:' + what, r.id); load(); }
   } else O.send('open', r.url);
 });
 window.addEventListener('hashchange', () => {

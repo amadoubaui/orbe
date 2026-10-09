@@ -55,6 +55,9 @@ const DEFAULT_SETTINGS = {
   adblockAllow: [],
   passwordSave: true,
   passwordFill: true,
+  // Téléchargements : demander où enregistrer, PDF ouverts dans un onglet (le dossier : `downloadDir`, plus haut).
+  downloadAsk: false,
+  downloadOpenPdf: true,
 };
 
 class Store {
@@ -112,7 +115,7 @@ class Store {
     Object.defineProperty(s, 'history', { value: history, writable: true, enumerable: false, configurable: true });
     s.downloads = s.downloads || [];
     // Un téléchargement interrompu par la fermeture ne reprendra pas.
-    for (const d of s.downloads) if (d.state === 'progressing') d.state = 'interrupted';
+    for (const d of s.downloads) if (d.state === 'progressing') { d.state = 'interrupted'; d.paused = false; d.stalled = false; d.canResume = !!d.resume; }
     // Version 2 : l'accès des pages internes repose sur un drapeau explicite.
     if (from < 2) for (const tab of Object.values(s.tabs)) if (INTERNAL_PAGE.test(tab.url || '')) tab.internal = true;
     s.permissions = s.permissions || {};
