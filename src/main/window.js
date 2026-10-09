@@ -1091,7 +1091,7 @@ class OrbeWindow {
       const paint = () => pageColor.background(wc).then((c) => { if (wc.isDestroyed() || rt.bg === c) return; rt.bg = c; try { rt.view.setBackgroundColor(c); } catch {} });
       wc.on('dom-ready', paint);
       wc.on('did-finish-load', paint);
-      wc.on('did-change-theme-color', (e, color) => { const c = pageColor.theme(color); if (rt.themeColor === c) return; rt.themeColor = c; OrbeWindow.pushAll(); });
+      wc.on('did-change-theme-color', (e, color) => { const c = pageColor.theme(color); if ((rt.themeColor || null) === c) return; rt.themeColor = c; OrbeWindow.pushAll(); });
       wc.on('did-navigate', () => { rt.themeColor = null; });
     }
     wc.on('update-target-url', (e, url) => { rt.hoverUrl = String(url || '').slice(0, STATUS_MAX); rt.owner.linkStatus(rt, rt.hoverUrl); });

@@ -346,7 +346,7 @@ Actions de la barre de commande relevées dans Arc (libellés du binaire et du c
 | APE-9 | La barre d'outils s'affiche aussi dans l'aperçu | HC 20498293324823 | ✅ | barre d’outils affichée : l’adresse de l’aperçu s’affiche au-dessus de la carte et suit sa navigation ; self « barre d’outils affichée : l’aperçu montre son adresse… », « l’adresse de l’aperçu suit sa navigation » ; ui 16 | |
 | APE-10 | Les liens de réunion s'ouvrent en onglet, pas en aperçu | HC 20498377604887 | ✅ | self « onglet épinglé, lien de réunion : un onglet à côté, pas d’aperçu » | |
 | APE-11 | L'aperçu respecte les règles d'aiguillage | HC 20498293324823 | ✅ | une règle d’aiguillage passe avant l’aperçu (Espace ou petite fenêtre) ; self « onglet épinglé, lien couvert par une règle d’aiguillage… », « règle « petite fenêtre »… » | |
-| APE-12 | Tableaux et notes ouverts depuis la Bibliothèque : en aperçu | HC 20498377604887 | ⬜ | ouverts en onglet | |
+| APE-12 | Tableaux et notes ouverts depuis la Bibliothèque : en aperçu | HC 20498377604887 | ⬜ | ouverts en onglet | L’aperçu est une vue de page web sans privilège ; y loger une page d’Orbe (tableau, note) demanderait une vue de confiance : à concevoir avec la sécurité |
 
 ## PET — Petite fenêtre (Little Arc)
 
@@ -358,7 +358,7 @@ Actions de la barre de commande relevées dans Arc (libellés du binaire et du c
 | PET-4 | Bouton « Open In » ; ⌘O vers l'Espace le plus récent ; ⌥⌘O pour choisir | HC 19235387524503 | ✅ | self « Ouvrir dans Orbe crée un onglet » | |
 | PET-5 | Recherche d'Espace dans le menu « Open In » | binaire « Search Spaces » | ✅ | menu « Ouvrir dans… » dessiné dans la barre de la petite fenêtre, avec un champ de recherche (accents et casse ignorés) ; self « Ouvrir dans… : la liste des Espaces… », « recherche d’Espace… », « ⌥⌘O, recherche, Entrée… » ; ui 25 (deux vérifications) | |
 | PET-6 | Plusieurs petites fenêtres ; le même lien externe refocalise celle qui existe | HC 20498377604887 | ✅ | self « le même lien une seconde fois : la petite fenêtre existante revient, sans en ouvrir une autre », « un autre lien : une seconde petite fenêtre » | |
-| PET-7 | Fermées d'office après 6 h ; elles vont dans l'archive, filtre « Little Arc » | HC 19235387524503 ; binaire | 🟡 | délai réglable (`littleArchiveHours`), page rangée dans l’archive ; self | « Jamais » par défaut, et non 6 h ; pas de filtre « petite fenêtre » dans l’archive |
+| PET-7 | Fermées d'office après 6 h ; elles vont dans l'archive, filtre « Little Arc » | HC 19235387524503 ; binaire | 🟡 | délai réglable (`littleArchiveHours`), page rangée dans l’archive, filtre « petite fenêtre » de l’archive ; self | « Jamais » par défaut, et non 6 h : choix à trancher par le propriétaire |
 | PET-8 | Flotte au-dessus du plein écran, s'ouvre sur le bureau courant | HC 20498377604887 | 🟡 | non vérifié | |
 | PET-9 | Extensions disponibles ; bouton de copie du lien | binaire (infobulles) | 🟡 | bouton de copie du lien (sans paramètres de pistage) ; self « petite fenêtre : bouton de copie du lien… » ; ui 25 | Extensions absentes de la petite fenêtre |
 | PET-10 | Menu du Dock : afficher/masquer toutes les petites fenêtres, nouvelle fenêtre privée | HC 20498377604887 | ✅ | menu du Dock : navigation privée, masquer ou afficher toutes les petites fenêtres ; self lat « menu du Dock… » (cinq vérifications, voir MEN-96) | |
@@ -425,7 +425,7 @@ Chiffres d'Arc : seuls ANI-1 à ANI-4 ont été mesurés. Pour le reste, l'exist
 | ANI-23 | Ouverture d'un dossier : hauteur animée | non vérifié | ✅ | SH `flip` : le contenu paraît en fondu, la suite de la liste glisse ; au repli elle remonte ; ui 23 « dossier » | Glissement par transformation plutôt qu'une hauteur animée |
 | ANI-24 | Changement d'onglet : coupe franche | non vérifié | 🟡 | coupe franche | Sans doute identique |
 | ANI-25 | Sélecteur ⌃⇥ : apparition | non vérifié | ✅ | sans animation | apparition au ressort (240 ms, échelle 0,96 → 1) ; durée d'Arc non vérifiée |
-| ANI-26 | Bandeau de mise à jour : replié, s'ouvre au survol, bouton en dégradé ; cœur animé | HC 21489650267031 ; binaire `update-heart-animation.json` | ⬜ | | |
+| ANI-26 | Bandeau de mise à jour : replié, s'ouvre au survol, bouton en dégradé ; cœur animé | HC 21489650267031 ; binaire `update-heart-animation.json` | ✅ | ligne discrète, cœur qui bat ; au survol elle devient un bouton en dégradé et la croix paraît, sans changer de taille ; ui 24 | Pas de repli en largeur (il déplacerait la barre) : fondu et transformations seulement |
 | ANI-27 | Icônes animées de la Bibliothèque (archive, captures, Espaces, tableaux, téléchargements, Boosts) | binaire `ARC_HomeButton/*.json` (Lottie) | ⬜ | | |
 | ANI-28 | Logo animé (vague) et orbe vidéo | binaire `logo-wave.json`, `orb.mp4`, `background.mp4` | ⬜ | | Accueil |
 | ANI-29 | « Réduire les animations » du système respecté | non vérifié | ✅ | `base.css` (durées à zéro), SH (`reducedMotion` : ni glissement, ni rebond, ni balayage d'Espace animé), W `motion()` ; ui 23 « Réduire les animations », ui 17 |  |
@@ -492,10 +492,10 @@ Aucun geste n'a été rejoué sur Arc pendant cet inventaire (ils demandent la m
 | BIB-22 | Téléchargements renommés automatiquement | HC 19335160678679 | ➖ | | Fonction d'IA, écartée |
 | BIB-23 | Sauvegardes locales de la barre, Help → Restore Data (10 du jour, 1 par jour sur 10 jours…) | HC 25625071960215 ; menu | ✅ | `backups.js` | Copie à chaque lancement puis chaque heure (10 du jour, 1 par jour sur 10 jours) ; Aide → Dépannage → « Restaurer une sauvegarde » (relance) ; self bib (5 vérifications) |
 | BIB-24 | Lecteur audio miniature en bas de la barre en quittant un onglet qui joue ; plusieurs lecteurs empilés ; titre défilant ; croix | HC 19234766331799 | ✅ | un seul média, lecture/pause et muet ; aucun test | lecteurs empilés (4 au plus), titre/artiste/pochette de mediaSession (tenus pour hostiles : textContent, pochette recodée), titre défilant, croix, recherche en glissant, fine quand le pointeur monte ; self tests/medias.js (23 vérif.), ui 26-medias (11 vérif., médiane 8,3 ms, 0 mise en page) |
-| BIB-25 | Lecteur : précédent/suivant (Spotify), ±15 s, volume de l'onglet, micro | binaire | ⬜ | | `navigator.mediaSession` |
-| BIB-26 | Touches multimédia du clavier | HC 20498417809815 | 🟡 | défaut de Chromium, non testé | |
+| BIB-25 | Lecteur : précédent/suivant (Spotify), ±15 s, volume de l'onglet, micro | binaire | 🟡 | précédent / suivant (gestionnaires `mediaSession` de la page), ±15 s, recherche, muet de l’onglet ; self tests/medias.js, ui 26-medias | Restent le volume de l’onglet (Electron n’offre que le muet) et le micro |
+| BIB-26 | Touches multimédia du clavier | HC 20498417809815 | 🟡 | défaut de Chromium (touches multimédia vers la session active) | Demande une main sur le clavier : aucun essai automatique ne peut presser une touche multimédia |
 | BIB-27 | Image dans l'image automatique en quittant un onglet vidéo ; pas si l'onglet est muet | HC 19234766331799 ; binaire | ✅ | self (deux vérifications) | |
-| BIB-28 | Fenêtre d'image dans l'image propre à Arc : retour à l'onglet, fermer, réduire, vitesse, flèches pour chercher, espace pour pause | HC 20498377604887 ; binaire | 🟡 | fenêtre native de Chromium | |
+| BIB-28 | Fenêtre d'image dans l'image propre à Arc : retour à l'onglet, fermer, réduire, vitesse, flèches pour chercher, espace pour pause | HC 20498377604887 ; binaire | 🟡 | fenêtre native de Chromium (lecture/pause, retour à l’onglet, fermer) | Fenêtre propre à Orbe non faite ; la voie technique (fenêtre d’Orbe recevant la vidéo) reste à étudier |
 | BIB-29 | Désactivable par site et globalement | HC 25590734716823 | ✅ | réglage global `autoPip` | réglage global autoPip + case par site dans le menu d’une vidéo (pipOffSites) ; self tests/details.js |
 | BIB-30 | Google Meet : image dans l'image avec commandes de réunion | HC 20498293324823 | ➖ | | Propre à un service |
 | BIB-31 | Cast | menu | ➖ | | Écarté : Electron ne fournit ni Chromecast ni le sélecteur de diffusion de Chrome |
