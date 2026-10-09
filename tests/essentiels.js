@@ -627,12 +627,16 @@ module.exports = async function essentielsTests(ctx) {
   w2.win.close();
   await until(() => asks.length === 1, 'question à la fermeture de la fenêtre');
   await sleep(500);
-  check('fermer la fenêtre puis « Rester » : la fenêtre et la page restent', !w2.win.isDestroyed() && OrbeWindow.all.includes(w2) && !d4.wc.isDestroyed() && await js(d4.wc, 'window.sale') === true);
+  const stayed = { fenetre: !w2.win.isDestroyed(), connue: OrbeWindow.all.includes(w2), page: !d4.wc.isDestroyed(), questions: asks.length };
+  stayed.sale = stayed.page ? await js(d4.wc, 'window.sale').catch((e) => String(e)) : null;
+  stayed.adresse = stayed.page ? d4.wc.getURL() : null;
+  check('fermer la fenêtre puis « Rester » : la fenêtre et la page restent', stayed.fenetre && stayed.connue && stayed.page && stayed.sale === true, JSON.stringify(stayed));
   leave = true;
   unload.forget(d4.wc);
   w2.win.close();
   await until(() => !OrbeWindow.all.includes(w2), 'fenêtre fermée');
-  check('fermer la fenêtre puis « Quitter » : elle se ferme, l’onglet reste dans l’Espace (non archivé)', asks.length === 2 && !!store.state.tabs[d4.id] && store.state.archive.length === archived && d4.wc.isDestroyed());
+  check('fermer la fenêtre puis « Quitter » : elle se ferme, l’onglet reste dans l’Espace (non archivé)', asks.length === 2 && !!store.state.tabs[d4.id] && store.state.archive.length === archived && d4.wc.isDestroyed(),
+    JSON.stringify({ questions: asks.length, onglet: !!store.state.tabs[d4.id], archive: [archived, store.state.archive.length], pageDetruite: d4.wc.isDestroyed() }));
   leave = false;
 
   // ---------------------------------------------------------------- Fenêtres surgissantes
