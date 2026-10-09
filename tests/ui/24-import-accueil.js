@@ -133,6 +133,21 @@ module.exports = {
       const b = await shell.locator('#update-note').boundingBox();
       const bas = await shell.locator('#bottom').boundingBox();
       assert.ok(b.y + b.height <= bas.y + 1 && b.height < 40, 'la note tient au-dessus des Espaces, sur une ligne : ' + JSON.stringify(b));
+      // Au repos : un cœur qui bat (transformation seule), pas de croix. Au survol : la ligne
+      // devient un bouton en dégradé, la croix paraît — sans changer de taille.
+      const aspect = () => shell.evaluate(() => {
+        const note = document.getElementById('update-note');
+        const coeur = document.getAnimations().find((a) => a.animationName === 'update-heart');
+        return { coeur: coeur ? [...new Set(coeur.effect.getKeyframes().flatMap((k) => Object.keys(k)))].filter((k) => !['offset', 'easing', 'composite', 'computedOffset'].includes(k)).join() : '', pseudo: coeur ? coeur.effect.pseudoElement : '',
+          degrade: getComputedStyle(note, '::before').opacity, image: getComputedStyle(note, '::before').backgroundImage.slice(0, 16), croix: getComputedStyle(document.getElementById('update-close')).opacity };
+      });
+      await shell.mouse.move(700, 400);
+      await jusqua(async () => { const a = await aspect(); return a.degrade === '0' && a.croix === '0'; }, 'note au repos');
+      const repos = await aspect();
+      if (!(await shell.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches))) assert.deepEqual([repos.coeur, repos.pseudo], ['transform', '::before'], 'le cœur bat par une transformation seule');
+      assert.equal(repos.image, 'linear-gradient(');
+      await jusqua(async () => { await shell.locator('#update-open').hover(); await ctx.sleep(60); const a = await aspect(); return a.degrade === '1' && a.croix === '1'; }, 'survol : dégradé et croix');
+      assert.deepEqual(await shell.locator('#update-note').boundingBox(), b, 'la ligne ne change pas de taille au survol');
       await ctx.clic(shell, '#update-close');
       await jusqua(async () => !(await shell.locator('#update-note').isVisible()), 'note écartée');
       assert.equal(await ctx.principal(({ store }) => store.state.updates.dismissed), '9.1.0');

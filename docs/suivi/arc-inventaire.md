@@ -233,7 +233,7 @@ Actions de la barre de commande relevées dans Arc (libellés du binaire et du c
 | CMD-51 | Convert to Horizontal/Vertical Split View | ✅ | self « vue scindée empilée » |
 | CMD-52 | New Window ; New Blank Window ; New Incognito Window ; Open Little Arc | ✅ | Fenêtre, fenêtre vierge, navigation privée, petite fenêtre ; self fin « barre de commande : Nouvelle fenêtre vierge… » |
 | CMD-53 | View Archive ; Clear Archive ; Open Library ; View Downloads | ✅ | « Vider l'archive » proposé, avec confirmation ; self cmd |
-| CMD-54 | Capture ; Capture Full Page ; Capture in Portrait Mode | 🟡 | Pas de mode portrait |
+| CMD-54 | Capture ; Capture Full Page ; Capture in Portrait Mode | ✅ | « Capturer en portrait » (menu Fichier, barre de commande) : page à coins arrondis et ombre portée sur un dégradé de la couleur de l’Espace, composée sans canevas (src/main/portrait.js, 231 ms pour 2508 × 1988 px) ; self tests/details.js (4 vérif.) |
 | CMD-55 | New Easel ; New Note ; New Note (in Split) | ✅ | « Nouvelle note à côté de la page » ; self cmd |
 | CMD-56 | New Boost ; View Boosts | ✅ | « Modifier le Boost de ce site » (le crée s’il n’existe pas) et « Voir les Boosts » ; self fin (barre de commande), self fen |
 | CMD-57 | Turn on Developer Mode for this site | ✅ | « Mode développeur » du site (⌃D) ; self cmd (liste des actions) |
@@ -346,7 +346,7 @@ Actions de la barre de commande relevées dans Arc (libellés du binaire et du c
 | APE-9 | La barre d'outils s'affiche aussi dans l'aperçu | HC 20498293324823 | ✅ | barre d’outils affichée : l’adresse de l’aperçu s’affiche au-dessus de la carte et suit sa navigation ; self « barre d’outils affichée : l’aperçu montre son adresse… », « l’adresse de l’aperçu suit sa navigation » ; ui 16 | |
 | APE-10 | Les liens de réunion s'ouvrent en onglet, pas en aperçu | HC 20498377604887 | ✅ | self « onglet épinglé, lien de réunion : un onglet à côté, pas d’aperçu » | |
 | APE-11 | L'aperçu respecte les règles d'aiguillage | HC 20498293324823 | ✅ | une règle d’aiguillage passe avant l’aperçu (Espace ou petite fenêtre) ; self « onglet épinglé, lien couvert par une règle d’aiguillage… », « règle « petite fenêtre »… » | |
-| APE-12 | Tableaux et notes ouverts depuis la Bibliothèque : en aperçu | HC 20498377604887 | ⬜ | ouverts en onglet | |
+| APE-12 | Tableaux et notes ouverts depuis la Bibliothèque : en aperçu | HC 20498377604887 | ⬜ | ouverts en onglet | L’aperçu est une vue de page web sans privilège ; y loger une page d’Orbe (tableau, note) demanderait une vue de confiance : à concevoir avec la sécurité |
 
 ## PET — Petite fenêtre (Little Arc)
 
@@ -358,14 +358,14 @@ Actions de la barre de commande relevées dans Arc (libellés du binaire et du c
 | PET-4 | Bouton « Open In » ; ⌘O vers l'Espace le plus récent ; ⌥⌘O pour choisir | HC 19235387524503 | ✅ | self « Ouvrir dans Orbe crée un onglet » | |
 | PET-5 | Recherche d'Espace dans le menu « Open In » | binaire « Search Spaces » | ✅ | menu « Ouvrir dans… » dessiné dans la barre de la petite fenêtre, avec un champ de recherche (accents et casse ignorés) ; self « Ouvrir dans… : la liste des Espaces… », « recherche d’Espace… », « ⌥⌘O, recherche, Entrée… » ; ui 25 (deux vérifications) | |
 | PET-6 | Plusieurs petites fenêtres ; le même lien externe refocalise celle qui existe | HC 20498377604887 | ✅ | self « le même lien une seconde fois : la petite fenêtre existante revient, sans en ouvrir une autre », « un autre lien : une seconde petite fenêtre » | |
-| PET-7 | Fermées d'office après 6 h ; elles vont dans l'archive, filtre « Little Arc » | HC 19235387524503 ; binaire | 🟡 | délai réglable (`littleArchiveHours`), page rangée dans l’archive ; self | « Jamais » par défaut, et non 6 h ; pas de filtre « petite fenêtre » dans l’archive |
+| PET-7 | Fermées d'office après 6 h ; elles vont dans l'archive, filtre « Little Arc » | HC 19235387524503 ; binaire | 🟡 | délai réglable (`littleArchiveHours`), page rangée dans l’archive, filtre « petite fenêtre » de l’archive ; self | « Jamais » par défaut, et non 6 h : choix à trancher par le propriétaire |
 | PET-8 | Flotte au-dessus du plein écran, s'ouvre sur le bureau courant | HC 20498377604887 | 🟡 | non vérifié | |
 | PET-9 | Extensions disponibles ; bouton de copie du lien | binaire (infobulles) | 🟡 | bouton de copie du lien (sans paramètres de pistage) ; self « petite fenêtre : bouton de copie du lien… » ; ui 25 | Extensions absentes de la petite fenêtre |
 | PET-10 | Menu du Dock : afficher/masquer toutes les petites fenêtres, nouvelle fenêtre privée | HC 20498377604887 | ✅ | menu du Dock : navigation privée, masquer ou afficher toutes les petites fenêtres ; self lat « menu du Dock… » (cinq vérifications, voir MEN-96) | |
-| PET-11 | Retient le profil choisi pour un domaine | HC 20498377604887 | ⬜ | | |
+| PET-11 | Retient le profil choisi pour un domaine | HC 20498377604887 | ✅ | | le profil de l’Espace où une petite fenêtre est envoyée est retenu pour son site (200 sites) ; self tests/details.js |
 | PET-12 | Taille mémorisée | binaire (préférence `LittleBrowserWindow_size`) | ✅ | taille de la dernière petite fenêtre redimensionnée reprise par la suivante ; self « petite fenêtre : la taille choisie est reprise par la suivante », « taille enregistrée illisible ou hors bornes… » | |
-| PET-13 | Animation d'ouverture | HC 20498417809815 | ⬜ | | |
-| PET-14 | Première fois : bulle d'explication | binaire | ⬜ | | |
+| PET-13 | Animation d'ouverture | HC 20498417809815 | ✅ | | opacité 0→1 et montée de 14 pt en 180 ms (position et opacité de la fenêtre seulement), coupée par « Réduire les animations » ; self tests/details.js, ui 25 |
+| PET-14 | Première fois : bulle d'explication | binaire | ✅ | | bandeau de première fois entre la barre et la page, refermé par × ou après 12 s ; self, ui 25 |
 | PET-15 | Aiguillage : règle « contient » ou « est égal à » → Espace ; défaut Little Arc, Espace le plus récent ou un Espace précis | HC 22932014625431 | ✅ | self « aiguillage : le lien s'ouvre dans l'Espace de la règle » | « est égal à » absent |
 | PET-16 | Les liens Google Meet vont dans l'Espace le plus récent | HC 20498377604887 | ✅ | Meet, Zoom, Teams, Webex… : toujours un onglet de l’Espace affiché ; self « liens de réunion (Meet, Zoom, Teams) venus d’ailleurs : dans un onglet, jamais en petite fenêtre », « lien de réunion ou non » | |
 
@@ -387,8 +387,8 @@ Actions de la barre de commande relevées dans Arc (libellés du binaire et du c
 | THM-12 | Les couleurs du thème gagnent menus, champs, barre de commande, sélecteur d'onglets, messages | HC 20498417809815 | ✅ | W `themeNow` → événement `theme` ; OV `applyLook` : accent, panneaux teintés à 9 %, ligne choisie, message et pastille d'adresse teintés, apparence de l'Espace ; ui 22 « barre de commande, bascule et messages » | Les menus natifs du système gardent leurs couleurs |
 | THM-13 | Barre latérale translucide sur le bureau | non vérifié (mesure faite en thème sombre opaque) | 🟡 | réglage `translucent` : fond de la barre à 80 % d'opacité sur l'effet `sidebar` ; ui 22 « barre translucide » | Le réglage est vérifié ; le rendu du matériau sur le bureau reste à juger à l'œil. Le contraste du texte est calculé pour un fond opaque |
 | THM-14 | Fenêtre privée noire | observé | ✅ | W:105-112 | |
-| THM-15 | Barre d'outils teintée par la couleur de la page | HC 20498293324823 ; binaire `TopBarColorCache` | ⬜ | | |
-| THM-16 | Le redimensionnement de la fenêtre utilise la couleur de fond de la page | HC 20498293324823 | ⬜ | fond blanc fixe | `setBackgroundColor` d'après la page |
+| THM-15 | Barre d'outils teintée par la couleur de la page | HC 20498293324823 ; binaire `TopBarColorCache` | ✅ | | couleur de thème de la page (meta theme-color, « #rrggbb » seulement) : la barre d’outils en prend la teinte, texte clair ou sombre selon la couleur ; self tests/details.js |
+| THM-16 | Le redimensionnement de la fenêtre utilise la couleur de fond de la page | HC 20498293324823 | ✅ | fond blanc fixe | la vue de l’onglet prend la couleur de fond calculée de la page (lue comme des nombres) ; self tests/details.js |
 | THM-17 | Les sites peuvent lire les couleurs du thème (variables CSS `--arc-palette-*`), réglage « Allow websites to get your theme data » | binaire ; HC 19212718608151 | ✅ | `panes.js` `extraCss` : `--orbe-theme-color`, `--orbe-theme-color-2`, `--orbe-theme-dark`, réglage « Donner les couleurs de l'Espace aux sites » ; self « couleurs de l'Espace données aux pages seulement sur demande » | Noms propres à Orbe ; la troisième couleur n'est pas transmise |
 | THM-18 | Icône de l'application au choix (colorful, schoolbook, neon, hologram, fluted glass, candy, original) | binaire ; HC 20498293324823 | ⬜ | | Faible priorité |
 | THM-19 | Polices embarquées pour l'interface et les Boosts (Inter, Nunito, Marlin Soft, ABC Favorit, Söhne, etc.) | binaire `ARCClients_FontsManager` | ➖ | police du système | Polices sous licence, non reprises |
@@ -404,28 +404,28 @@ Chiffres d'Arc : seuls ANI-1 à ANI-4 ont été mesurés. Pour le reste, l'exist
 | ANI-2 | Réafficher la barre : environ 50 ms | M-4 | ✅ | 180 ms | Fait le 8 oct. (cotes et durées d'Arc) |
 | ANI-3 | Barre de commande : apparition sans délai perceptible | mesuré (pas d'image intermédiaire à 60 images/s) | ✅ | `pop` 130 ms | Fait le 8 oct. (cotes et durées d'Arc) |
 | ANI-4 | Vue scindée : ouverture et fermeture immédiates | M-13, M-14 | ✅ | sans animation ; self | Identique |
-| ANI-5 | Miroitement au démarrage | HC 20498417809815 | ⬜ | | |
+| ANI-5 | Miroitement au démarrage | HC 20498417809815 | ✅ | | reflet qui traverse la barre latérale au premier affichage (900 ms, transformation et opacité) ; ui 27-details : médiane 8,3 ms, 0 mise en page |
 | ANI-6 | Animation de fenêtre au redémarrage | HC 20498417809815 | ⬜ | | |
 | ANI-7 | Boutons plus, fermer, actualiser, précédent, suivant animés | HC 20498417809815 | ✅ | SC `.ib svg` : « actualiser » fait un tour à chaque clic, les flèches partent dans leur sens à la pression, le « + » et la croix pivotent ; ui 23 « boutons animés » |  |
 | ANI-8 | Indicateur de chargement en lueur en haut de la fenêtre | HC 20498377604887 ; binaire (shader) | ✅ | SC `#glow` : lueur à la couleur de l'Espace le long du bord haut de la page, plus le reflet de la pastille ; transformations seules ; ui 23 « chargement » (120 images/s, pas de mise en page par image) | Lueur CSS, pas un shader ; à comparer à l'œil avec Arc |
-| ANI-9 | Téléchargement : le fichier « saute » dans l'icône de la Bibliothèque ; plusieurs à la fois | HC 20498377604887 | ⬜ | anneau de progression | |
+| ANI-9 | Téléchargement : le fichier « saute » dans l'icône de la Bibliothèque ; plusieurs à la fois | HC 20498377604887 | ✅ | anneau de progression | un fichier tombe dans l’icône de la Bibliothèque à chaque téléchargement commencé (4 à la fois, décalés de 110 ms), l’icône rebondit ; self tests/details.js, ui 27-details : médiane 8,3 ms |
 | ANI-10 | Changement d'Espace : la barre glisse d'un Espace à l'autre en suivant le doigt, l'icône se transforme | HC 20498377604887 ; binaire `space_swiping.mp4` | ✅ | glissé-fondu de 36 px, 220 ms | deux listes côte à côte qui suivent le doigt, teinte fondue, ressort (SH PAGER) ; l'icône grossit dans sa pastille ; self ; ui 06. Durées à régler face à Arc |
 | ANI-11 | Aperçu : ouverture et fermeture animées, fermeture interactive | HC 20498417809815, 20498377604887 | 🟡 | la carte grandit depuis le lien (200 ms), se réduit à la fermeture (150 ms), s'étend pour ⌘O (220 ms) ; self, ui 16 | Reste la fermeture interactive (tirer la carte) ; durées d'Arc non mesurées |
 | ANI-12 | Glisser vers une vue scindée : l'onglet devient une bulle, rebond au dépôt | inverse | ⬜ | | |
-| ANI-13 | Dépôt dans un dossier animé | HC 20498377604887 | ⬜ | | |
+| ANI-13 | Dépôt dans un dossier animé | HC 20498377604887 | ✅ | | l’icône du dossier rebondit (340 ms) et sa ligne s’éclaire au dépôt ; ui 27-details |
 | ANI-14 | Effacement des onglets du jour animé | HC 20498377604887 | ✅ | SH `flipPlay` : les lignes s'effacent en cascade (22 ms d'écart, dix crans au plus) ; ui 23 « Effacer » |  |
 | ANI-15 | Messages (toasts) animés, aux couleurs du thème | HC 20498293324823 | ✅ | entrée au ressort, sortie de 180 ms ; pilule sombre teintée à 26 % par la couleur de l'Espace ; ui 22 « messages » |  |
-| ANI-16 | Petite fenêtre : animation d'ouverture | HC 20498417809815 | ⬜ | | |
+| ANI-16 | Petite fenêtre : animation d'ouverture | HC 20498417809815 | ✅ | | opacité 0→1 et montée de 14 pt en 180 ms (position et opacité de la fenêtre seulement), coupée par « Réduire les animations » ; self tests/details.js, ui 25 |
 | ANI-17 | Passage en plein écran simplifié | HC 20498417809815 | 🟡 | natif | |
 | ANI-18 | Image dans l'image : élastique sous la taille minimale, lancer vers un coin | inverse ; HC 20498417809815 | ⬜ | fenêtre native de Chromium | |
 | ANI-19 | Le lecteur audio rejoint la position de l'image dans l'image en s'animant | HC 20498377604887 | ⬜ | | |
-| ANI-20 | Pastille d'état du lien : s'étend après 1,5 s, s'écarte de la souris | HC 20498377604887 | ⬜ | | |
+| ANI-20 | Pastille d'état du lien : s'étend après 1,5 s, s'écarte de la souris | HC 20498377604887 | ✅ | | courte (420 pt) puis étendue après 1,5 s (160 ms), passe de l’autre côté quand le pointeur vient dessus (140 ms) ; self tests/details.js (5 vérif.) |
 | ANI-21 | Apparition et retrait d'une ligne d'onglet | non vérifié | ✅ | SH `flip` : la ligne paraît ou s'efface (opacité, échelle), les voisines glissent à leur place (240 ms, ressort) ; ui 23 « fermer un onglet », « nouvel onglet » | Une mise en page par changement, aucune par image (mesuré) |
 | ANI-22 | Les lignes s'écartent pendant un glisser | non vérifié | ✅ | ui 17 ; transformations de 140 ms, relevé unique des positions, aucune mise en page pendant le geste | Mesures dans ameliorations.md (PERF-25) |
 | ANI-23 | Ouverture d'un dossier : hauteur animée | non vérifié | ✅ | SH `flip` : le contenu paraît en fondu, la suite de la liste glisse ; au repli elle remonte ; ui 23 « dossier » | Glissement par transformation plutôt qu'une hauteur animée |
 | ANI-24 | Changement d'onglet : coupe franche | non vérifié | 🟡 | coupe franche | Sans doute identique |
 | ANI-25 | Sélecteur ⌃⇥ : apparition | non vérifié | ✅ | sans animation | apparition au ressort (240 ms, échelle 0,96 → 1) ; durée d'Arc non vérifiée |
-| ANI-26 | Bandeau de mise à jour : replié, s'ouvre au survol, bouton en dégradé ; cœur animé | HC 21489650267031 ; binaire `update-heart-animation.json` | ⬜ | | |
+| ANI-26 | Bandeau de mise à jour : replié, s'ouvre au survol, bouton en dégradé ; cœur animé | HC 21489650267031 ; binaire `update-heart-animation.json` | ✅ | ligne discrète, cœur qui bat ; au survol elle devient un bouton en dégradé et la croix paraît, sans changer de taille ; ui 24 | Pas de repli en largeur (il déplacerait la barre) : fondu et transformations seulement |
 | ANI-27 | Icônes animées de la Bibliothèque (archive, captures, Espaces, tableaux, téléchargements, Boosts) | binaire `ARC_HomeButton/*.json` (Lottie) | ⬜ | | |
 | ANI-28 | Logo animé (vague) et orbe vidéo | binaire `logo-wave.json`, `orb.mp4`, `background.mp4` | ⬜ | | Accueil |
 | ANI-29 | « Réduire les animations » du système respecté | non vérifié | ✅ | `base.css` (durées à zéro), SH (`reducedMotion` : ni glissement, ni rebond, ni balayage d'Espace animé), W `motion()` ; ui 23 « Réduire les animations », ui 17 |  |
@@ -461,7 +461,7 @@ Aucun geste n'a été rejoué sur Arc pendant cet inventaire (ils demandent la m
 | GES-5 | Image dans l'image : pincer pour redimensionner, deux doigts pour déplacer, ⌘défilement pour zoomer, double-clic pour revenir à l'onglet | HC 20498417809815 | ⬜ | fenêtre native | |
 | GES-6 | Tableaux : pincer pour zoomer | HC 20498293324823 | ✅ | `easel.js` : pincement (Ctrl + molette, tel que Chromium le transmet) = zoom centré sur le pointeur ; ui 15 « pincement » |  |
 | GES-7 | Capture : zoomer et déplacer l'image avant de l'enregistrer | binaire « Zoom and pan to edit your screenshot » | ⬜ | | |
-| GES-8 | Lecteur miniature : glisser vers le haut pour chercher précisément | binaire « Drag upwards to seek precisely » | ⬜ | | |
+| GES-8 | Lecteur miniature : glisser vers le haut pour chercher précisément | binaire « Drag upwards to seek precisely » | ✅ | | lecteurs empilés (4 au plus), titre/artiste/pochette de mediaSession (tenus pour hostiles : textContent, pochette recodée), titre défilant, croix, recherche en glissant, fine quand le pointeur monte ; self tests/medias.js (23 vérif.), ui 26-medias (11 vérif., médiane 8,3 ms, 0 mise en page) |
 | GES-9 | Défilement élastique des listes de la barre | non vérifié | ✅ | SH `BOUNCE` : au bout de la liste elle se laisse tirer (72 px au plus, de moins en moins) et revient au ressort ; ui 23 « rebond élastique » (molette simulée) | Raideur et retour à régler main sur le pavé |
 
 ## BIB — Bibliothèque, archive, téléchargements, médias
@@ -491,12 +491,12 @@ Aucun geste n'a été rejoué sur Arc pendant cet inventaire (ils demandent la m
 | BIB-21 | « Downloads in progress » à la fermeture | binaire | ✅ | | Question « Des téléchargements sont en cours » avant de quitter ; self bib (4 vérifications) |
 | BIB-22 | Téléchargements renommés automatiquement | HC 19335160678679 | ➖ | | Fonction d'IA, écartée |
 | BIB-23 | Sauvegardes locales de la barre, Help → Restore Data (10 du jour, 1 par jour sur 10 jours…) | HC 25625071960215 ; menu | ✅ | `backups.js` | Copie à chaque lancement puis chaque heure (10 du jour, 1 par jour sur 10 jours) ; Aide → Dépannage → « Restaurer une sauvegarde » (relance) ; self bib (5 vérifications) |
-| BIB-24 | Lecteur audio miniature en bas de la barre en quittant un onglet qui joue ; plusieurs lecteurs empilés ; titre défilant ; croix | HC 19234766331799 | 🟡 | un seul média, lecture/pause et muet ; aucun test | |
-| BIB-25 | Lecteur : précédent/suivant (Spotify), ±15 s, volume de l'onglet, micro | binaire | ⬜ | | `navigator.mediaSession` |
-| BIB-26 | Touches multimédia du clavier | HC 20498417809815 | 🟡 | défaut de Chromium, non testé | |
+| BIB-24 | Lecteur audio miniature en bas de la barre en quittant un onglet qui joue ; plusieurs lecteurs empilés ; titre défilant ; croix | HC 19234766331799 | ✅ | un seul média, lecture/pause et muet ; aucun test | lecteurs empilés (4 au plus), titre/artiste/pochette de mediaSession (tenus pour hostiles : textContent, pochette recodée), titre défilant, croix, recherche en glissant, fine quand le pointeur monte ; self tests/medias.js (23 vérif.), ui 26-medias (11 vérif., médiane 8,3 ms, 0 mise en page) |
+| BIB-25 | Lecteur : précédent/suivant (Spotify), ±15 s, volume de l'onglet, micro | binaire | 🟡 | précédent / suivant (gestionnaires `mediaSession` de la page), ±15 s, recherche, muet de l’onglet ; self tests/medias.js, ui 26-medias | Restent le volume de l’onglet (Electron n’offre que le muet) et le micro |
+| BIB-26 | Touches multimédia du clavier | HC 20498417809815 | 🟡 | défaut de Chromium (touches multimédia vers la session active) | Demande une main sur le clavier : aucun essai automatique ne peut presser une touche multimédia |
 | BIB-27 | Image dans l'image automatique en quittant un onglet vidéo ; pas si l'onglet est muet | HC 19234766331799 ; binaire | ✅ | self (deux vérifications) | |
-| BIB-28 | Fenêtre d'image dans l'image propre à Arc : retour à l'onglet, fermer, réduire, vitesse, flèches pour chercher, espace pour pause | HC 20498377604887 ; binaire | 🟡 | fenêtre native de Chromium | |
-| BIB-29 | Désactivable par site et globalement | HC 25590734716823 | 🟡 | réglage global `autoPip` | |
+| BIB-28 | Fenêtre d'image dans l'image propre à Arc : retour à l'onglet, fermer, réduire, vitesse, flèches pour chercher, espace pour pause | HC 20498377604887 ; binaire | 🟡 | fenêtre native de Chromium (lecture/pause, retour à l’onglet, fermer) | Fenêtre propre à Orbe non faite ; la voie technique (fenêtre d’Orbe recevant la vidéo) reste à étudier |
+| BIB-29 | Désactivable par site et globalement | HC 25590734716823 | ✅ | réglage global `autoPip` | réglage global autoPip + case par site dans le menu d’une vidéo (pipOffSites) ; self tests/details.js |
 | BIB-30 | Google Meet : image dans l'image avec commandes de réunion | HC 20498293324823 | ➖ | | Propre à un service |
 | BIB-31 | Cast | menu | ➖ | | Écarté : Electron ne fournit ni Chromecast ni le sélecteur de diffusion de Chrome |
 
@@ -539,7 +539,7 @@ Aucun geste n'a été rejoué sur Arc pendant cet inventaire (ils demandent la m
 | TAB-15 | Après la capture : envoyer, enregistrer, copier, reprendre, ajouter à un tableau | HC 20498417809815 ; binaire | ✅ | copie + fichier d'office | Fait le 8 oct. (zone + choix de l'action, son original, réglage) |
 | TAB-16 | Son à la capture | binaire `capture.wav` | ✅ | | Déjà en place (son d'Arc, réglage « Sons ») ; self « capture : le son de capture est demandé » |
 | TAB-17 | Capture Full Page (PNG dans le dossier de téléchargement) | menu ; HC 25481392111895 | ✅ | self | |
-| TAB-18 | Capture in Portrait Mode (page posée sur un fond) | menu ; HC 20468488031511 | ⬜ | | |
+| TAB-18 | Capture in Portrait Mode (page posée sur un fond) | menu ; HC 20468488031511 | ✅ | | « Capturer en portrait » (menu Fichier, barre de commande) : page à coins arrondis et ombre portée sur un dégradé de la couleur de l’Espace, composée sans canevas (src/main/portrait.js, 231 ms pour 2508 × 1988 px) ; self tests/details.js (4 vérif.) |
 | TAB-19 | Maintenir ⌘⇧ pour lancer une capture (option) | binaire | ⬜ | | |
 
 ## NOT — Notes
