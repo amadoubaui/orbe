@@ -26,7 +26,18 @@ const SIDEBAR_MIN = 200;
 const SIDEBAR_MAX = 420;
 const UI_PRELOAD = path.join(__dirname, '../preload/ui.js');
 const INTERNAL = 'orbe://app/';
-const UI_PREFS = { preload: UI_PRELOAD, sandbox: true, contextIsolation: true };
+// Tout ce qui compte pour la sécurité est écrit ici, sans rien laisser à l'héritage : ces
+// préférences servent aussi aux vues que la coque ouvre elle-même (`adoptSpare`).
+// (Figées, et toujours passées en copie : Electron écrit dans l'objet qu'il reçoit.)
+const UI_PREFS = Object.freeze({
+  preload: UI_PRELOAD, sandbox: true, contextIsolation: true, nodeIntegration: false, nodeIntegrationInSubFrames: false,
+  nodeIntegrationInWorker: false, webviewTag: false, webSecurity: true, allowRunningInsecureContent: false, experimentalFeatures: false,
+});
+// Textes venus d'une page web et montrés par l'interface : bornés avant de lui être envoyés.
+const STATUS_MAX = 2000;
+const ICON_MAX = 65536;
+// Processus de la coque perdu : délai avant de la recharger, selon le nombre de pertes dans la minute.
+const uiRetryDelay = (n) => (n <= 3 ? 150 : Math.min(60000, 5000 * 2 ** (n - 4)));
 // Vues d'appoint tenues prêtes par la coque (voir `fillSpares`).
 const RESERVE = 'overlay.html#reserve';
 const FLOAT = 'shell.html#flottant';
@@ -203,6 +214,19 @@ function keepThumb(rt, data) {
   }
 }
 
+const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'AltGraph', 'NumLock', 'ScrollLock', 'Fn', 'Hyper', 'Super']);
+// Téléchargements en cours, par page d'origine : son onglet ne s'endort pas (voir `trimLive`).
+const downloading = new Map(); // id webContents -> identifiants des téléchargements
+function noteDownload(phase, d, wc) {
+  if (!d) return;
+  if (phase === 'done' || (d.state && d.state !== 'progressing')) {
+    for (const [id, set] of downloading) { set.delete(d.id); if (!set.size) downloading.delete(id); }
+    return;
+  }
+  if (!wc || wc.isDestroyed()) return;
+  if (!downloading.has(wc.id)) downloading.set(wc.id, new Set());
+  downloading.get(wc.id).add(d.id);
+}
 const prewoken = new Map(); // origine -> instant de la dernière pré-connexion (voir `prewake`)
 
 let pushScheduled = false;
@@ -372,7 +396,7 @@ class OrbeWindow {
       setImmediate(() => { if (!wc.isDestroyed()) wc.emit('did-finish-load'); this.fillSpares(); });
       return view;
     }
-    const view = this.equipUiView(new WebContentsView({ webPreferences: UI_PREFS }));
+    const view = this.equipUiView(new WebContentsView({ webPreferences: { ...UI_PREFS } }));
     loadingUi.add(view.webContents);
     view.webContents.once('did-finish-load', () => loadingUi.delete(view.webContents));
     view.webContents.loadURL(INTERNAL + page);
@@ -396,7 +420,7 @@ class OrbeWindow {
     const { url, page } = this.wanted.splice(i, 1)[0];
     return {
       action: 'allow',
-      overrideBrowserWindowOptions: { webPreferences: UI_PREFS },
+      overrideBrowserWindowOptions: { webPreferences: { ...UI_PREFS } },
       createWindow: (options) => {
         const view = this.equipUiView(new WebContentsView({ webContents: options.webContents, webPreferences: options.webPreferences }), url);
         const spare = { view, page, ready: false };
@@ -469,16 +493,18 @@ class OrbeWindow {
       if (!view || view.webContents.isDestroyed()) continue;
       if (view.webContents.isCrashed() || !pid(view.webContents)) view.webContents.close();
     }
+    this.wanted = []; // les demandes en cours sont parties avec le processus
     const now = Date.now();
     this.uiCrashes = (this.uiCrashes || []).filter((at) => now - at < 60000);
     this.uiCrashes.push(now);
-    if (this.uiCrashes.length > 3) return; // plantages en boucle : on n'insiste pas
-    setTimeout(() => {
+    // Pertes en rafale : on espace les reprises (5 s, 10 s… une minute au plus), sans jamais renoncer.
+    clearTimeout(this.uiRetry);
+    this.uiRetry = setTimeout(() => {
       if (this.win.isDestroyed() || this.ui.webContents.isDestroyed()) return;
       loadingUi.add(this.ui.webContents);
       this.ui.webContents.once('did-finish-load', () => { loadingUi.delete(this.ui.webContents); this.layout(); this.focusContent(); this.fillSpares(); });
       this.ui.webContents.loadURL(INTERNAL + 'shell.html');
-    }, 150);
+    }, uiRetryDelay(this.uiCrashes.length));
   }
 
   // La plus ancienne fenêtre normale encore ouverte mémorise son état.
@@ -825,6 +851,7 @@ class OrbeWindow {
     this.growing = null;
     clearTimeout(this.floatTimer);
     clearTimeout(this.statusTimer);
+    clearTimeout(this.uiRetry);
     for (const v of [...AUX.map((k) => this[k]), ...this.spares.map((sp) => sp.view), this.ui]) {
       if (v && !v.webContents.isDestroyed()) { wcOwner.delete(v.webContents.id); v.webContents.close(); }
     }
@@ -887,6 +914,7 @@ class OrbeWindow {
       wc.on('before-mouse-event', (e, mouse) => {
         // Vraie entrée de l'utilisateur : compte comme geste (fenêtres surgissantes, beforeunload).
         if (mouse.type === 'mouseDown' || mouse.type === 'mouseUp') hooks.input(rt, mouse);
+        if (mouse.type === 'mouseDown') rt.typed = true; // voir `typed` plus bas
         if (mouse.type !== 'mouseUp' || mouse.button !== 'left') return;
         lastClick = Date.now();
         rt.click = { x: mouse.x, y: mouse.y, at: lastClick }; // d'où partira un éventuel aperçu
@@ -908,6 +936,13 @@ class OrbeWindow {
       if (live.get(rt.id) !== rt) return;
       // Fermeture de la fenêtre : la page s'en va, l'onglet reste dans la barre.
       if (rt.windowClosing) { live.delete(rt.id); return; }
+      // Mise en veille automatique : la ligne reste dans la barre latérale.
+      if (rt.sleeping) {
+        live.delete(rt.id);
+        const o = rt.owner;
+        if (!o.win.isDestroyed()) { if (o.visibleIds().includes(rt.id)) o.layout(); OrbeWindow.pushAll(); }
+        return;
+      }
       const owner = rt.owner;
       if (owner.htmlFullscreen) owner.htmlFullscreen = false;
       if (!owner.win.isDestroyed()) owner.close(rt.id);
@@ -922,7 +957,7 @@ class OrbeWindow {
       touch(true); // un titre peut attendre la prochaine écriture
     });
     wc.on('page-favicon-updated', (e, icons) => {
-      tab.favicon = icons[0] || '';
+      tab.favicon = icons[0] && icons[0].length <= ICON_MAX ? icons[0] : '';
       if (!incognito) store.touchHistory(tab.url, { favicon: tab.favicon });
       touch(true);
     });
@@ -937,10 +972,10 @@ class OrbeWindow {
       if (!incognito) store.visit(url, tab.title, tab.favicon);
       touch();
     };
-    wc.on('did-navigate', (e, url) => { rt.typed = false; hooks.navigated(rt); navigated(url); });
+    wc.on('did-navigate', (e, url) => { rt.typed = false; rt.objected = false; hooks.navigated(rt); navigated(url); });
     if (!incognito) wc.on('dom-ready', () => boosts.apply(wc));
     wc.on('did-navigate-in-page', (e, url, isMainFrame) => { if (isMainFrame) navigated(url); });
-    wc.on('update-target-url', (e, url) => rt.owner.linkStatus(rt, url));
+    wc.on('update-target-url', (e, url) => rt.owner.linkStatus(rt, String(url || '').slice(0, STATUS_MAX)));
     // Pincer pour zoomer la page (coupé par défaut dans Electron).
     wc.setVisualZoomLevelLimits(1, 5).catch(() => {});
     wc.on('audio-state-changed', () => {
@@ -954,8 +989,10 @@ class OrbeWindow {
     // de modification, on suit donc la touche elle-même.
     wc.on('before-input-event', (e, input) => {
       rt.alt = !!input.alt;
-      // Texte saisi dans la page depuis son chargement : la veille automatique l'épargne (veille.js).
-      if (input.type === 'keyDown' && input.key.length === 1 && !input.meta && !input.control) rt.typed = true;
+      // `typed` : l'utilisateur a agi dans la page depuis son chargement (touche autre qu'un
+      // simple modificateur et que la page a reçue — lettre, AltGr, ⌘V, Suppr, Entrée, saisie
+      // assistée — ou bouton de souris). La veille automatique épargne alors l'onglet (veille.js).
+      if (input.type === 'keyDown' && !e.defaultPrevented && !MODIFIER_KEYS.has(input.key)) rt.typed = true;
     });
     wc.on('blur', () => { rt.alt = false; });
     wc.on('found-in-page', (e, result) => rt.owner.sendFind(result));
@@ -1018,6 +1055,18 @@ class OrbeWindow {
     if (data.tabs[rt.id] && tab.muted) wc.setAudioMuted(true);
   }
 
+  // Mise en veille décidée sans l'utilisateur (ancienneté, mémoire) : la page est consultée
+  // (beforeunload). Si elle s'y oppose elle reste vivante, sans boîte de dialogue, et n'est
+  // plus proposée jusqu'à sa prochaine navigation ; si elle ne répond pas, elle reste aussi.
+  static sleepView(id) {
+    const rt = live.get(id);
+    if (!rt) return;
+    if (rt.wc.isDestroyed()) { live.delete(id); return; }
+    rt.sleeping = true;
+    rt.wc.close({ waitForBeforeUnload: true });
+    setTimeout(() => { if (rt.sleeping && !rt.wc.isDestroyed()) rt.sleeping = false; }, 4000).unref();
+  }
+
   static destroyView(id) {
     const rt = live.get(id);
     if (!rt) return;
@@ -1038,6 +1087,8 @@ class OrbeWindow {
   // La page refuse d'être quittée (beforeunload) : la question est posée. Pour un
   // onglet en cours de fermeture, « Rester » le fait revenir, page intacte.
   pageObjects(e, rt) {
+    // Veille automatique refusée par la page (beforeunload) : elle reste, sans aucune question.
+    if (rt.sleeping) { rt.sleeping = false; rt.objected = true; return; }
     const leave = hooks.leave(this, rt.wc);
     if (leave) { e.preventDefault(); return; }
     const pending = rt.pendingClose;
@@ -1097,13 +1148,20 @@ class OrbeWindow {
     if (!deep && live.size <= s.maxLiveTabs) return [];
     const visible = new Set();
     for (const w of windows.values()) for (const id of w.visibleIds()) visible.add(id);
+    // « Dernière utilisation » veut dire dernière fois affiché, pas dernière activation : un
+    // onglet resté quatre heures à l'écran (ou dans un volet) n'est pas ancien.
+    const now = Date.now();
+    for (const id of visible) { const rt = live.get(id); if (rt) rt.lastUsed = now; }
     const mem = deep ? tabMemory() : null;
     const tabs = [...live.values()].filter((rt) => !rt.wc.isDestroyed()).map((rt) => ({
       id: rt.id,
       lastUsed: rt.lastUsed,
       mb: mem ? mem.of(rt.id) : 0,
-      typed: !!rt.typed,
-      kept: visible.has(rt.id) || rt.wc.isCurrentlyAudible() || rt.wc.isDevToolsOpened() || hooks.busy(rt),
+      // Épargné par les règles automatiques : l'utilisateur y a agi, la page charge, ou elle a refusé une veille.
+      typed: !!rt.typed || !!rt.loading || !!rt.objected,
+      kept: visible.has(rt.id) || rt.wc.isCurrentlyAudible() || rt.wc.isDevToolsOpened() || hooks.busy(rt)
+        // Image dans l'image, page filmée par une autre, téléchargement en cours, veille déjà demandée.
+        || !!rt.pip || rt.wc.isBeingCaptured() || downloading.has(rt.wc.id) || !!rt.sleeping,
     }));
     const picked = veille.pick(tabs, {
       max: s.maxLiveTabs,
@@ -1111,7 +1169,8 @@ class OrbeWindow {
       budgetMb: deep && Number(s.memoryBudget) ? veille.budget(os.totalmem(), Number(s.memoryBudget)) : 0,
       totalMb: mem ? mem.total : 0,
     });
-    for (const p of picked) OrbeWindow.destroyView(p.id);
+    // La limite en nombre s'applique tout de suite ; ancienneté et mémoire consultent la page.
+    for (const p of picked) { if (p.why === 'count') OrbeWindow.destroyView(p.id); else OrbeWindow.sleepView(p.id); }
     if (deep && picked.length) OrbeWindow.pushAll();
     return picked;
   }
@@ -1153,6 +1212,7 @@ class OrbeWindow {
     // En quittant un onglet qui joue du son, il passe dans le lecteur miniature.
     for (const prevId of this.visibleIds()) {
       const prevRt = live.get(prevId);
+      if (prevRt) prevRt.lastUsed = Date.now(); // il était affiché jusqu'à maintenant
       // Vignette pour la bascule ⌃Tab, prise au moment de quitter la page.
       if (prevId !== id && prevRt && !prevRt.wc.isDestroyed() && !this.incognito) {
         prevRt.wc.capturePage().then((img) => {
@@ -3468,4 +3528,4 @@ function archiveStale() {
   if (count) { store.save(); for (const w of windows.values()) w.layout(); OrbeWindow.pushAll(); }
 }
 
-module.exports = { OrbeWindow, windows, live, trusted, hooks, archiveStale, tabMemory, thumbs: { keep: keepThumb, MAX: THUMBS }, INTERNAL, UI_PRELOAD, isInternal, MOTION, motion, forceMotion, motionStats: stats, resumed };
+module.exports = { OrbeWindow, windows, live, trusted, hooks, archiveStale, tabMemory, noteDownload, uiRetryDelay, UI_PREFS, STATUS_MAX, ICON_MAX, thumbs: { keep: keepThumb, MAX: THUMBS }, INTERNAL, UI_PRELOAD, isInternal, MOTION, motion, forceMotion, motionStats: stats, resumed };

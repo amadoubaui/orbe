@@ -802,6 +802,15 @@ par site toutes les dix secondes, jamais en navigation privée, en https seuleme
   pour l'essai ; 25 % par défaut) : **6 endormis, 13 → 7 processus de rendu**, 1 458 Mo ensuite.
   Le passage de fond (une fois par minute) coûte 1,1 à 3,1 ms. Réglages `sleepAfterHours`
   (3 par défaut, 0 = jamais) et `memoryBudget` (25, 0 = sans limite), sans interface pour l'instant.
+- *Après relecture de sécurité (9 oct.)* : l'ancienneté se compte depuis le dernier instant où
+  l'onglet était **à l'écran** (volets d'une vue scindée compris), plus depuis sa dernière
+  activation ; les règles automatiques épargnent tout onglet où l'utilisateur a agi depuis le
+  chargement (touche reçue par la page — lettre, AltGr, coller, Suppr, Entrée — ou bouton de
+  souris), ceux qui chargent, sont en image dans l'image, filmés par une autre page ou d'où part
+  un téléchargement ; la page est consultée (`beforeunload`) et reste si elle s'y oppose, sans
+  question. Seuls les onglets lus ou jamais touchés s'endorment donc d'eux-mêmes : la portée de
+  MEM-3 en est réduite, c'est le prix d'un formulaire jamais perdu. Non couvert : une page
+  modifiée sans clavier ni souris et sans `beforeunload` (détail en tête de `src/main/veille.js`).
 - La mémoire résidente compte de moins en moins un onglet caché (macOS la compresse : 1 453 Mo
   → 1 025 Mo en dix secondes sans rien faire) : le budget se déclenche donc plutôt trop tard que
   trop tôt.

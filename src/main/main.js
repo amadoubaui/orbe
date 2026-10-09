@@ -403,6 +403,7 @@ app.whenReady().then(async () => {
   little.hooks.spaces = () => store.state.spaces.map((sp) => ({ id: sp.id, name: sp.name, icon: sp.icon }));
   sessions.hooks.ownerWindow = (wc) => { const o = wc && OrbeWindow.ownerOf(wc); return o ? o.win : null; };
   sessions.hooks.onDownload = (phase, d, wc) => {
+    win.noteDownload(phase, d, wc);
     const owner = (wc && OrbeWindow.ownerOf(wc)) || OrbeWindow.primary;
     if (owner && phase === 'start') owner.toast(store.t('toast.downloadStarted', null, { name: d.name }));
     if (owner && phase === 'done' && d.state === 'completed') owner.toast(store.t(d.danger ? 'toast.downloadDanger' : 'toast.downloadDone', null, { name: d.name }));

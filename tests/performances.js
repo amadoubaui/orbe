@@ -41,8 +41,10 @@ module.exports = async function performancesTests(ctx) {
     pidOf(w.modal) === shellPid && w.modal.webContents.getURL() === 'orbe://app/overlay.html#modal', `${pidOf(w.modal)} / ${shellPid} ${w.modal.webContents.getURL()}`);
   const prefs = w.modal.webContents.getLastWebPreferences();
   check('elle garde le bac à sable, l’isolation du contexte et le pont de l’interface',
-    prefs.sandbox === true && prefs.contextIsolation === true && prefs.nodeIntegration === false && win.trusted.has(w.modal.webContents)
-    && await w.modal.webContents.executeJavaScript('typeof window.orbe === "object" && typeof window.orbe.send === "function" && typeof require === "undefined"'));
+    prefs.sandbox === true && prefs.contextIsolation === true && prefs.nodeIntegration === false && prefs.nodeIntegrationInSubFrames === false
+    && prefs.nodeIntegrationInWorker === false && prefs.webviewTag === false && prefs.webSecurity === true && prefs.allowRunningInsecureContent === false
+    && Object.keys(win.UI_PREFS).every((k) => k === 'preload' || prefs[k] === win.UI_PREFS[k]) && win.trusted.has(w.modal.webContents)
+    && await w.modal.webContents.executeJavaScript('typeof window.orbe === "object" && typeof window.orbe.send === "function" && typeof require === "undefined"'), JSON.stringify(prefs));
   w.toast('Essai');
   await until(() => w.toastView && w.win.contentView.children.includes(w.toastView), 'notification affichée');
   const hadTab = !!w.activeId;
@@ -112,6 +114,7 @@ module.exports = async function performancesTests(ctx) {
     w2.toast('Avant');
     await until(() => w2.toastView, 'notification de la seconde fenêtre');
     const lost = pidOf(w2.ui);
+    w2.wanted.push({ page: 'overlay.html#reserve', url: 'orbe://app/overlay.html#perime' }); // demande restée en plan
     const born = w2.toastView;
     const bornWc = born.webContents;
     w2.ui.webContents.forcefullyCrashRenderer();
@@ -120,7 +123,7 @@ module.exports = async function performancesTests(ctx) {
     w2.toast('Après');
     await until(() => w2.toastView && w2.toastView !== born && w2.win.contentView.children.includes(w2.toastView), 'notification après la reprise');
     check('processus de la coque perdu : la coque se recharge, ses vues d’appoint renaissent avec elle',
-      bornWc.isDestroyed() && pidOf(w2.toastView) === pidOf(w2.ui) && await w2.ui.webContents.executeJavaScript('S.space.id', true) === w2.spaceId);
+      bornWc.isDestroyed() && !w2.wanted.some((x) => x.url.endsWith('#perime')) && pidOf(w2.toastView) === pidOf(w2.ui) && await w2.ui.webContents.executeJavaScript('S.space.id', true) === w2.spaceId);
     w2.win.close();
     await until(() => !OrbeWindow.all.includes(w2), 'seconde fenêtre fermée');
   }
@@ -218,12 +221,130 @@ module.exports = async function performancesTests(ctx) {
     typedWc.sendInputEvent({ type: 'keyUp', keyCode: 'a' });
     await until(() => win.live.get(tabs[1].id).typed, 'frappe vue dans la page');
     check('aucune mise en veille par ancienneté à l’activation d’un onglet (seulement au passage de fond)', OrbeWindow.trimLive().length === 0 && tabs.every((x) => win.live.has(x.id)));
+    await until(() => tabs.every((x) => !win.live.get(x.id).loading), 'onglets d’essai au repos');
     const slept = OrbeWindow.trimLive({ deep: true });
+    await until(() => !win.live.has(tabs[0].id) && !win.live.has(tabs[2].id), 'onglets anciens endormis').catch(() => {});
     check('passage de fond : les onglets non vus depuis 3 h s’endorment ; celui où l’on a écrit reste',
       slept.filter((p) => p.why === 'idle').map((p) => p.id).sort().join() === [tabs[0].id, tabs[2].id].sort().join() && !win.live.has(tabs[0].id) && !win.live.has(tabs[2].id) && win.live.has(tabs[1].id) && !!w.data.tabs[tabs[0].id],
       JSON.stringify(slept));
     await until(() => rendu() <= count0 - 2, 'processus des onglets endormis rendus', 15000).catch(() => {});
     check('deux onglets endormis : deux processus de rendu en moins', rendu() <= count0 - 2, `${count0} → ${rendu()}`);
+
+    // --- Relecture de sécurité : ce que la veille automatique ne doit jamais emporter ---
+    {
+      const fresh = async (titles, html = page) => {
+        const list = titles.map((title) => w.newTab(html(title), { background: true }));
+        await until(() => list.every((x) => w.data.tabs[x.id].title === titles[list.indexOf(x)] && !win.live.get(x.id).loading), 'onglets d’essai');
+        return list;
+      };
+      const age = (x) => { win.live.get(x.id).lastUsed = old; };
+      const settle = () => sleep(700);
+      const before = w.activeId;
+
+      // 1. « Dernière utilisation » = dernier instant à l'écran.
+      const [longue, autre, volet] = await fresh(['Longue', 'Autre', 'Volet']);
+      w.activate(longue.id);
+      age(longue); // affichée depuis quatre heures, sans y revenir
+      OrbeWindow.trimLive({ deep: true });
+      const stamped = Date.now() - win.live.get(longue.id).lastUsed < 5000;
+      age(longue);
+      w.activate(autre.id); // on la quitte à l'instant
+      for (const x of [autre]) age(x);
+      OrbeWindow.trimLive({ deep: true });
+      await settle();
+      check('un onglet resté longtemps à l’écran ne s’endort pas dès qu’on le quitte : le délai court depuis qu’il est caché',
+        stamped && win.live.has(longue.id) && Date.now() - win.live.get(longue.id).lastUsed < 5000);
+      w.splitWith(autre.id, volet.id);
+      await until(() => w.visibleIds().includes(volet.id) && w.visibleIds().includes(autre.id), 'vue scindée');
+      age(volet); age(autre);
+      OrbeWindow.trimLive({ deep: true });
+      w.leaveSplit(volet.id);
+      w.activate(longue.id);
+      win.live.get(longue.id).typed = false;
+      OrbeWindow.trimLive({ deep: true });
+      await settle();
+      check('le volet d’une vue scindée compte comme affiché : il ne s’endort pas en la quittant', win.live.has(volet.id) && win.live.has(autre.id));
+      win.live.get(volet.id).lastUsed = old;
+      win.live.get(volet.id).typed = false;
+      OrbeWindow.trimLive({ deep: true });
+      await until(() => !win.live.has(volet.id), 'volet endormi une fois le délai passé').catch(() => {});
+      check('… et s’endort bien une fois le délai écoulé depuis qu’il est caché', !win.live.has(volet.id));
+
+      // 2. Toute façon d'agir dans la page épargne l'onglet.
+      const kinds = {
+        'Coller': (wc) => wc.sendInputEvent({ type: 'keyDown', keyCode: 'V', modifiers: [process.platform === 'darwin' ? 'meta' : 'control'] }),
+        'AltGr': (wc) => wc.sendInputEvent({ type: 'keyDown', keyCode: '@', modifiers: ['control', 'alt'] }),
+        'Effacer': (wc) => wc.sendInputEvent({ type: 'keyDown', keyCode: 'Backspace' }),
+        'Entrée': (wc) => wc.sendInputEvent({ type: 'keyDown', keyCode: 'Enter' }),
+        'Souris': (wc) => { wc.sendInputEvent({ type: 'mouseDown', x: 30, y: 30, button: 'left', clickCount: 1 }); wc.sendInputEvent({ type: 'mouseUp', x: 30, y: 30, button: 'left', clickCount: 1 }); },
+      };
+      const acted = await fresh(Object.keys(kinds));
+      const [lu] = await fresh(['Seulement lu']);
+      for (const x of acted) { const wc = win.live.get(x.id).wc; wc.focus(); kinds[w.data.tabs[x.id].title](wc); }
+      win.live.get(lu.id).wc.sendInputEvent({ type: 'mouseWheel', x: 30, y: 30, deltaY: -40 });
+      win.live.get(lu.id).wc.sendInputEvent({ type: 'keyDown', keyCode: 'Shift' });
+      await until(() => acted.every((x) => win.live.get(x.id).typed), 'gestes vus', 4000).catch(() => {});
+      const missed = acted.filter((x) => !win.live.get(x.id).typed).map((x) => w.data.tabs[x.id].title).join();
+      for (const x of [...acted, lu]) age(x);
+      OrbeWindow.trimLive({ deep: true });
+      await until(() => !win.live.has(lu.id), 'onglet seulement lu endormi').catch(() => {});
+      check('coller, AltGr, Suppr, Entrée, clic : l’onglet où l’on a agi ne s’endort pas de lui-même ; lire (molette, touche Maj seule) ne compte pas',
+        !missed && acted.every((x) => win.live.has(x.id)) && !win.live.has(lu.id), missed || acted.filter((x) => !win.live.has(x.id)).length + ' endormis');
+      check('limite en nombre : les onglets où l’on n’a pas agi partent d’abord',
+        veille.pick([t('a', 50, { typed: true }), t('b', 40), t('c', 30), t('d', 20)], { max: 2, now }).map((p) => p.id).join() === 'b,c'
+        && veille.pick([t('a', 50, { typed: true }), t('b', 40, { typed: true }), t('c', 30)], { max: 1, now }).map((p) => p.id).join() === 'c,a');
+
+      // La page s'y oppose (beforeunload) : elle reste, sans aucune question.
+      const unload = require('../src/main/unload');
+      const [tient] = await fresh(['Tient'], (title) => 'data:text/html;charset=utf-8,' + encodeURIComponent(`<title>${title}</title><p>${title}</p><script>addEventListener('beforeunload', (e) => { e.preventDefault(); e.returnValue = 'x'; });</script>`));
+      const twc = win.live.get(tient.id).wc;
+      kinds.Souris(twc); // Chromium n'écoute beforeunload qu'après un geste dans la page
+      await until(() => win.live.get(tient.id).typed, 'geste dans la page qui tient');
+      const asked = unload.state.asked;
+      Object.assign(win.live.get(tient.id), { typed: false, lastUsed: old }); // comme si le geste nous avait échappé
+      OrbeWindow.trimLive({ deep: true });
+      await until(() => win.live.get(tient.id) && win.live.get(tient.id).objected, 'refus de la page', 5000).catch(() => {});
+      const rtT = win.live.get(tient.id);
+      check('la page refuse la veille (beforeunload) : elle reste vivante, aucune question n’est posée, et elle n’est plus proposée',
+        !!rtT && rtT.objected === true && !twc.isDestroyed() && unload.state.asked === asked && OrbeWindow.trimLive({ deep: true }).every((p) => p.id !== tient.id));
+
+      // 3. Image dans l'image, téléchargement en cours.
+      const [pip, dl] = await fresh(['Incrustée', 'Télécharge']);
+      win.live.get(pip.id).pip = true;
+      win.noteDownload('start', { id: 'essai-dl', state: 'progressing' }, win.live.get(dl.id).wc);
+      age(pip); age(dl);
+      OrbeWindow.trimLive({ deep: true });
+      await settle();
+      const keptBoth = win.live.has(pip.id) && win.live.has(dl.id);
+      win.live.get(pip.id).pip = false;
+      win.noteDownload('done', { id: 'essai-dl', state: 'completed' }, win.live.get(dl.id).wc);
+      OrbeWindow.trimLive({ deep: true });
+      await until(() => !win.live.has(pip.id) && !win.live.has(dl.id), 'onglets libérés endormis').catch(() => {});
+      check('image dans l’image ou téléchargement en cours : l’onglet reste ; ensuite il peut s’endormir', keptBoth && !win.live.has(pip.id) && !win.live.has(dl.id));
+
+      // 5. Textes venus des pages : bornés avant d'atteindre l'interface.
+      const lwc = win.live.get(longue.id).wc;
+      lwc.emit('page-favicon-updated', {}, ['data:image/png;base64,' + 'A'.repeat(win.ICON_MAX)]);
+      const iconDropped = w.data.tabs[longue.id].favicon === '';
+      lwc.emit('page-favicon-updated', {}, ['https://exemple.invalid/icone.png']);
+      let statusText = null;
+      w.linkStatus(win.live.get(longue.id), 'https://exemple.invalid/');
+      await until(() => w.statusView && !w.statusView.webContents.isLoading(), 'vue de l’adresse survolée');
+      const sv = w.statusView.webContents;
+      const realSend = sv.send.bind(sv);
+      sv.send = (ch, a) => { if (ch === 'overlay' && a && a.mode === 'status') statusText = a.text; return realSend(ch, a); };
+      lwc.emit('update-target-url', {}, 'https://exemple.invalid/?' + 'a'.repeat(3 * win.STATUS_MAX));
+      await until(() => statusText !== null, 'adresse survolée transmise');
+      sv.send = realSend;
+      lwc.emit('update-target-url', {}, '');
+      check('icône démesurée refusée, adresse survolée coupée avant d’être envoyée à l’interface',
+        iconDropped && w.data.tabs[longue.id].favicon === 'https://exemple.invalid/icone.png' && statusText.length === win.STATUS_MAX, String(statusText && statusText.length));
+      check('coque perdue à répétition : les reprises s’espacent mais ne cessent jamais',
+        win.uiRetryDelay(1) === 150 && win.uiRetryDelay(3) === 150 && win.uiRetryDelay(4) === 5000 && win.uiRetryDelay(5) === 10000 && win.uiRetryDelay(40) === 60000);
+
+      for (const x of [longue, autre, volet, ...acted, lu, tient, pip, dl]) if (w.data.tabs[x.id]) w.close(x.id, { silent: true, ask: false });
+      if (before && w.data.tabs[before]) w.activate(before);
+    }
 
     // Onglet en veille survolé : la connexion est préparée, la page n'est pas chargée.
     const calls = [];
