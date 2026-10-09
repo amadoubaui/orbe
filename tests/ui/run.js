@@ -20,6 +20,26 @@ const bogues = [];
 // ORBE_UI_DETAIL=1 : message d'erreur entier (différences comprises).
 const court = (err) => (process.env.ORBE_UI_DETAIL ? String((err && err.message) || err) : String((err && err.message) || err).split('\n')[0].slice(0, 300));
 
+// Vérification en échec : ce que montrait la barre latérale à cet instant
+// (lignes, sélection, glisser en cours) et une capture de la coque.
+async function constater(ctx, groupe, n) {
+  if (ctx.arretInattendu()) return;
+  try {
+    const vu = await delai(ctx.shell.evaluate(() => ({
+      aujourdhui: [...document.querySelectorAll('#today .row.tab')].map((r) => (r.querySelector('.title') || r).textContent + (r.classList.contains('active') ? '*' : '') + (r.classList.contains('sel') ? '+' : '') + (r.classList.contains('out') ? '(sort)' : '')),
+      epingles: [...document.querySelectorAll('#pinned .row .title')].map((el) => el.textContent),
+      corps: document.body.className,
+      animations: document.getAnimations().filter((a) => a.playState === 'running').length,
+    })), 3000, 'état de la barre');
+    console.log(`      barre : ${JSON.stringify(vu)}`);
+    const nom = `echec-${groupe.replace(/[^\p{L}\p{N}]+/gu, '-').toLowerCase()}-${n}`;
+    await delai(ctx.capture(nom), 4000, 'capture');
+    console.log(`      capture : ${path.join(ctx.captures, nom + '.png')}`);
+  } catch (err) {
+    console.log(`      (état de la barre illisible : ${String(err.message).split('\n')[0]})`);
+  }
+}
+
 function rapport(groupe, ctx) {
   const essai = async (fn) => {
     if (ctx.bloque) throw new Error('application bloquée par une vérification précédente');
@@ -44,6 +64,7 @@ function rapport(groupe, ctx) {
         total.ko += 1;
         echecs.push(`${groupe} › ${nom}`);
         console.log(`  ✗ ${nom} — ${court(err)}`);
+        await constater(ctx, groupe, total.ko);
         return false;
       }
     },
