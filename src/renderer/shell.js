@@ -265,6 +265,7 @@ function render(s) {
   b.classList.toggle('incognito', s.incognito);
   b.classList.toggle('toolbar', s.toolbar);
   b.classList.toggle('dev-site', !!s.devMode); // liseré jaune et noir sous l'adresse (mode développeur du site)
+  fxToolbar(s.pageColor);
   b.classList.toggle('fullscreen', s.fullScreen);
   b.classList.toggle('no-tab', !s.activeId && !FLOATING);
   // Compléments : fenêtre à l'arrière-plan, en-tête de l'Espace, section épinglée repliée.
@@ -355,18 +356,7 @@ function render(s) {
   upd.hidden = !s.update;
   if (s.update) $('update-open').textContent = t('update.note', { version: s.update.version });
 
-  const media = $('media');
-  media.hidden = !s.media;
-  if (s.media) {
-    if (media._id !== s.media.id + s.media.favicon) {
-      media._id = s.media.id + s.media.favicon;
-      $('media-icon').textContent = '';
-      $('media-icon').appendChild(faviconEl(s.media.favicon || guessIcon(s.media.url), s.media.title));
-    }
-    $('media-title').textContent = s.media.title;
-    $('media-play-icon').setAttribute('href', s.media.playing ? '#i-pause' : '#i-play');
-    $('media-mute-icon').setAttribute('href', s.media.muted ? '#i-mute' : '#i-sound');
-  }
+  renderPlayers(s.players || []);
 
   // Poignées entre les volets d'une vue scindée (dans l'espace qui les sépare).
   const dv = $('dividers');
@@ -385,6 +375,7 @@ function render(s) {
 
   const lib = $('b-library');
   lib.classList.toggle('downloading', !!s.downloads);
+  fxDownloads(s.downloadsStarted);
   if (s.downloads) lib.querySelector('circle').style.strokeDashoffset = String(75.4 * (1 - s.downloads.progress));
 
   // Dépôt en attente : les listes viennent de prendre leur ordre définitif.
@@ -673,9 +664,6 @@ sidebar.addEventListener('contextmenu', (e) => {
   else send('sidebarMenu');
 });
 
-$('media-open').onclick = () => S && S.media && send('activate', S.media.id);
-$('media-play').onclick = () => send('mediaToggle');
-$('media-mute').onclick = () => S && S.media && send('toggleMute', S.media.id);
 $('update-open').onclick = () => send('update:show');
 $('update-close').onclick = () => send('update:dismiss');
 $('exts').addEventListener('contextmenu', (e) => {
@@ -973,6 +961,7 @@ function onState(s) {
   if (first && !FLOATING) {
     const b = document.body;
     b.classList.add('ready', 'no-anim');
+    fxStart();
     requestAnimationFrame(() => requestAnimationFrame(() => b.classList.remove('no-anim')));
   }
   return undefined;

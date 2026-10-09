@@ -475,6 +475,8 @@ app.whenReady().then(async () => {
     } finally { openUrl.direct = false; }
   };
   little.hooks.profileId = () => { const w = OrbeWindow.primary; return w ? w.space.profileId : 'default'; };
+  little.hooks.profiles = () => [...new Set(store.state.spaces.map((sp) => sp.profileId || 'default'))];
+  little.hooks.profileOfSpace = (id) => { const sp = store.state.spaces.find((x) => x.id === id); return sp ? sp.profileId || 'default' : null; };
   little.hooks.spaces = () => store.state.spaces.map((sp) => ({ id: sp.id, name: sp.name, icon: sp.icon }));
   library.env.reviewBoost = (w, host) => boostEditor.review(w, host);
   win.hooks.quitAborted = () => require('./backups').disarm();

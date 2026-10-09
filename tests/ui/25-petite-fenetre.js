@@ -23,6 +23,18 @@ module.exports = {
       assert.deepEqual(await ctx.titres(), [], 'aucun onglet dans la fenêtre principale');
     });
 
+    await t.verifier('première petite fenêtre : ouverte sans à-coup (opaque, à sa place), bandeau d’explication que « × » referme, la page remonte', async () => {
+      const etat = () => ctx.principal(({ req, win }) => { const l = req('little.js').LittleWindow.all[0]; return { ouverture: !!l.opening, opacite: l.win.getOpacity(), bandeau: l.hint, y: win.boundsOf(l.view).y }; });
+      await jusqua(async () => { const e = await etat(); return !e.ouverture && e.opacite === 1; }, 'ouverture terminée');
+      assert.equal(await barre.locator('#hint').isVisible(), true);
+      assert.equal((await etat()).y, 42 + 34, 'la page laisse la place du bandeau');
+      const anim = await barre.locator('#hint').evaluate((el) => { const a = el.getAnimations()[0]; return a ? [...new Set(a.effect.getKeyframes().flatMap((k) => Object.keys(k)))].filter((k) => !['offset', 'easing', 'composite', 'computedOffset'].includes(k)).sort().join() : 'finie'; });
+      assert.ok(anim === 'finie' || anim === 'opacity,transform', anim);
+      await barre.locator('#hint-close').click();
+      await jusqua(async () => { const e = await etat(); return !e.bandeau && e.y === 42; }, 'bandeau refermé, page remontée');
+      assert.equal(await barre.locator('#hint').isVisible(), false);
+    });
+
     await t.verifier('bouton de copie du lien', async () => {
       await barre.locator('#copy').click();
       // (Le presse-papiers d'Electron se lit de façon asynchrone.)

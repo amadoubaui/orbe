@@ -270,8 +270,10 @@ function keepThumb(rt, data) {
 const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'AltGraph', 'NumLock', 'ScrollLock', 'Fn', 'Hyper', 'Super']);
 // Téléchargements en cours, par page d'origine : son onglet ne s'endort pas (voir `trimLive`).
 const downloading = new Map(); // id webContents -> identifiants des téléchargements
+let downloadsStarted = 0; // compteur : la barre latérale fait tomber un fichier dans la Bibliothèque à chaque nouveau
 function noteDownload(phase, d, wc) {
   if (!d) return;
+  if (phase === 'start') downloadsStarted += 1;
   if (phase === 'done' || (d.state && d.state !== 'progressing')) {
     for (const [id, set] of downloading) { set.delete(d.id); if (!set.size) downloading.delete(id); }
     return;
@@ -280,6 +282,11 @@ function noteDownload(phase, d, wc) {
   if (!downloading.has(wc.id)) downloading.set(wc.id, new Set());
   downloading.get(wc.id).add(d.id);
 }
+// Pastille de l'adresse du lien survolé : largeur courte, délai avant qu'elle ne s'étende,
+// durées de ses mouvements, marge autour d'elle où le pointeur la fait s'écarter.
+const STATUS = { short: 420, expandAfter: 1500, grow: 160, dodge: 140, margin: 10, poll: 90, height: 26 };
+// Lecteurs miniatures de la barre latérale (src/main/media.js).
+const media = require('./media').make({ live, pushAll: () => OrbeWindow.pushAll(), windows: () => OrbeWindow.all, strip: (u) => suggest.strip(u) });
 const prewoken = new Map(); // origine -> instant de la dernière pré-connexion (voir `prewake`)
 
 let pushScheduled = false;
@@ -599,7 +606,7 @@ class OrbeWindow {
       if (w.data !== data) continue;
       w.leaveSplit(id);
       for (const sid of Object.keys(w.activeBySpace)) if (w.activeBySpace[sid] === id) delete w.activeBySpace[sid];
-      if (w.mediaId === id) w.mediaId = null;
+      media.drop(w, id);
     }
   }
 
@@ -1124,12 +1131,23 @@ class OrbeWindow {
     // Changement de site : le CSS du Boost de l'ancien site est retiré dès que le nouveau document est en place.
     if (!incognito) wc.on('did-navigate', () => { boosts.navigated(wc); });
     wc.on('did-navigate-in-page', (e, url, isMainFrame) => { if (isMainFrame) navigated(url); });
+    // Couleurs annoncées par la page (src/main/page-color.js) : son fond devient celui
+    // de la vue (fenêtre redimensionnée : pas de blanc au bord d'une page sombre), sa
+    // couleur de thème teinte la barre d'outils.
+    if (!rt.internal) {
+      const pageColor = require('./page-color');
+      const paint = () => pageColor.background(wc).then((c) => { if (wc.isDestroyed() || rt.bg === c) return; rt.bg = c; try { rt.view.setBackgroundColor(c); } catch {} });
+      wc.on('dom-ready', paint);
+      wc.on('did-finish-load', paint);
+      wc.on('did-change-theme-color', (e, color) => { const c = pageColor.theme(color); if ((rt.themeColor || null) === c) return; rt.themeColor = c; OrbeWindow.pushAll(); });
+      wc.on('did-navigate', () => { rt.themeColor = null; });
+    }
     wc.on('update-target-url', (e, url) => { rt.hoverUrl = String(url || '').slice(0, STATUS_MAX); rt.owner.linkStatus(rt, rt.hoverUrl); });
     // Pincer pour zoomer la page (coupé par défaut dans Electron).
     wc.setVisualZoomLevelLimits(1, 5).catch(() => {});
     wc.on('audio-state-changed', () => {
       const owner = rt.owner;
-      if (wc.isCurrentlyAudible()) { rt.playing = true; if (!owner.visibleIds().includes(rt.id)) owner.mediaId = rt.id; }
+      if (wc.isCurrentlyAudible()) { rt.playing = true; if (!owner.visibleIds().includes(rt.id)) media.add(owner, rt.id); }
       OrbeWindow.pushAll();
     });
     wc.on('context-menu', (e, params) => rt.owner.pageMenu(rt, params));
@@ -1419,11 +1437,11 @@ class OrbeWindow {
       }
       if (prevId !== id && prevRt && !prevRt.wc.isDestroyed() && prevRt.wc.isCurrentlyAudible()) {
         prevRt.playing = true;
-        this.mediaId = prevId;
+        media.add(this, prevId);
         if (!(this.groupOf(id) || []).includes(prevId) && !this.data.tabs[prevId].muted) this.pip(prevRt, true);
       }
     }
-    if (this.mediaId === id) this.mediaId = null;
+    media.drop(this, id);
     const backRt = live.get(id);
     if (backRt && backRt.pip) this.pip(backRt, false);
     this.activeBySpace[this.space.id] = id;
@@ -1635,10 +1653,24 @@ class OrbeWindow {
     return true;
   }
 
+  // Site où l'image dans l'image automatique est coupée (réglage `pipOffSites`).
+  static pipSite(url) { try { const u = new URL(url); return /^https?:$/.test(u.protocol) ? u.hostname.toLowerCase() : ''; } catch { return ''; } }
+  static pipOff(url) { const h = OrbeWindow.pipSite(url); const list = store.state.settings.pipOffSites; return !!h && Array.isArray(list) && list.includes(h); }
+  static togglePipSite(url) {
+    const h = OrbeWindow.pipSite(url);
+    if (!h) return false;
+    const list = Array.isArray(store.state.settings.pipOffSites) ? store.state.settings.pipOffSites : [];
+    const next = list.includes(h) ? list.filter((x) => x !== h) : [...list, h].slice(-200);
+    require('./commands').setSetting('pipOffSites', next);
+    return true;
+  }
+
   // Image dans l'image : la vidéo en cours suit l'utilisateur quand il change
   // d'onglet, et retourne dans sa page quand il y revient.
   pip(rt, enter) {
     if (!store.state.settings.autoPip || rt.wc.isDestroyed()) return;
+    // Coupée pour ce site (menu d'une vidéo) : on ne l'y fait pas entrer ; en sortir reste permis.
+    if (enter && OrbeWindow.pipOff(rt.wc.getURL())) return;
     rt.pip = enter;
     const code = enter
       ? `(() => {
@@ -1651,18 +1683,11 @@ class OrbeWindow {
     rt.wc.executeJavaScript(code, true).catch(() => {});
   }
 
-  // Lecture / pause du média de l'onglet en arrière-plan.
-  mediaToggle() {
-    const rt = this.mediaId && live.get(this.mediaId);
-    if (!rt || rt.wc.isDestroyed()) return;
-    rt.playing = !rt.playing;
-    rt.wc.executeJavaScript(`(() => {
-      const all = [...document.querySelectorAll('video, audio')];
-      const m = all.find((x) => !x.paused) || all.find((x) => x.currentTime > 0) || all[0];
-      if (m) { if (m.paused) m.play(); else m.pause(); }
-    })()`, true).catch(() => {});
-    OrbeWindow.pushAll();
-  }
+  // Lecteurs miniatures : lecture / pause du plus récent (ancien geste), ou un
+  // geste précis sur l'un d'eux ({ id, act, value } — vérifié par media.act).
+  mediaToggle() { return media.act(this, { act: 'toggle' }); }
+  mediaAct(a) { return media.act(this, a); }
+  get mediaId() { return media.players(this)[0] || null; }
 
   resetPinned(id = this.activeId) {
     const tab = id && this.data.tabs[id];
@@ -3172,26 +3197,70 @@ class OrbeWindow {
   linkStatus(rt, url) {
     if (this.win.isDestroyed() || !this.visibleIds().includes(rt.id)) return;
     clearTimeout(this.statusTimer);
+    clearTimeout(this.statusGrow);
     const hide = () => {
+      clearInterval(this.statusPoll);
+      this.statusPoll = null;
+      this.status = null;
       if (!this.statusView || this.win.isDestroyed()) return;
       this.statusView.setVisible(false);
       try { this.win.contentView.removeChildView(this.statusView); } catch {}
     };
     if (!url) { this.statusTimer = setTimeout(hide, 120); return; }
+    // La pastille : courte d'abord ; le pointeur resté sur le lien, elle s'étend à
+    // toute l'adresse ; et elle s'écarte quand le pointeur vient sur elle.
+    const rect = (st) => {
+      const b = boundsOf(st.rt.view);
+      const width = Math.round(Math.min(st.width, b.width - 16));
+      return { x: st.side === 'left' ? b.x + 6 : b.x + b.width - 6 - width, y: b.y + b.height - STATUS.height - 4, width, height: STATUS.height };
+    };
+    const dodge = () => {
+      const st = this.status;
+      if (!st || this.win.isDestroyed() || st.rt.wc.isDestroyed()) return hide();
+      const p = this.statusPointer();
+      const r = rect(st);
+      if (!p || p.x < r.x - STATUS.margin || p.x > r.x + r.width + STATUS.margin || p.y < r.y - STATUS.margin || p.y > r.y + r.height + STATUS.margin) return;
+      // Trop large pour s'écarter d'un côté à l'autre : elle redevient courte d'abord.
+      if (r.width > boundsOf(st.rt.view).width / 2 - STATUS.margin) st.width = st.short;
+      st.side = st.side === 'left' ? 'right' : 'left';
+      st.dodged += 1;
+      place(this.statusView, rect(st), motion(STATUS.dodge));
+    };
     const show = () => {
-      if (this.win.isDestroyed() || this.statusView.webContents.isDestroyed()) return;
+      if (this.win.isDestroyed() || this.statusView.webContents.isDestroyed() || rt.wc.isDestroyed()) return;
       const b = boundsOf(rt.view);
-      const width = Math.min(b.width - 16, Math.max(120, 14 + url.length * 6.6));
-      this.statusView.setBounds({ x: b.x + 6, y: b.y + b.height - 30, width: Math.round(width), height: 26 });
+      const full = Math.min(b.width - 16, Math.max(120, 14 + url.length * 6.6));
+      const short = Math.min(full, STATUS.short);
+      const was = this.status;
+      const st = (this.status = { rt, url, full, short, width: short, side: was && was.rt === rt ? was.side : 'left', dodged: 0 });
+      place(this.statusView, rect(st));
       this.win.contentView.addChildView(this.statusView);
       this.statusView.setVisible(true);
       this.statusView.webContents.send('overlay', { mode: 'status', text: url });
+      if (full > short) {
+        this.statusGrow = setTimeout(() => {
+          if (this.status !== st || this.win.isDestroyed() || this.statusView.webContents.isDestroyed()) return;
+          st.width = full;
+          place(this.statusView, rect(st), motion(STATUS.grow));
+        }, STATUS.expandAfter);
+      }
+      if (!this.statusPoll) { this.statusPoll = setInterval(dodge, STATUS.poll); if (this.statusPoll.unref) this.statusPoll.unref(); }
+      dodge();
     };
     if (!this.statusView) {
       this.statusView = this.makeUiView('overlay.html#status');
       this.statusView.setVisible(false);
       this.statusView.webContents.once('did-finish-load', show);
     } else if (!this.statusView.webContents.isLoading()) show();
+  }
+
+  // Pointeur dans le repère du contenu de la fenêtre (null s'il est ailleurs).
+  statusPointer() {
+    try {
+      const p = screen.getCursorScreenPoint();
+      const c = this.win.getContentBounds();
+      return { x: p.x - c.x, y: p.y - c.y };
+    } catch { return null; }
   }
 
   // `sound` : son qui accompagne le message (« error » pour un refus).
@@ -3313,6 +3382,25 @@ class OrbeWindow {
       { label: t('easel.capture'), enabled: !this.incognito, click: () => done('easel') },
     ]).popup({ window: this.win, x: Math.round(b.x + (rect ? rect.x + rect.width / 2 : 40)), y: Math.round(b.y + (rect ? rect.y + rect.height : 40) + 6), callback: () => { this.menuOpen = false; } });
     return 'menu';
+  }
+
+  // Capture « en portrait » : la page visible posée sur un fond aux couleurs de
+  // l'Espace (src/main/portrait.js). Copiée et enregistrée, comme une capture entière.
+  // Seule la page est photographiée : jamais une feuille d'Orbe posée dessus.
+  async capturePortrait(opts = {}) {
+    const wc = this.activeWc;
+    if (!wc) return null;
+    const image = opts.image || await wc.capturePage().catch(() => null);
+    const out = require('./portrait').compose(image, { color: this.space.color, dark: nativeTheme.shouldUseDarkColors });
+    if (!out) return null;
+    this.sound('capture');
+    const png = out.toPNG();
+    if (opts.write !== false) {
+      clipboard.write([new ClipboardItem({ 'image/png': new Blob([png], { type: 'image/png' }) })]).catch(() => {});
+      fs.writeFile(path.join(app.getPath('downloads'), `Orbe ${captureStamp()}.png`), png, () => {});
+    }
+    this.toast(t('toast.captured'));
+    return out;
   }
 
   // Capture de la page entière, au-delà de la zone visible.
@@ -3742,6 +3830,9 @@ class OrbeWindow {
         { label: t('ctx.pip'), click: () => wc.executeJavaScript(`(() => { const el = document.elementFromPoint(${x}, ${y}); const v = el && (el.closest('video') || (el.querySelector && el.querySelector('video'))); if (!v || !document.pictureInPictureEnabled) return false; return (document.pictureInPictureElement === v ? document.exitPictureInPicture() : v.requestPictureInPicture()).then(() => true, () => false); })()`, true).catch(() => {}) },
         { label: t('ctx.copyVideoUrl'), visible: !!src, click: () => clipboard.writeText(p.srcURL) },
       );
+      // Image dans l'image automatique, site par site (quand le réglage général est actif).
+      const site = OrbeWindow.pipSite(wc.getURL());
+      if (site && store.state.settings.autoPip) tpl.push({ label: t('ctx.pipAuto', { site }), type: 'checkbox', checked: !OrbeWindow.pipOff(wc.getURL()), click: () => OrbeWindow.togglePipSite(wc.getURL()) });
     }
     if (!p.linkURL && !p.isEditable && p.mediaType === 'none' && !(p.selectionText || '').trim()) {
       const nav = wc.navigationHistory;
@@ -3840,9 +3931,6 @@ class OrbeWindow {
     const downloads = store.state.downloads.filter((x) => x.state === 'progressing');
     const dir = this.spaceDir || 0;
     this.spaceDir = 0;
-    const mediaRt = this.mediaId && live.get(this.mediaId);
-    const mediaTab = mediaRt && !mediaRt.wc.isDestroyed() && d.tabs[this.mediaId];
-    if (!mediaTab || this.visibleIds().includes(this.mediaId)) this.mediaId = null;
     const payload = {
       lang: settings.lang,
       appearance: settings.appearance,
@@ -3899,14 +3987,10 @@ class OrbeWindow {
           return { id: ids[i], x: p.x, y: p.y, w: p.width, h: p.height, bar: p.bar, active: ids[i] === activeId, internal: isInternal(pt.url), url: pt.url, title: pt.customTitle || pt.title || '', favicon: this.incognito ? '' : (pt.favicon || '') };
         });
       })(),
-      media: this.mediaId && settings.mediaControls !== false ? {
-        id: this.mediaId,
-        title: mediaTab.customTitle || mediaTab.title || suggest.strip(mediaTab.url),
-        url: mediaTab.url,
-        favicon: mediaTab.favicon,
-        playing: mediaRt.wc.isCurrentlyAudible() || (!!mediaRt.playing && !mediaTab.muted),
-        muted: !!mediaTab.muted,
-      } : null,
+      players: media.payload(this, settings),
+      downloadsStarted,
+      // Couleur de thème de la page affichée (barre d'outils teintée), hors vue scindée.
+      pageColor: toolbar && this.activeRt && this.visibleIds().length === 1 ? this.activeRt.themeColor || null : null,
       downloads: downloads.length
         ? { count: downloads.length, progress: downloads.reduce((a, x) => a + (x.total ? x.received / x.total : 0), 0) / downloads.length }
         : null,
@@ -3973,6 +4057,7 @@ class OrbeWindow {
       }
       case 'toggleMute': return this.toggleMute(a);
       case 'mediaToggle': return this.mediaToggle();
+      case 'mediaAct': return this.mediaAct(a);
       case 'resetPinned': return this.resetPinned(a);
       case 'command': return this.run(a);
       case 'dropUrl': {
@@ -4072,4 +4157,4 @@ function archiveStale() {
   if (count) { store.save(); for (const w of windows.values()) w.layout(); OrbeWindow.pushAll(); }
 }
 
-module.exports = { OrbeWindow, windows, live, trusted, hooks, lostAfterStay: () => lastLost, applyBoosts, cleanUrl, mdLink, isMeetingUrl, SPLIT_BAR, archiveStale, tabMemory, tabProcesses, processMb, lastSweep: () => lastSweep, noteDownload, uiRetryDelay, UI_PREFS, STATUS_MAX, ICON_MAX, thumbs: { keep: keepThumb, MAX: THUMBS }, INTERNAL, UI_PRELOAD, isInternal, MOTION, motion, forceMotion, motionStats: stats, boundsOf, inFlight, resumed };
+module.exports = { OrbeWindow, windows, live, media, STATUS, trusted, hooks, lostAfterStay: () => lastLost, applyBoosts, cleanUrl, mdLink, isMeetingUrl, SPLIT_BAR, archiveStale, tabMemory, tabProcesses, processMb, lastSweep: () => lastSweep, noteDownload, uiRetryDelay, UI_PREFS, STATUS_MAX, ICON_MAX, thumbs: { keep: keepThumb, MAX: THUMBS }, INTERNAL, UI_PRELOAD, isInternal, MOTION, motion, place, forceMotion, motionStats: stats, boundsOf, inFlight, resumed };

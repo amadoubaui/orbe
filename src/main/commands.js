@@ -32,6 +32,7 @@ const COMMANDS = [
   { name: 'closeWindow', label: 'file.closeWindow', accel: 'Shift+Cmd+W', keys: '⇧⌘W', run: (w) => w.win.close() },
   { name: 'capture', label: 'file.capture', accel: 'Shift+Cmd+2', keys: '⇧⌘2', run: (w) => w.capture() },
   { name: 'captureFull', label: 'file.captureFull', run: (w) => w.captureFull() },
+  { name: 'capturePortrait', label: 'file.capturePortrait', run: (w) => w.capturePortrait() },
   { name: 'captureToEasel', label: 'easel.capture', accel: 'Alt+Shift+Cmd+2', keys: '⌥⇧⌘2', run: (w) => easels.capture(w) },
   { name: 'savePage', label: 'file.savePage', accel: 'Shift+Cmd+S', keys: '⇧⌘S', run: (w) => w.savePage() },
   { name: 'print', label: 'file.print', accel: 'Cmd+P', keys: '⌘P', run: (w) => wc(w) && wc(w).print() },
