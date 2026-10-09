@@ -565,6 +565,115 @@ signature de développeur le ferait.
 - **En test**, aucun vrai profil n'est lu : sans dossier d'essai désigné, la
   recherche ne rend rien (`tests/fixtures/navigateurs.js` fabrique les profils).
 
+## Mini-lecteurs (`src/main/media.js`, `src/main/media-art.js`, `src/preload/media.js`)
+
+Un onglet qui joue hors de vue reçoit un lecteur dans la barre latérale. Tout ce
+qu'il montre vient de la page (`navigator.mediaSession`, son élément `<audio>` ou
+`<video>`) : c'est tenu pour hostile de bout en bout.
+
+**Textes.** La question posée à la page (`infoCode`) coupe elle-même titre et
+artiste à 320 caractères et écarte une pochette de plus de 400 Ko : une chaîne
+de plusieurs méga-octets ne traverse jamais vers le processus principal. Là,
+`clean` retire les caractères de contrôle et de sens d'écriture et borne à 160 ;
+la coque pose le tout par `textContent`. À chaque navigation du cadre principal
+(`did-navigate`), ce que l'ancienne page annonçait est oublié : le titre ou la
+pochette d'un site ne s'affichent jamais sur le suivant.
+
+**Pochette : le décodage.** L'image est décodée dans le processus principal
+(`nativeImage`), donc jamais avant d'avoir lu son en-tête (`header`, sans rien
+décoder) :
+
+- quatre formats, reconnus à leurs premiers octets : PNG, JPEG, GIF, WebP. Le
+  reste (BMP, SVG, ICO…) est refusé ;
+- 2048 px de côté et 4 millions de points au plus. Un PNG de 30000 × 30000 en un
+  bit par point pèse 110 Ko sur le fil et 3,6 Go une fois décodé : il est refusé
+  d'après ses dimensions annoncées. Pour un GIF, c'est l'étendue de la première
+  image qui compte, pas seulement l'écran logique ;
+- le poids reste borné (2 Mo téléchargés, 400 Ko en `data:`), et l'image décodée
+  est revérifiée puis recodée en PNG de 192 px : la coque ne reçoit jamais
+  l'adresse ni les octets de la page.
+
+**Pochette : la cadence.** Par onglet, une seule recherche à la fois et pas plus
+d'une toutes les 4 secondes ; par session, les 24 dernières pochettes sont
+gardées (échecs compris, une minute). Une page qui change `artwork.src` chaque
+seconde obtient une requête et un décodage toutes les 4 secondes, pas un par
+changement ; la dernière image annoncée finit par s'afficher.
+
+**Pochette : le réseau.** La requête part du processus principal
+(`net.request`, session de la page, ni témoins ni identifiants) : elle échappe
+aux règles que le moteur applique à la page (contenu mixte, accès au réseau
+local, CSP). `loadArtwork` les refait :
+
+- pas de pochette en `http:` pour une page en `https:` ;
+- pas d'hôte local pour une page qui n'en vient pas : `localhost`, `.local`,
+  `.internal`, `.lan`, nom sans point, adresse de boucle locale, privée
+  (10/8, 172.16/12, 192.168/16, 100.64/10), de lien local, IPv6 locale unique
+  (`fc00::/7`) ou de lien (`fe80::/10`), IPv4 logée dans une IPv6. Un nom est
+  résolu (`session.resolveHost`) et **toutes** ses adresses comptent ; un nom
+  qui ne se résout pas est refusé. Une page servie depuis la machine ou le
+  réseau local garde le droit d'y prendre sa pochette ;
+- les redirections ne sont pas suivies par le moteur (`redirect: 'manual'`) :
+  chacune est revérifiée de la même façon, trois au plus ;
+- pas d'identifiants dans l'adresse ; 8 secondes pour le tout.
+
+Limites connues : entre la résolution du nom et la requête, un serveur de noms
+malveillant peut changer de réponse (le cache du moteur rend la fenêtre
+étroite, pas nulle) ; derrière un mandataire qui résout lui-même les noms,
+`resolveHost` peut échouer et la pochette manquer. Le décodage reste dans le
+processus principal : l'en-tête borne la mémoire, pas un défaut éventuel du
+décodeur. Deux autres voies ont été écartées : faire dessiner l'image par la
+page sur un `<canvas>` (une image d'une autre origine sans CORS « souille » le
+canevas, `toDataURL` lève `SecurityError` — or les pochettes viennent presque
+toujours d'un CDN), et un `utilityProcess` (il n'a pas `nativeImage`).
+
+**Gestes.** Un clic sur le lecteur exécute du code dans la page. Il ne lui prête
+une activation d'utilisateur que là où la lecture en a besoin : lecture / pause,
+piste précédente / suivante (`GESTURE`). Se déplacer dans le morceau, ±15 s,
+couper le son et la croix n'en donnent aucune : la page ne peut pas s'en servir
+pour ouvrir une fenêtre ou passer en plein écran.
+
+**Empreinte.** `src/preload/media.js` note les gestionnaires que la page déclare
+par `setActionHandler`. Rien n'est posé sur `navigator.mediaSession` (plus de
+`__orbeActions`) : la table vit dans une fermeture, et la fonction est un
+mandataire de l'originale — même `name`, même `length`, texte « [native code] »,
+mêmes erreurs. Orbe l'atteint par une clé de 128 bits tirée au hasard pour chaque
+document, que le script de préchargement transmet au processus principal (acceptée
+du cadre principal seulement). Seule la session du cadre lui-même est notée et
+servie : un autre cadre qui emprunte la fonction n'y lit ni n'y écrit rien. Reste
+visible : `Function.prototype.toString` rend `function () { [native code] }`,
+sans le nom ; et une page qui remplace elle-même `setActionHandler` verrait passer
+la clé — qui n'ouvre que ses propres gestionnaires.
+
+## Trace de Chromium (`src/main/trace.js`)
+
+« Aide → Dépannage → Enregistrer une trace… » relève l'activité de **tout** le
+navigateur : le traçage ne connaît ni profil ni fenêtre, et son fichier contient
+des adresses et des titres de pages.
+
+- La question est posée d'abord ; elle dit ce que la trace contient, qu'elle est
+  écrite en clair dans Téléchargements et qu'elle s'arrête seule.
+- Aucune trace tant qu'une fenêtre de navigation privée est ouverte. S'il s'en
+  ouvre une pendant l'enregistrement, la trace est arrêtée et **jetée**.
+- Arrêt automatique au bout de 2 minutes.
+- Catégories réduites à celles d'un diagnostic de performance (`CATEGORIES`) :
+  plus de `*`, pas de journal du réseau, aucune catégorie
+  `disabled-by-default`. Le fichier contient encore des adresses (`loading`,
+  `devtools.timeline`) : c'est pour cela que la question le dit.
+- Tant qu'elle tourne, la barre latérale de chaque fenêtre montre un témoin
+  rouge ; un clic l'arrête. L'article du menu devient « Arrêter la trace ».
+
+## Fenêtre vierge et petite fenêtre
+
+- **Fenêtre vierge.** Ses onglets ne sont pas enregistrés ; fermés, ils ne
+  rejoignent plus l'archive (ni donc les sauvegardes de l'état). Ils restent
+  rouvrables par ⇧⌘T tant que la fenêtre est ouverte. La session est celle des
+  fenêtres ordinaires : historique et cookies sont conservés, et la fenêtre le
+  dit (barre latérale, bulle de l'article du menu).
+- **Petite fenêtre.** La table « site → profil » (`littleProfiles`) est un objet
+  sans prototype ; ce qui vient du fichier d'état est relu, et seules les
+  entrées dont la clé est un nom d'hôte valide et la valeur un identifiant de
+  profil sont gardées. `__proto__` n'est pas un site.
+
 ## Ce qui demande une vérification humaine
 
 - Une vraie mise à jour, d'une version publiée à la suivante (annonce,
