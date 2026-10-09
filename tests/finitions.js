@@ -233,8 +233,17 @@ module.exports = async function finitionsTests(ctx) {
   check('pas de nouvel Espace ni de nouveau profil depuis une fenêtre vierge ; ses menus ne les proposent pas',
     bw.data.spaces.length === 1 && store.state.spaces.length === spaces0 && pick(bw.spaceMenuTemplate(), 'spaces.new').enabled === false && !labels(bw.spaceMenuTemplate()).includes(T('spaces.manage'))
     && !labels(bw.tabMenuTemplate(bt.id)).includes(T('tabs.addFavorite')));
+  const note = await bw.ui.webContents.executeJavaScript('(() => { const el = document.getElementById("blank-note"); return { shown: getComputedStyle(el).display !== "none", text: el.textContent }; })()');
+  const noteMain = await w.ui.webContents.executeJavaScript('getComputedStyle(document.getElementById("blank-note")).display');
+  check('fenêtre vierge : une phrase dit ce qu’elle garde et ne garde pas (barre latérale, bulle du menu) ; rien dans une fenêtre ordinaire',
+    note.shown && note.text.includes(T('blank.body')) && /historique|history/i.test(T('blank.body')) && /cookies/i.test(T('blank.body')) && menuItem('file.newBlank').toolTip === T('blank.body') && noteMain === 'none', JSON.stringify(note));
+  const archiveVierge = JSON.stringify(store.state.archive);
   bw.close(bt.id);
-  check('un onglet fermé dans la fenêtre vierge rejoint l’archive commune', store.state.archive[0].url === 'https://exemple.test/fin-vierge');
+  check('un onglet fermé dans la fenêtre vierge n’entre pas dans l’archive enregistrée (ni dans les sauvegardes)', JSON.stringify(store.state.archive) === archiveVierge && !store.state.archive.some((x) => x.url === 'https://exemple.test/fin-vierge') && bw.archives === false && w.archives === true);
+  bw.reopenClosed();
+  const rouvert = Object.values(bw.data.tabs).find((x) => x.url === 'https://exemple.test/fin-vierge');
+  check('… mais il se rouvre par ⇧⌘T tant que la fenêtre est ouverte', !!rouvert && bw.space.today.includes(rouvert.id) && JSON.stringify(store.state.archive) === archiveVierge);
+  if (rouvert) bw.close(rouvert.id);
   store.state.archive = store.state.archive.filter((x) => !x.url.startsWith('https://exemple.test/fin-'));
   bw.win.close();
   await until(() => OrbeWindow.all.length === n0, 'fenêtre vierge refermée');

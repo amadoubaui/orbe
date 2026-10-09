@@ -342,6 +342,7 @@ function render(s) {
   b.classList.toggle('docked', s.sidebar.visible);
   b.classList.toggle('translucent', s.translucent);
   b.classList.toggle('incognito', s.incognito);
+  b.classList.toggle('blank-window', !!s.blank);
   b.classList.toggle('toolbar', s.toolbar);
   b.classList.toggle('dev-site', !!s.devMode); // liseré jaune et noir sous l'adresse (mode développeur du site)
   fxToolbar(s.pageColor);

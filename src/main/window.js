@@ -325,8 +325,8 @@ class OrbeWindow {
 
   // `blank` : fenêtre vierge, comme dans Arc — hors des Espaces. Elle a ses propres
   // onglets, que rien n'enregistre dans la barre latérale des autres fenêtres, mais
-  // garde la session ordinaire (cookies, historique, archive), à la différence de
-  // la navigation privée.
+  // garde la session ordinaire (cookies, historique), à la différence de la navigation
+  // privée. Ses onglets fermés ne rejoignent pas l'archive (voir `archives`).
   constructor({ incognito = false, blank = false } = {}) {
     this.incognito = incognito;
     this.blank = !incognito && !!blank;
@@ -613,6 +613,13 @@ class OrbeWindow {
   // Fenêtre ordinaire : elle montre les Espaces enregistrés, partagés entre fenêtres
   // (ni navigation privée, ni fenêtre vierge).
   get shared() {
+    return !this.incognito && !this.blank;
+  }
+
+  // Les onglets fermés ici rejoignent-ils l'archive enregistrée (et donc les sauvegardes) ?
+  // Pas en navigation privée, pas dans une fenêtre vierge : celle-ci promet des onglets
+  // qui ne sont pas gardés. Ils restent rouvrables par ⇧⌘T tant que la fenêtre est ouverte.
+  get archives() {
     return !this.incognito && !this.blank;
   }
 
@@ -1589,7 +1596,7 @@ class OrbeWindow {
       this.histories.delete(id);
       this.closed.push(rec);
       if (this.closed.length > 50) this.closed.shift();
-      if (!this.incognito) store.archive({ ...tab, spaceId: space.id, by: auto ? 'auto' : 'manual' });
+      if (this.archives) store.archive({ ...tab, spaceId: space.id, by: auto ? 'auto' : 'manual' });
       delete this.data.tabs[id];
     } else if (tab.homeUrl) {
       tab.url = tab.homeUrl;
@@ -2220,7 +2227,7 @@ class OrbeWindow {
       space.today.splice(clamp(rec.index, 0, space.today.length), 0, id);
       const i = this.closed.indexOf(rec);
       if (i >= 0) this.closed.splice(i, 1);
-      if (!this.incognito) {
+      if (this.archives) {
         const a = store.state.archive.findIndex((x) => x.url === rec.tab.url);
         if (a >= 0) store.state.archive.splice(a, 1);
       }
@@ -2409,7 +2416,7 @@ class OrbeWindow {
     for (const tid of ids) {
       const tab = this.data.tabs[tid];
       tabs[tid] = tab;
-      if (!this.incognito) {
+      if (this.archives) {
         const top = store.state.archive[0];
         store.archive({ ...tab, title: tab.customTitle || tab.title, spaceId: space.id });
         if (store.state.archive[0] !== top) archived.push(store.state.archive[0]);
@@ -2752,7 +2759,7 @@ class OrbeWindow {
       const tab = this.data.tabs[tid];
       tabs[tid] = tab;
       // Comme dans Arc : tout va dans l'archive, les épinglés et le contenu des dossiers aussi.
-      if (!this.incognito) {
+      if (this.archives) {
         const top = store.state.archive[0];
         store.archive({ ...tab, title: tab.customTitle || tab.title, spaceId: space.id });
         if (store.state.archive[0] !== top) archived.push(store.state.archive[0]);
