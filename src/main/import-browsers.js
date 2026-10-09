@@ -18,7 +18,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { execFileSync } = require('child_process');
+const { execFile } = require('child_process');
 const bm = require('./import-bookmarks');
 
 const MAX_JSON = 48 * 1024 * 1024;
@@ -27,6 +27,8 @@ const MAX_SQLITE = 400 * 1024 * 1024;
 const MAX_LZ4 = 96 * 1024 * 1024;
 const MAX_ITEMS = 60000; // nœuds examinés, repris ou non
 const MAX_PROFILES = 40;
+const MAX_TEXT = 64 * 1024 * 1024; // caractères décodés d'une liste de propriétés, au total
+const SQLITE_TIMEOUT = 10000;
 const MAX_NEST = 120; // au-delà, le sous-arbre est abandonné (fichier hostile)
 
 // Dossier de chaque navigateur. macOS et Linux : sous le dossier personnel.
@@ -257,11 +259,22 @@ function firefoxRowsTree(rows) {
     if (!by.has(r.parent)) by.set(r.parent, []);
     by.get(r.parent).push(r);
   }
-  const kids = (id, nest) => (nest > MAX_NEST ? [] : (by.get(id) || []).map((r) => {
-    if (r.type === 1) return { title: r.title, url: typeof r.url === 'string' ? r.url : '' };
-    if (r.type === 2) return { title: r.title, children: kids(r.id, nest + 1) };
-    return null;
-  }).filter(Boolean));
+  // Un dossier n'est déroulé qu'une fois : des identifiants en double (base
+  // fabriquée) feraient sinon doubler le travail à chaque niveau. Le nombre de
+  // nœuds produits est borné de toute façon.
+  const opened = new Set();
+  let made = 0;
+  const kids = (id, nest) => {
+    if (nest > MAX_NEST || opened.has(id)) return [];
+    opened.add(id);
+    const out = [];
+    for (const r of by.get(id) || []) {
+      if (++made > MAX_ITEMS) break;
+      if (r.type === 1) out.push({ title: r.title, url: typeof r.url === 'string' ? r.url : '' });
+      else if (r.type === 2) out.push({ title: r.title, children: kids(r.id, nest + 1) });
+    }
+    return out;
+  };
   if (!Object.keys(roots).length) throw new Error('unreadable');
   const group = (k) => (roots[k] ? { title: conf.labels[k], children: kids(roots[k].id, 0) } : null);
   return layout(roots.bar ? kids(roots.bar.id, 0) : [], [group('menu'), group('other'), group('mobile')]);
@@ -269,26 +282,38 @@ function firefoxRowsTree(rows) {
 
 // La base est copiée (avec son journal) dans un dossier temporaire : Firefox la
 // verrouille quand il tourne, et rien ne doit être écrit dans son profil.
-function readFirefoxSqlite(dir) {
+// La base est un fichier étranger : sqlite3 est lancé en mode sûr (`-safe` :
+// ni `writefile()`, ni `edit()`, ni `load_extension()`, ni commande du shell,
+// qu'une vue ou un déclencheur de la base pourraient appeler), en lecture seule,
+// sans lire son fichier de démarrage (`-batch`, entrée fermée). Un sqlite3 trop
+// ancien pour `-safe` échoue : on passe alors à la sauvegarde. L'appel ne bloque
+// pas le processus principal, et il est borné dans le temps.
+const SQLITE_ARGS = ['-safe', '-readonly', '-batch', '-json'];
+function runSqlite(bin, db, sql) {
+  return new Promise((resolve, reject) => {
+    execFile(bin, [...SQLITE_ARGS, db, sql], { encoding: 'utf8', timeout: SQLITE_TIMEOUT, maxBuffer: 96 * 1024 * 1024, windowsHide: true, env: { PATH: '', HOME: path.dirname(db) } }, (err, out) => (err ? reject(err) : resolve(out)));
+  });
+}
+async function readFirefoxSqlite(dir) {
   const bin = sqliteBin();
   const db = path.join(dir, 'places.sqlite');
   if (!bin || !isFile(db)) throw new Error('nosqlite');
   if (fs.statSync(db).size > MAX_SQLITE) throw new Error('tooBig');
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'orbe-import-'));
+  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'orbe-import-'));
   try {
     const copy = path.join(tmp, 'places.sqlite');
-    fs.copyFileSync(db, copy);
-    if (isFile(db + '-wal') && fs.statSync(db + '-wal').size <= MAX_SQLITE) fs.copyFileSync(db + '-wal', copy + '-wal');
+    await fs.promises.copyFile(db, copy);
+    if (isFile(db + '-wal') && fs.statSync(db + '-wal').size <= MAX_SQLITE) await fs.promises.copyFile(db + '-wal', copy + '-wal');
     const sql = `SELECT b.id AS id, b.type AS type, b.parent AS parent, b.guid AS guid, b.title AS title, p.url AS url FROM moz_bookmarks b LEFT JOIN moz_places p ON p.id = b.fk ORDER BY b.parent, b.position LIMIT ${MAX_ITEMS};`;
-    const out = execFileSync(bin, ['-json', copy, sql], { encoding: 'utf8', timeout: 20000, maxBuffer: 96 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true });
+    const out = await runSqlite(bin, copy, sql);
     return { ...build(firefoxRowsTree(out.trim() ? JSON.parse(out) : [])), source: 'sqlite' };
   } finally {
     try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {}
   }
 }
 
-function readFirefox(dir) {
-  try { return readFirefoxSqlite(dir); } catch (err) { if (denied(err)) throw err; }
+async function readFirefox(dir) {
+  try { return await readFirefoxSqlite(dir); } catch (err) { if (denied(err)) throw err; }
   return readFirefoxBackup(dir);
 }
 
@@ -307,6 +332,11 @@ function bplist(buf) {
   if (![1, 2, 3, 4, 8].includes(offSize) || ![1, 2, 3, 4, 8].includes(refSize) || count < 1 || count > 4e6 || top >= count || table < 8 || table + count * offSize > tr) throw new Error('unreadable');
   const uint = (at, n) => { if (at < 0 || at + n > tr) throw new Error('unreadable'); let v = 0; for (let k = 0; k < n; k++) v = v * 256 + buf[at + k]; return v; };
   let visited = 0;
+  let decoded = 0;
+  // Chaque objet n'est décodé qu'une fois, quel que soit le nombre de références
+  // qui y mènent ; un objet qui se contient lui-même est refusé.
+  const memo = new Map();
+  const BUSY = Symbol('en cours');
   const lenAt = (at, info) => {
     if (info !== 15) return [info, at + 1];
     const m = buf[at + 1];
@@ -315,6 +345,13 @@ function bplist(buf) {
     return [uint(at + 2, n), at + 2 + n];
   };
   const read = (ref, nest) => {
+    if (memo.has(ref)) { const v = memo.get(ref); if (v === BUSY) throw new Error('unreadable'); return v; }
+    memo.set(ref, BUSY);
+    const v = decode(ref, nest);
+    memo.set(ref, v);
+    return v;
+  };
+  const decode = (ref, nest) => {
     if (ref >= count || nest > MAX_NEST || ++visited > 600000) throw new Error('unreadable');
     const at = uint(table + ref * offSize, offSize);
     if (at < 8 || at >= table) throw new Error('unreadable');
@@ -327,7 +364,7 @@ function bplist(buf) {
     if (type === 5 || type === 6) {
       const [n, from] = lenAt(at, info);
       const bytes = type === 5 ? n : n * 2;
-      if (n > 1e6 || from + bytes > table) throw new Error('unreadable');
+      if (n > 1e6 || from + bytes > table || (decoded += n) > MAX_TEXT) throw new Error('unreadable');
       if (type === 5) return buf.toString('latin1', from, from + bytes);
       const swapped = Buffer.from(buf.subarray(from, from + bytes));
       swapped.swap16();
@@ -351,8 +388,9 @@ function bplist(buf) {
 
 function safariTree(root) {
   if (!root || typeof root !== 'object' || !Array.isArray(root.Children)) throw new Error('unreadable');
+  let made = 0;
   const conv = (n, nest) => {
-    if (!n || typeof n !== 'object' || nest > MAX_NEST) return null;
+    if (!n || typeof n !== 'object' || nest > MAX_NEST || ++made > MAX_ITEMS) return null;
     if (n.WebBookmarkType === 'WebBookmarkTypeLeaf') return { title: n.URIDictionary && typeof n.URIDictionary === 'object' ? n.URIDictionary.title : n.Title, url: typeof n.URLString === 'string' ? n.URLString : '' };
     if (n.WebBookmarkType === 'WebBookmarkTypeList') return { title: n.Title, children: (Array.isArray(n.Children) ? n.Children : []).map((c) => conv(c, nest + 1)).filter(Boolean) };
     return null; // « Historique » (proxy)
@@ -405,8 +443,9 @@ function detect({ platform = conf.platform } = {}) {
 
 // Lit les signets d'un profil. L'identifiant du profil vient de l'interface : il
 // n'est accepté que s'il figure dans la liste trouvée sur le disque.
+// Asynchrone : la base de Firefox est lue par un autre processus, sans figer l'interface.
 // Rend { nodes, bookmarks, folders, dropped, truncated, source, date?, browser, name } ou { error }.
-function read(browserId, profileId, { platform = conf.platform } = {}) {
+async function read(browserId, profileId, { platform = conf.platform } = {}) {
   const b = BROWSERS.find((x) => x.id === browserId);
   const root = b ? rootOf(b, platform) : '';
   if (!root) return { error: 'missing' };
@@ -420,7 +459,7 @@ function read(browserId, profileId, { platform = conf.platform } = {}) {
     } else {
       const p = firefoxProfiles(root).find((x) => x.id === profileId);
       if (!p) return { error: 'missing' };
-      data = readFirefox(p.dir);
+      data = await readFirefox(p.dir);
     }
     if (!data.bookmarks) return { error: 'empty', ...data, browser: b.id, name: b.name };
     return { ...data, browser: b.id, name: b.name };
@@ -430,4 +469,4 @@ function read(browserId, profileId, { platform = conf.platform } = {}) {
   }
 }
 
-module.exports = { BROWSERS, configure, detect, read, build, readChromium, readSafari, readFirefoxBackup, readFirefoxSqlite, firefoxProfiles, chromiumProfiles, bplist, lz4Block, mozlz4, sqliteBin, rootOf, conf };
+module.exports = { SQLITE_ARGS, firefoxRowsTree, safariTree, MAX_ITEMS, BROWSERS, configure, detect, read, build, readChromium, readSafari, readFirefoxBackup, readFirefoxSqlite, firefoxProfiles, chromiumProfiles, bplist, lz4Block, mozlz4, sqliteBin, rootOf, conf };

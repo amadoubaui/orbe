@@ -436,9 +436,24 @@ function offView() {
 // Par minuterie, pas par image : une fenêtre masquée ou recouverte ne dessine
 // pas, et le repère resterait en attente.
 function offViewSoon() { if (!offFrame) offFrame = setTimeout(offView, 60); }
+let offSettle = 0;
 offEl.onclick = () => {
   const row = document.querySelector('#scroll .row.tab.active');
-  if (row) row.scrollIntoView({ block: 'nearest', behavior: reducedMotion.matches ? 'auto' : 'smooth' });
+  if (!row) return;
+  row.scrollIntoView({ block: 'nearest', behavior: reducedMotion.matches ? 'auto' : 'smooth' });
+  // Le défilement doux avance image par image : fenêtre recouverte ou écran
+  // verrouillé (aucune image présentée), ou liste redessinée en route, il
+  // s'arrête à mi-chemin et le repère reste. Passé son temps normal, si la ligne
+  // n'est toujours pas en vue, on y va d'un coup.
+  clearTimeout(offSettle);
+  offSettle = setTimeout(() => {
+    const now = document.querySelector('#scroll .row.tab.active');
+    if (!now) return;
+    const r = now.getBoundingClientRect();
+    const sr = scroller.getBoundingClientRect();
+    if (r.top < sr.top || r.bottom > sr.bottom) now.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+    offViewSoon();
+  }, 900);
 };
 addEventListener('resize', offViewSoon);
 // Les lignes qui apparaissent ou se replient déplacent les autres : on revérifie à la fin.
