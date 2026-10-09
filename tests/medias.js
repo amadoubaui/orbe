@@ -165,6 +165,27 @@ module.exports = async function mediasTests(ctx) {
     const okPrev = await w.mediaAct({ id: p1, act: 'prev' });
     check('piste suivante puis précédente : les gestionnaires de la page sont appelés', okNext === true && okPrev === true && (await js(p1, 'calls.join()')) === 'next,prev');
 
+    // Geste prêté à la page : lecture / pause et pistes seulement.
+    const flagOf = (id, a) => {
+      const wc = wcOf(id);
+      const real = wc.executeJavaScript;
+      const seen = [];
+      wc.executeJavaScript = function spy(code, gesture) { seen.push(gesture === true); return real.call(this, code, gesture); };
+      let r;
+      try { r = w.mediaAct({ id, ...a }); } finally { wc.executeJavaScript = real; }
+      return Promise.resolve(r).then(() => seen.join());
+    };
+    const flags = {};
+    for (const a of [{ act: 'toggle' }, { act: 'toggle' }, { act: 'prev' }, { act: 'next' }, { act: 'back' }, { act: 'forward' }, { act: 'seek', value: 5 }]) flags[a.act] = await flagOf(p1, a);
+    check('geste prêté à la page : oui pour lecture / pause et piste précédente / suivante, non pour ±15 s et la recherche',
+      flags.toggle === 'true' && flags.prev === 'true' && flags.next === 'true' && flags.back === 'false' && flags.forward === 'false' && flags.seek === 'false', JSON.stringify(flags));
+    await until(async () => (await js(p1, 'document.getElementById("a").paused')) === false, 'lecture reprise');
+    // L'activation laissée par les gestes précédents s'éteint seule (5 s) ; une recherche n'en redonne pas.
+    const active = () => wcOf(p1).executeJavaScript('navigator.userActivation.isActive', false);
+    await until(async () => (await active()) === false, 'activation éteinte', 15000);
+    await w.mediaAct({ id: p1, act: 'seek', value: 8 });
+    check('après une recherche depuis le lecteur : la page n’a aucune activation d’utilisateur (navigator.userActivation.isActive)', (await active()) === false && (await wcOf(p1).executeJavaScript('document.getElementById("a").currentTime', false)) >= 8);
+
     // Son coupé depuis le lecteur.
     w.mediaAct({ id: p1, act: 'mute' });
     check('muet depuis le lecteur : son de l’onglet coupé, puis rétabli', d.tabs[p1].muted === true && wcOf(p1).isAudioMuted() && players()[0].muted === true && (w.mediaAct({ id: p1, act: 'mute' }), d.tabs[p1].muted === false));
@@ -181,7 +202,8 @@ module.exports = async function mediasTests(ctx) {
     check('barre latérale : deux cartes, dans le même ordre', (await ui('[...document.querySelectorAll("#media .mp:not(.out)")].map((el) => el.dataset.id).join()')) === [p2, p1].join());
 
     // La croix : le son s'arrête, le lecteur s'en va, l'onglet reste.
-    w.mediaAct({ id: p2, act: 'close' });
+    const closeFlag = await flagOf(p2, { act: 'close' });
+    check('croix : la page est mise en pause sans geste prêté', closeFlag === 'false', closeFlag);
     await until(async () => (await js(p2, 'document.getElementById("a").paused')) === true, 'second onglet en pause');
     check('croix : lecture arrêtée, lecteur retiré, onglet gardé', players().map((p) => p.id).join() === p1 && !!d.tabs[p2] && win.live.has(p2));
     await until(() => ui('document.querySelectorAll("#media .mp").length === 1'), 'carte retirée');
@@ -190,6 +212,18 @@ module.exports = async function mediasTests(ctx) {
     store.state.settings.mediaControls = false;
     check('réglage « Lecteur réduit » coupé : rien n’est montré', players().length === 0);
     store.state.settings.mediaControls = true;
+
+    // Autre site dans le même onglet : ce que l'ancien annonçait est oublié.
+    check('avant de changer de page : titre et pochette annoncés sont retenus', !!win.live.get(p1).media && win.live.get(p1).media.track !== '');
+    wcOf(p1).loadURL(base + '/calme');
+    await until(() => d.tabs[p1].title === 'Calme' && !wcOf(p1).isLoading(), 'onglet passé sur une autre page');
+    const after = win.live.get(p1).media;
+    check('navigation du cadre principal : titre, artiste et pochette de l’ancienne page ne sont plus montrés', !after || (after.track === '' && after.artist === '' && !after.art && !after.artSrc), JSON.stringify(after || null).slice(0, 160));
+    wcOf(p1).loadURL(base + '/piste1');
+    await until(() => d.tabs[p1].title === 'Piste 1' && !wcOf(p1).isLoading(), 'onglet revenu sur la piste');
+    await js(p1, 'start("Retour")');
+    await until(() => wcOf(p1).isCurrentlyAudible(), 'onglet de nouveau audible');
+    await until(() => players().length === 1 && players()[0].title === 'Retour', 'lecteur de retour');
 
     // Retour à l'onglet : son lecteur disparaît.
     w.mediaAct({ id: p1, act: 'open' });

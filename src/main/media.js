@@ -27,6 +27,8 @@ const LIMITS = {
   step: 15, // saut avant / arrière (s)
   drift: 1.5, // écart de position (s) au-delà duquel la coque est recalée
 };
+// Gestes qui prêtent une activation d'utilisateur à la page (voir `act`).
+const GESTURE = new Set(['toggle', 'prev', 'next']);
 const ACTIONS = new Set(['toggle', 'prev', 'next', 'back', 'forward', 'seek', 'close', 'mute', 'open']);
 const attached = new WeakSet();
 
@@ -232,14 +234,18 @@ function make(env) {
     if (!players(w).includes(id)) return false;
     const rt = rtOf(id);
     if (!rt) return false;
-    const run = (code) => rt.wc.executeJavaScript(code, true).then((r) => { refresh(w, id); return r; }, () => false);
+    // Geste prêté à la page : seulement là où elle en a besoin pour lancer la lecture
+    // (lecture / pause, piste précédente / suivante). Se déplacer dans le morceau,
+    // couper le son ou fermer le lecteur ne lui donnent aucune activation : elle ne
+    // peut pas s'en servir pour ouvrir une fenêtre ou passer en plein écran.
+    const run = (code) => rt.wc.executeJavaScript(code, GESTURE.has(a.act)).then((r) => { refresh(w, id); return r; }, () => false);
     switch (a.act) {
       case 'open': return w.activate(id);
       case 'mute': return w.toggleMute(id);
       case 'close':
         // La croix : le son s'arrête, le lecteur s'en va ; l'onglet reste.
         rt.playing = false;
-        rt.wc.executeJavaScript(`document.querySelectorAll('video, audio').forEach((x) => { try { x.pause(); } catch {} })`, true).catch(() => {});
+        rt.wc.executeJavaScript(`document.querySelectorAll('video, audio').forEach((x) => { try { x.pause(); } catch {} })`, false).catch(() => {});
         drop(w, id);
         pushAll();
         return true;
@@ -272,4 +278,4 @@ function attach(ses) {
   ses.registerPreloadScript({ type: 'frame', filePath: PRELOAD, id: 'orbe-media' });
 }
 
-module.exports = { make, attach, clean, artworkKind, loadArtwork, shrink, LIMITS, INFO };
+module.exports = { make, attach, clean, artworkKind, loadArtwork, shrink, LIMITS, INFO, GESTURE };

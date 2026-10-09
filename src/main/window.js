@@ -1149,6 +1149,9 @@ class OrbeWindow {
       touch();
     };
     wc.on('did-navigate', (e, url) => { rt.typed = false; rt.objected = false; rt.sleeping = false; hooks.navigated(rt); navigated(url); });
+    // Nouveau document : titre, artiste et pochette annoncés par le précédent ne valent
+    // plus rien (le lecteur miniature ne montre jamais ceux d'un autre site).
+    wc.on('did-navigate', () => { rt.media = null; });
     // Boost du site : son CSS, puis son script s'il y est permis (une fois par chargement).
     if (!incognito) wc.on('dom-ready', () => { boosts.apply(wc); boosts.runScript(wc); });
     // Changement de site : le CSS du Boost de l'ancien site est retiré dès que le nouveau document est en place.
