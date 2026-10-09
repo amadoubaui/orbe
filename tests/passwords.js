@@ -561,10 +561,15 @@ module.exports = async function passwordTests(ctx) {
   const mw = passwords.openManager();
   await until(() => mw.webContents.executeJavaScript('document.querySelectorAll("#list .line").length'), 'liste du gestionnaire');
   const dom = await mw.webContents.executeJavaScript('document.documentElement.outerHTML + JSON.stringify(state)');
-  // En cas d'échec, on dit lequel des quatre constats tombe, avec ce qui entoure le texte trouvé.
+  // Tous les mots de passe réellement rangés dans le coffre, tous profils confondus
+  // (et non le seul préfixe « pw- » des essais, qu'un identifiant tiré au hasard
+  // peut contenir) ; les très courts (« v », « y ») ne prouveraient rien.
+  const secrets = [...new Set(store.state.profiles.flatMap((p) => entries(p.id).map((e) => e.password)).concat([P1, P2]))].filter((x) => typeof x === 'string' && x.length >= 6);
+  const leaked = secrets.filter((x) => dom.includes(x));
+  // En cas d'échec, on dit lequel des constats tombe, avec ce qui entoure le texte trouvé.
   const around = (needle) => { const i = dom.indexOf(needle); return i < 0 ? null : dom.slice(Math.max(0, i - 60), i + needle.length + 30); };
-  check('gestionnaire : la liste s’affiche sans aucun mot de passe', dom.includes('alice') && !dom.includes(P1) && !dom.includes(P2) && !dom.includes('pw-'),
-    JSON.stringify({ alice: dom.includes('alice'), lignes: (dom.match(/class="line/g) || []).length, P1: around(P1), P2: around(P2), 'pw-': around('pw-') }));
+  check('gestionnaire : la liste s’affiche sans aucun mot de passe', dom.includes('alice') && secrets.length >= 8 && leaked.length === 0,
+    JSON.stringify({ alice: dom.includes('alice'), lignes: (dom.match(/class="line/g) || []).length, secrets: secrets.length, fuites: leaked.map(around), 'pw-': around('pw-') }));
   const aliceId = entries().find((e) => e.username === 'alice').id;
   authAnswer = false;
   const refused = await mw.webContents.executeJavaScript(`O.send('pw:reveal', { profile: 'default', id: ${JSON.stringify(aliceId)} })`);

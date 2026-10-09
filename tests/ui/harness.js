@@ -311,6 +311,27 @@ async function lancer() {
   // `avantLacher` : appelé pointeur arrivé, bouton encore enfoncé.
   ctx.glisser = async (de, vers, { pause = 120, avantLacher = null } = {}) => {
     const m = ctx.shell.mouse;
+    // Trace du geste vue par la coque (début, survols, dépôt, fin), rendue avec le
+    // repère : un glisser qui ne donne rien dit ainsi où il s'est arrêté.
+    await ctx.shell.evaluate(() => {
+      if (!window.__geste) {
+        window.__geste = [];
+        for (const n of ['dragstart', 'dragenter', 'drop', 'dragend']) document.addEventListener(n, (e) => window.__geste.push(`${n}@${Math.round(e.clientX)},${Math.round(e.clientY)}`), true);
+        // Événements répétés : comptés (« dragover×12 », « mousemove×7 », « rendu×2 »).
+        const compter = (nom) => { const g = window.__geste; const d = g[g.length - 1]; if (d && d.startsWith(nom + '×')) g[g.length - 1] = nom + '×' + (Number(d.slice(nom.length + 1)) + 1); else g.push(nom + '×1'); };
+        document.addEventListener('dragover', () => compter('dragover'), true);
+        for (const n of ['mousedown', 'mouseup']) document.addEventListener(n, () => window.__geste.push(n), true);
+        document.addEventListener('mousemove', () => compter('mousemove'), true);
+        // Liste redessinée pendant le geste (lignes ajoutées ou retirées).
+        new MutationObserver((ms) => { if (ms.some((m) => [...m.addedNodes, ...m.removedNodes].some((n) => n.classList && n.classList.contains('row')))) compter('rendu'); }).observe(document.getElementById('scroll') || document.body, { childList: true, subtree: true });
+      }
+      window.__geste.length = 0;
+    }).catch(() => {});
+    // Vues de l'interface nées pendant le geste (réserve de la coque) : notées aussi.
+    const nees = [];
+    const nee = (p) => nees.push(`${Date.now() - debut} ms ${p.url().slice(-24)}`);
+    const debut = Date.now();
+    app.on('window', nee);
     const geste = (async () => {
       await m.move(de.x, de.y);
       await m.down();
@@ -336,6 +357,12 @@ async function lancer() {
     if (avantLacher) await delai(avantLacher(), 8000, 'avant de lâcher');
     await delai(m.up(), 5000, 'déposer');
     await sleep(60);
+    app.off('window', nee);
+    repere.geste = await ctx.shell.evaluate(() => (window.__geste || []).slice()).catch(() => []);
+    repere.vuesNees = nees;
+    repere.duree = Date.now() - debut;
+    repere.de = de;
+    repere.vers = { x: Math.round(vers.x), y: Math.round(vers.y) };
     return repere;
   };
 

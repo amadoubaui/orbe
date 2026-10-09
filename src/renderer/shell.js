@@ -440,6 +440,15 @@ addEventListener('resize', offViewSoon);
 document.getElementById('scroll').addEventListener('animationend', offViewSoon);
 
 // --- Renommage sur place ----------------------------------------------------
+// Renommage en cours ? Si le champ a disparu sans prévenir (liste redessinée
+// pendant la saisie : un champ retiré de la page ne signale pas qu'il perd le
+// clavier), l'état est remis à zéro — sinon plus aucun renommage, balayage entre
+// Espaces ni Suppr sur la sélection n'était accepté jusqu'au rechargement.
+function editingNow() {
+  if (editing && !document.querySelector('input.rename')) editing = null;
+  return editing;
+}
+
 function startRename(id) {
   if (!S) return;
   let holder;
@@ -454,7 +463,7 @@ function startRename(id) {
     current = holder.textContent;
     row.scrollIntoView({ block: 'nearest' });
   }
-  if (!holder || editing) return;
+  if (!holder || editingNow()) return;
   editing = id;
   const input = document.createElement('input');
   input.className = 'rename';
@@ -914,7 +923,7 @@ sidebar.addEventListener('wheel', (e) => {
   lastWheel = now;
   clearTimeout(wheelIdle);
   wheelIdle = setTimeout(() => { wheelLocked = false; lastWheel = 0; slideRelease(); }, PAGER.idle);
-  if (wheelLocked || !S || drag || editing) return;
+  if (wheelLocked || !S || drag || editingNow()) return;
   if (reducedMotion.matches) {
     // Sans animation : un geste franc change d'Espace, rien ne glisse.
     swipeSum += e.deltaX;
@@ -1462,7 +1471,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && drag) { if (!drag.settling) endDrag(); }
   else if (e.key === 'Escape' && sel.size) setSel([]);
   // Suppr ou Retour arrière, la barre latérale ayant le clavier : archive la sélection.
-  else if ((e.key === 'Delete' || e.key === 'Backspace') && sel.size && !editing) {
+  else if ((e.key === 'Delete' || e.key === 'Backspace') && sel.size && !editingNow()) {
     e.preventDefault();
     send('close', { ids: [...sel] });
   }

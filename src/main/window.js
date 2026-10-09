@@ -37,6 +37,8 @@ const UI_PREFS = Object.freeze({
 const STATUS_MAX = 2000;
 const ICON_MAX = 65536;
 // Processus de la coque perdu : délai avant de la recharger, selon le nombre de pertes dans la minute.
+// Durée pendant laquelle un glisser signalé retient la réserve de vues (ms).
+const DRAG_HOLD = 8000;
 const uiRetryDelay = (n) => (n <= 3 ? 150 : Math.min(60000, 5000 * 2 ** (n - 4)));
 // Vues d'appoint tenues prêtes par la coque (voir `fillSpares`).
 const RESERVE = 'overlay.html#reserve';
@@ -390,6 +392,17 @@ class OrbeWindow {
   // Tient prêtes quelques vues d'appoint, et la barre flottante quand la barre latérale est masquée.
   fillSpares() {
     if (this.win.isDestroyed() || this.closing) return;
+    // Jamais pendant un glisser dans la barre latérale. Le premier glisser crée la
+    // zone de dépôt, qui prend une vue en réserve ; la remplacer aussitôt faisait
+    // ouvrir une vue par la coque (`window.open`) en plein geste, et le glisser
+    // pouvait alors ne plus rien recevoir : ni survol, ni dépôt (relevé dans les
+    // tests d'interface : « dragstart » puis « dragend », rien entre les deux).
+    // La réserve se refait à la fin du geste, ou après un délai s'il n'est jamais signalé.
+    if (this.dragSince && Date.now() - this.dragSince < DRAG_HOLD) {
+      clearTimeout(this.spareLater);
+      this.spareLater = setTimeout(() => { this.dragSince = 0; this.fillSpares(); }, DRAG_HOLD);
+      return;
+    }
     const ui = this.ui.webContents;
     if (ui.isDestroyed() || ui.isCrashed() || loadingUi.has(ui)) return;
     const count = (page) => this.spares.filter((s) => s.page === page).length + this.wanted.filter((x) => x.page === page).length;
@@ -808,6 +821,7 @@ class OrbeWindow {
     clearInterval(this.peekTimer);
     clearTimeout(this.toastTimer);
     clearTimeout(this.focusTimer);
+    clearTimeout(this.spareLater);
     windows.delete(this.id);
     for (const [id, rt] of [...live]) if (rt.owner === this) OrbeWindow.destroyView(id);
     this.closePeek({ animate: false });
@@ -2722,8 +2736,11 @@ class OrbeWindow {
   // couvre la page : y lâcher l'onglet crée une vue scindée.
   dragZone(on) {
     if (this.win.isDestroyed()) return;
+    this.dragSince = on ? Date.now() : 0; // voir fillSpares
     if (!on) {
       if (this.dropView) { this.dropView.setVisible(false); try { this.win.contentView.removeChildView(this.dropView); } catch {} }
+      clearTimeout(this.spareLater);
+      this.fillSpares();
       return;
     }
     if (!this.activeId || this.peekState || this.modalMode) return;

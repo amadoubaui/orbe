@@ -489,7 +489,13 @@ module.exports = async function selftest(ctx) {
   w.newSpace();
   const s2 = w.space;
   check('nouvel Espace créé et affiché', w.data.spaces.length === 2 && w.activeId === null);
-  w.rename(s2.id, 'Projets');
+  // Le nouvel Espace ouvre son champ de nom : on y tape le nom et on valide, comme
+  // quelqu'un le ferait. (Renommé d'ici sans passer par le champ, celui-ci restait
+  // ouvert quand la fenêtre d'essai n'a pas le premier plan — et tant qu'un
+  // renommage est en cours, la barre ignore le balayage entre Espaces, à dessein.)
+  await until(() => ui('!!document.querySelector("#space-name input.rename")'), 'champ de nom du nouvel Espace');
+  await ui(`(() => { const i = document.querySelector('#space-name input.rename'); i.value = 'Projets'; i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); })()`);
+  await until(() => s2.name === 'Projets' && ui('!document.querySelector("input.rename") && editing === null'), 'Espace renommé par son champ');
   w.setTheme({ color: '#10b981', icon: '🚀' });
   const c = w.newTab(base + '/b');
   await until(() => titleOf(c.id) === 'Page B', 'page dans le second Espace');
