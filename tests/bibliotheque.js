@@ -459,11 +459,16 @@ module.exports = async function bibliothequeTests(ctx) {
     const flush0 = store.flush;
     const confirm0 = backups.env.confirm;
     const relaunch0 = backups.env.relaunch;
+    const quit0 = backups.env.quit;
+    const quitOk0 = backups.env.quitOk;
     const asked3 = [];
     let agree3 = false;
     let relaunched = 0;
+    let quits3 = 0;
     backups.env.confirm = async (opts) => { asked3.push(opts); return agree3; };
     backups.env.relaunch = () => { relaunched += 1; };
+    backups.env.quit = () => { quits3 += 1; };
+    backups.env.quitOk = async () => true;
     store.flush = () => {};
     store.file = state;
     fs.writeFileSync(path.join(backups.dirOf(state), name(2026, 10, 19, 9)), JSON.stringify({ spaces: [{ id: 'a', name: 'Hier' }], marque: 0 }));
@@ -472,15 +477,18 @@ module.exports = async function bibliothequeTests(ctx) {
     const refused3 = [await backups.restore('../orbe.json'), await backups.restore('inconnue.json'), await backups.restore(name(2026, 10, 18, 9)), await backups.restore(null)];
     check('restauration : nom inconnu, chemin, ou sauvegarde qui n’est pas un état d’Orbe : refusés sans question', refused3.every((r) => r === false) && asked3.length === 0 && store.file === state, JSON.stringify(refused3));
     const cancelled = await backups.restore(wanted3);
-    check('« Restaurer une sauvegarde » : la question dit la date ; « Annuler » ne touche à rien', cancelled === false && asked3.length === 1 && asked3[0].message === T('backup.confirm') && /19/.test(asked3[0].detail) && JSON.parse(fs.readFileSync(state, 'utf8')).marque === 2 && relaunched === 0);
+    check('« Restaurer une sauvegarde » : la question dit la date ; « Annuler » ne touche à rien', cancelled === false && asked3.length === 1 && asked3[0].message === T('backup.confirm') && /19/.test(asked3[0].detail) && JSON.parse(fs.readFileSync(state, 'utf8')).marque === 2 && relaunched === 0 && quits3 === 0);
     agree3 = true;
     const before3 = backups.list(state).length;
     const done3 = await backups.restore(wanted3);
+    // Orbe s'arrête normalement ; l'état n'est remplacé qu'une fois l'arrêt acquis (« will-quit »).
+    const pending3 = JSON.parse(fs.readFileSync(state, 'utf8')).marque === 2 && quits3 === 1 && backups.restoring();
+    const applied3 = backups.apply();
     const fileAfter = store.file;
     store.file = file0;
     store.flush = flush0;
     check('restauration acceptée : l’état revient à la sauvegarde, l’état quitté est sauvegardé d’abord, Orbe se relance sans rien réécrire',
-      done3 === true && JSON.parse(fs.readFileSync(state, 'utf8')).marque === 0 && relaunched === 1 && fileAfter === null
+      done3 === true && pending3 && applied3 === true && JSON.parse(fs.readFileSync(state, 'utf8')).marque === 0 && relaunched === 1 && fileAfter === null
       && backups.list(state).some((b) => JSON.parse(fs.readFileSync(b.file, 'utf8')).marque === 2) && before3 > 0);
     store.file = state;
     const items3 = backups.menuItems();
@@ -495,6 +503,8 @@ module.exports = async function bibliothequeTests(ctx) {
       && !!trouble && trouble.submenu.items.some((it) => it.label === T('backup.menu') && !!it.submenu));
     backups.env.confirm = confirm0;
     backups.env.relaunch = relaunch0;
+    backups.env.quit = quit0;
+    backups.env.quitOk = quitOk0;
     try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {}
   }
 

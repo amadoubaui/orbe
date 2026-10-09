@@ -409,14 +409,36 @@ module.exports = async function fenetresTests(ctx) {
     await ed(`O.send('boost:get').then(draw)`);
     check('éditeur : JavaScript coupé dans les réglages → case grisée, avec l’explication', await ed(`document.getElementById('js-on').disabled && !document.getElementById('js-on').checked && !document.getElementById('js-off').hidden`));
     const untouched = JSON.stringify(boosts.get(host));
-    check('messages « boost: » venus d’une autre vue que l’éditeur : ignorés', await editor.action('boost:set', { css: 'body { display: none }' }, w.ui.webContents) === null && await editor.action('boost:reset', null, wc) === null && JSON.stringify(boosts.get(host)) === untouched);
-    await editor.action('boost:set', { css: 'p { margin: 1px }', inconnu: 1, host: 'ailleurs.example' }, bwc);
+    check('messages « boost: » venus d’une autre vue que l’éditeur : ignorés', await editor.action('boost:set', { host, patch: { css: 'body { display: none }' } }, w.ui.webContents) === null && await editor.action('boost:reset', { host }, wc) === null && JSON.stringify(boosts.get(host)) === untouched);
+    await editor.action('boost:set', { host, patch: { css: 'p { margin: 1px }', inconnu: 1, host: 'ailleurs.example' } }, bwc);
     check('éditeur : seuls les champs connus sont écrits, pour le site de l’éditeur', boosts.get(host).css === 'p { margin: 1px }' && !boosts.has('ailleurs.example') && !('inconnu' in store.state.boosts[host]));
+    // Chaque message nomme le site qu'il croit modifier : sans ce nom, ou avec un autre, rien n'est écrit.
+    const before6 = JSON.stringify(store.state.boosts);
+    const refused6 = [
+      await editor.action('boost:set', { css: 'p { margin: 9px }' }, bwc),
+      await editor.action('boost:set', { host: 'ailleurs.example', patch: { css: 'p { margin: 9px }' } }, bwc),
+      await editor.action('boost:reset', { host: 'ailleurs.example' }, bwc),
+      await editor.action('boost:reset', null, bwc),
+      await editor.action('boost:zap', null, bwc),
+      await editor.action('boost:reload', { host: 'ailleurs.example' }, bwc),
+      await editor.action('boost:export', { host: 'ailleurs.example' }, bwc),
+    ];
+    check('éditeur : un message sans site, ou pour un autre site que celui de l’éditeur, est refusé', refused6.every((r) => r === null) && JSON.stringify(store.state.boosts) === before6, JSON.stringify(refused6));
+    // L'éditeur est pointé sur un autre Boost pendant qu'un enregistrement différé de
+    // l'ancien site est en route : il ne doit pas atterrir sur le nouveau.
+    boosts.set('autre-site.example', { css: 'a { color: blue }' });
+    const editorHost = () => editor.state().host;
+    await editor.action('boost:edit', { host: 'autre-site.example' }, bwc);
+    const late = await editor.action('boost:set', { host, patch: { css: 'body { display: none }' } }, bwc);
+    check('éditeur pointé sur un autre site : l’enregistrement en retard de l’ancien site n’atterrit pas sur le nouveau', editorHost() === 'autre-site.example' && late === null && boosts.get('autre-site.example').css === 'a { color: blue }' && boosts.get(host).css === 'p { margin: 1px }');
+    boosts.remove('autre-site.example');
+    commands.hooks.openBoost(w);
+    await until(() => editorHost() === host && !bwc.isLoading() && bwc.executeJavaScript('typeof B === "object" && !!B && B.host').then((h) => h === host).catch(() => false), 'éditeur revenu sur le site de l’onglet');
     // L'onglet change de site pendant que l'éditeur est ouvert : rien n'est écrit pour le nouveau site.
     wc.loadURL(`http://localhost:${port}/p/ailleurs`);
     await until(() => d.tabs[T].title === 'Page ailleurs', 'onglet parti ailleurs');
-    const st = await editor.action('boost:set', { css: 'p { margin: 2px }' }, bwc);
-    check('éditeur ouvert, onglet parti sur un autre site : le Boost modifié reste celui du site d’origine', st.host === host && st.shown === false && boosts.get(host).css === 'p { margin: 2px }' && !boosts.has(`localhost:${port}`) && await editor.action('boost:zap', null, bwc).then((x) => x.zaps.length === 0));
+    const st = await editor.action('boost:set', { host, patch: { css: 'p { margin: 2px }' } }, bwc);
+    check('éditeur ouvert, onglet parti sur un autre site : le Boost modifié reste celui du site d’origine', st.host === host && st.shown === false && boosts.get(host).css === 'p { margin: 2px }' && !boosts.has(`localhost:${port}`) && await editor.action('boost:zap', { host }, bwc).then((x) => x.zaps.length === 0));
     wc.loadURL(base + '/boost');
     await until(() => d.tabs[T].title === 'Boost' && !win.live.get(T).loading, 'retour sur le site');
 
@@ -764,7 +786,7 @@ module.exports = async function fenetresTests(ctx) {
     const routes = settings.routes;
     const other = store.makeSpace('Travail', '💼', '#6366f1');
     d.spaces.push(other);
-    settings.routes = [{ match: '/p/regle', to: other.id }, { match: '/p/petite', to: 'little' }];
+    settings.routes = [{ match: '127.0.0.1/p/regle', to: other.id }, { match: 'localhost/p/regle', to: other.id }, { match: '127.0.0.1/p/petite', to: 'little' }, { match: 'localhost/p/petite', to: 'little' }];
     check('lien qui s’ouvrirait en aperçu : aperçu, onglet pour une réunion, aiguillage pour une règle', w.peekTarget(base + '/p/x') === 'peek' && w.peekTarget('https://meet.google.com/abc-defg-hij') === 'tab' && w.peekTarget(base + '/p/regle') === 'route' && w.peekTarget(base + '/p/petite') === 'route');
     const Pn = await open('/liens', 'Liens');
     w.togglePin(Pn);

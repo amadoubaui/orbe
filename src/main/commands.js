@@ -237,6 +237,8 @@ async function clearArchive(w) {
   if (r.response !== 0) return false;
   store.state.archive = [];
   store.save();
+  // Vidée ici, vidée aussi dans les sauvegardes de l'état (avec les onglets fermés depuis).
+  require('./backups').forget({ archiveAll: true });
   return true;
 }
 

@@ -289,6 +289,13 @@ module.exports = {
       // recouverte) : simulé ici en le rendant sans effet. Le clic doit quand même ramener la ligne.
       await shell.locator('#scroll').evaluate((el) => { el.scrollTop = 0; });
       await jusqua(() => repere.isVisible(), 'repère de nouveau visible');
+      // On a défilé ailleurs aussitôt après le clic : la liste reste où on l'a mise. (Avant, un
+      // rattrapage à délai fixe la ramenait sur l'onglet 900 ms après le clic, quoi qu'on ait fait
+      // entre-temps — et retirait le repère sous le pointeur : cet essai échouait une fois sur cinq.)
+      await ctx.sleep(1100);
+      // (Quelques points au plus : un dernier pas du défilement doux, déjà en route quand on a défilé.)
+      assert.ok((await shell.locator('#scroll').evaluate((el) => el.scrollTop)) < 40, 'la liste n’a pas été ramenée de force sur l’onglet');
+      assert.equal(await repere.isVisible(), true, 'le repère est toujours là');
       await shell.evaluate(() => {
         const vrai = Element.prototype.scrollIntoView;
         window.__doux = 0;

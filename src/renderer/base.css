@@ -132,3 +132,13 @@ html.win body, html.win kbd { font-family: 'Segoe UI Variable Text', 'Segoe UI V
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
+
+/* Adresse affichée à l'étroit (common.js, `addressInto`) : le domaine en avant ; quand la
+   place manque, le chemin cède d'abord, puis le nom d'hôte s'efface par la GAUCHE — sa
+   fin (le domaine enregistré) reste toujours visible. */
+.addr { display: flex; min-width: 0; max-width: 100%; white-space: nowrap; overflow: hidden; }
+.addr .addr-host { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; direction: rtl; }
+.addr .addr-host bdi { unicode-bidi: isolate; direction: ltr; }
+.addr .addr-rest { flex: 0 1000 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.addr .addr-sub, .addr .addr-rest { opacity: 0.6; }
+.addr .addr-domain { font-weight: 650; }

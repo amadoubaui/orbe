@@ -14,7 +14,14 @@
 //    comme « application/pdf » serait sinon ouvert en `file://` dans un onglet ;
 //  - l'ouverture automatique n'a lieu que pour un téléchargement lancé par un
 //    geste de l'utilisateur, et « toujours demander » ne laisse pas une page
-//    enchaîner les fenêtres d'enregistrement.
+//    enchaîner les fenêtres d'enregistrement ;
+//  - le fichier terminé est marqué « venu d'Internet » AVANT d'être annoncé ou
+//    ouvert, à l'endroit où il a réellement été écrit (une extension peut avoir
+//    changé son nom en route). Si la marque ne peut pas être posée, le fichier est
+//    tenu pour douteux : question avant de l'ouvrir, de le copier, de le partager
+//    ou de le glisser hors d'Orbe, et la Bibliothèque le signale ;
+//  - une image n'est décodée par Orbe (« Copier ») que si elle est petite, marquée
+//    et sans risque connu ; sinon c'est le fichier qui est copié, sans être lu.
 const { app, clipboard, ClipboardItem, dialog, nativeImage, shell, BaseWindow, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -39,6 +46,12 @@ const env = {
   openPath: (file) => shell.openPath(file),
   quit: () => app.quit(),
   reveal: (file) => shell.showItemInFolder(file),
+  // Marque « venu d'Internet » (voir `quarantine`) : true, false (échec) ou null (système sans marque).
+  quarantine: (file, url, withUrl) => quarantine(file, url, withUrl),
+  // Décodage d'une image (« Copier ») ; compté par les essais.
+  decode: (file) => nativeImage.createFromPath(file),
+  // Feuille de partage du système (macOS), pour un fichier dont la marque a manqué.
+  share: (files, parent) => { const { ShareMenu } = require('electron'); new ShareMenu({ filePaths: files }).popup(parent ? { window: parent } : undefined); },
   // Corbeille du système : le fichier s'y retrouve, rien n'est détruit.
   trash: (file) => shell.trashItem(file),
   // Menu d'un téléchargement : rend la main quand il se referme.
@@ -112,8 +125,83 @@ function quarantine(file, url, withUrl = true) {
     } else if (process.platform === 'win32') {
       const host = withUrl && /^https?:/i.test(url || '') ? `HostUrl=${String(url).replace(/[\r\n]/g, '')}\r\n` : '';
       fs.writeFile(file + ':Zone.Identifier', `[ZoneTransfer]\r\nZoneId=3\r\n${host}`, (err) => resolve(!err));
-    } else resolve(false);
+    } else resolve(null); // autre système : pas de marque de ce genre
   });
+}
+
+// Pose la marque, avec une seconde tentative. Renvoie true, false (le fichier n'est
+// pas marqué) ou null (système sans marque).
+async function mark(file, url, withUrl = true) {
+  let ok = await env.quarantine(file, url, withUrl);
+  if (ok === false) ok = await env.quarantine(file, url, withUrl);
+  return ok;
+}
+
+// « Enregistrer la page » : la page et son dossier « …_files » (images, scripts,
+// feuilles de style) viennent d'Internet eux aussi. Electron n'annonce pas cet
+// enregistrement par « will-download » : il est marqué ici, fichier par fichier.
+const TREE_MAX = 5000;
+async function markTree(file, url, withUrl = true) {
+  const files = [file];
+  const dir = file.replace(/\.[^./\\]+$/, '') + '_files';
+  const walk = (d, depth) => {
+    let names = [];
+    try { names = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
+    for (const n of names) {
+      if (files.length >= TREE_MAX) return;
+      const p = path.join(d, n.name);
+      if (n.isDirectory()) { if (depth < 4) walk(p, depth + 1); } else if (n.isFile()) files.push(p);
+    }
+  };
+  walk(dir, 0);
+  let all = true;
+  for (const f of files) { if (!fs.existsSync(f)) continue; if ((await mark(f, url, withUrl)) === false) all = false; }
+  return { files, ok: all };
+}
+
+// Fichier resté sans marque : douteux jusqu'à ce qu'elle soit posée.
+const unmarked = (d) => !!d && d.marked === false;
+const accepted = new WeakSet(); // enregistrements sans marque que l'utilisateur a accepté d'utiliser (cette exécution)
+const records = new WeakMap(); // DownloadItem -> enregistrement
+
+// Avant d'ouvrir, de copier, de partager ou de glisser un fichier sans marque :
+// nouvelle tentative, puis question. Renvoie true si l'on peut continuer.
+async function cleared(d, parent) {
+  if (!unmarked(d)) return true;
+  const ok = await mark(d.path, d.url, !volatileRecords.has(d));
+  if (ok !== false) { d.marked = true; if (!volatileRecords.has(d)) store.save(); return true; }
+  let host = '';
+  try { host = new URL(d.url).host; } catch {}
+  const yes = await env.confirm(parent, {
+    type: 'warning', message: t('dl.unmarkedTitle', { name: d.name }), detail: t('dl.unmarkedDetail', { host: host || '?' }), buttons: [t('dl.unmarkedGo'), t('sheet.cancel')], defaultId: 1, cancelId: 1,
+  });
+  if (yes) accepted.add(d);
+  return yes;
+}
+// Glisser hors d'Orbe ne peut pas attendre une réponse : permis seulement si la
+// marque est posée, ou si l'utilisateur a déjà accepté ce fichier.
+const dragAllowed = (d) => !unmarked(d) || accepted.has(d);
+
+// Nom voulu par une extension (chrome.downloads.download({ filename })) : réduit
+// à un simple nom comme celui d'un site, dans le dossier déjà choisi, sans jamais
+// remplacer un fichier. L'enregistrement de la Bibliothèque suit. Si l'utilisateur
+// a choisi lui-même l'emplacement (« toujours demander »), son choix reste.
+function rename(item, wanted) {
+  let current = '';
+  try { current = item.getSavePath() || ''; } catch {}
+  if (!current || typeof wanted !== 'string' || !wanted.trim()) return current;
+  const d = records.get(item);
+  if (d && d.asked) return current;
+  const target = uniquePath(path.dirname(current), safeName(wanted));
+  item.setSavePath(target);
+  if (d) adopt(d, target);
+  return target;
+}
+
+// L'enregistrement décrit le fichier réellement écrit : chemin, nom, danger.
+function adopt(d, file) {
+  if (file && file !== d.path) { d.path = file; d.name = path.basename(file); }
+  if (isDangerous(d.name) || isDangerous(d.path)) d.danger = true; else delete d.danger;
 }
 
 // Quitter pendant qu'un téléchargement avance : la question est posée (« Downloads in progress » d'Arc).
@@ -129,8 +217,21 @@ function beforeQuit(e) {
 }
 app.on('before-quit', beforeQuit);
 
+// La même question, posée d'avance par qui s'apprête à quitter (restauration d'une
+// sauvegarde) : true si l'on peut quitter. Un accord vaut pour l'arrêt qui suit.
+async function confirmQuit() {
+  const running = [...items.values()].filter((it) => { try { return it.getState() === 'progressing' && !it.isPaused(); } catch { return false; } }).length;
+  if (!running || quitConfirmed) return true;
+  const ok = await env.confirm(BaseWindow.getFocusedWindow(), {
+    type: 'warning', message: t('dl.quitTitle'), detail: t('dl.quitDetail', { n: running }), buttons: [t('dl.quitAnyway'), t('sheet.cancel')], defaultId: 1, cancelId: 1,
+  });
+  if (ok) quitConfirmed = true;
+  return !!ok;
+}
+
 function track(d, item, wc, { persist, hooks }) {
   items.set(d.id, item);
+  records.set(item, d);
   const note = () => {
     d.received = item.getReceivedBytes();
     d.total = item.getTotalBytes();
@@ -145,10 +246,14 @@ function track(d, item, wc, { persist, hooks }) {
     d.stalled = state === 'interrupted';
     hooks.onDownload('progress', d, wc, item);
   });
-  item.once('done', (e, state) => {
-    items.delete(d.id);
+  item.once('done', async (e, state) => {
     try { d.received = item.getReceivedBytes(); d.total = item.getTotalBytes() || d.total; } catch {}
-    d.state = state; // 'completed', 'cancelled' ou 'interrupted'
+    // Chemin réel du fichier : il a pu changer depuis « will-download » (nom imposé
+    // par une extension). Tout ce qui suit — marque, liste, question avant d'ouvrir
+    // un exécutable — porte sur CE fichier.
+    let real = '';
+    try { real = item.getSavePath() || ''; } catch {}
+    adopt(d, real);
     d.paused = false;
     d.stalled = false;
     d.canResume = state === 'interrupted';
@@ -156,11 +261,19 @@ function track(d, item, wc, { persist, hooks }) {
     // Annulé : Electron laisse sur disque le morceau déjà reçu ; ce fichier
     // incomplet, créé pour ce téléchargement, est retiré.
     if (state === 'cancelled' && d.path) fs.unlink(d.path, () => {});
+    // La marque est posée avant que le téléchargement soit annoncé terminé : rien
+    // ne peut ouvrir le fichier entre-temps. (L'état reste « en cours » jusque-là.)
+    if (state === 'completed' && d.path) {
+      let ok = false;
+      try { ok = await mark(d.path, d.url, persist); } catch {}
+      if (ok === false) d.marked = false; else if (ok === true) d.marked = true; else delete d.marked;
+    }
+    items.delete(d.id);
+    d.state = state; // 'completed', 'cancelled' ou 'interrupted'
     if (persist) store.save();
-    if (state === 'completed' && d.path) quarantine(d.path, d.url, persist).then((ok) => { d.marked = ok; });
     hooks.onDownload('done', d, wc, item);
-    // Ouverture automatique : un vrai PDF, téléchargé à la demande de l'utilisateur.
-    if (state === 'completed' && d.gesture && store.state.settings.downloadOpenPdf && !dangerNow(d) && isPdfFile(d.path)) openFile(d, wc);
+    // Ouverture automatique : un vrai PDF, marqué, téléchargé à la demande de l'utilisateur.
+    if (state === 'completed' && d.gesture && store.state.settings.downloadOpenPdf && !dangerNow(d) && !unmarked(d) && isPdfFile(d.path)) openFile(d, wc);
   });
 }
 
@@ -194,11 +307,13 @@ function attach(ses, { persist, hooks }) {
       if (!chosen || typeof chosen !== 'string' || !path.isAbsolute(chosen)) { event.preventDefault(); return; }
       target = chosen;
     }
+    const byUser = !!store.state.settings.downloadAsk; // emplacement choisi dans la fenêtre d'enregistrement
     item.setSavePath(target);
     const d = {
       id: uid(), name: path.basename(target), path: target, url: item.getURL(), total: item.getTotalBytes(), received: 0, state: 'progressing', at: Date.now(),
       mime: item.getMimeType(), profile: profiles.get(ses) || 'default', gesture: item.hasUserGesture(),
     };
+    if (byUser) d.asked = true;
     if (isDangerous(d.name)) d.danger = true;
     if (persist) store.addDownload(d); else volatileRecords.add(d);
     track(d, item, wc, { persist, hooks });
@@ -269,14 +384,18 @@ function cancel(d) {
 async function openFile(d, wc, { parent = null, confirmed = false } = {}) {
   if (!d || d.state !== 'completed' || !fs.existsSync(d.path)) return false;
   const danger = dangerNow(d);
+  // Sans marque « venu d'Internet » : nouvelle tentative de la poser avant toute question.
+  if (unmarked(d) && (await mark(d.path, d.url, !volatileRecords.has(d))) !== false) { d.marked = true; if (!volatileRecords.has(d)) store.save(); }
   if (danger && !confirmed) {
     let host = '';
     try { host = new URL(d.url).host; } catch {}
     const ok = await env.confirm(parent, {
-      type: 'warning', message: t('dl.dangerTitle', { name: d.name }), detail: t('dl.dangerDetail', { host: host || '?' }), buttons: [t('dl.dangerOpen'), t('sheet.cancel')], defaultId: 1, cancelId: 1,
+      type: 'warning', message: t('dl.dangerTitle', { name: d.name }), detail: t('dl.dangerDetail', { host: host || '?' }) + (unmarked(d) ? '\n\n' + t('dl.unmarkedDetail', { host: host || '?' }) : ''), buttons: [t('dl.dangerOpen'), t('sheet.cancel')], defaultId: 1, cancelId: 1,
     });
     if (!ok) return false;
-  }
+    if (unmarked(d)) accepted.add(d);
+  } else if (!confirmed && !(await cleared(d, parent))) return false;
+  if (!fs.existsSync(d.path)) return false;
   if (!danger && isPdfFile(d.path) && env.openInTab(pathToFileURL(d.path).href, wc)) return true;
   env.openPath(d.path);
   return true;
@@ -284,12 +403,60 @@ async function openFile(d, wc, { parent = null, confirmed = false } = {}) {
 
 // « Copier » : une image part comme image (elle se colle dans un message, un document) ;
 // tout autre fichier part comme fichier (il se colle dans le Finder ou l'Explorateur).
-const IMAGE = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tif', 'tiff']);
-async function copyFile(d) {
-  if (!d || d.state !== 'completed' || !fs.existsSync(d.path)) return false;
+// Une image n'est décodée ici (processus principal) que si elle est petite — en octets
+// et en points, lus dans son en-tête sans la décoder —, marquée et sans risque connu.
+const IMAGE = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp']);
+const IMAGE_BYTES = 32 * 1024 * 1024;
+const IMAGE_SIDE = 16384;
+const IMAGE_PIXELS = 64e6;
+
+// Dimensions annoncées par l'en-tête d'une image (PNG, JPEG, GIF, WebP, BMP), ou null.
+function imageSize(file) {
+  let fd = null;
   try {
-    if (IMAGE.has(extOf(d.path))) {
-      const img = nativeImage.createFromPath(d.path);
+    fd = fs.openSync(file, 'r');
+    const b = Buffer.alloc(512 * 1024);
+    const n = fs.readSync(fd, b, 0, b.length, 0);
+    if (n < 30) return null;
+    if (b.readUInt32BE(0) === 0x89504e47 && b.readUInt32BE(4) === 0x0d0a1a0a && b.toString('latin1', 12, 16) === 'IHDR') return { width: b.readUInt32BE(16), height: b.readUInt32BE(20) };
+    if (b.toString('latin1', 0, 4) === 'GIF8') return { width: b.readUInt16LE(6), height: b.readUInt16LE(8) };
+    if (b.toString('latin1', 0, 2) === 'BM') return { width: Math.abs(b.readInt32LE(18)), height: Math.abs(b.readInt32LE(22)) };
+    if (b.toString('latin1', 0, 4) === 'RIFF' && b.toString('latin1', 8, 12) === 'WEBP') {
+      const kind = b.toString('latin1', 12, 16);
+      if (kind === 'VP8 ') return { width: b.readUInt16LE(26) & 0x3fff, height: b.readUInt16LE(28) & 0x3fff };
+      if (kind === 'VP8L') { const v = b.readUInt32LE(21); return { width: (v & 0x3fff) + 1, height: ((v >>> 14) & 0x3fff) + 1 }; }
+      if (kind === 'VP8X') return { width: 1 + b.readUIntLE(24, 3), height: 1 + b.readUIntLE(27, 3) };
+      return null;
+    }
+    if (b[0] === 0xff && b[1] === 0xd8) {
+      for (let pos = 2; pos + 9 < n;) {
+        if (b[pos] !== 0xff) return null;
+        const m = b[pos + 1];
+        if (m === 0xff) { pos += 1; continue; }
+        if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) return { width: b.readUInt16BE(pos + 7), height: b.readUInt16BE(pos + 5) };
+        if (m === 0xd8 || m === 0xd9 || m === 0xda || (m >= 0xd0 && m <= 0xd7)) return null;
+        pos += 2 + b.readUInt16BE(pos + 2);
+      }
+    }
+    return null;
+  } catch { return null; } finally { if (fd !== null) { try { fs.closeSync(fd); } catch {} } }
+}
+
+function decodable(d) {
+  if (!d || dangerNow(d) || unmarked(d) || !IMAGE.has(extOf(d.path))) return false;
+  const bytes = fileSize(d.path);
+  if (bytes <= 0 || bytes > IMAGE_BYTES) return false;
+  const size = imageSize(d.path);
+  return !!size && size.width > 0 && size.height > 0 && size.width <= IMAGE_SIDE && size.height <= IMAGE_SIDE && size.width * size.height <= IMAGE_PIXELS;
+}
+
+async function copyFile(d, { parent = null } = {}) {
+  if (!d || d.state !== 'completed' || !fs.existsSync(d.path)) return false;
+  if (!(await cleared(d, parent))) return false;
+  try {
+    // (`accepted` : fichier resté sans marque, accepté par l'utilisateur — copié tel quel, jamais décodé.)
+    if (!accepted.has(d) && decodable(d)) {
+      const img = env.decode(d.path);
       if (!img.isEmpty()) {
         await clipboard.write([new ClipboardItem({ 'image/png': new Blob([img.toPNG()], { type: 'image/png' }) })]);
         return 'image';
@@ -309,7 +476,7 @@ function forget(d) {
   if (items.has(d.id)) return false;
   volatileRecords.delete(d);
   const i = store.state.downloads.indexOf(d);
-  if (i >= 0) { store.state.downloads.splice(i, 1); store.save(); }
+  if (i >= 0) { store.state.downloads.splice(i, 1); store.save(); require('./backups').forget({ downloads: [d.id] }); }
   return true;
 }
 
@@ -331,11 +498,16 @@ function menuTemplate(d, { parent = null } = {}) {
   const live = items.has(d.id);
   const tpl = [
     { id: 'open', label: t('lib.open'), enabled: exists, click: () => openFile(d, null, { parent }) },
-    { id: 'copy', label: t('edit.copy'), enabled: exists, click: () => copyFile(d) },
+    { id: 'copy', label: t('edit.copy'), enabled: exists, click: () => copyFile(d, { parent }) },
     { id: 'reveal', label: t('lib.reveal'), enabled: exists, click: () => env.reveal(d.path) },
   ];
   // Feuille de partage du système (AirDrop, Messages, Mail…).
-  if (process.platform === 'darwin' && exists) tpl.push({ id: 'share', role: 'shareMenu', sharingItem: { filePaths: [d.path] } });
+  // (Fichier resté sans marque : la question d'abord, puis la feuille de partage.)
+  if (process.platform === 'darwin' && exists) {
+    tpl.push(unmarked(d)
+      ? { id: 'share', label: t('tb.share'), click: async () => { if (await cleared(d, parent)) env.share([d.path], parent); } }
+      : { id: 'share', role: 'shareMenu', sharingItem: { filePaths: [d.path] } });
+  }
   tpl.push({ type: 'separator' });
   if (running) {
     tpl.push(d.paused || d.stalled ? { id: 'resume', label: t('dl.resume'), click: () => resume(d) } : { id: 'pause', label: t('dl.pause'), enabled: live, click: () => action('dl:pause', d.id) });
@@ -359,9 +531,9 @@ async function action(name, a, sender) {
   if (name === 'dl:open') return openFile(d, null, { parent });
   if (name === 'dl:remove') return forget(d);
   if (name === 'dl:trash') return trash(d);
-  if (name === 'dl:copy') return copyFile(d);
+  if (name === 'dl:copy') return copyFile(d, { parent });
   if (name === 'dl:menu') { await env.popup(menuTemplate(d, { parent }), parent); return true; }
   return undefined;
 }
 
-module.exports = { quarantine, beforeQuit, attach, bindProfile, action, resume, cancel, openFile, copyFile, trash, forget, menuTemplate, downloadDir, isDangerous, isPdfFile, safeName, env, internals: { items, resuming, DANGEROUS, asked, extOf } };
+module.exports = { mark, markTree, rename, cleared, dragAllowed, unmarked, decodable, imageSize, findRecord, confirmQuit, quarantine, beforeQuit, attach, bindProfile, action, resume, cancel, openFile, copyFile, trash, forget, menuTemplate, downloadDir, isDangerous, isPdfFile, safeName, env, internals: { items, resuming, DANGEROUS, asked, extOf, track, accepted, volatileRecords } };

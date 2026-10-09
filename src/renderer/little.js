@@ -13,6 +13,8 @@ O.on('state', (s) => {
   setLang(s.lang);
   url = s.url;
   if (document.activeElement !== u) u.value = host(s.url);
+  addressInto(document.getElementById('u-site'), s.url ? host(s.url) : '');
+  document.getElementById('u-wrap').classList.toggle('site', !!s.url);
   open.disabled = !s.url;
   copy.disabled = !s.url;
   document.title = s.title || 'Orbe';

@@ -154,6 +154,8 @@ function drawFile(line, r, now) {
   else if (r.received) status = `${t('lib.failed')} — ${progress}`;
   body.append(el('div', 'name', r.name), el('div', 'sub', `${status} · ${host(r.url)}`));
   if (r.danger) body.appendChild(el('div', 'sub danger', t('dl.dangerNote')));
+  // Marque « venu d'Internet » impossible à poser : le système n'avertira pas à l'ouverture.
+  if (r.marked === false) body.appendChild(el('div', 'sub danger unmarked', t('dl.unmarkedNote')));
   if (running) {
     const bar = el('div', 'bar');
     const fill = el('i');
@@ -236,9 +238,9 @@ function drawBoosts() {
     const parts = [];
     if (r.css) parts.push(t('lib.boostCss'));
     if (r.zaps) parts.push(t('lib.boostZaps', { n: r.zaps }));
-    if (!r.enabled) parts.push(t('lib.boostOff'));
+    if (r.review) parts.push(t('boost.toReview')); else if (!r.enabled) parts.push(t('lib.boostOff'));
     body.append(el('div', 'name', r.host), el('div', 'sub', parts.join(' · ')));
-    line.append(letterIcon(r.host), body, button('toggle', t(r.enabled ? 'lib.boostDisable' : 'lib.boostEnable')), button('delete', t('lib.boostDelete')));
+    line.append(letterIcon(r.host), body, button('toggle', t(r.enabled ? 'lib.boostDisable' : (r.review ? 'boost.reviewBtn' : 'lib.boostEnable'))), button('delete', t('lib.boostDelete')));
     card.appendChild(line);
   });
   list.appendChild(card);

@@ -499,7 +499,8 @@ O.on('overlay', (p) => {
     if (findInput.value) send('find', { text: findInput.value });
   } else if (p.mode === 'peek-url') {
     // Adresse de l'aperçu (barre d'outils affichée) : au-dessus de la carte.
-    $('peek-url').textContent = p.text || '';
+    // Domaine en avant ; trop longue, elle s'efface par la gauche du nom d'hôte, jamais par sa fin.
+    addressInto($('peek-url'), p.text || '');
     $('peek-url').hidden = !p.text;
   } else if (p.mode === 'peek') {
     // Ouverture : le voile et les boutons paraissent en fondu ; `leaving` : ils s'effacent

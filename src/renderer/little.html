@@ -9,6 +9,11 @@
 body { background: color-mix(in srgb, color-mix(in srgb, var(--accent) var(--tint), var(--base)) 80%, transparent); }
 #bar { height: 42px; display: flex; align-items: center; gap: 8px; padding: 0 8px 0 76px; -webkit-app-region: drag; }
 #u { flex: 1; min-width: 0; height: 28px; border-radius: 8px; border: 0; outline: 0; background: var(--pill); padding: 0 10px; text-align: center; -webkit-app-region: no-drag; user-select: text; }
+#u-wrap { flex: 1; min-width: 0; position: relative; display: flex; }
+/* Hors saisie : le site, domaine en avant, coupé par la gauche s'il est trop long (common.js). */
+#u-site { position: absolute; inset: 0 10px; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+#u-wrap.site #u:not(:focus) { color: transparent; }
+#u:focus + #u-site { display: none; }
 #u:focus { text-align: left; outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent); }
 #open { height: 28px; padding: 0 12px; border-radius: 8px; background: var(--accent); color: #fff; font-weight: 600; -webkit-app-region: no-drag; white-space: nowrap; }
 #open[disabled] { opacity: 0.4; }
@@ -37,7 +42,7 @@ html.win #bar { padding: 0 146px 0 8px; }
 </head>
 <body>
 <div id="bar">
-  <input id="u" spellcheck="false" autocomplete="off" data-t-ph="cmd.placeholder">
+  <div id="u-wrap"><input id="u" spellcheck="false" autocomplete="off" data-t-ph="cmd.placeholder"><div id="u-site"></div></div>
   <button id="copy" data-t-title="side.copyLink"><svg viewBox="0 0 16 16"><path d="M6.9 9.1a2.7 2.7 0 0 0 3.8 0l1.9-1.9a2.7 2.7 0 0 0-3.8-3.8l-.7.7"/><path d="M9.1 6.9a2.7 2.7 0 0 0-3.8 0L3.4 8.8a2.7 2.7 0 0 0 3.8 3.8l.7-.7"/></svg></button>
   <button id="open" data-t="little.open"></button>
   <button id="open-in" title="⌥⌘O">▾</button>

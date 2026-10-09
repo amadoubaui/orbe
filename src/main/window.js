@@ -80,6 +80,8 @@ const hooks = {
   busy: () => false, tabState: () => [], navState: () => ({}), failed: () => false, gone: () => {}, hung: () => {}, action: () => undefined, siteMenu: () => [],
   // Note « mise à jour disponible » de la barre latérale ({ version } ou null) : posée par main.js.
   updateNote: () => null,
+  // Un arrêt d'Orbe demandé puis retenu par une page (« Rester ») : posé par main.js.
+  quitAborted: () => {},
 };
 
 const t = (key, vars) => store.t(key, null, vars);
@@ -153,6 +155,9 @@ function samePage(a, b) {
 // ne servir qu'au suivi sont retirés ; une fiche Amazon est réduite à son
 // identifiant de produit (le reste de l'adresse y décrit la recherche d'origine).
 const TRACKING = /^(utm_[a-z0-9_]+|fbclid|gclid|gclsrc|dclid|gbraid|wbraid|msclkid|mc_cid|mc_eid|igshid|igsh|yclid|twclid|ttclid|li_fat_id|_hsenc|_hsmi|__hssc|__hstc|__hsfp|hsctatracking|mkt_tok|vero_id|vero_conv|oly_anon_id|oly_enc_id|s_cid|ref_src|ref_url|rb_clickid|srsltid|_openstat|wickedid|_ga|_gl|si)$/i;
+// Domaines d'Amazon, nommés un par un : « amazon.<n'importe quoi> » ne suffit pas
+// (amazon.zip, amazon.attack… appartiennent à qui les achète).
+const AMAZON = /(^|\.)amazon\.(com|ca|com\.mx|com\.br|co\.uk|de|fr|it|es|nl|se|pl|com\.be|ie|com\.tr|ae|sa|eg|in|co\.jp|com\.au|sg|cn|co\.za)$/i;
 function cleanUrl(input) {
   let u;
   try { u = new URL(input); } catch { return input; }
@@ -165,10 +170,20 @@ function cleanUrl(input) {
     u.searchParams.delete(key);
     changed = true;
   }
-  const product = /(^|\.)amazon\.[a-z.]{2,6}$/i.test(u.hostname) && /\/(?:dp|gp\/product)\/([A-Z0-9]{10})(?:[/?]|$)/.exec(u.pathname);
+  const product = AMAZON.test(u.hostname) && /\/(?:dp|gp\/product)\/([A-Z0-9]{10})(?:[/?]|$)/.exec(u.pathname);
   if (product) return `${u.origin}/dp/${product[1]}`;
   if (!changed) return input;
   return u.toString().replace(/\?(#|$)/, '$1');
+}
+
+// Lien Markdown : le titre et l'adresse viennent de la page. Dans le titre, crochets
+// et barre oblique inverse sont échappés (un « ] » fermerait le texte du lien, et le
+// reste du titre deviendrait l'adresse) ; dans l'adresse, parenthèses, espaces et
+// chevrons sont encodés (une « ) » fermerait l'adresse).
+function mdLink(title, url) {
+  const text = String(title || url || '').replace(/[\r\n]+/g, ' ').replace(/[\\[\]]/g, '\\$&');
+  const href = String(url || '').replace(/[()<>\s\\]/g, (c) => encodeURIComponent(c).replace(/[()]/g, (x) => '%' + x.charCodeAt(0).toString(16).toUpperCase()));
+  return `[${text}](${href})`;
 }
 
 // Liens de réunion (Meet, Zoom, Teams, Webex…) : toujours dans un onglet d'un
@@ -1058,6 +1073,8 @@ class OrbeWindow {
     wc.on('did-navigate', (e, url) => { rt.typed = false; rt.objected = false; rt.sleeping = false; hooks.navigated(rt); navigated(url); });
     // Boost du site : son CSS, puis son script s'il y est permis (une fois par chargement).
     if (!incognito) wc.on('dom-ready', () => { boosts.apply(wc); boosts.runScript(wc); });
+    // Changement de site : le CSS du Boost de l'ancien site est retiré dès que le nouveau document est en place.
+    if (!incognito) wc.on('did-navigate', () => { boosts.navigated(wc); });
     wc.on('did-navigate-in-page', (e, url, isMainFrame) => { if (isMainFrame) navigated(url); });
     wc.on('update-target-url', (e, url) => { rt.hoverUrl = String(url || '').slice(0, STATUS_MAX); rt.owner.linkStatus(rt, rt.hoverUrl); });
     // Pincer pour zoomer la page (coupé par défaut dans Electron).
@@ -1252,7 +1269,7 @@ class OrbeWindow {
       const quitting = hooks.quitState.quitting;
       hooks.quitState.quitting = false;
       if (this.win.isDestroyed()) return;
-      if (!ok) { this.layout(); OrbeWindow.pushAll(); return; }
+      if (!ok) { if (quitting) hooks.quitAborted(); this.layout(); OrbeWindow.pushAll(); return; }
       this.unloadChecked = true;
       if (quitting) app.quit(); else this.win.close();
     });
@@ -2196,7 +2213,7 @@ class OrbeWindow {
     if (!f || f.node.type !== 'folder') return;
     const tabs = [...walk(f.node.children)].map((tid) => this.data.tabs[tid]).filter(Boolean);
     if (!tabs.length) return;
-    clipboard.writeText(tabs.map((tab) => (markdown ? `- [${tab.customTitle || tab.title || tab.url}](${tab.url})` : tab.url)).join('\n'));
+    clipboard.writeText(tabs.map((tab) => (markdown ? `- ${mdLink(tab.customTitle || tab.title, tab.url)}` : tab.url)).join('\n'));
     this.toast(t('toast.linksCopied', { n: tabs.length }));
   }
 
@@ -3162,7 +3179,7 @@ class OrbeWindow {
     const tab = this.activeId && this.data.tabs[this.activeId];
     if (!tab) return;
     const url = cleanUrl(tab.url);
-    clipboard.writeText(markdown ? `[${tab.title || url}](${url})` : url);
+    clipboard.writeText(markdown ? mdLink(tab.title, url) : url);
     this.toast(t(markdown ? 'toast.markdownCopied' : 'toast.urlCopied'));
   }
 
@@ -3178,7 +3195,7 @@ class OrbeWindow {
     if (!text) return mine ? this.copyUrl(true) : undefined;
     const quote = text.split(/\n+/).map((l) => '> ' + l).join('\n');
     const url = cleanUrl(tab.url);
-    clipboard.writeText(`${quote}\n>\n> — [${tab.title || url}](${url})`);
+    clipboard.writeText(`${quote}\n>\n> — ${mdLink(tab.title, url)}`);
     this.toast(t('toast.quoteCopied'));
     return undefined;
   }
@@ -3272,7 +3289,12 @@ class OrbeWindow {
     if (!wc) return;
     const name = (wc.getTitle() || 'page').replace(/[/:\\]/g, '-').slice(0, 80);
     const r = await dialog.showSaveDialog(this.win, { defaultPath: path.join(app.getPath('downloads'), name + '.html') });
-    if (!r.canceled && r.filePath) wc.savePage(r.filePath, 'HTMLComplete').catch(() => {});
+    if (r.canceled || !r.filePath) return undefined;
+    const url = wc.getURL();
+    try { await wc.savePage(r.filePath, 'HTMLComplete'); } catch { return undefined; }
+    // La page enregistrée (et son dossier « …_files ») vient d'Internet : Electron ne
+    // l'annonce pas comme un téléchargement, elle est donc marquée ici.
+    return require('./downloads').markTree(r.filePath, url, !this.incognito);
   }
 
   async clearAndReload(what) {
@@ -3325,6 +3347,8 @@ class OrbeWindow {
     const tab = this.activeId && this.data.tabs[this.activeId];
     const host = tab && !this.incognito ? boosts.hostOf(tab.url) : '';
     if (!boosts.has(host)) return;
+    // Boost importé, pas encore relu : l'éditeur s'ouvre sur ce site, qui propose la relecture.
+    if (boosts.get(host).review) { this.run('boost'); return; }
     boosts.set(host, { enabled: !boosts.get(host).enabled });
     applyBoosts(host);
     OrbeWindow.pushAll();
@@ -3445,7 +3469,7 @@ class OrbeWindow {
     const others = this.data.spaces.filter((s) => s !== loc.space);
     const tpl = [
       { label: t('tabs.copyLink'), click: () => clipboard.writeText(tab.url) },
-      { label: t('tabs.copyLinkMarkdown'), click: () => clipboard.writeText(`[${tab.customTitle || tab.title || tab.url}](${tab.url})`) },
+      { label: t('tabs.copyLinkMarkdown'), click: () => clipboard.writeText(mdLink(tab.customTitle || tab.title, tab.url)) },
       { label: t('tabs.duplicate'), click: () => this.duplicate(id) },
       { label: t('tabs.rename'), visible: !fav, click: () => this.askRename(id) },
       { type: 'separator' },
@@ -3941,6 +3965,14 @@ boosts.hooks.canScript = (wc) => {
   return false;
 };
 
+// Sélecteurs d'un Boost venus d'ailleurs : lus par le moteur CSS dans la coque d'une
+// fenêtre (page de l'interface, en bac à sable), jamais dans la page qui les a fournis.
+boosts.hooks.parse = async (list) => {
+  const w = OrbeWindow.primary || OrbeWindow.all.find((x) => x.ui && !x.ui.webContents.isDestroyed());
+  if (!w || !w.ui || w.ui.webContents.isDestroyed()) return null;
+  return w.ui.webContents.executeJavaScript(`(${boosts.PARSE})(${JSON.stringify(list)})`);
+};
+
 // Réapplique le Boost d'un site à tous les onglets qui l'affichent.
 function applyBoosts(host) {
   const jobs = [];
@@ -3978,4 +4010,4 @@ function archiveStale() {
   if (count) { store.save(); for (const w of windows.values()) w.layout(); OrbeWindow.pushAll(); }
 }
 
-module.exports = { OrbeWindow, windows, live, trusted, hooks, lostAfterStay: () => lastLost, applyBoosts, cleanUrl, isMeetingUrl, SPLIT_BAR, archiveStale, tabMemory, noteDownload, uiRetryDelay, UI_PREFS, STATUS_MAX, ICON_MAX, thumbs: { keep: keepThumb, MAX: THUMBS }, INTERNAL, UI_PRELOAD, isInternal, MOTION, motion, forceMotion, motionStats: stats, boundsOf, inFlight, resumed };
+module.exports = { OrbeWindow, windows, live, trusted, hooks, lostAfterStay: () => lastLost, applyBoosts, cleanUrl, mdLink, isMeetingUrl, SPLIT_BAR, archiveStale, tabMemory, noteDownload, uiRetryDelay, UI_PREFS, STATUS_MAX, ICON_MAX, thumbs: { keep: keepThumb, MAX: THUMBS }, INTERNAL, UI_PRELOAD, isInternal, MOTION, motion, forceMotion, motionStats: stats, boundsOf, inFlight, resumed };

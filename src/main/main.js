@@ -99,14 +99,14 @@ if (!SELFTEST && !process.env.ORBE_USER_DATA && !app.requestSingleInstanceLock()
 
 function openUrl(url) {
   if (!app.isReady()) return pendingUrls.push(url);
-  // Aiguillage (comme Air Traffic Control dans Arc) : la première règle dont le
-  // texte figure dans l'adresse décide de l'Espace, ou de la petite fenêtre.
+  // Aiguillage (comme Air Traffic Control dans Arc) : la première règle qui nomme
+  // le site de l'adresse décide de l'Espace, ou de la petite fenêtre (prefs.js, `routeFor`).
   let target = null;
   if (!openUrl.direct) {
-    const rule = (store.state.settings.routes || []).find((r) => r.match && url.toLowerCase().includes(r.match.toLowerCase()));
+    const to = routeFor(url);
     const ext = store.state.settings.externalLinks;
     // Sans règle : petite fenêtre, Espace précis (« space:<id> »), ou l'Espace affiché.
-    target = rule ? rule.to : (ext === 'little' ? 'little' : (String(ext).startsWith('space:') ? ext.slice(6) : null));
+    target = to || (ext === 'little' ? 'little' : (String(ext).startsWith('space:') ? ext.slice(6) : null));
   }
   // Lien de réunion (Meet, Zoom, Teams…) : jamais en petite fenêtre, toujours dans un onglet.
   if (target === 'little' && win.isMeetingUrl(url)) target = null;
@@ -122,9 +122,10 @@ function openUrl(url) {
 }
 
 // Destination qu'une règle d'aiguillage donne à cette adresse (identifiant d'Espace, « little »), ou null.
+// La règle se lit sur le nom d'hôte de l'adresse (et, si elle en précise un, sur le début
+// du chemin) : jamais sur un texte trouvé n'importe où dans l'adresse.
 function routeFor(url) {
-  const rule = (store.state.settings.routes || []).find((r) => r.match && String(url).toLowerCase().includes(r.match.toLowerCase()));
-  return rule ? rule.to : null;
+  return prefs.routeFor(String(url));
 }
 
 function newWindow(opts = {}) {
@@ -176,7 +177,7 @@ const SETTABLE = {
   peekLinks: (v) => typeof v === 'boolean',
   passwordSave: (v) => typeof v === 'boolean',
   passwordFill: (v) => typeof v === 'boolean',
-  routes: (v) => Array.isArray(v) && v.length <= 100 && v.every((r) => r && typeof r.match === 'string' && r.match.length <= 200 && typeof r.to === 'string' && r.to.length <= 40),
+  routes: prefs.routes,
 };
 
 function profileList() {
@@ -224,6 +225,7 @@ async function globalAction(action, a, sender) {
     case 'notes:delete':
       s.notes = s.notes.filter((n) => n.id !== a);
       store.save();
+      require('./backups').forget({ notes: [a] }); // supprimée ici, supprimée aussi des sauvegardes de l'état
       return true;
     case 'ext:list':
       return extensionList();
@@ -258,6 +260,10 @@ async function globalAction(action, a, sender) {
       store.save();
       broadcastSettings();
       return s.settings;
+    // Aiguillage : écriture normale d'une règle tapée ('' si elle ne nomme pas un site),
+    // et, pour une liste de règles, lesquelles nomment un site.
+    case 'settings:routeText': return prefs.routeText(typeof a === 'string' ? a : '');
+    case 'settings:routeCheck': return (Array.isArray(a) ? a.slice(0, 100) : []).map((m) => !!prefs.routeRule(m));
     case 'settings:renameProfile': {
       const p = s.profiles.find((x) => x.id === (a && a.id));
       const name = String((a && a.name) || '').trim().slice(0, 40);
@@ -272,6 +278,7 @@ async function globalAction(action, a, sender) {
       return true;
     case 'settings:resetPerms':
       essentials.permissions.resetAll(); // tous les profils
+      require('./backups').forget({ permissions: true });
       return true;
     case 'settings:clearData': {
       const parent = BrowserWindow.fromWebContents(sender);
@@ -293,6 +300,7 @@ async function globalAction(action, a, sender) {
       store.saveHistory(true);
       store.historyCount = 0;
       store.save();
+      require('./backups').forget({ historyAll: true });
       return true;
     }
     default:
@@ -388,6 +396,8 @@ app.on('second-instance', (e, argv) => {
 
 app.whenReady().then(async () => {
   store.load(app.getPath('userData'));
+  // Règles d'aiguillage d'avant (« l'adresse contient… ») : mises sous leur forme d'aujourd'hui.
+  if (prefs.migrateRoutes()) store.save();
   // Sauvegardes locales de l'état : au lancement, puis toutes les heures (pas pendant les tests).
   if (!SELFTEST) require('./backups').start();
   // (Sans lire l'historique : il n'est chargé qu'après l'affichage de la fenêtre.)
@@ -448,6 +458,8 @@ app.whenReady().then(async () => {
   };
   little.hooks.profileId = () => { const w = OrbeWindow.primary; return w ? w.space.profileId : 'default'; };
   little.hooks.spaces = () => store.state.spaces.map((sp) => ({ id: sp.id, name: sp.name, icon: sp.icon }));
+  library.env.reviewBoost = (w, host) => boostEditor.review(w, host);
+  win.hooks.quitAborted = () => require('./backups').disarm();
   library.env.window = (sender) => (sender && OrbeWindow.ownerOf(sender)) || OrbeWindow.focused || OrbeWindow.primary;
   sessions.hooks.ownerWindow = (wc) => { const o = wc && OrbeWindow.ownerOf(wc); return o ? o.win : null; };
   sessions.hooks.onDownload = (phase, d, wc) => {

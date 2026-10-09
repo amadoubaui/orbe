@@ -8,12 +8,17 @@ const SLIDERS = ['contrast', 'brightness', 'saturation', 'size'];
 let B = null; // dernier état reçu
 const timers = {};
 
-// Enregistre après une courte pause (frappe, glissement d'un curseur).
+// Chaque message nomme le site que cette page modifie : si l'éditeur a été pointé
+// sur un autre site entre-temps, le processus principal le refuse.
+const HOST = () => (B ? B.host : '');
+// Enregistre après une courte pause (frappe, glissement d'un curseur). Le site est
+// relevé au moment de la frappe, pas à celui de l'envoi.
 function later(key, patch, ms = 250) {
   clearTimeout(timers[key]);
-  timers[key] = setTimeout(async () => draw(await O.send('boost:set', patch())), ms);
+  const host = HOST();
+  timers[key] = setTimeout(async () => draw(await O.send('boost:set', { host, patch: patch() })), ms);
 }
-const save = async (patch) => draw(await O.send('boost:set', patch));
+const save = async (patch) => draw(await O.send('boost:set', { host: HOST(), patch }));
 const look = (patch) => ({ look: { ...B.look, ...patch } });
 
 function options(sel, prefix, keys) {
@@ -38,6 +43,7 @@ function draw(b, force) {
   if (typing !== $('css')) $('css').value = b.css;
   if (typing !== $('js')) $('js').value = b.js;
   $('on').checked = b.enabled;
+  $('to-review').hidden = !b.review;
   const note = !b.boostsOn ? t('boost.off') : (!b.shown ? t('boost.notShown') : '');
   $('note').hidden = !note;
   $('note').textContent = note;
@@ -92,8 +98,37 @@ function draw(b, force) {
   $('reload').disabled = !b.shown;
 }
 
+// Relecture d'un Boost importé, avant sa première activation : tout ce qu'il
+// contient est montré tel quel (texte, jamais interprété), avec un avertissement
+// quand son CSS fait charger des adresses (« url( », « @import »).
+let reviewing = '';
+function showReview(v) {
+  if (!v) return;
+  reviewing = v.host;
+  $('review-host').textContent = v.name ? `${v.name} · ${v.host}` : v.host;
+  const warn = [v.warnUrl ? t('boost.reviewUrl') : '', v.warnImport ? t('boost.reviewImport') : ''].filter(Boolean).join(' ');
+  $('review-warn').hidden = !warn;
+  $('review-warn').textContent = warn;
+  $('review-css').textContent = v.css || t('boost.reviewNone');
+  $('review-zaps-box').hidden = !v.zaps.length;
+  $('review-zaps').textContent = v.zaps.join('\n');
+  $('review-js-box').hidden = !v.js;
+  $('review-js').textContent = v.js;
+  $('review-look').hidden = !v.look;
+  $('review').hidden = false;
+}
+function hideReview() { reviewing = ''; $('review').hidden = true; }
+$('review-cancel').onclick = async () => { hideReview(); if (LIST) drawList(await O.send('boost:list')); else draw(await O.send('boost:get')); };
+$('review-ok').onclick = async () => {
+  const host = reviewing;
+  hideReview();
+  const r = await O.send('boost:approve', { host });
+  if (LIST) drawList(r); else draw(r);
+};
+
 function drawList(r) {
   if (!r) return;
+  if (r.review) showReview(r.review);
   $('list').hidden = false;
   document.title = t('boost.all');
   const box = $('list-items');
@@ -109,6 +144,7 @@ function drawList(r) {
     on.checked = it.enabled;
     on.title = t('boost.enabled');
     on.onchange = async () => drawList(await O.send('boost:toggle', { host: it.host, enabled: on.checked }));
+    if (it.review) on.title = t('boost.toReview');
     const text = document.createElement('div');
     text.className = 'grow';
     const site = document.createElement('div');
@@ -116,7 +152,7 @@ function drawList(r) {
     site.textContent = it.name ? `${it.name} · ${it.host}` : it.host;
     const what = document.createElement('div');
     what.className = 'what';
-    what.textContent = [it.look ? t('boost.look') : '', it.zaps ? `Zap × ${it.zaps}` : '', it.css ? 'CSS' : '', it.js ? (it.jsOn && r.jsAllowed ? 'JavaScript' : t('boost.jsIdle')) : ''].filter(Boolean).join(' · ');
+    what.textContent = [it.review ? t('boost.toReview') : '', it.look ? t('boost.look') : '', it.zaps ? `Zap × ${it.zaps}` : '', it.css ? 'CSS' : '', it.js ? (it.jsOn && r.jsAllowed ? 'JavaScript' : t('boost.jsIdle')) : ''].filter(Boolean).join(' · ');
     text.append(site, what);
     const edit = document.createElement('button');
     edit.className = 'btn';
@@ -162,7 +198,10 @@ if (LIST) {
   for (const [k, ms] of [['name', 250], ['css', 250], ['js', 400]]) {
     $(k).addEventListener('input', () => { const value = $(k).value; later(k, () => ({ [k]: value }), ms); });
   }
-  $('on').addEventListener('change', () => save({ enabled: $('on').checked }));
+  // Boost importé, pas encore relu : la case ouvre la relecture au lieu d'activer.
+  const askReview = async () => { $('on').checked = false; showReview(await O.send('boost:review', { host: HOST() })); };
+  $('on').addEventListener('change', () => (B && B.review && $('on').checked ? askReview() : save({ enabled: $('on').checked })));
+  $('review-open').onclick = askReview;
   $('js-on').addEventListener('change', () => save({ jsOn: $('js-on').checked }));
   $('invert').addEventListener('change', () => save(look({ invert: $('invert').checked })));
   $('swatches').addEventListener('click', (e) => {
@@ -177,11 +216,11 @@ if (LIST) {
   $('font').addEventListener('change', () => save(look({ font: $('font').value })));
   $('case').addEventListener('change', () => save(look({ case: $('case').value })));
   $('reset-look').onclick = () => save({ look: {} });
-  $('zap').onclick = async () => draw(await O.send('boost:zap'));
-  $('reload').onclick = async () => draw(await O.send('boost:reload'));
+  $('zap').onclick = async () => draw(await O.send('boost:zap', { host: HOST() }));
+  $('reload').onclick = async () => draw(await O.send('boost:reload', { host: HOST() }));
   $('js-settings').onclick = () => O.send('boost:settings');
-  $('reset').onclick = async () => { for (const k of Object.keys(timers)) clearTimeout(timers[k]); draw(await O.send('boost:reset'), true); };
-  $('export').onclick = () => O.send('boost:export');
+  $('reset').onclick = async () => { for (const k of Object.keys(timers)) clearTimeout(timers[k]); draw(await O.send('boost:reset', { host: HOST() }), true); };
+  $('export').onclick = () => O.send('boost:export', { host: HOST() });
   $('all').onclick = () => O.send('boost:showList');
   O.send('boost:get').then(draw);
   // Retour sur la fenêtre : l'état a pu changer ailleurs (réglages, liste, page rechargée).
