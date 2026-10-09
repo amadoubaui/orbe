@@ -176,7 +176,22 @@ fonctionne toujours » échouerait aussitôt.
   ignoré. « Rester » est le choix par défaut.
 - Chromium n'émet l'événement que si l'utilisateur a agi dans la page : une
   page jamais touchée ne peut retenir ni un onglet ni une fenêtre.
-- Une page qui ne répond pas ne retient rien (délai de 4 s).
+- Une page qui ne répond pas ne retient rien (délai de 4 s). Ce délai est celui
+  d'Orbe : Chromium, lui, ferme d'office une page consultée qui n'a pas répondu
+  en une seconde, puis de nouveau une seconde après la réponse de l'utilisateur
+  si la page tarde à en accuser réception. Sur une machine chargée, la page
+  disparaissait donc juste après « Rester ». Chromium n'applique pas ce délai à
+  une page dont le débogueur est attaché : Orbe attache celui d'Electron, sans
+  rien lui demander, le temps de la consultation (« bouclier », `shield`), et le
+  rend dès que la page a répondu (au plus dix secondes). Une extension ou la
+  capture de page entière qui veut le débogueur à cet instant le reçoit.
+- Si une page disparaît malgré tout dans les quinze secondes qui suivent
+  « Rester » sans qu'Orbe l'ait demandé, son onglet garde sa ligne et se
+  recharge : il n'est pas archivé comme une page qui se ferme d'elle-même, et le
+  journal de la page est écrit dans la console.
+- Veille automatique et fermeture demandée en même temps sur la même page : la
+  réponse de la page vaut pour la demande de l'utilisateur, la question est posée.
+- Limite connue : un aperçu ou une petite fenêtre se ferment sans consulter la page.
 - Pas de boîtes en rafale (elles bloquent toute l'application) : pendant les
   2 secondes qui suivent « Rester », une nouvelle tentative de quitter la même
   page est refusée sans rien demander. « Quitter la page » reste toujours

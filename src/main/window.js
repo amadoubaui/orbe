@@ -60,6 +60,7 @@ const loadingUi = new WeakSet(); // vues de l'interface créées à part, dont l
 // Une page détruite hors d'Orbe moins de quinze secondes après « Rester » n'est pas une page
 // qui s'est fermée d'elle-même : son onglet reste (voir `wire`, événement `destroyed`).
 const STAY_GUARD = 15000;
+const SLEEP_WAIT = 4000; // temps laissé à une page pour répondre à une veille avant de la reproposer
 let lastLost = null; // dernière page ainsi perdue (diagnostic)
 // Journal court, par page, de ce qui a mené à sa fermeture : qui l'a consultée, ce qu'elle a
 // répondu, qui l'a détruite. Lu quand une page disparaît sans raison connue.
@@ -1068,6 +1069,7 @@ class OrbeWindow {
     // réponse lui appartient, la veille ne s'en mêle pas.
     if (rt.windowClosing || rt.unloadAnswer || rt.pendingClose) return;
     rt.sleeping = true;
+    rt.sleepAsked = Date.now();
     OrbeWindow.consult(rt, 'veille');
   }
 
@@ -1189,8 +1191,9 @@ class OrbeWindow {
       // Épargné par les règles automatiques : l'utilisateur y a agi, la page charge, ou elle a refusé une veille.
       typed: !!rt.typed || !!rt.loading || !!rt.objected,
       kept: visible.has(rt.id) || rt.wc.isCurrentlyAudible() || rt.wc.isDevToolsOpened() || hooks.busy(rt)
-        // Image dans l'image, page filmée par une autre, téléchargement en cours, veille déjà demandée.
-        || !!rt.pip || rt.wc.isBeingCaptured() || downloading.has(rt.wc.id) || !!rt.sleeping,
+        // Image dans l'image, page filmée par une autre, téléchargement en cours, veille demandée à
+        // l'instant (une page qui n'y a toujours pas répondu redevient candidate, limite en nombre comprise).
+        || !!rt.pip || rt.wc.isBeingCaptured() || downloading.has(rt.wc.id) || (!!rt.sleeping && now - (rt.sleepAsked || 0) < SLEEP_WAIT),
     }));
     const picked = veille.pick(tabs, {
       max: s.maxLiveTabs,
