@@ -49,6 +49,7 @@ const SETTABLE = {
   cookieBanners: bool,
   themeData: bool,
   boostsEnabled: bool,
+  boostsJs: bool,
   mediaControls: bool,
   tabKeysFavorites: bool,
   tabKeysNinthLast: bool,

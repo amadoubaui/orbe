@@ -108,7 +108,10 @@ function openUrl(url) {
     // Sans règle : petite fenêtre, Espace précis (« space:<id> »), ou l'Espace affiché.
     target = rule ? rule.to : (ext === 'little' ? 'little' : (String(ext).startsWith('space:') ? ext.slice(6) : null));
   }
-  if (target === 'little') return new little.LittleWindow(url);
+  // Lien de réunion (Meet, Zoom, Teams…) : jamais en petite fenêtre, toujours dans un onglet.
+  if (target === 'little' && win.isMeetingUrl(url)) target = null;
+  // Déjà affiché dans une petite fenêtre : elle revient au premier plan.
+  if (target === 'little') return little.LittleWindow.openOrFocus(url);
   let w = OrbeWindow.primary;
   if (!w) w = new OrbeWindow();
   if (target && store.state.spaces.some((sp) => sp.id === target)) w.switchSpace(target);
@@ -116,6 +119,12 @@ function openUrl(url) {
   if (w.win.isMinimized()) w.win.restore();
   w.win.focus();
   return undefined;
+}
+
+// Destination qu'une règle d'aiguillage donne à cette adresse (identifiant d'Espace, « little »), ou null.
+function routeFor(url) {
+  const rule = (store.state.settings.routes || []).find((r) => r.match && String(url).toLowerCase().includes(r.match.toLowerCase()));
+  return rule ? rule.to : null;
 }
 
 function newWindow(opts = {}) {
@@ -127,33 +136,8 @@ function openSettings(pane) {
   return panes.open(pane);
 }
 
-// Éditeur de Boost : petite fenêtre liée à l'onglet actif au moment de l'ouverture.
-let boostWindow = null;
-let boostTarget = null;
-function openBoost(w) {
-  const rt = w && w.activeRt;
-  if (!rt || w.incognito || !boosts.hostOf(rt.wc.getURL())) return;
-  boostTarget = rt.wc;
-  if (boostWindow && !boostWindow.isDestroyed()) { boostWindow.webContents.reload(); return boostWindow.focus(); }
-  boostWindow = new BrowserWindow({
-    width: 380, height: 460, minWidth: 300, minHeight: 320, ...platform.windowChrome({ inset: true, dark: nativeTheme.shouldUseDarkColors }),
-    alwaysOnTop: true, fullscreenable: false, webPreferences: { preload: UI_PRELOAD, sandbox: true, contextIsolation: true },
-  });
-  trusted.add(boostWindow.webContents);
-  boostWindow.webContents.on('will-navigate', (e) => e.preventDefault());
-  boostWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  boostWindow.loadURL(INTERNAL + 'boost.html');
-  return boostWindow;
-}
-
-async function boostAction(action, a) {
-  const wc = boostTarget && !boostTarget.isDestroyed() ? boostTarget : null;
-  const host = wc ? boosts.hostOf(wc.getURL()) : '';
-  if (!host) return null;
-  if (action === 'boost:set') { boosts.set(host, a || {}); await boosts.apply(wc); }
-  if (action === 'boost:zap') { wc.focus(); await boosts.zap(wc); if (boostWindow && !boostWindow.isDestroyed()) boostWindow.focus(); }
-  return { host, ...boosts.get(host) };
-}
+// Éditeur de Boost et liste des Boosts : src/main/boost-editor.js.
+const boostEditor = require('./boost-editor');
 
 function applyAppearance() {
   const a = store.state.settings.appearance;
@@ -379,7 +363,7 @@ function setupIpc() {
   });
   ipcMain.handle('orbe', async (e, action, payload) => {
     if (!ok(e) || typeof action !== 'string') return undefined;
-    if (action.startsWith('boost:')) return boostAction(action, payload);
+    if (action.startsWith('boost:')) return boostEditor.action(action, payload, e.sender);
     if (action.startsWith('pw:')) return passwords.action(action, payload, e.sender);
     if (action.startsWith('easel:')) return easels.action(action, payload, e.sender);
     if (action.startsWith('sheet:')) return essentials.sheets.action(action, payload, e.sender);
@@ -438,7 +422,8 @@ app.whenReady().then(async () => {
   commands.hooks.newWindow = newWindow;
   commands.hooks.newLittle = (url) => new little.LittleWindow(url);
   commands.hooks.openSettings = openSettings;
-  commands.hooks.openBoost = openBoost;
+  commands.hooks.openBoost = (w, mode) => boostEditor.open(w, mode);
+  boostEditor.hooks.openSettings = () => openSettings('privacy');
   commands.hooks.openPasswords = () => passwords.openManager();
   passwords.configure({ trusted, uiPreload: UI_PRELOAD, internal: INTERNAL, toast: (wc, text) => { const o = OrbeWindow.ownerOf(wc); if (o) o.toast(text); } });
   commands.hooks.settingsChanged = broadcastSettings;
@@ -447,6 +432,9 @@ app.whenReady().then(async () => {
   // Moteur de recherche et suggestions : ceux du profil de l'Espace affiché.
   suggest.hooks.profileId = () => { const w = OrbeWindow.focused || OrbeWindow.primary; return w && !w.incognito ? w.space.profileId : 'default'; };
   win.hooks.openLittle = (url) => new little.LittleWindow(url);
+  // Aiguillage : un lien qui s'ouvrirait en aperçu suit d'abord les règles.
+  win.hooks.route = routeFor;
+  win.hooks.openRouted = (url) => openUrl(url);
   win.hooks.changed = () => { menu.refresh(); extHost.sync(); passwords.sync(); };
   win.hooks.extensionMenu = (wc, params) => [...extApi.contextMenuItems(wc, params), ...passwords.contextMenuItems(wc, params)];
   extApi.hooks.actionChanged = () => OrbeWindow.pushAll();

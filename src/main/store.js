@@ -51,6 +51,8 @@ const DEFAULT_SETTINGS = {
   cookieBanners: false,
   themeData: false,
   boostsEnabled: true,
+  // JavaScript des Boosts : coupé tant que l'utilisateur ne l'a pas permis (src/main/boosts.js).
+  boostsJs: false,
   mediaControls: true,
   tabKeysFavorites: true,
   tabKeysNinthLast: true,
@@ -164,6 +166,13 @@ class Store {
       if (!profileIds.has(sp.profileId)) sp.profileId = 'default';
       sp.pinned = clean(sp.pinned || []);
       sp.splits = (sp.splits || []).map((g) => (Array.isArray(g) ? g.filter((id) => s.tabs[id]) : [])).filter((g) => g.length > 1);
+      // Parts des volets réglées à la souris : rangées à part (une liste n'emporte
+      // pas ses propriétés dans le fichier), sous l'identifiant du premier onglet.
+      const kept = sp.splitRatios && typeof sp.splitRatios === 'object' ? sp.splitRatios : {};
+      for (const g of sp.splits) {
+        const r = kept[g[0]];
+        if (Array.isArray(r) && r.length === g.length && r.every((x) => typeof x === 'number' && x > 0.02 && x < 1) && Math.abs(r.reduce((a, x) => a + x, 0) - 1) < 0.02) g.ratios = [...r];
+      }
       sp.today = (sp.today || []).filter((id) => s.tabs[id] && !seen.has(id) && seen.add(id));
     }
     for (const id of Object.keys(s.tabs)) if (!seen.has(id)) delete s.tabs[id];
@@ -200,6 +209,7 @@ class Store {
     this.writing = true;
     const tmp = this.file + '.tmp';
     try {
+      this.packSplits(this.state);
       await fs.promises.writeFile(tmp, JSON.stringify(this.state));
       await fs.promises.rename(tmp, this.file);
     } catch (err) {
@@ -207,6 +217,16 @@ class Store {
     }
     this.writing = false;
     if (this.dirty) { this.dirty = false; this.save(); }
+  }
+
+  // Parts des volets de chaque vue scindée, mises là où le fichier les garde (voir normalize).
+  packSplits(s) {
+    for (const sp of (s && s.spaces) || []) {
+      const out = {};
+      for (const g of sp.splits || []) if (g.ratios && g.ratios.length === g.length) out[g[0]] = g.ratios;
+      if (Object.keys(out).length) sp.splitRatios = out; else delete sp.splitRatios;
+    }
+    return s;
   }
 
   readHistory() {
@@ -272,6 +292,7 @@ class Store {
     this.dirty = false;
     const tmp = this.file + '.sync.tmp';
     try {
+      this.packSplits(this.state);
       fs.writeFileSync(tmp, JSON.stringify(this.state));
       fs.renameSync(tmp, this.file);
     } catch (err) {

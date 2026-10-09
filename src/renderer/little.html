@@ -14,6 +14,23 @@ body { background: color-mix(in srgb, color-mix(in srgb, var(--accent) var(--tin
 #open[disabled] { opacity: 0.4; }
 #open { border-radius: 8px 0 0 8px; margin-right: -7px; }
 #open-in { height: 28px; width: 24px; border-radius: 0 8px 8px 0; background: color-mix(in srgb, var(--accent) 82%, #000); color: #fff; -webkit-app-region: no-drag; }
+#copy { height: 28px; width: 28px; flex: none; border-radius: 8px; display: grid; place-items: center; color: var(--dim); -webkit-app-region: no-drag; }
+#copy:hover { background: var(--hover); color: var(--fg); }
+#copy[disabled] { opacity: 0.4; }
+#copy svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+#copy.done { color: var(--accent); }
+/* Menu « Ouvrir dans… » : la barre passe au-dessus de la page, qui reste visible derrière un voile. */
+body.menu { background: transparent; }
+body.menu #bar { background: color-mix(in srgb, var(--accent) var(--tint), var(--base)); }
+#veil { position: fixed; inset: 42px 0 0 0; background: rgba(0, 0, 0, 0.22); }
+#spaces { position: fixed; top: 40px; right: 8px; width: 250px; max-height: calc(100vh - 56px); display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 12px; background: var(--base); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3), 0 0 0 0.5px var(--line); }
+#space-search { height: 28px; border: 0; outline: 0; border-radius: 8px; background: var(--pill); padding: 0 10px; user-select: text; }
+#space-list { overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+#space-list button { height: 30px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 8px; border-radius: 7px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#space-list button.sel, #space-list button:hover { background: var(--hover); }
+#space-none { color: var(--dim); font-size: 12px; padding: 4px 8px; }
+html.win #spaces { right: 146px; }
+[hidden] { display: none !important; }
 /* Windows : boutons de fenêtre à droite, rien à gauche. */
 html.win #bar { padding: 0 146px 0 8px; }
 </style>
@@ -21,8 +38,15 @@ html.win #bar { padding: 0 146px 0 8px; }
 <body>
 <div id="bar">
   <input id="u" spellcheck="false" autocomplete="off" data-t-ph="cmd.placeholder">
+  <button id="copy" data-t-title="side.copyLink"><svg viewBox="0 0 16 16"><path d="M6.9 9.1a2.7 2.7 0 0 0 3.8 0l1.9-1.9a2.7 2.7 0 0 0-3.8-3.8l-.7.7"/><path d="M9.1 6.9a2.7 2.7 0 0 0-3.8 0L3.4 8.8a2.7 2.7 0 0 0 3.8 3.8l.7-.7"/></svg></button>
   <button id="open" data-t="little.open"></button>
   <button id="open-in" title="⌥⌘O">▾</button>
+</div>
+<div id="veil" hidden></div>
+<div id="spaces" hidden>
+  <input id="space-search" spellcheck="false" autocomplete="off" data-t-ph="little.searchSpaces">
+  <div id="space-list"></div>
+  <div id="space-none" data-t="little.noSpace" hidden></div>
 </div>
 <script src="common.js"></script>
 <script src="little.js"></script>

@@ -211,9 +211,9 @@ function resetAll() {
 
 // Regroupement par menu, pour le volet « Raccourcis » des réglages.
 const GROUPS = [
-  ['menu.file', ['newTab', 'newWindow', 'newIncognito', 'newLittle', 'newNote', 'newEasel', 'reopen', 'commandBar', 'closeTab', 'closeWindow', 'capture', 'captureFull', 'captureToEasel', 'savePage', 'print']],
+  ['menu.file', ['newTab', 'newWindow', 'newIncognito', 'newLittle', 'newNote', 'newEasel', 'reopen', 'commandBar', 'closeTab', 'closeWindow', 'capture', 'captureFull', 'captureToEasel', 'savePage', 'print', 'share']],
   ['menu.edit', ['undo', 'redo', 'copyUrl', 'copyUrlMarkdown', 'copyUrlQuote', 'pasteUrl', 'find', 'findNext', 'findPrev', 'useSelectionFind']],
-  ['menu.view', ['toggleSidebar', 'toggleToolbar', 'collapsePinned', 'stop', 'reload', 'forceReload', 'clearCookies', 'clearCache', 'addSplit', 'splitDirection', 'closeSplit', 'separateSplit', 'pane1', 'pane2', 'pane3', 'pane4', 'boost', 'zap', 'actualSize', 'zoomIn', 'zoomOut', 'fullscreen']],
+  ['menu.view', ['toggleSidebar', 'toggleToolbar', 'collapsePinned', 'stop', 'reload', 'forceReload', 'clearCookies', 'clearCache', 'addSplit', 'splitDirection', 'closeSplit', 'separateSplit', 'separateAll', 'expandSplit', 'nextPane', 'prevPane', 'pane1', 'pane2', 'pane3', 'pane4', 'boost', 'zap', 'boosts', 'actualSize', 'zoomIn', 'zoomOut', 'fullscreen']],
   ['view.developer', ['source', 'devtools', 'inspect', 'console', 'toggleDevMode']],
   ['menu.spaces', ['newSpace', 'editTheme', 'renameSpace', 'newProfile', 'deleteSpace', 'nextSpace', 'prevSpace']],
   ['menu.tabs', ['togglePin', 'newFolder', 'duplicate', 'expandPeek', 'openInSpace', 'toggleMute', 'nextTab', 'prevTab', 'revealTab', 'clearToday', 'resetTabs', 'expandFolders', 'collapseFolders']],

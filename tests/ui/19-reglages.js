@@ -261,14 +261,21 @@ module.exports = {
     // Orbe suit la touche ⌥ par les événements clavier de la fenêtre, que les
     // frappes de Playwright n'empruntent pas : ⌥ est donc envoyée par Electron
     // (comme une vraie touche), le clic et les autres touches par Playwright.
-    const alt = (type) => ctx.principal(({ w, win }, ty) => { win.live.get(w.activeId).wc.sendInputEvent({ type: ty, keyCode: 'Alt', modifiers: ty === 'keyDown' ? ['alt'] : [] }); }, type);
+    // Avec ⌥, Orbe regarde aussi si une autre touche de modification est tenue (⌥ seule ouvre une
+    // vue scindée, ⌥⌘ une petite fenêtre) : celle-ci lui est donc envoyée de la même façon.
+    const alt = (type, avecMeta) => ctx.principal(({ w, win }, a) => {
+      const wc = win.live.get(w.activeId).wc;
+      const bas = a.type === 'keyDown';
+      wc.sendInputEvent({ type: a.type, keyCode: 'Alt', modifiers: bas ? ['alt'] : [] });
+      if (a.meta) wc.sendInputEvent({ type: a.type, keyCode: 'Meta', modifiers: bas ? ['alt', 'meta'] : [] });
+    }, { type, meta: !!avecMeta });
     const clicModifie = async (touches) => {
       const autres = touches.filter((k) => k !== 'Alt');
-      if (touches.includes('Alt')) { await alt('keyDown'); await sleep(80); }
+      if (touches.includes('Alt')) { await alt('keyDown', touches.includes('Meta')); await sleep(80); }
       for (const k of autres) await pageL.keyboard.down(k);
       await pageL.mouse.click(boite.x + boite.width / 2, boite.y + boite.height / 2);
       for (const k of autres.reverse()) await pageL.keyboard.up(k);
-      if (touches.includes('Alt')) await alt('keyUp');
+      if (touches.includes('Alt')) await alt('keyUp', touches.includes('Meta'));
     };
     const apercu = () => ctx.principal(({ w }) => (w.peekState ? w.peekState.url || true : false));
     // La page à liens redevient l'onglet affiché (un clic n'atteint qu'une page visible).

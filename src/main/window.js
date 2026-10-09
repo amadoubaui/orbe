@@ -22,6 +22,8 @@ const PAD = 10;
 const GAP = 8;
 const RADIUS = 10;
 const TOOLBAR_H = 40;
+const PEEK_BAR = 40; // marge au-dessus de la carte de l'aperçu quand son adresse s'affiche
+const SPLIT_BAR = 28; // petite barre de chaque volet d'une vue scindée (adresse, options, fermer)
 const TRAFFIC = { x: 15, y: 15 };
 const SIDEBAR_MIN = 200;
 const SIDEBAR_MAX = 420;
@@ -72,7 +74,7 @@ function note(rt, what) {
 }
 
 const hooks = {
-  changed: () => {}, openLittle: () => {}, openSettings: () => {}, extensionMenu: () => [], rightInset: () => 0, layout: () => {},
+  changed: () => {}, openLittle: () => {}, route: () => null, openRouted: () => {}, openSettings: () => {}, extensionMenu: () => [], rightInset: () => 0, layout: () => {},
   // Raccords posés par essentials.js (feuilles d'onglet, certificats, « quitter la page ? », fenêtres surgissantes…).
   sheetFocus: () => null, leave: () => true, closeAll: async () => true, quitState: { quitting: false }, shield: () => false, unshield: () => {}, stayed: () => Infinity, input: () => {}, popup: () => true, navigated: () => {},
   busy: () => false, tabState: () => [], navState: () => ({}), failed: () => false, gone: () => {}, hung: () => {}, action: () => undefined, siteMenu: () => [],
@@ -144,6 +146,44 @@ function samePage(a, b) {
   } catch {
     return a === b;
   }
+}
+
+// Adresse débarrassée de ses paramètres de pistage, pour la copie (« Copy URL »
+// d'Arc copie le lien « without any trackers »). Seuls des paramètres connus pour
+// ne servir qu'au suivi sont retirés ; une fiche Amazon est réduite à son
+// identifiant de produit (le reste de l'adresse y décrit la recherche d'origine).
+const TRACKING = /^(utm_[a-z0-9_]+|fbclid|gclid|gclsrc|dclid|gbraid|wbraid|msclkid|mc_cid|mc_eid|igshid|igsh|yclid|twclid|ttclid|li_fat_id|_hsenc|_hsmi|__hssc|__hstc|__hsfp|hsctatracking|mkt_tok|vero_id|vero_conv|oly_anon_id|oly_enc_id|s_cid|ref_src|ref_url|rb_clickid|srsltid|_openstat|wickedid|_ga|_gl|si)$/i;
+function cleanUrl(input) {
+  let u;
+  try { u = new URL(input); } catch { return input; }
+  if (!/^https?:$/.test(u.protocol)) return input;
+  // `si` : jeton de partage de YouTube et de Spotify seulement (ailleurs, un paramètre ordinaire).
+  const share = /(^|\.)(youtube\.com|youtu\.be|spotify\.com)$/i.test(u.hostname);
+  let changed = false;
+  for (const key of [...u.searchParams.keys()]) {
+    if (!TRACKING.test(key) || (key.toLowerCase() === 'si' && !share)) continue;
+    u.searchParams.delete(key);
+    changed = true;
+  }
+  const product = /(^|\.)amazon\.[a-z.]{2,6}$/i.test(u.hostname) && /\/(?:dp|gp\/product)\/([A-Z0-9]{10})(?:[/?]|$)/.exec(u.pathname);
+  if (product) return `${u.origin}/dp/${product[1]}`;
+  if (!changed) return input;
+  return u.toString().replace(/\?(#|$)/, '$1');
+}
+
+// Liens de réunion (Meet, Zoom, Teams, Webex…) : toujours dans un onglet d'un
+// Espace, jamais en aperçu ni en petite fenêtre — on y reste longtemps, micro ouvert.
+function isMeetingUrl(input) {
+  let u;
+  try { u = new URL(input); } catch { return false; }
+  if (!/^https?:$/.test(u.protocol)) return false;
+  const h = u.hostname.toLowerCase();
+  if (h === 'meet.google.com') return u.pathname.length > 1;
+  if (/(^|\.)zoom\.us$/.test(h)) return /^\/(j|s|w|wc|my)\//.test(u.pathname);
+  if (h === 'teams.microsoft.com' || h === 'teams.live.com') return /^\/(l\/meetup-join|meet)\//.test(u.pathname);
+  if (/(^|\.)webex\.com$/.test(h)) return /\/(meet|join|j\.php)/.test(u.pathname);
+  if (h === 'whereby.com' || h === 'meet.jit.si' || h === 'app.gather.town') return u.pathname.length > 1;
+  return false;
 }
 
 // Mémoire des processus d'onglets, en Mo (`app.getAppMetrics`). Un onglet peut
@@ -647,11 +687,20 @@ class OrbeWindow {
     if (!group) return;
     const sp = this.data.spaces.find((x) => (x.splits || []).includes(group));
     if (!sp) return;
-    const dirs = sp.splitDirs || (sp.splitDirs = {});
-    if (dirs[group[0]] === 'v') delete dirs[group[0]]; else dirs[group[0]] = 'v';
+    this.setVertical(group, !this.isVertical(group));
     delete group.ratios;
     this.layout();
     this.changed();
+  }
+
+  // Sens d'un groupe, rangé sous l'identifiant de son premier onglet : à reposer
+  // chaque fois que ce premier onglet change (volet déplacé, fermé).
+  setVertical(group, vertical) {
+    const sp = this.data.spaces.find((x) => (x.splits || []).includes(group));
+    if (!sp) return;
+    const dirs = sp.splitDirs || (sp.splitDirs = {});
+    for (const id of group) delete dirs[id];
+    if (vertical && group.length) dirs[group[0]] = 'v';
   }
 
   // Rectangle de chaque volet : parts égales, ou celles réglées à la souris.
@@ -667,14 +716,21 @@ class OrbeWindow {
     const usable = total - GAP * (n - 1);
     const out = [];
     let pos = start;
+    // `bar` : hauteur réservée en haut du volet à sa petite barre (vue scindée seulement).
+    const bar = n > 1 && !this.htmlFullscreen ? SPLIT_BAR : 0;
     ratios.forEach((r, i) => {
       const size = Math.max(60, i === n - 1 ? start + total - pos : Math.round(usable * r));
       out.push(vertical
-        ? { x: rect.x, y: Math.round(pos), width: rect.width, height: size, vertical }
-        : { x: Math.round(pos), y: rect.y, width: size, height: rect.height, vertical });
+        ? { x: rect.x, y: Math.round(pos), width: rect.width, height: size, vertical, bar }
+        : { x: Math.round(pos), y: rect.y, width: size, height: rect.height, vertical, bar });
       pos += size + GAP;
     });
     return out;
+  }
+
+  // Place de la page dans son volet : sous la petite barre.
+  pageRect(pane) {
+    return { x: pane.x, y: pane.y + pane.bar, width: pane.width, height: Math.max(40, pane.height - pane.bar) };
   }
 
   // Déplace la séparation entre les volets i et i+1 jusqu'à la position donnée
@@ -720,7 +776,7 @@ class OrbeWindow {
       rt.view.setBorderRadius(this.htmlFullscreen ? 0 : RADIUS);
       const ms = grow && !grow.started ? grow.ms : slide;
       if (grow) grow.started = true;
-      place(rt.view, { x: panes[i].x, y: panes[i].y, width: panes[i].width, height: panes[i].height }, ms);
+      place(rt.view, this.pageRect(panes[i]), ms);
     });
     for (const view of this.attached || []) {
       if (shown.has(view)) continue;
@@ -739,10 +795,14 @@ class OrbeWindow {
     if (this.findOpen && this.findView) {
       const i = Math.max(0, ids.indexOf(this.activeId));
       const right = panes[i] ? panes[i].x + panes[i].width : rect.x + paneW;
-      this.findView.setBounds({ x: Math.round(right - 372), y: (panes[i] ? panes[i].y : rect.y) + 10, width: 360, height: 50 });
+      this.findView.setBounds({ x: Math.round(right - 372), y: (panes[i] ? panes[i].y + panes[i].bar : rect.y) + 10, width: 360, height: 50 });
     }
     if (this.toastView) {
-      this.toastView.setBounds({ x: Math.round(rect.x + rect.width / 2 - 190), y: rect.y + 12, width: 380, height: 46 });
+      // Au-dessus du volet concerné (le volet actif), pas au milieu de la vue scindée.
+      const i = this.toastPane && ids.includes(this.toastPane) ? ids.indexOf(this.toastPane) : Math.max(0, ids.indexOf(this.activeId));
+      const zone = panes[i] ? this.pageRect(panes[i]) : rect;
+      const width = Math.min(380, Math.max(160, zone.width - 16));
+      this.toastView.setBounds({ x: Math.round(zone.x + zone.width / 2 - width / 2), y: zone.y + 12, width, height: 46 });
     }
     hooks.layout(this);
   }
@@ -908,9 +968,25 @@ class OrbeWindow {
         // Vraie entrée de l'utilisateur : compte comme geste (fenêtres surgissantes, beforeunload).
         if (mouse.type === 'mouseDown' || mouse.type === 'mouseUp') hooks.input(rt, mouse);
         if (mouse.type === 'mouseDown') rt.typed = true; // voir `typed` plus bas
+        // Clic dans un volet d'une vue scindée : il devient le volet actif (sans attendre
+        // que la page prenne le clavier : elle peut l'avoir déjà, ou la fenêtre ne pas l'avoir).
+        if (mouse.type === 'mouseDown') rt.owner.paneFocused(rt.id);
         if (mouse.type !== 'mouseUp' || mouse.button !== 'left') return;
         lastClick = Date.now();
         rt.click = { x: mouse.x, y: mouse.y, at: lastClick }; // d'où partira un éventuel aperçu
+      });
+      // ⌥clic sur un lien : il s'ouvre en vue scindée, à côté de la page (comme dans Arc).
+      // Le clic n'est pas donné à la page (sans cela, Chromium téléchargerait le lien) ;
+      // l'adresse est celle du lien survolé, rapportée par le moteur, jamais par la page.
+      wc.on('before-mouse-event', (e, mouse) => {
+        if (mouse.button !== 'left' || (mouse.type !== 'mouseDown' && mouse.type !== 'mouseUp')) return;
+        if (mouse.type === 'mouseDown') rt.altLink = rt.alt && !rt.mod && webUrl(rt.hoverUrl) && rt.owner.visibleIds().includes(rt.id) ? rt.hoverUrl : null;
+        if (!rt.altLink) return;
+        e.preventDefault();
+        if (mouse.type !== 'mouseUp') return;
+        const url = rt.altLink;
+        rt.altLink = null;
+        rt.owner.splitLink(rt.id, url);
       });
       wc.on('will-navigate', (e, url) => {
         if (!e.isMainFrame || e.defaultPrevented || !store.state.settings.peekLinks) return;
@@ -918,7 +994,11 @@ class OrbeWindow {
         if (rt.owner.locate(rt.id) && rt.owner.visibleIds().includes(rt.id)) {
           e.preventDefault();
           lastClick = 0;
-          rt.owner.openPeek(url, rt.id);
+          // Lien de réunion ou règle d'aiguillage : un onglet, pas un aperçu.
+          const how = rt.owner.peekTarget(url);
+          if (how === 'peek') rt.owner.openPeek(url, rt.id);
+          else if (how === 'route') hooks.openRouted(url);
+          else rt.owner.newTab(url, { after: rt.id });
         }
       });
       wc.on('will-navigate', guard);
@@ -976,9 +1056,10 @@ class OrbeWindow {
       touch();
     };
     wc.on('did-navigate', (e, url) => { rt.typed = false; rt.objected = false; rt.sleeping = false; hooks.navigated(rt); navigated(url); });
-    if (!incognito) wc.on('dom-ready', () => boosts.apply(wc));
+    // Boost du site : son CSS, puis son script s'il y est permis (une fois par chargement).
+    if (!incognito) wc.on('dom-ready', () => { boosts.apply(wc); boosts.runScript(wc); });
     wc.on('did-navigate-in-page', (e, url, isMainFrame) => { if (isMainFrame) navigated(url); });
-    wc.on('update-target-url', (e, url) => rt.owner.linkStatus(rt, String(url || '').slice(0, STATUS_MAX)));
+    wc.on('update-target-url', (e, url) => { rt.hoverUrl = String(url || '').slice(0, STATUS_MAX); rt.owner.linkStatus(rt, rt.hoverUrl); });
     // Pincer pour zoomer la page (coupé par défaut dans Electron).
     wc.setVisualZoomLevelLimits(1, 5).catch(() => {});
     wc.on('audio-state-changed', () => {
@@ -987,17 +1068,18 @@ class OrbeWindow {
       OrbeWindow.pushAll();
     });
     wc.on('context-menu', (e, params) => rt.owner.pageMenu(rt, params));
-    wc.on('before-input-event', (e, input) => { if (input.type === 'keyDown' && !rt.internal) hooks.input(rt, input); rt.owner.onInput(e, input); });
+    wc.on('before-input-event', (e, input) => { if (input.type === 'keyDown' && !rt.internal) hooks.input(rt, input); rt.owner.onInput(e, input, false, rt.internal ? null : wc); });
     // ⌥ tenue pendant un clic : les événements de souris ne disent pas les touches
     // de modification, on suit donc la touche elle-même.
     wc.on('before-input-event', (e, input) => {
       rt.alt = !!input.alt;
+      rt.mod = !!(input.meta || input.control || input.shift); // ⌥ seule : vue scindée ; ⌥⌘ : petite fenêtre
       // `typed` : l'utilisateur a agi dans la page depuis son chargement (touche autre qu'un
       // simple modificateur et que la page a reçue — lettre, AltGr, ⌘V, Suppr, Entrée, saisie
       // assistée — ou bouton de souris). La veille automatique épargne alors l'onglet (veille.js).
       if (input.type === 'keyDown' && !e.defaultPrevented && !MODIFIER_KEYS.has(input.key)) rt.typed = true;
     });
-    wc.on('blur', () => { rt.alt = false; });
+    wc.on('blur', () => { rt.alt = false; rt.mod = false; rt.altLink = null; });
     wc.on('found-in-page', (e, result) => rt.owner.sendFind(result));
     wc.on('focus', () => rt.owner.paneFocused(rt.id));
     wc.on('enter-html-full-screen', () => { rt.owner.htmlFullscreen = true; rt.fullscreen = true; rt.owner.layout(); });
@@ -1037,11 +1119,15 @@ class OrbeWindow {
       // et Electron ne fournit alors pas de contenu à adopter : on ouvre nous-mêmes.
       const shifted = details.disposition === 'new-window' && !details.features;
       if (shifted && /^https?:/i.test(details.url)) {
-        if (store.state.settings.peekShift !== false) owner.openPeek(details.url, rt.id);
+        const how = store.state.settings.peekShift !== false ? owner.peekTarget(details.url) : 'tab';
+        if (how === 'peek') owner.openPeek(details.url, rt.id);
+        else if (how === 'route') hooks.openRouted(details.url);
         else owner.newTab(details.url, { after: rt.id });
         return { action: 'deny' };
       }
-      if (/^https?:/i.test(details.url) && outside) {
+      const how = /^https?:/i.test(details.url) && outside ? owner.peekTarget(details.url) : 'tab';
+      if (how === 'route') { hooks.openRouted(details.url); return { action: 'deny' }; }
+      if (how === 'peek') {
         return { action: 'allow', createWindow: (options) => owner.openPeek(details.url, rt.id, options).webContents };
       }
       // Conserve window.opener (connexions OAuth, paiements…).
@@ -1233,7 +1319,7 @@ class OrbeWindow {
       OrbeWindow.trimLive();
       this.changed();
       // Barre masquée : rien ne montre qu'un onglet vient de s'ouvrir derrière.
-      if (!this.sidebarVisible && !this.peek) this.toast(t('toast.newTabCreated', { space: this.space.name }));
+      if (!this.sidebarVisible && !this.peek) this.toast(t('toast.newTabCreated', { space: this.space.name }), null, () => { if (this.locate(tab.id)) this.activate(tab.id); });
     } else {
       this.activate(tab.id);
     }
@@ -1349,9 +1435,12 @@ class OrbeWindow {
   leaveSplit(id) {
     const g = this.groupOf(id);
     if (!g) return;
+    const vertical = this.isVertical(g);
+    this.setVertical(g, false);
     g.splice(g.indexOf(id), 1);
     delete g.ratios;
     for (const sp of this.data.spaces) if (sp.splitDirs) delete sp.splitDirs[id];
+    if (g.length >= 2) this.setVertical(g, vertical);
     if (g.length < 2) {
       for (const sp of this.data.spaces) {
         const i = (sp.splits || []).indexOf(g);
@@ -2346,10 +2435,13 @@ class OrbeWindow {
   }
 
   // --- Vue scindée ----------------------------------------------------------
-  splitWith(a, b, quiet) {
+  // `before` : le nouveau volet se place avant `a` (à sa gauche, ou au-dessus), et non après.
+  splitWith(a, b, quiet, before = false) {
     if (a === b) return;
     let g = this.groupOf(a);
-    if (g && g.length >= 4) return this.toast(t('toast.splitMax'), 'error');
+    if (g && !g.includes(b) && g.length >= 4) return this.toast(t('toast.splitMax'), 'error');
+    const vertical = this.isVertical(g);
+    if (g) this.setVertical(g, false);
     this.leaveSplit(b);
     g = this.groupOf(a);
     if (!g) {
@@ -2358,8 +2450,9 @@ class OrbeWindow {
       const sp = (loc && loc.space) || this.space;
       (sp.splits || (sp.splits = [])).push(g);
     }
-    g.splice(g.indexOf(a) + 1, 0, b);
+    g.splice(g.indexOf(a) + (before ? 0 : 1), 0, b);
     delete g.ratios;
+    this.setVertical(g, vertical);
     if (!quiet) this.activate(b);
   }
 
@@ -2375,13 +2468,97 @@ class OrbeWindow {
     if (id && this.visibleIds().length > 1) this.activate(id);
   }
 
-  closeSplitPane() {
-    const id = this.activeId;
+  // ⌥clic sur un lien de la page `id` : le lien s'ouvre dans un nouveau volet, à sa droite.
+  splitLink(id, url) {
+    if (!webUrl(url) || !this.locate(id)) return undefined;
+    const g = this.groupOf(id);
+    if (g && g.length >= 4) return this.toast(t('toast.splitMax'), 'error');
+    if (this.activeId !== id) this.activate(id);
+    return this.newTab(url, { split: true, after: id });
+  }
+
+  // ⌥clic sur un onglet de la barre latérale : il rejoint la page affichée en vue scindée.
+  splitTab(id) {
+    const loc = this.locate(id);
+    if (!loc || loc.node.type === 'folder') return;
+    if (!this.activeId || id === this.activeId) return this.activate(id);
+    if ((this.groupOf(this.activeId) || []).includes(id)) return this.activate(id);
+    return this.splitWith(this.activeId, id);
+  }
+
+  // ⌃⇧] / ⌃⇧[ : volet suivant, précédent (en boucle).
+  stepPane(delta) {
+    const ids = this.visibleIds();
+    if (ids.length < 2) return;
+    const i = ids.indexOf(this.activeId);
+    this.activate(ids[(i + delta + ids.length) % ids.length]);
+  }
+
+  closeSplitPane(id = this.activeId) {
     const g = id && this.groupOf(id);
     if (!g) return;
-    const other = g.find((x) => x !== id);
+    const shown = g.includes(this.activeId);
+    const other = (this.activeId !== id && shown && this.activeId) || g.find((x) => x !== id);
     this.leaveSplit(id);
-    this.activate(other);
+    if (shown) this.activate(other); else { this.layout(); this.changed(); }
+  }
+
+  // Déplace un volet d'un cran (à gauche ou à droite ; en haut ou en bas pour une
+  // vue empilée) : il échange sa place, et sa part de largeur, avec son voisin.
+  movePane(id = this.activeId, delta = 1) {
+    const g = id && this.groupOf(id);
+    if (!g) return false;
+    const i = g.indexOf(id);
+    const j = i + delta;
+    if (j < 0 || j >= g.length) return false;
+    const vertical = this.isVertical(g);
+    this.setVertical(g, false);
+    [g[i], g[j]] = [g[j], g[i]];
+    if (g.ratios && g.ratios.length === g.length) [g.ratios[i], g.ratios[j]] = [g.ratios[j], g.ratios[i]];
+    this.setVertical(g, vertical);
+    this.layout();
+    this.changed();
+    return true;
+  }
+
+  // « Agrandir ce volet » (Expand Current Split dans Arc) : le volet actif prend
+  // toute la place que les autres peuvent lui laisser ; une seconde fois, les
+  // volets retrouvent des parts égales.
+  expandSplit(id = this.activeId) {
+    const g = id && this.groupOf(id);
+    if (!g) return;
+    const n = g.length;
+    const small = 0.15;
+    const big = 1 - small * (n - 1);
+    const i = g.indexOf(id);
+    const already = g.ratios && g.ratios.length === n && Math.abs(g.ratios[i] - big) < 0.01;
+    if (already) delete g.ratios;
+    else g.ratios = g.map((x) => (x === id ? big : small));
+    this.layout();
+    this.changed();
+  }
+
+  // Menu « ⋯ » de la petite barre d'un volet.
+  paneMenuTemplate(id) {
+    const g = this.groupOf(id);
+    const tab = this.data.tabs[id];
+    if (!g || !tab) return [];
+    const i = g.indexOf(id);
+    const vertical = this.isVertical(g);
+    const rt = live.get(id);
+    return [
+      { label: t('edit.copyUrl'), click: () => { clipboard.writeText(cleanUrl(tab.url)); this.toast(t('toast.urlCopied')); } },
+      { label: t('ctx.reload'), enabled: !!rt, click: () => { if (rt && !rt.wc.isDestroyed()) rt.wc.reload(); } },
+      { type: 'separator' },
+      { label: t(vertical ? 'pane.moveUp' : 'pane.moveLeft'), enabled: i > 0, click: () => this.movePane(id, -1) },
+      { label: t(vertical ? 'pane.moveDown' : 'pane.moveRight'), enabled: i < g.length - 1, click: () => this.movePane(id, 1) },
+      { label: t('view.expandSplit'), click: () => this.expandSplit(id) },
+      { label: t(vertical ? 'pane.sideBySide' : 'pane.stacked'), click: () => { if (!g.includes(this.activeId)) this.activate(id); this.toggleSplitDirection(); } },
+      { type: 'separator' },
+      { label: t('view.separateSplit'), click: () => this.separateSplit(id) },
+      { label: t('tabs.separateAll'), click: () => this.separateAll(id) },
+      { label: t('view.closeSplit'), click: () => this.closeSplitPane(id) },
+    ];
   }
 
   // « Séparer la page de la vue scindée » : la page affichée quitte la vue
@@ -2408,10 +2585,20 @@ class OrbeWindow {
   // lien cliqué (ou depuis le centre), se réduit vers lui à la fermeture, et
   // s'étend jusqu'à la place de l'onglet quand elle en devient un.
 
-  // Place de la carte dans la zone des pages.
+  // Un lien qui s'ouvrirait en aperçu : 'peek', ou 'tab' pour un lien de réunion
+  // (on y reste, micro ouvert : il lui faut un onglet), ou 'route' quand une règle
+  // d'aiguillage lui donne une autre destination (Espace, petite fenêtre).
+  peekTarget(url) {
+    if (isMeetingUrl(url)) return 'tab';
+    return !this.incognito && hooks.route(url) ? 'route' : 'peek';
+  }
+
+  // Place de la carte dans la zone des pages. Barre d'outils affichée : l'aperçu
+  // montre aussi son adresse, au-dessus de la carte, qui descend d'autant.
   peekRect(rect = this.contentRect()) {
     const m = Math.round(Math.min(90, Math.max(44, rect.width * 0.07)));
-    return { x: rect.x + m, y: rect.y + 16, width: Math.max(200, rect.width - 2 * m), height: Math.max(120, rect.height - 16) };
+    const top = this.toolbarShown ? PEEK_BAR : 16;
+    return { x: rect.x + m, y: rect.y + top, width: Math.max(200, rect.width - 2 * m), height: Math.max(120, rect.height - top) };
   }
 
   // Rectangle de départ (et de retour) : une petite carte autour du point cliqué
@@ -2446,6 +2633,15 @@ class OrbeWindow {
     if (wc && !wc.isDestroyed()) wc.send('overlay', { mode: 'peek', ...payload });
   }
 
+  // Adresse de l'aperçu, affichée au-dessus de la carte quand la barre d'outils l'est.
+  peekAddress() {
+    const st = this.peekState;
+    const wc = this.peekChrome && this.peekChrome.webContents;
+    if (!st || !wc || wc.isDestroyed()) return;
+    const full = store.state.settings.showFullUrl !== false;
+    wc.send('overlay', { mode: 'peek-url', text: this.toolbarShown ? (full ? st.url : suggest.strip(st.url)) : '' });
+  }
+
   // `point` : d'où part la carte (coordonnées de la fenêtre) ; à défaut, le
   // dernier clic dans la page d'origine s'il vient d'avoir lieu.
   openPeek(url, fromId, options, point) {
@@ -2469,8 +2665,8 @@ class OrbeWindow {
     if (dark) wc.once('dom-ready', () => { try { view.setBackgroundColor('#ffffff'); } catch {} });
     on('page-title-updated', (e, title) => { state.title = title; });
     on('page-favicon-updated', (e, icons) => { state.favicon = icons[0] || ''; });
-    on('did-navigate', (e, u) => { state.url = u; });
-    on('did-navigate-in-page', (e, u, main) => { if (main) state.url = u; });
+    on('did-navigate', (e, u) => { state.url = u; this.peekAddress(); });
+    on('did-navigate-in-page', (e, u, main) => { if (main) { state.url = u; this.peekAddress(); } });
     on('will-prevent-unload', (e) => { if (hooks.leave(this, wc)) e.preventDefault(); });
     on('destroyed', () => { if (this.peekState === state) this.closePeek(); });
     const guard = (e, u) => { if (isInternal(u)) e.preventDefault(); };
@@ -2479,15 +2675,16 @@ class OrbeWindow {
     on('context-menu', (e, params) => this.pageMenu({ wc, id: fromId }, params));
     on('before-input-event', (e, input) => {
       if (input.type === 'keyDown' && input.key === 'Escape') { e.preventDefault(); return this.dismissPeek(); }
-      return this.onInput(e, input);
+      return this.onInput(e, input, false, wc);
     });
     wc.setWindowOpenHandler((d) => { if (/^https?:/i.test(d.url)) this.newTab(d.url); return { action: 'deny' }; });
     const ms = motion(MOTION.peekIn);
     if (!this.peekChrome) {
       this.peekChrome = this.makeUiView('overlay.html#peek');
-      this.peekChrome.webContents.once('did-finish-load', () => { if (!this.gone && this.peekState) this.peekOverlay({ ms }); });
+      this.peekChrome.webContents.once('did-finish-load', () => { if (!this.gone && this.peekState) { this.peekOverlay({ ms }); this.peekAddress(); } });
     } else {
       this.peekOverlay({ ms });
+      this.peekAddress();
     }
     this.win.contentView.addChildView(this.peekChrome);
     this.win.contentView.addChildView(view);
@@ -2727,8 +2924,16 @@ class OrbeWindow {
     if (id) this.activate(id);
   }
 
-  onInput(e, input, fromUi) {
-    if (input.type === 'keyDown' && input.key === 'Tab' && input.control && !input.meta && !input.alt) {
+  // `page` : la page web qui a reçu la touche (onglet ou aperçu), s'il y en a une.
+  onInput(e, input, fromUi, page) {
+    // ⌃` : variante de ⌃Tab (comme dans Arc), pour les onglets récents.
+    const backquote = input.type === 'keyDown' && input.control && !input.meta && !input.alt && (input.code === 'Backquote' || input.key === '`');
+    // ⌘← / ⌘→ (macOS) : page précédente, suivante — sauf en train d'écrire, où
+    // ces touches déplacent le curseur en début et en fin de ligne.
+    if (page && platform.isMac && input.type === 'keyDown' && input.meta && !input.control && !input.alt && !input.shift && (input.key === 'ArrowLeft' || input.key === 'ArrowRight')) {
+      this.arrowNav(page, input.key === 'ArrowLeft' ? -1 : 1);
+    }
+    if (backquote || (input.type === 'keyDown' && input.key === 'Tab' && input.control && !input.meta && !input.alt)) {
       // Dans une vue de l'interface, on laisse passer la touche : la bloquer ici
       // ferait aussi disparaître le relâchement de ⌃ qui valide la bascule.
       if (!fromUi) e.preventDefault();
@@ -2745,6 +2950,18 @@ class OrbeWindow {
       // Comme dans Arc : Échap arrête la page en cours de chargement.
       else if (!fromUi && this.activeRt && this.activeRt.loading && !this.activeRt.wc.isDestroyed()) this.activeRt.wc.stop();
     }
+  }
+
+  // ⌘← / ⌘→ hors d'un champ de saisie : page précédente ou suivante. La page est
+  // interrogée (elle seule sait où est le curseur) ; sans réponse, rien ne bouge.
+  async arrowNav(page, dir) {
+    if (page.isDestroyed()) return false;
+    const typing = await page.executeJavaScript('(() => { let e = document.activeElement; while (e && e.shadowRoot && e.shadowRoot.activeElement) e = e.shadowRoot.activeElement; return !!e && (e.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(e.tagName) || e.tagName === "IFRAME"); })()').catch(() => true);
+    if (typing || page.isDestroyed()) return false;
+    const nav = page.navigationHistory;
+    if (dir < 0 ? !nav.canGoBack() : !nav.canGoForward()) return false;
+    if (dir < 0) nav.goBack(); else nav.goForward();
+    return true;
   }
 
   // `text` : recherche posée d'avance dans le champ (« Utiliser la sélection pour rechercher »).
@@ -2826,11 +3043,52 @@ class OrbeWindow {
     } else show();
   }
 
-  dropSplit(id) {
+  // Volet visé par un point de la fenêtre, et de quel côté : la moitié gauche
+  // (haute, pour une vue empilée) place le nouvel onglet avant lui, l'autre après.
+  // Rend aussi la zone à éclairer, dans le repère de la zone des pages.
+  dropTargetAt(x, y) {
+    const ids = this.visibleIds();
+    if (!ids.length) return null;
+    const rect = this.contentRect();
+    const panes = this.paneRects(rect, ids);
+    let i = panes.findIndex((p) => x >= p.x && x < p.x + p.width + GAP && y >= p.y && y < p.y + p.height + GAP);
+    if (i < 0) i = Math.max(0, ids.indexOf(this.activeId));
+    const p = panes[i];
+    const vertical = p.vertical && ids.length > 1;
+    const before = vertical ? y < p.y + p.height / 2 : x < p.x + p.width / 2;
+    const zone = vertical
+      ? { x: p.x - rect.x, y: (before ? p.y : p.y + p.height / 2) - rect.y, w: p.width, h: p.height / 2 }
+      : { x: (before ? p.x : p.x + p.width / 2) - rect.x, y: p.y - rect.y, w: p.width / 2, h: p.height };
+    return { id: ids[i], before, zone: { x: Math.round(zone.x), y: Math.round(zone.y), w: Math.round(zone.w), h: Math.round(zone.h) } };
+  }
+
+  // Survol pendant un glisser : la zone de dépôt éclaire le côté visé.
+  dragZoneOver(a) {
+    if (!this.dropView || this.dropView.webContents.isDestroyed()) return;
+    const at = a && typeof a === 'object' && Number.isFinite(a.x) && Number.isFinite(a.y) ? this.dropTargetAt(a.x, a.y) : null;
+    this.dropView.webContents.send('overlay', { mode: 'drop', label: t('view.addSplit'), over: !!a, zone: at ? at.zone : null });
+  }
+
+  // `at` : point du dépôt dans la fenêtre ; sans lui, le nouvel onglet se place après le volet actif.
+  dropSplit(id, at) {
     this.dragZone(false);
     const loc = this.locate(id);
-    if (!loc || loc.node.type === 'folder' || !this.activeId || id === this.activeId) return;
-    this.splitWith(this.activeId, id);
+    if (!loc || loc.node.type === 'folder' || !this.activeId) return;
+    const target = at && Number.isFinite(at.x) && Number.isFinite(at.y) ? this.dropTargetAt(at.x, at.y) : null;
+    const anchor = target ? target.id : this.activeId;
+    if (id === anchor) return;
+    // Onglet déjà dans cette vue scindée : il change seulement de place.
+    const g = this.groupOf(anchor);
+    if (g && g.includes(id)) {
+      const vertical = this.isVertical(g);
+      this.setVertical(g, false);
+      g.splice(g.indexOf(id), 1);
+      g.splice(g.indexOf(anchor) + (target && target.before ? 0 : 1), 0, id);
+      delete g.ratios;
+      this.setVertical(g, vertical);
+      return this.activate(id);
+    }
+    return this.splitWith(anchor, id, false, !!(target && target.before));
   }
 
   // Adresse du lien survolé, en bas à gauche de la page.
@@ -2860,21 +3118,20 @@ class OrbeWindow {
   }
 
   // `sound` : son qui accompagne le message (« error » pour un refus).
-  toast(text, sound) {
+  // `action` : ce que fait un clic sur le message (aller à l'onglet qui vient de
+  // s'ouvrir…) ; sans action, le clic le fait seulement disparaître.
+  toast(text, sound, action) {
     if (this.win.isDestroyed()) return;
     if (sound) this.sound(sound);
+    this.toastAction = typeof action === 'function' ? action : null;
     const send = () => {
       if (this.gone || this.toastView.webContents.isDestroyed()) return;
       this.win.contentView.addChildView(this.toastView);
       this.layout();
       this.toastView.setVisible(true);
-      this.toastView.webContents.send('overlay', { mode: 'toast', text });
+      this.toastView.webContents.send('overlay', { mode: 'toast', text, action: !!this.toastAction });
       clearTimeout(this.toastTimer);
-      this.toastTimer = setTimeout(() => {
-        if (this.win.isDestroyed()) return;
-        this.toastView.setVisible(false);
-        try { this.win.contentView.removeChildView(this.toastView); } catch {}
-      }, 2100);
+      this.toastTimer = setTimeout(() => this.hideToast(), 2100);
     };
     if (!this.toastView) {
       this.toastView = this.makeUiView('overlay.html#toast');
@@ -2885,23 +3142,43 @@ class OrbeWindow {
     } else send();
   }
 
+  hideToast() {
+    clearTimeout(this.toastTimer);
+    this.toastAction = null;
+    if (this.win.isDestroyed() || !this.toastView) return;
+    this.toastView.setVisible(false);
+    try { this.win.contentView.removeChildView(this.toastView); } catch {}
+  }
+
+  // Clic sur le message : son action, s'il en a une, puis il disparaît.
+  toastClick() {
+    const action = this.toastAction;
+    this.hideToast();
+    if (action) action();
+  }
+
   // --- Actions sur la page --------------------------------------------------
   copyUrl(markdown) {
     const tab = this.activeId && this.data.tabs[this.activeId];
     if (!tab) return;
-    clipboard.writeText(markdown ? `[${tab.title || tab.url}](${tab.url})` : tab.url);
+    const url = cleanUrl(tab.url);
+    clipboard.writeText(markdown ? `[${tab.title || url}](${url})` : url);
     this.toast(t(markdown ? 'toast.markdownCopied' : 'toast.urlCopied'));
   }
 
   // Copie la sélection sous forme de citation Markdown, avec sa source.
-  async copyQuote() {
-    const tab = this.activeId && this.data.tabs[this.activeId];
-    const wc = this.activeRt && this.activeRt.wc;
-    if (!tab || !wc || wc.isDestroyed()) return;
+  // `from` : la page d'où vient la sélection (menu de page d'un volet ou d'un aperçu) ; sinon l'onglet actif.
+  async copyQuote(from) {
+    const wc = from || (this.activeRt && this.activeRt.wc);
+    if (!wc || wc.isDestroyed()) return;
+    const mine = !from || (this.activeRt && this.activeRt.wc === from);
+    const tab = mine ? this.activeId && this.data.tabs[this.activeId] : { url: wc.getURL(), title: wc.getTitle() };
+    if (!tab) return;
     const text = String(await wc.executeJavaScript('String(getSelection())').catch(() => '')).trim();
-    if (!text) return this.copyUrl(true);
+    if (!text) return mine ? this.copyUrl(true) : undefined;
     const quote = text.split(/\n+/).map((l) => '> ' + l).join('\n');
-    clipboard.writeText(`${quote}\n>\n> — [${tab.title || tab.url}](${tab.url})`);
+    const url = cleanUrl(tab.url);
+    clipboard.writeText(`${quote}\n>\n> — [${tab.title || url}](${url})`);
     this.toast(t('toast.quoteCopied'));
     return undefined;
   }
@@ -3040,6 +3317,45 @@ class OrbeWindow {
   }
 
   shieldMenu() {
+    this.popup(this.shieldMenuTemplate());
+  }
+
+  // Active ou coupe le Boost du site affiché (case du centre de contrôle).
+  toggleBoost() {
+    const tab = this.activeId && this.data.tabs[this.activeId];
+    const host = tab && !this.incognito ? boosts.hostOf(tab.url) : '';
+    if (!boosts.has(host)) return;
+    boosts.set(host, { enabled: !boosts.get(host).enabled });
+    applyBoosts(host);
+    OrbeWindow.pushAll();
+  }
+
+  // Clic droit sur la barre d'outils : adresse entière ou non, copie, capture, partage.
+  toolbarMenuTemplate() {
+    const tab = this.activeId && this.data.tabs[this.activeId];
+    const web = !!tab && !!webUrl(tab.url);
+    const full = store.state.settings.showFullUrl !== false;
+    const { setSetting } = require('./commands');
+    return [
+      { label: t('tb.showFullUrl'), type: 'checkbox', checked: full, click: () => setSetting('showFullUrl', !full) },
+      { type: 'separator' },
+      { label: t('edit.copyUrl'), enabled: !!tab, click: () => this.copyUrl(false) },
+      { label: t('edit.copyUrlMarkdown'), enabled: !!tab, click: () => this.copyUrl(true) },
+      { label: t('file.capture').replace('…', ''), enabled: !!tab, click: () => this.capture() },
+      // Feuille de partage du système (macOS).
+      { label: t('tb.share'), visible: platform.isMac, enabled: web, click: () => this.share() },
+      { type: 'separator' },
+      { label: t('view.hideToolbar'), enabled: !!store.state.settings.showToolbar, click: () => setSetting('showToolbar', false) },
+    ];
+  }
+
+  share() {
+    const tab = this.activeId && this.data.tabs[this.activeId];
+    if (!tab || !webUrl(tab.url) || !platform.isMac) return;
+    try { new (require('electron').ShareMenu)({ urls: [cleanUrl(tab.url)] }).popup({ window: this.win }); } catch {}
+  }
+
+  shieldMenuTemplate() {
     const tab = this.activeId && this.data.tabs[this.activeId];
     const on = store.state.settings.adblock;
     const web = !!tab && /^https?:/i.test(tab.url);
@@ -3053,7 +3369,8 @@ class OrbeWindow {
       enabled: x.enabled !== false,
       click: () => require('./ext-host').openPopup(this, x.id, { x: 12, y: 86 }),
     }));
-    this.popup([
+    const boostHost = web && !this.incognito ? boosts.hostOf(tab.url) : '';
+    return [
       ...extItems,
       ...(extItems.length ? [{ type: 'separator' }] : []),
       { label: t('adblock.count', { n }), enabled: false },
@@ -3064,12 +3381,14 @@ class OrbeWindow {
       { label: t('edit.copyUrl'), enabled: !!tab, click: () => this.copyUrl(false) },
       { label: t('file.capture').replace('…', ''), enabled: !!tab, click: () => this.capture() },
       { label: t('boost.edit'), enabled: web && !this.incognito, click: () => this.run('boost') },
+      // Comme le pinceau du centre de contrôle d'Arc : le Boost du site s'active et se coupe d'ici.
+      { label: t('boost.thisSite'), type: 'checkbox', visible: boosts.has(boostHost), checked: boosts.has(boostHost) && boosts.get(boostHost).enabled, enabled: store.state.settings.boostsEnabled !== false, click: () => this.toggleBoost() },
       { label: t('boost.zapCmd'), enabled: web && !this.incognito, click: () => this.run('zap') },
       { type: 'separator' },
       ...hooks.siteMenu(this),
       { label: t('view.clearCookies'), enabled: web, click: () => this.clearAndReload('cookies') },
       { label: t('site.resetPerms'), enabled: web, click: () => hooks.action(this, 'resetSitePerms') },
-    ]);
+    ];
   }
 
   // Actualiser : depuis la page d'erreur, on retente l'adresse d'origine.
@@ -3286,7 +3605,13 @@ class OrbeWindow {
   }
 
   pageMenu(rt, p) {
+    this.popup(this.pageMenuTemplate(rt, p));
+  }
+
+  // `rt` : l'onglet, ou { wc, id } pour un aperçu (id : l'onglet d'où il a été ouvert).
+  pageMenuTemplate(rt, p) {
     const wc = rt.wc;
+    const isTab = live.get(rt.id) === rt;
     const tpl = [];
     const sep = () => { if (tpl.length && tpl[tpl.length - 1].type !== 'separator') tpl.push({ type: 'separator' }); };
     const link = webUrl(p.linkURL);
@@ -3321,6 +3646,17 @@ class OrbeWindow {
       tpl.push(
         { label: t('edit.copy'), role: 'copy' },
         { label: t('ctx.searchFor', { text: text.length > 28 ? text.slice(0, 28) + '…' : text }), click: () => this.newTab(suggest.searchUrl(text), { after: rt.id }) },
+        // « Share Quote » dans Arc : la sélection, en citation, avec sa source.
+        { label: t('edit.copyUrlQuote'), click: () => this.copyQuote(wc) },
+      );
+    }
+    if (p.mediaType === 'video') {
+      sep();
+      const x = Math.round(Number(p.x) || 0);
+      const y = Math.round(Number(p.y) || 0);
+      tpl.push(
+        { label: t('ctx.pip'), click: () => wc.executeJavaScript(`(() => { const el = document.elementFromPoint(${x}, ${y}); const v = el && (el.closest('video') || (el.querySelector && el.querySelector('video'))); if (!v || !document.pictureInPictureEnabled) return false; return (document.pictureInPictureElement === v ? document.exitPictureInPicture() : v.requestPictureInPicture()).then(() => true, () => false); })()`, true).catch(() => {}) },
+        { label: t('ctx.copyVideoUrl'), visible: !!src, click: () => clipboard.writeText(p.srcURL) },
       );
     }
     if (!p.linkURL && !p.isEditable && p.mediaType === 'none' && !(p.selectionText || '').trim()) {
@@ -3330,9 +3666,16 @@ class OrbeWindow {
         { label: t('ctx.forward'), enabled: nav.canGoForward(), click: () => nav.goForward() },
         { label: t('ctx.reload'), click: () => { this.activate(rt.id); this.reload(); } },
         { type: 'separator' },
-        { label: t('edit.copyUrl'), click: () => clipboard.writeText(wc.getURL()) },
+        { label: t('edit.copyUrl'), click: () => clipboard.writeText(cleanUrl(wc.getURL())) },
         { label: t('file.savePage'), click: () => { this.activate(rt.id); this.savePage(); } },
         { label: t('file.print'), click: () => wc.print() },
+      );
+      // « Customize Page » et « Translate » dans Arc : le Boost du site, et la page traduite dans un nouvel onglet.
+      const web = !!webUrl(wc.getURL());
+      tpl.push(
+        { type: 'separator' },
+        { label: t('boost.edit'), visible: isTab, enabled: web && !this.incognito, click: () => { this.activate(rt.id); this.run('boost'); } },
+        { label: t('ctx.translate'), enabled: web, click: () => this.translate(wc.getURL(), rt.id) },
       );
     }
     // Éléments ajoutés par les extensions (chrome.contextMenus).
@@ -3340,7 +3683,15 @@ class OrbeWindow {
     if (fromExtensions.length) { sep(); tpl.push(...fromExtensions); }
     sep();
     tpl.push({ label: t('ctx.inspect'), click: () => wc.inspectElement(p.x, p.y) });
-    this.popup(tpl);
+    return tpl;
+  }
+
+  // « Traduire la page » : la page passe par le service de traduction de Google, dans
+  // un nouvel onglet. Rien ne part sans ce clic ; seule l'adresse est transmise.
+  translate(url, after) {
+    if (!webUrl(url)) return undefined;
+    const to = store.state.settings.lang === 'en' ? 'en' : 'fr';
+    return this.newTab(`https://translate.google.com/translate?sl=auto&tl=${to}&u=${encodeURIComponent(url)}`, { after });
   }
 
   // --- État envoyé à la coque -----------------------------------------------
@@ -3348,7 +3699,7 @@ class OrbeWindow {
     if (this.win.isDestroyed() || this.ui.webContents.isDestroyed()) return;
     // La barre d'outils peut apparaître avec la page (mode développeur) : la mise en page suit.
     const toolbar = this.toolbarShown;
-    if (this.toolbarWas !== undefined && this.toolbarWas !== toolbar) { this.toolbarWas = toolbar; this.layout(); }
+    if (this.toolbarWas !== undefined && this.toolbarWas !== toolbar) { this.toolbarWas = toolbar; this.layout(); this.peekAddress(); }
     this.toolbarWas = toolbar;
     const d = this.data;
     const space = this.space;
@@ -3455,6 +3806,15 @@ class OrbeWindow {
           ? { v: true, x: p.x, y: p.y + p.height, w: p.width }
           : { x: p.x + p.width, y: rect.y, h: rect.height }));
       })(),
+      // Petite barre de chaque volet d'une vue scindée : adresse, options, fermeture.
+      panes: (() => {
+        const ids = this.visibleIds();
+        if (ids.length < 2 || this.htmlFullscreen) return [];
+        return this.paneRects(this.contentRect(), ids).map((p, i) => {
+          const pt = d.tabs[ids[i]];
+          return { id: ids[i], x: p.x, y: p.y, w: p.width, h: p.height, bar: p.bar, active: ids[i] === activeId, internal: isInternal(pt.url), url: pt.url, title: pt.customTitle || pt.title || '', favicon: this.incognito ? '' : (pt.favicon || '') };
+        });
+      })(),
       media: this.mediaId && settings.mediaControls !== false ? {
         id: this.mediaId,
         title: mediaTab.customTitle || mediaTab.title || suggest.strip(mediaTab.url),
@@ -3517,6 +3877,8 @@ class OrbeWindow {
         return Array.isArray(a.ids) ? this.moveManyToSpace(a.ids, String(a.spaceId)) : this.moveToSpace(String(a.id), String(a.spaceId));
       }
       case 'shieldMenu': return this.shieldMenu();
+      case 'toolbarMenu': return this.popup(this.toolbarMenuTemplate());
+      case 'toastClick': return this.toastClick();
       case 'rename': return this.rename(a.id, a.name);
       case 'toggleFolder': return this.toggleFolder(a);
       case 'move': {
@@ -3552,8 +3914,15 @@ class OrbeWindow {
       case 'themeExtra': return this.setThemeExtra(a || {});
       case 'themeGet': return this.themeNow();
       case 'dragZone': return this.dragZone(!!a);
-      case 'dragZoneOver': if (this.dropView && !this.dropView.webContents.isDestroyed()) this.dropView.webContents.send('overlay', { mode: 'drop', label: t('view.addSplit'), over: !!a }); return undefined;
-      case 'dropSplit': return this.dropSplit(String(a));
+      case 'dragZoneOver': return this.dragZoneOver(a);
+      case 'dropSplit': return a && typeof a === 'object' ? this.dropSplit(String(a.id), a) : this.dropSplit(String(a));
+      // Petite barre d'un volet : adresse, menu, fermeture ; ⌥clic sur un onglet de la barre latérale.
+      case 'paneEdit': if (this.visibleIds().includes(a)) { if (a !== this.activeId) this.activate(a); return this.openCommand('edit'); } return undefined;
+      case 'paneMenu': return this.visibleIds().includes(a) && this.groupOf(a) ? this.popup(this.paneMenuTemplate(a)) : undefined;
+      case 'paneClose': return this.visibleIds().includes(a) ? this.closeSplitPane(a) : undefined;
+      case 'splitTab': return this.splitTab(String(a));
+      // ⌥⌘clic sur un onglet de la barre latérale : sa page s'ouvre dans une petite fenêtre.
+      case 'littleTab': { const tab = this.data.tabs[a]; if (tab && webUrl(tab.url) && !this.incognito) hooks.openLittle(tab.url); return undefined; }
       case 'splitResize': return this.resizeSplit(Number(a.i), Number(a.at != null ? a.at : a.x));
       case 'peekClose': return this.dismissPeek();
       case 'peekExpand': return this.expandPeek();
@@ -3562,6 +3931,24 @@ class OrbeWindow {
       default: return hooks.action(this, action, a);
     }
   }
+}
+
+// Le script d'un Boost ne s'exécute que dans la page web d'un onglet ordinaire :
+// ni page interne, ni navigation privée, ni aperçu, feuille ou vue de l'interface
+// (aucune de ces vues n'est un onglet vivant).
+boosts.hooks.canScript = (wc) => {
+  for (const rt of live.values()) if (rt.wc === wc) return !rt.internal && !rt.owner.incognito;
+  return false;
+};
+
+// Réapplique le Boost d'un site à tous les onglets qui l'affichent.
+function applyBoosts(host) {
+  const jobs = [];
+  for (const rt of live.values()) {
+    if (rt.owner.incognito || rt.internal || rt.wc.isDestroyed() || boosts.hostOf(rt.wc.getURL()) !== host) continue;
+    jobs.push(boosts.apply(rt.wc));
+  }
+  return Promise.all(jobs);
 }
 
 function archiveStale() {
@@ -3591,4 +3978,4 @@ function archiveStale() {
   if (count) { store.save(); for (const w of windows.values()) w.layout(); OrbeWindow.pushAll(); }
 }
 
-module.exports = { OrbeWindow, windows, live, trusted, hooks, lostAfterStay: () => lastLost, archiveStale, tabMemory, noteDownload, uiRetryDelay, UI_PREFS, STATUS_MAX, ICON_MAX, thumbs: { keep: keepThumb, MAX: THUMBS }, INTERNAL, UI_PRELOAD, isInternal, MOTION, motion, forceMotion, motionStats: stats, boundsOf, inFlight, resumed };
+module.exports = { OrbeWindow, windows, live, trusted, hooks, lostAfterStay: () => lastLost, applyBoosts, cleanUrl, isMeetingUrl, SPLIT_BAR, archiveStale, tabMemory, noteDownload, uiRetryDelay, UI_PREFS, STATUS_MAX, ICON_MAX, thumbs: { keep: keepThumb, MAX: THUMBS }, INTERNAL, UI_PRELOAD, isInternal, MOTION, motion, forceMotion, motionStats: stats, boundsOf, inFlight, resumed };

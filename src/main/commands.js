@@ -35,6 +35,8 @@ const COMMANDS = [
   { name: 'captureToEasel', label: 'easel.capture', accel: 'Alt+Shift+Cmd+2', keys: '⌥⇧⌘2', run: (w) => easels.capture(w) },
   { name: 'savePage', label: 'file.savePage', accel: 'Shift+Cmd+S', keys: '⇧⌘S', run: (w) => w.savePage() },
   { name: 'print', label: 'file.print', accel: 'Cmd+P', keys: '⌘P', run: (w) => wc(w) && wc(w).print() },
+  // « Share… » dans Arc : la feuille de partage de macOS, pour l'adresse de la page.
+  ...(platform.isMac ? [{ name: 'share', label: 'tb.share', run: (w) => w.share() }] : []),
   // Édition
   { name: 'copyUrl', label: 'edit.copyUrl', accel: 'Shift+Cmd+C', keys: '⇧⌘C', run: (w) => (w.selected().length > 1 ? w.copyLinks(w.selected()) : w.copyUrl(false)) },
   { name: 'copyUrlMarkdown', label: 'edit.copyUrlMarkdown', accel: 'Alt+Shift+Cmd+C', keys: '⌥⇧⌘C', run: (w) => w.copyUrl(true) },
@@ -59,6 +61,11 @@ const COMMANDS = [
   { name: 'splitDirection', label: 'view.splitDirection', run: (w) => w.toggleSplitDirection() },
   { name: 'closeSplit', label: 'view.closeSplit', accel: 'Ctrl+Shift+-', keys: '⌃⇧-', run: (w) => w.closeSplitPane() },
   { name: 'separateSplit', label: 'view.separateSplit', run: (w) => w.separateSplit() },
+  { name: 'separateAll', label: 'view.separateAll', run: (w) => w.separateAll() },
+  { name: 'expandSplit', label: 'view.expandSplit', run: (w) => w.expandSplit() },
+  // ⌃⇧] / ⌃⇧[ : volet suivant, précédent.
+  { name: 'nextPane', label: 'view.nextPane', accel: 'Ctrl+Shift+]', keys: '⌃⇧]', palette: false, run: (w) => w.stepPane(1) },
+  { name: 'prevPane', label: 'view.prevPane', accel: 'Ctrl+Shift+[', keys: '⌃⇧[', palette: false, run: (w) => w.stepPane(-1) },
   { name: 'actualSize', label: 'view.actualSize', accel: 'Cmd+0', keys: '⌘0', run: (w) => w.zoom(0) },
   { name: 'zoomIn', label: 'view.zoomIn', accel: 'Cmd+Plus', keys: '⌘+', run: (w) => w.zoom(0.5) },
   { name: 'zoomOut', label: 'view.zoomOut', accel: 'Cmd+-', keys: '⌘-', run: (w) => w.zoom(-0.5) },
@@ -136,7 +143,9 @@ const COMMANDS = [
   ...(platform.isWin ? [{ name: 'undoDefaultBrowser', label: 'app.undoDefaultBrowser', global: true, run: async (w) => { const ok = await platform.undoDefault(); if (w && ok) w.toast(store.t('toast.undoDefaultBrowser')); } }] : []),
   { name: 'toggleSiteBlocking', label: 'adblock.toggleSite', run: (w) => w.toggleSiteBlocking() },
   { name: 'boost', label: 'boost.edit', run: (w) => hooks.openBoost(w) },
-  { name: 'zap', label: 'boost.zapCmd', run: (w) => { const p = w.activeRt; if (p && !w.incognito) require('./boosts').zap(p.wc); } },
+  { name: 'zap', label: 'boost.zapCmd', run: (w) => { const p = w.activeRt; if (p && !p.internal && !w.incognito) require('./boosts').zap(p.wc); } },
+  // « View Boosts… » dans Arc : la liste de tous les Boosts (activer, supprimer, exporter, importer).
+  { name: 'boosts', label: 'boost.list', run: (w) => hooks.openBoost(w, 'list') },
   { name: 'checkUpdates', label: 'app.checkUpdates', global: true, run: () => hooks.checkUpdates() },
   { name: 'importArc', label: 'app.importArc', run: (w) => importArc(w) },
   { name: 'importBookmarks', label: 'app.importBookmarks', run: (w) => hooks.importBookmarks(w) },
