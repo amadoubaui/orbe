@@ -57,10 +57,23 @@ let spareSeq = 0;
 const loadingUi = new WeakSet(); // vues de l'interface créées à part, dont la page charge encore
 // `rightInset(fenêtre)` : place réservée à droite des pages (panneau latéral d'une
 // extension) ; `layout(fenêtre)` : appelé à la fin de chaque mise en page.
+// Une page détruite hors d'Orbe moins de quinze secondes après « Rester » n'est pas une page
+// qui s'est fermée d'elle-même : son onglet reste (voir `wire`, événement `destroyed`).
+const STAY_GUARD = 15000;
+const SLEEP_WAIT = 4000; // temps laissé à une page pour répondre à une veille avant de la reproposer
+let lastLost = null; // dernière page ainsi perdue (diagnostic)
+// Journal court, par page, de ce qui a mené à sa fermeture : qui l'a consultée, ce qu'elle a
+// répondu, qui l'a détruite. Lu quand une page disparaît sans raison connue.
+function note(rt, what) {
+  const trail = rt.trail || (rt.trail = []);
+  trail.push(`${new Date().toISOString().slice(11, 23)} ${what}`);
+  if (trail.length > 16) trail.shift();
+}
+
 const hooks = {
   changed: () => {}, openLittle: () => {}, openSettings: () => {}, extensionMenu: () => [], rightInset: () => 0, layout: () => {},
   // Raccords posés par essentials.js (feuilles d'onglet, certificats, « quitter la page ? », fenêtres surgissantes…).
-  sheetFocus: () => null, leave: () => true, closeAll: async () => true, quitState: { quitting: false }, input: () => {}, popup: () => true, navigated: () => {},
+  sheetFocus: () => null, leave: () => true, closeAll: async () => true, quitState: { quitting: false }, shield: () => false, unshield: () => {}, stayed: () => Infinity, input: () => {}, popup: () => true, navigated: () => {},
   busy: () => false, tabState: () => [], navState: () => ({}), failed: () => false, gone: () => {}, hung: () => {}, action: () => undefined, siteMenu: () => [],
   // Note « mise à jour disponible » de la barre latérale ({ version } ou null) : posée par main.js.
   updateNote: () => null,
@@ -916,12 +929,22 @@ class OrbeWindow {
       // Fermeture de la fenêtre : la page s'en va, l'onglet reste dans la barre.
       if (rt.windowClosing) { live.delete(rt.id); return; }
       // Mise en veille automatique : la ligne reste dans la barre latérale.
-      if (rt.sleeping) {
+      // De même si la page disparaît alors que l'utilisateur vient de choisir « Rester »
+      // (Chromium l'a fermée d'office, voir unload.js) : ce n'est pas elle qui s'est
+      // fermée, son onglet n'est donc ni retiré ni archivé ; affiché, il se recharge.
+      const stayed = hooks.stayed(wc);
+      const kept = !rt.sleeping && stayed < STAY_GUARD;
+      if (kept) {
+        lastLost = { id: rt.id, at: Date.now(), stayed, trail: [...(rt.trail || [])] };
+        console.error(`[orbe] page détruite ${stayed} ms après « Rester », sans qu’Orbe l’ait demandé : l’onglet garde sa ligne. ${lastLost.trail.join(' ; ')}`);
+      }
+      if (rt.sleeping || kept) {
         live.delete(rt.id);
         const o = rt.owner;
-        if (!o.win.isDestroyed()) { if (o.visibleIds().includes(rt.id)) o.layout(); OrbeWindow.pushAll(); }
+        if (!o.win.isDestroyed() && o.data.tabs[rt.id]) { if (o.visibleIds().includes(rt.id)) o.layout(); OrbeWindow.pushAll(); }
         return;
       }
+      note(rt, 'fermée par elle-même');
       const owner = rt.owner;
       if (owner.htmlFullscreen) owner.htmlFullscreen = false;
       if (!owner.win.isDestroyed()) owner.close(rt.id);
@@ -951,7 +974,7 @@ class OrbeWindow {
       if (!incognito) store.visit(url, tab.title, tab.favicon);
       touch();
     };
-    wc.on('did-navigate', (e, url) => { rt.typed = false; rt.objected = false; hooks.navigated(rt); navigated(url); });
+    wc.on('did-navigate', (e, url) => { rt.typed = false; rt.objected = false; rt.sleeping = false; hooks.navigated(rt); navigated(url); });
     if (!incognito) wc.on('dom-ready', () => boosts.apply(wc));
     wc.on('did-navigate-in-page', (e, url, isMainFrame) => { if (isMainFrame) navigated(url); });
     wc.on('update-target-url', (e, url) => rt.owner.linkStatus(rt, String(url || '').slice(0, STATUS_MAX)));
@@ -1037,13 +1060,27 @@ class OrbeWindow {
   // Mise en veille décidée sans l'utilisateur (ancienneté, mémoire) : la page est consultée
   // (beforeunload). Si elle s'y oppose elle reste vivante, sans boîte de dialogue, et n'est
   // plus proposée jusqu'à sa prochaine navigation ; si elle ne répond pas, elle reste aussi.
+  // `sleeping` dure jusqu'à la réponse de la page : l'effacer après un délai faisait archiver
+  // l'onglet (au lieu de l'endormir) quand une page lente finissait par accepter, et posait
+  // la question « Quitter la page ? » à l'utilisateur quand elle finissait par refuser.
   static sleepView(id) {
     const rt = live.get(id);
     if (!rt) return;
     if (rt.wc.isDestroyed()) { live.delete(id); return; }
+    // Fermeture demandée par l'utilisateur en cours sur cette page (fenêtre, onglet) : sa
+    // réponse lui appartient, la veille ne s'en mêle pas.
+    if (rt.windowClosing || rt.unloadAnswer || rt.pendingClose) return;
     rt.sleeping = true;
+    rt.sleepAsked = Date.now();
+    OrbeWindow.consult(rt, 'veille');
+  }
+
+  // Consulte la page (beforeunload) avant de la fermer. Le bouclier écarte le délai d'une
+  // seconde de Chromium (unload.js) : seul Orbe décide du sort d'une page qui tarde.
+  static consult(rt, why) {
+    note(rt, 'consultée (' + why + ')');
+    hooks.shield(rt.wc);
     rt.wc.close({ waitForBeforeUnload: true });
-    setTimeout(() => { if (rt.sleeping && !rt.wc.isDestroyed()) rt.sleeping = false; }, 4000).unref();
   }
 
   static destroyView(id) {
@@ -1059,17 +1096,34 @@ class OrbeWindow {
     // demander à ne pas être quittée (voir pageObjects). Une page qui ne répond
     // pas ne retient rien.
     const ask = !!rt.pendingClose;
-    rt.wc.close({ waitForBeforeUnload: ask });
-    if (ask) setTimeout(() => { if (rt.pendingClose && !rt.wc.isDestroyed()) rt.wc.close({ waitForBeforeUnload: false }); }, 4000).unref();
+    if (!ask) { note(rt, 'détruite par Orbe'); rt.wc.close({ waitForBeforeUnload: false }); return; }
+    OrbeWindow.consult(rt, 'fermeture de l’onglet');
+    // (`asking` : la page a répondu et la question est à l'écran ; elle ne doit pas être
+    // fermée sous la boîte de dialogue.)
+    setTimeout(() => { if (rt.pendingClose && !rt.asking && !rt.wc.isDestroyed()) { note(rt, 'sans réponse après 4 s : fermée'); rt.wc.close({ waitForBeforeUnload: false }); } }, 4000).unref();
   }
 
   // La page refuse d'être quittée (beforeunload) : la question est posée. Pour un
   // onglet en cours de fermeture, « Rester » le fait revenir, page intacte.
   pageObjects(e, rt) {
     // Veille automatique refusée par la page (beforeunload) : elle reste, sans aucune question.
-    if (rt.sleeping) { rt.sleeping = false; rt.objected = true; return; }
-    const leave = hooks.leave(this, rt.wc);
+    // Sauf si, entre-temps, l'utilisateur a demandé à fermer l'onglet ou la fenêtre : la
+    // réponse de la page vaut alors pour sa demande, et la question lui est posée (sinon la
+    // page, restée sans rien dire, était fermée de force quatre secondes plus tard).
+    const sleeping = !!rt.sleeping;
+    rt.sleeping = false;
+    if (sleeping && !rt.pendingClose && !rt.unloadAnswer) {
+      rt.objected = true;
+      note(rt, 'refuse la veille');
+      hooks.shield(rt.wc);
+      return;
+    }
+    let leave = false;
+    rt.asking = true;
+    try { leave = hooks.leave(this, rt.wc); } finally { rt.asking = false; }
+    note(rt, leave ? 'question : quitter' : 'question : rester');
     if (leave) { e.preventDefault(); return; }
+    // (La page reste : `hooks.leave` a levé le bouclier, voir unload.js.)
     const pending = rt.pendingClose;
     rt.pendingClose = null;
     if (rt.unloadAnswer) { rt.windowClosing = false; rt.unloadAnswer(false); }
@@ -1106,7 +1160,7 @@ class OrbeWindow {
     this.unloading = true;
     const visible = this.visibleIds();
     rts.sort((a, b) => visible.includes(b.id) - visible.includes(a.id));
-    hooks.closeAll(rts, (rt) => { rt.windowClosing = true; rt.wc.close({ waitForBeforeUnload: true }); }).then((ok) => {
+    hooks.closeAll(rts, (rt) => { rt.windowClosing = true; OrbeWindow.consult(rt, 'fermeture de la fenêtre'); }).then((ok) => {
       this.unloading = false;
       const quitting = hooks.quitState.quitting;
       hooks.quitState.quitting = false;
@@ -1139,8 +1193,9 @@ class OrbeWindow {
       // Épargné par les règles automatiques : l'utilisateur y a agi, la page charge, ou elle a refusé une veille.
       typed: !!rt.typed || !!rt.loading || !!rt.objected,
       kept: visible.has(rt.id) || rt.wc.isCurrentlyAudible() || rt.wc.isDevToolsOpened() || hooks.busy(rt)
-        // Image dans l'image, page filmée par une autre, téléchargement en cours, veille déjà demandée.
-        || !!rt.pip || rt.wc.isBeingCaptured() || downloading.has(rt.wc.id) || !!rt.sleeping,
+        // Image dans l'image, page filmée par une autre, téléchargement en cours, veille demandée à
+        // l'instant (une page qui n'y a toujours pas répondu redevient candidate, limite en nombre comprise).
+        || !!rt.pip || rt.wc.isBeingCaptured() || downloading.has(rt.wc.id) || (!!rt.sleeping && now - (rt.sleepAsked || 0) < SLEEP_WAIT),
     }));
     const picked = veille.pick(tabs, {
       max: s.maxLiveTabs,
@@ -2901,6 +2956,7 @@ class OrbeWindow {
     const wc = this.activeWc;
     if (!wc) return;
     const dbg = wc.debugger;
+    hooks.unshield(wc); // débogueur tenu un instant par Orbe (unload.js) : il le rend
     if (dbg.isAttached()) return this.capture();
     try {
       dbg.attach('1.3');
@@ -3517,4 +3573,4 @@ function archiveStale() {
   if (count) { store.save(); for (const w of windows.values()) w.layout(); OrbeWindow.pushAll(); }
 }
 
-module.exports = { OrbeWindow, windows, live, trusted, hooks, archiveStale, tabMemory, noteDownload, uiRetryDelay, UI_PREFS, STATUS_MAX, ICON_MAX, thumbs: { keep: keepThumb, MAX: THUMBS }, INTERNAL, UI_PRELOAD, isInternal, MOTION, motion, forceMotion, motionStats: stats, boundsOf, inFlight, resumed };
+module.exports = { OrbeWindow, windows, live, trusted, hooks, lostAfterStay: () => lastLost, archiveStale, tabMemory, noteDownload, uiRetryDelay, UI_PREFS, STATUS_MAX, ICON_MAX, thumbs: { keep: keepThumb, MAX: THUMBS }, INTERNAL, UI_PRELOAD, isInternal, MOTION, motion, forceMotion, motionStats: stats, boundsOf, inFlight, resumed };

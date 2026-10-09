@@ -39,7 +39,7 @@ function handler(state) {
       return res.end(page('Entré', 'bienvenue'));
     }
     if (p === '/embarque') return res.end(page('Embarque', `<img src="http://localhost:${state.port}/auth.png" width="10" height="10">`));
-    if (p === '/sale') return res.end(page('Brouillon', '<textarea id="t"></textarea><script>window.addEventListener("beforeunload", (e) => { if (window.sale) { e.preventDefault(); e.returnValue = "un texte que le navigateur ignore"; } });</script>'));
+    if (p === '/sale') return res.end(page('Brouillon', '<textarea id="t"></textarea><script>window.addEventListener("beforeunload", (e) => { if (window.lent) { const t0 = Date.now(); while (Date.now() - t0 < window.lent); } if (window.sale) { e.preventDefault(); e.returnValue = "un texte que le navigateur ignore"; } });</script>'));
     if (p === '/lien') return res.end(page('Lien externe', '<a id="m" href="mailto:test@orbe.invalid?subject=x" style="position:fixed;left:0;top:0;width:200px;height:60px;background:#def">écrire</a>'));
     if (p === '/vue.pdf') { res.setHeader('content-type', 'application/pdf'); return res.end(PDF); }
     if (p === '/doc.pdf') { res.setHeader('content-type', 'application/pdf'); res.setHeader('content-disposition', 'attachment; filename="document.pdf"'); return res.end(PDF); }
@@ -120,7 +120,8 @@ module.exports = async function essentielsTests(ctx) {
   permissions.env.openExternal = (url) => { launched.push(url); };
   const asks = [];
   let leave = false;
-  unload.env.ask = (parent, opts) => { asks.push(opts); return leave ? 0 : 1; };
+  let onAsk = null; // appelé pendant que la question est « à l'écran »
+  unload.env.ask = (parent, opts) => { asks.push(opts); if (onAsk) onAsk(); return leave ? 0 : 1; };
 
   const rtOf = (id) => win.live.get(id);
   const open = async (url, title, owner = w) => {
@@ -619,15 +620,23 @@ module.exports = async function essentielsTests(ctx) {
   // Fermeture d'une fenêtre.
   const w2 = new OrbeWindow();
   const d4 = await open(A + '/sale', 'Brouillon', w2);
+  const rt4 = d4.rt;
+  let gone4 = 0;
+  d4.wc.once('destroyed', () => { gone4 = Date.now(); });
   await click(d4.wc);
   await js(d4.wc, 'window.sale = true; 1');
   asks.length = 0;
   leave = false;
   const archived = store.state.archive.length;
+  // Pages vivantes servies par le même processus que celle-ci (un processus occupé par une autre retarde sa réponse).
+  const pid4 = d4.wc.getOSProcessId();
+  const sharing4 = [...win.live.values()].filter((r) => r !== rt4 && !r.wc.isDestroyed() && r.wc.getOSProcessId() === pid4).length;
   w2.win.close();
   await until(() => asks.length === 1, 'question à la fermeture de la fenêtre');
+  const asked4 = Date.now();
   await sleep(500);
-  const stayed = { fenetre: !w2.win.isDestroyed(), connue: OrbeWindow.all.includes(w2), page: !d4.wc.isDestroyed(), questions: asks.length };
+  // Si la page a disparu : quand (après la question), et ce qu'Orbe lui a fait (journal de la page).
+  const stayed = { fenetre: !w2.win.isDestroyed(), connue: OrbeWindow.all.includes(w2), page: !d4.wc.isDestroyed(), questions: asks.length, detruiteApres: gone4 ? gone4 - asked4 : null, attente: Date.now() - asked4, journal: rt4.trail, memeProcessus: sharing4 };
   stayed.sale = stayed.page ? await js(d4.wc, 'window.sale').catch((e) => String(e)) : null;
   stayed.adresse = stayed.page ? d4.wc.getURL() : null;
   check('fermer la fenêtre puis « Rester » : la fenêtre et la page restent', stayed.fenetre && stayed.connue && stayed.page && stayed.sale === true, JSON.stringify(stayed));
@@ -638,6 +647,127 @@ module.exports = async function essentielsTests(ctx) {
   check('fermer la fenêtre puis « Quitter » : elle se ferme, l’onglet reste dans l’Espace (non archivé)', asks.length === 2 && !!store.state.tabs[d4.id] && store.state.archive.length === archived && d4.wc.isDestroyed(),
     JSON.stringify({ questions: asks.length, onglet: !!store.state.tabs[d4.id], archive: [archived, store.state.archive.length], pageDetruite: d4.wc.isDestroyed() }));
   leave = false;
+
+  // « Rester » tient même quand la page tarde. Chromium donne une seconde à une page
+  // consultée (beforeunload) pour répondre, puis de nouveau une seconde, après la
+  // réponse de l'utilisateur, pour en accuser réception ; passé ce délai il la ferme
+  // d'office. Orbe l'en empêche (bouclier, src/main/unload.js).
+  const dirtyTab = async (owner = w) => {
+    const d = await open(A + '/sale', 'Brouillon', owner);
+    await click(d.wc);
+    await js(d.wc, 'window.sale = true; 1');
+    d.rt0 = d.rt;
+    return d;
+  };
+  const intact = async (d) => !d.wc.isDestroyed() && await js(d.wc, 'window.sale') === true;
+  const closeWindow = async (ow, d) => {
+    if (ow.win.isDestroyed()) return;
+    leave = true;
+    if (d) unload.forget(d.wc);
+    ow.win.close();
+    await until(() => !OrbeWindow.all.includes(ow), 'fenêtre fermée');
+    leave = false;
+  };
+  // Page qui met une seconde et demie à répondre à beforeunload, puis s'y oppose.
+  const slowTab = await dirtyTab();
+  const slowWin = new OrbeWindow();
+  const slowIn = await dirtyTab(slowWin);
+  const slowSleep = await dirtyTab();
+  for (const d of [slowTab, slowIn, slowSleep]) await js(d.wc, 'window.lent = 1500; 1');
+  asks.length = 0;
+  leave = false;
+  let t0 = Date.now();
+  w.close(slowTab.id);
+  await until(() => asks.length === 1 || slowTab.wc.isDestroyed(), 'réponse de la page lente (onglet)');
+  check('fermer l’onglet d’une page qui met plus d’une seconde à répondre : la question est posée quand même, « Rester » garde la page',
+    asks.length === 1 && Date.now() - t0 >= 1400 && await intact(slowTab), JSON.stringify({ questions: asks.length, ms: Date.now() - t0, page: !slowTab.wc.isDestroyed(), journal: slowTab.rt0.trail }));
+  if (!slowTab.wc.isDestroyed()) await until(() => w.data.tabs[slowTab.id] && win.live.get(slowTab.id) === slowTab.rt0, 'onglet lent revenu');
+  if (!slowTab.wc.isDestroyed()) {
+    check('pendant la consultation, la page est à l’abri du délai de Chromium (bouclier levé)', unload.shielded(slowTab.wc) && slowTab.wc.debugger.isAttached());
+    await until(() => !unload.shielded(slowTab.wc), 'bouclier retombé', 14000).catch(() => {});
+    check('la page a répondu : le bouclier retombe, le débogueur est rendu', !unload.shielded(slowTab.wc) && !slowTab.wc.debugger.isAttached());
+  }
+  asks.length = 0;
+  t0 = Date.now();
+  slowWin.win.close();
+  await until(() => asks.length === 1 || slowIn.wc.isDestroyed(), 'réponse de la page lente (fenêtre)');
+  await sleep(300);
+  check('fermer la fenêtre d’une page qui met plus d’une seconde à répondre : la question est posée quand même, « Rester » garde fenêtre et page',
+    asks.length === 1 && Date.now() - t0 >= 1400 && !slowWin.win.isDestroyed() && await intact(slowIn), JSON.stringify({ questions: asks.length, ms: Date.now() - t0, page: !slowIn.wc.isDestroyed(), journal: slowIn.rt0.trail }));
+  asks.length = 0;
+  OrbeWindow.sleepView(slowSleep.id);
+  await until(() => slowSleep.rt0.objected || slowSleep.wc.isDestroyed(), 'réponse de la page lente (veille)');
+  check('veille automatique d’une page lente à répondre : elle est consultée, s’y oppose et reste, sans question',
+    asks.length === 0 && slowSleep.rt0.objected === true && !slowSleep.rt0.sleeping && win.live.get(slowSleep.id) === slowSleep.rt0 && await intact(slowSleep), JSON.stringify({ questions: asks.length, page: !slowSleep.wc.isDestroyed(), journal: slowSleep.rt0.trail }));
+  for (const d of [slowTab, slowIn, slowSleep]) if (!d.wc.isDestroyed()) await js(d.wc, 'window.lent = 0; 1');
+  await closeWindow(slowWin, slowIn);
+
+  // Le processus de la page figé juste après « Rester » (machine chargée) : c'est ainsi que la
+  // page se perdait. Figer un processus se fait par signal : pas sous Windows.
+  if (process.platform === 'win32') {
+    outils.ignorer('« Rester » puis processus de la page figé : la page reste', 'pas de signal pour figer un processus sous Windows');
+    outils.ignorer('page détruite par Chromium après « Rester » : l’onglet garde sa ligne', 'pas de signal pour figer un processus sous Windows');
+  } else {
+    const freeze = (wc, ms) => () => {
+      const pid = wc.getOSProcessId();
+      process.kill(pid, 'SIGSTOP');
+      setTimeout(() => { try { process.kill(pid, 'SIGCONT'); } catch {} }, ms);
+    };
+    const fw = new OrbeWindow();
+    const fz = await dirtyTab(fw);
+    const before = store.state.archive.length;
+    asks.length = 0;
+    onAsk = freeze(fz.wc, 1800);
+    fw.win.close();
+    await until(() => asks.length === 1, 'question (processus figé)');
+    onAsk = null;
+    await sleep(2600);
+    check('« Rester » puis processus de la page figé deux secondes : la page reste, intacte',
+      !fw.win.isDestroyed() && await intact(fz) && !!store.state.tabs[fz.id] && store.state.archive.length === before && !win.lostAfterStay(), JSON.stringify({ page: !fz.wc.isDestroyed(), perdue: win.lostAfterStay(), journal: fz.rt0.trail }));
+    // Bouclier coupé : Chromium ferme la page. Elle n'est pas pour autant « fermée par
+    // elle-même » : l'onglet garde sa ligne, rien n'est archivé, et la page se recharge.
+    if (!fz.wc.isDestroyed()) {
+      unload.env.shield = false;
+      unload.unshield(fz.wc);
+      unload.forget(fz.wc);
+      asks.length = 0;
+      onAsk = freeze(fz.wc, 1800);
+      fw.win.close();
+      await until(() => asks.length === 1, 'question (processus figé, sans bouclier)');
+      onAsk = null;
+      await until(() => fz.wc.isDestroyed(), 'page fermée d’office par Chromium');
+      unload.env.shield = true;
+      await sleep(200);
+      const lost = win.lostAfterStay();
+      const again = win.live.get(fz.id);
+      check('page détruite par Chromium après « Rester » (bouclier coupé) : l’onglet garde sa ligne, rien n’est archivé, la page se recharge',
+        !fw.win.isDestroyed() && !!store.state.tabs[fz.id] && fw.space.today.includes(fz.id) && store.state.archive.length === before && !!lost && lost.id === fz.id && !!again && again !== fz.rt0 && !again.wc.isDestroyed(),
+        JSON.stringify({ onglet: !!store.state.tabs[fz.id], archive: [before, store.state.archive.length], perdue: lost, vue: !!again }));
+    }
+    unload.env.shield = true;
+    await closeWindow(fw, fz);
+  }
+
+  // Veille automatique et demande de l'utilisateur sur la même page, en même temps : la
+  // réponse de la page vaut pour l'utilisateur. (Elle restait sans rien dire, puis était
+  // fermée de force quatre secondes plus tard, sans question.)
+  const both = await dirtyTab();
+  const bothWin = new OrbeWindow();
+  const bothIn = await dirtyTab(bothWin);
+  asks.length = 0;
+  leave = false;
+  OrbeWindow.sleepView(both.id);
+  w.close(both.id);
+  bothWin.win.close();
+  OrbeWindow.sleepView(bothIn.id);
+  await until(() => asks.length === 2 || (both.wc.isDestroyed() && bothIn.wc.isDestroyed()), 'questions (veille et fermeture ensemble)', 6000).catch(() => {});
+  const asked2 = asks.length;
+  await sleep(4500);
+  check('veille en cours puis fermeture de l’onglet : la question est posée, « Rester » garde l’onglet et sa page',
+    asked2 === 2 && await intact(both) && !!w.data.tabs[both.id] && win.live.get(both.id) === both.rt0 && !both.rt0.sleeping, JSON.stringify({ questions: asked2, page: !both.wc.isDestroyed(), onglet: !!w.data.tabs[both.id], journal: both.rt0.trail }));
+  check('fermeture de la fenêtre et veille en même temps : la question est posée, « Rester » garde la fenêtre et la page',
+    asked2 === 2 && !bothWin.win.isDestroyed() && await intact(bothIn) && !bothIn.rt0.sleeping && !bothIn.rt0.windowClosing, JSON.stringify({ questions: asked2, fenetre: !bothWin.win.isDestroyed(), page: !bothIn.wc.isDestroyed(), journal: bothIn.rt0.trail }));
+  await closeWindow(bothWin, bothIn);
 
   // ---------------------------------------------------------------- Fenêtres surgissantes
   const pop = await open(A + '/surgit', 'Page /surgit');
