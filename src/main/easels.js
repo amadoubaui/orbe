@@ -6,7 +6,7 @@
 // La page (src/renderer/easel.js) ne lit et n'écrit qu'à travers les actions
 // « easel:* » ci-dessous : identifiants et noms de fichiers sont validés ici, la
 // page ne fournit jamais de chemin.
-const { app, webContents } = require('electron');
+const { app, dialog, webContents } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -70,6 +70,8 @@ function cleanItem(it) {
     o.img = it.img;
     const src = webUrl(it.sourceUrl);
     if (src) { o.sourceUrl = src; o.sourceTitle = String(it.sourceTitle || '').slice(0, 300); }
+    // Texte alternatif saisi par l'utilisateur.
+    if (typeof it.alt === 'string' && it.alt.trim()) o.alt = it.alt.trim().slice(0, 500);
   }
   if (it.type === 'pen') {
     if (!Array.isArray(it.pts) || it.pts.length < 2 || it.pts.length > MAX_POINTS) return null;
@@ -311,6 +313,35 @@ const pagesOf = (id) => webContents.getAllWebContents().filter((wc) => boardOf(w
 
 // ⌘Z / ⇧⌘Z choisis dans le menu : si la page au premier plan est un tableau,
 // c'est lui qui annule ou rétablit (il laisse faire le texte en cours de saisie).
+// Export en PNG : la page dessine l'image, le processus principal vérifie que c'en est une,
+// demande où l'enregistrer et l'écrit. Le nom proposé vient du titre, réduit à un nom de fichier.
+const EXPORT_MAX_BYTES = 60 * 1024 * 1024;
+const env = {
+  saveDialog: async (parent, opts) => { const r = await (parent ? dialog.showSaveDialog(parent, opts) : dialog.showSaveDialog(opts)); return r.canceled ? '' : r.filePath; },
+};
+async function exportImage(a, sender) {
+  const id = String((a && a.board) || '');
+  const data = bytes(a && a.data);
+  if (!ID.test(id) || !loadIndex().has(id) || !data || data.length > EXPORT_MAX_BYTES || sniff(data) !== 'png') return null;
+  const name = String((a && a.title) || '').normalize('NFC').replace(/[\u0000-\u001f\u007f<>:"/\\|?*]/g, ' ').replace(/\s+/g, ' ').replace(/^[. ]+/, '').replace(/[. ]+$/, '').slice(0, 80) || t('easel.untitled');
+  const { BaseWindow } = require('electron');
+  const { OrbeWindow } = require('./window');
+  const owner = sender && OrbeWindow.ownerOf(sender);
+  const file = await env.saveDialog(owner ? owner.win : BaseWindow.getFocusedWindow(), { title: t('easel.export'), defaultPath: path.join(app.getPath('downloads'), name + '.png'), filters: [{ name: 'PNG', extensions: ['png'] }] });
+  if (!file || typeof file !== 'string' || !path.isAbsolute(file)) return null;
+  const target = /\.png$/i.test(file) ? file : file + '.png';
+  try { await fs.promises.writeFile(target, data); } catch (err) { console.error('[orbe] export du tableau', err.message); return null; }
+  return target;
+}
+
+// « Exporter le tableau en PNG… » (menu, barre de commande) : demandé à la page du tableau affiché.
+function exportActive(w) {
+  const rt = w && w.activeRt;
+  if (!rt || rt.wc.isDestroyed() || !boardOf(rt.wc)) return false;
+  rt.wc.send('easel', { op: 'export' });
+  return true;
+}
+
 function history(wc, op) {
   if (!boardOf(wc)) return false;
   wc.send('easel', { op: op === 'redo' ? 'redo' : 'undo' });
@@ -485,6 +516,7 @@ async function action(name, a, sender) {
     case 'easel:delete': return remove(String(a || ''));
     case 'easel:putImage': return putImage(a && a.board, a && a.data);
     case 'easel:getImage': return getImage(a && a.board, a && a.name);
+    case 'easel:export': return exportImage(a, sender);
     case 'easel:inbox': return ID.test(String(a || '')) ? takeInbox(String(a)) : [];
     case 'easel:open': {
       const { OrbeWindow } = require('./window');
@@ -508,4 +540,4 @@ function flush() {
 }
 app.on('before-quit', flush);
 
-module.exports = { action, list, create, open, capture, pickArea, history, remove, flush, readDoc, cleanDoc, sniff, root, PAGE };
+module.exports = { action, list, create, open, capture, pickArea, history, exportActive, exportImage, env, remove, flush, readDoc, cleanDoc, sniff, root, PAGE };

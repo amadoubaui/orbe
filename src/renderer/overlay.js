@@ -18,8 +18,36 @@ let sel = -1;
 let seq = 0;
 let typed = '';
 let deleting = false;
+// Portée de la recherche : null (tout), 'actions' (⇥ sur une barre vide), ou
+// { site, name } (recherche dans un site : son nom, ⇥ ou espace, la requête).
+let scope = null;
+let sites = {}; // clé tapée -> [identifiant, nom] (donnée à l'ouverture)
 
-const KIND_ICON = { search: 'search', url: 'globe', history: 'globe', command: 'bolt', tab: 'globe' };
+const KIND_ICON = { search: 'search', url: 'globe', history: 'globe', command: 'bolt', tab: 'globe', site: 'search' };
+
+function setScope(next) {
+  scope = next;
+  const chip = $('cmd-scope');
+  chip.hidden = !scope;
+  chip.textContent = scope === 'actions' ? t('cmd.actions') : (scope ? scope.name : '');
+  input.placeholder = scope === 'actions' ? t('cmd.actionsPlaceholder') : (scope ? t('cmd.searchSite', { site: scope.name }) : t('cmd.placeholder'));
+}
+
+// Entre dans une portée : le champ se vide, les suggestions suivent.
+function enterScope(next) {
+  setScope(next);
+  input.value = '';
+  typed = '';
+  deleting = false;
+  input.focus();
+  query();
+}
+
+// Site désigné par la saisie entière (« yt », « youtube.com »), ou null.
+function siteTyped() {
+  const hit = sites[typed.trim().toLowerCase()];
+  return hit ? { site: hit[0], name: hit[1] } : null;
+}
 
 function drawItems() {
   list.textContent = '';
@@ -39,27 +67,40 @@ function drawItems() {
     sub.textContent = it.subtitle ? '— ' + it.subtitle : '';
     const hint = document.createElement('span');
     hint.className = 'hint';
-    hint.textContent = it.kind === 'tab' ? t('cmd.switchTo') + ' ↵' : '↵';
+    hint.textContent = it.kind === 'tab' ? t('cmd.switchTo') + ' ↵' : (it.kind === 'site' ? '⇥' : '↵');
     row.append(ic, title, sub, hint);
+    // Suggestion venue de l'historique ou de l'archive : une croix l'oublie.
+    if (it.deletable) {
+      const del = document.createElement('button');
+      del.className = 'del';
+      del.tabIndex = -1;
+      del.title = t('cmd.forget');
+      del.innerHTML = '<svg class="i"><use href="#i-x"/></svg>';
+      row.appendChild(del);
+    }
     list.appendChild(row);
   });
 }
 
 function select(i) {
   sel = i;
-  for (const row of list.children) row.classList.toggle('sel', Number(row.dataset.i) === sel);
+  for (const row of list.children) {
+    const on = Number(row.dataset.i) === sel;
+    row.classList.toggle('sel', on);
+    if (on) row.scrollIntoView({ block: 'nearest' });
+  }
 }
 
 async function query() {
   const q = typed;
   const mine = ++seq;
-  const res = (await send('suggest', q)) || [];
+  const res = (await send('suggest', scope ? { q, scope } : q)) || [];
   if (mine !== seq || mode !== 'command') return;
   items = res;
   sel = q ? 0 : -1;
   // Complète l'adresse la plus probable, comme dans une barre d'adresse.
   const first = items[0];
-  if (q && !deleting && first && first.complete && first.complete.toLowerCase().startsWith(q.toLowerCase()) && input.selectionStart === input.value.length) {
+  if (q && !scope && !deleting && first && first.complete && first.complete.toLowerCase().startsWith(q.toLowerCase()) && input.selectionStart === input.value.length) {
     input.value = q + first.complete.slice(q.length);
     input.setSelectionRange(q.length, input.value.length);
   }
@@ -70,7 +111,19 @@ function run(background) {
   const text = input.value.trim();
   const item = sel >= 0 && items[sel] ? items[sel] : (text ? { kind: 'raw', title: text } : null);
   if (!item) return send('closeOverlay');
+  // « Rechercher sur YouTube » : la ligne ouvre la recherche dans ce site.
+  if (item.kind === 'site') return enterScope({ site: item.site, name: item.name });
   return send('run', { item, background });
+}
+
+// Oublie la suggestion (croix au survol, ou ⌥⌘⌫ sur la ligne sélectionnée).
+async function forget(i) {
+  const it = items[i];
+  if (!it || !it.deletable) return;
+  await send('suggestDelete', { url: it.url, deletable: true });
+  const keep = Math.min(i, items.length - 2);
+  await query();
+  if (keep >= 0 && items[keep]) select(keep);
 }
 
 input.addEventListener('input', (e) => {
@@ -80,7 +133,23 @@ input.addEventListener('input', (e) => {
 });
 
 input.addEventListener('keydown', (e) => {
-  if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) {
+  if (e.key === 'Tab' && !e.shiftKey && !scope && (!input.value || siteTyped())) {
+    // ⇥ sur une barre vide : les actions seules. ⇥ après le nom d'un site : la recherche dans ce site.
+    e.preventDefault();
+    enterScope(input.value ? siteTyped() : 'actions');
+  } else if (e.key === ' ' && !scope && typed.includes('.') && siteTyped() && input.selectionStart === typed.length && typed === typed.trim()) {
+    // Domaine d'un site (« youtube.com ») puis espace : même effet que ⇥. Un simple mot
+    // (« maps », « google ») garde l'espace : il commence souvent une recherche ordinaire.
+    e.preventDefault();
+    enterScope(siteTyped());
+  } else if (e.key === 'Backspace' && scope && !input.value) {
+    // Retour arrière sur un champ vide : on quitte la portée.
+    e.preventDefault();
+    enterScope(null);
+  } else if (e.key === 'Backspace' && e.altKey && modKey(e)) {
+    e.preventDefault();
+    forget(sel);
+  } else if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) {
     e.preventDefault();
     if (items.length) select((sel + 1) % items.length);
   } else if (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey)) {
@@ -96,11 +165,28 @@ list.addEventListener('mousemove', (e) => {
   const row = e.target.closest('.cmd');
   if (row && Number(row.dataset.i) !== sel) select(Number(row.dataset.i));
 });
+// Un clic dans la liste ne prend pas le clavier : on continue de taper dans le champ
+// (croix « oublier », ligne « Rechercher sur … » qui ouvre une portée).
+list.addEventListener('mousedown', (e) => e.preventDefault());
 list.addEventListener('click', (e) => {
   const row = e.target.closest('.cmd');
   if (!row) return;
+  if (e.target.closest('.del')) return void forget(Number(row.dataset.i));
   sel = Number(row.dataset.i);
   run(modKey(e));
+});
+
+// Copier l'adresse entière depuis le champ : le presse-papiers reçoit « https:// »
+// même si le champ ne montre que « exemple.fr/page » (adresse complétée ou tapée sans protocole).
+input.addEventListener('copy', (e) => {
+  const whole = input.selectionStart === 0 && input.selectionEnd === input.value.length && input.value.trim();
+  const first = items[0];
+  if (!whole || scope || !first || !first.url || !/^https?:/i.test(first.url)) return;
+  const shown = input.value.trim().toLowerCase();
+  const bare = first.url.replace(/^https?:\/\/(www\.)?/i, '').replace(/\/$/, '').toLowerCase();
+  if ((first.kind !== 'url' && first.kind !== 'history') || (shown !== bare && shown !== bare + '/' && 'www.' + bare !== shown)) return;
+  e.preventDefault();
+  e.clipboardData.setData('text/plain', first.url);
 });
 
 function openCommand(p) {
@@ -112,6 +198,8 @@ function openCommand(p) {
   input.value = p.value || '';
   typed = '';
   deleting = false;
+  sites = p.sites || {};
+  setScope(null);
   items = p.items || [];
   sel = -1;
   seq++;
@@ -121,7 +209,7 @@ function openCommand(p) {
 }
 
 O.on('suggest-more', (p) => {
-  if (mode !== 'command' || p.q !== typed) return;
+  if (mode !== 'command' || scope || p.q !== typed) return;
   items = items.concat(p.items).slice(0, 9);
   drawItems();
 });
@@ -459,8 +547,10 @@ $('peek-close').onclick = () => send('peekClose');
 $('peek-expand').onclick = () => send('peekExpand');
 $('peek-split').onclick = () => send('peekSplit');
 
-$('backdrop').addEventListener('mousedown', () => {
-  if (mode === 'command' || mode === 'theme') send('closeOverlay');
+$('backdrop').addEventListener('mousedown', (e) => {
+  // Barre de commande : le point du clic part avec la fermeture (la barre latérale reste cliquable).
+  if (mode === 'command') send('closeOverlay', { x: e.clientX, y: e.clientY });
+  else if (mode === 'theme') send('closeOverlay');
   else if (mode === 'peek') send('peekClose');
 });
 // Bascule d'onglets : Tab ne déplace pas le focus, relâcher ⌃ valide.

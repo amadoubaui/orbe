@@ -47,6 +47,8 @@ Orbe : `W` = `src/main/window.js`, `C` = `commands.js`, `M` = `menu.js`, `MA` = 
 
 `self lat` = `tests/laterale.js` (barre latérale et menus, 137 vérifications, appelé par `self`) ; `ui 22`, `ui 23` = gestes de la barre latérale, Espaces et dossiers (38 vérifications à la vraie souris), ajoutés le 9 octobre 2026.
 
+`self cmd` = `tests/commande.js` (barre de commande, 55 vérifications), `self bib` = `tests/bibliotheque.js` (Bibliothèque, téléchargements, notes : 70 vérifications) et `self easels` = `tests/easels.js` (tableaux), appelés par `self` ; `ui 24`, `ui 25` = `tests/ui/24-commande-portees.js` et `25-bibliotheque.js` (36 vérifications à la vraie souris et au vrai clavier), ajoutés le 9 octobre 2026. `palette.js`, `library.js`, `downloads.js` : dans `src/main`.
+
 Règle appliquée pour ✅ : le code existe **et** un test nommé le couvre. Du code sans test est noté 🟡, même s'il a l'air juste.
 
 ## BL — Barre latérale
@@ -190,57 +192,57 @@ Règle appliquée pour ✅ : le code existe **et** un test nommé le couvre. Du 
 | CMD-4 | Largeur d'environ 763 pt, centrée sur la fenêtre | M-6 | ✅ | 680 px (OC) | Fait le 8 oct. (cotes et durées d'Arc) |
 | CMD-5 | Bord haut à un tiers de la hauteur | M-7 | ✅ | 19 vh | Fait le 8 oct. (cotes et durées d'Arc) |
 | CMD-6 | Lignes de 46 pt | M-8 | ✅ | 42 px | Fait le 8 oct. (cotes et durées d'Arc) |
-| CMD-7 | Pas d'assombrissement derrière, grande ombre | M-9 | 🟡 | non vérifié côté Orbe | Comparer à l'œil |
+| CMD-7 | Pas d'assombrissement derrière, grande ombre | M-9 | ✅ | OC ; W | Fond transparent, ombre de 70 px ; self cmd « aucun voile sur la page, grande ombre portée » |
 | CMD-8 | Sélection en aplat de couleur, texte blanc | M-10 | ✅ | OC:41-56 ; ui 01 | |
-| CMD-9 | Elle prend les couleurs de l'Espace | HC 20498417809815 | 🟡 | fond neutre `--panel` | |
-| CMD-10 | Nouvelle fenêtre : la barre s'ouvre seule | M-11 | 🟡 | écran vide « Appuie sur ⌘T » | À décider |
+| CMD-9 | Elle prend les couleurs de l'Espace | HC 20498417809815 | ✅ | OV:applyLook | Accent et panneau teinté de l'Espace ; self cmd « elle prend les couleurs de l’Espace » |
+| CMD-10 | Nouvelle fenêtre : la barre s'ouvre seule | M-11 | ✅ | C:greet | ⌘N et ⇧⌘N : la fenêtre sans onglet s'ouvre sur la barre (pas au démarrage) ; self cmd « ⌘N : la fenêtre neuve… » ; ui 24 |
 | CMD-11 | Sources : onglets ouverts de tous les Espaces, historique, archive, épinglés, suggestions du moteur, actions | howtogeek | ✅ | SU ; self (historique, actions, bascule) | |
 | CMD-12 | Ligne « Switch to Tab », y compris vers une vue scindée | HC 20498417809815 ; binaire « Switch to Split View » | ✅ | self « Basculer vers l'onglet » | Mention de vue scindée absente |
-| CMD-13 | ⇥ juste après ⌘T : cherche seulement dans les actions | HC 20498293324823 | ⬜ | ⇥ = suivant | |
-| CMD-14 | Recherche dans un site : raccourci du site, ⇥ ou espace, requête | HC 20855018192791 ; binaire | ⬜ | | |
-| CMD-15 | Survol d'une suggestion : croix pour la supprimer ; ⌥⌘⌫ au clavier | HC 20498377604887 ; binaire « Delete Suggestion » | ⬜ | | |
-| CMD-16 | ⌘L puis Entrée sans rien changer : recharge | HC 20498293324823 | 🟡 | non vérifié | |
-| CMD-17 | La barre latérale reste cliquable quand la barre est ouverte | HC 20498293324823 | 🟡 | clic sur le fond ferme la barre | |
+| CMD-13 | ⇥ juste après ⌘T : cherche seulement dans les actions | HC 20498293324823 | ✅ | OV ; SU | ⇥ sur barre vide : pastille « Actions », liste déroulante ; ⌫ quitte ; self cmd « portée Actions » ; ui 24 (5 vérifications) |
+| CMD-14 | Recherche dans un site : raccourci du site, ⇥ ou espace, requête | HC 20855018192791 ; binaire | ✅ | | 19 sites (palette.js) : nom ou abréviation puis ⇥, domaine puis espace ; ligne cliquable ; self cmd « recherche dans un site » ; ui 24 |
+| CMD-15 | Survol d'une suggestion : croix pour la supprimer ; ⌥⌘⌫ au clavier | HC 20498377604887 ; binaire « Delete Suggestion » | ✅ | | Croix au survol et ⌥⌘⌫ (historique, archive) ; self cmd « oublier une suggestion » ; ui 24 (3 vérifications) |
+| CMD-16 | ⌘L puis Entrée sans rien changer : recharge | HC 20498293324823 | ✅ | W:runItem | self cmd « ⌘L puis Entrée sans rien changer » ; ui 24 |
+| CMD-17 | La barre latérale reste cliquable quand la barre est ouverte | HC 20498293324823 | ✅ | `palette.js` | Clic sur le fond rendu à la barre latérale (palette.clickThrough) ; self cmd ; ui 24 (onglet, bouton Actualiser) |
 | CMD-18 | Complétion de l'adresse dans le champ | observé (habituel) | ✅ | OV:query ; ui 01 | |
-| CMD-19 | Dédoublonnage par titre et site pour certains domaines (Figma, Notion, GitHub…) | binaire `command_bar_behavior.json` | ⬜ | | |
-| CMD-20 | Taper le nom d'une extension la déclenche | HC 19434259167767 | ⬜ | | |
-| CMD-21 | Taper le nom d'un Espace : « Focus on <space> » | binaire | ⬜ | | |
-| CMD-22 | Taper le nom d'un dossier : l'ouvre | HC 20498417809815 | ⬜ | | |
-| CMD-23 | État vide : suggestions d'aide (Contact the Team, The Browser Company, Air Traffic Control, Tips for Organizing, Help Center) | mesuré (capture) | 🟡 | 6 onglets récents | Choix différent, défendable |
-| CMD-24 | Message de confidentialité des suggestions de recherche | binaire | ⬜ | | Peu utile |
+| CMD-19 | Dédoublonnage par titre et site pour certains domaines (Figma, Notion, GitHub…) | binaire `command_bar_behavior.json` | ✅ | | Liste d'Arc reprise (suggest.DEDUP_HOSTS) ; self cmd « une seule ligne par titre pour GitHub et Figma » |
+| CMD-20 | Taper le nom d'une extension la déclenche | HC 19434259167767 | ✅ | | self cmd « taper le nom d’une extension la déclenche » |
+| CMD-21 | Taper le nom d'un Espace : « Focus on <space> » | binaire | ✅ | | self cmd « Aller à l’Espace … » ; ui 24 |
+| CMD-22 | Taper le nom d'un dossier : l'ouvre | HC 20498417809815 | ✅ | | Ouvre le dossier et ses parents, le montre ; self cmd « taper le nom d’un dossier » |
+| CMD-23 | État vide : suggestions d'aide (Contact the Team, The Browser Company, Air Traffic Control, Tips for Organizing, Help Center) | mesuré (capture) | ✅ | `palette.js`:starters | Sans aucun onglet : accueil, raccourcis, aide, réglages ; sinon onglets récents ; self cmd ; ui 24 |
+| CMD-24 | Message de confidentialité des suggestions de recherche | binaire | ➖ | | Écarté : les suggestions du moteur sont un réglage explicite (« Suggestions de recherche »), pas un message dans la barre |
 | CMD-25 | ⌘Entrée : ouvre en arrière-plan | non vérifié | ✅ | ui 01 | |
 | CMD-26 | ⇧Entrée : ouvre directement le premier résultat (Instant Links) | HC 20498293324823 | ➖ | | Fonction d'IA, écartée |
 | CMD-27 | ChatGPT dans la barre (⌥⌘G) | HC 19335160678679 | ➖ | | Fonction d'IA, écartée |
-| CMD-28 | Copier depuis la barre ajoute https | HC 20498417809815 | ⬜ | | |
+| CMD-28 | Copier depuis la barre ajoute https | HC 20498417809815 | ✅ | | Copie de l'adresse entière : protocole ajouté ; ui 24 « copier l’adresse entière » |
 
 Actions de la barre de commande relevées dans Arc (libellés du binaire et du centre d'aide). État : ✅ si Orbe propose l'action (test self « la barre de commande propose des actions »), ⬜ sinon.
 
 | Id | Action d'Arc | État | Note |
 | --- | --- | --- | --- |
 | CMD-40 | Pin Tab / Unpin | ✅ | |
-| CMD-41 | Reset Tab (retour à l'adresse épinglée) | 🟡 | W:resetPinned existe ; présence dans la palette à vérifier |
-| CMD-42 | Replace Pin with Current Page | ⬜ | |
-| CMD-43 | Duplicate Current Tab | 🟡 | |
-| CMD-44 | Rename Current Tab | 🟡 | |
-| CMD-45 | Move to Favorites / Remove from Favorites | 🟡 | |
-| CMD-46 | Move to Today in <Espace> / Move to Pinned in <Espace> | ⬜ | |
-| CMD-47 | New Folder ; Expand All Folders ; Collapse All Folders | 🟡 | Nouveau dossier seulement |
-| CMD-48 | Collapse Pinned / Expand Pinned | ⬜ | |
-| CMD-49 | New Space ; Manage Spaces ; Focus on <Espace> | 🟡 | Nouvel Espace seulement |
+| CMD-41 | Reset Tab (retour à l'adresse épinglée) | ✅ | Proposée quand l'épinglé a quitté son adresse ; self cmd |
+| CMD-42 | Replace Pin with Current Page | ✅ | self cmd « Remplacer l’adresse épinglée… » |
+| CMD-43 | Duplicate Current Tab | ✅ | self cmd « Dupliquer l’onglet » |
+| CMD-44 | Rename Current Tab | ✅ | self cmd « Renommer l’onglet » |
+| CMD-45 | Move to Favorites / Remove from Favorites | ✅ | Libellé selon l'onglet ; self cmd (3 vérifications) |
+| CMD-46 | Move to Today in <Espace> / Move to Pinned in <Espace> | ✅ | Par Espace, annulable d'un coup ; self cmd (5 vérifications) |
+| CMD-47 | New Folder ; Expand All Folders ; Collapse All Folders | ✅ | self cmd (liste des actions) |
+| CMD-48 | Collapse Pinned / Expand Pinned | ✅ | self cmd (liste des actions) |
+| CMD-49 | New Space ; Manage Spaces ; Focus on <Espace> | ✅ | « Gérer les Espaces… » ouvre la section Espaces de la Bibliothèque ; self cmd, self bib ; ui 24, ui 25 |
 | CMD-50 | Add Split View ; Add Right/Left/Top/Bottom Split | 🟡 | Sans choix du côté |
 | CMD-51 | Convert to Horizontal/Vertical Split View | ✅ | self « vue scindée empilée » |
 | CMD-52 | New Window ; New Blank Window ; New Incognito Window ; Open Little Arc | 🟡 | Pas de fenêtre vierge |
-| CMD-53 | View Archive ; Clear Archive ; Open Library ; View Downloads | 🟡 | « Vider l'archive » n'est pas proposé dans la barre (`palette: false`) |
+| CMD-53 | View Archive ; Clear Archive ; Open Library ; View Downloads | ✅ | « Vider l'archive » proposé, avec confirmation ; self cmd |
 | CMD-54 | Capture ; Capture Full Page ; Capture in Portrait Mode | 🟡 | Pas de mode portrait |
-| CMD-55 | New Easel ; New Note ; New Note (in Split) | 🟡 | Pas de note en vue scindée |
+| CMD-55 | New Easel ; New Note ; New Note (in Split) | ✅ | « Nouvelle note à côté de la page » ; self cmd |
 | CMD-56 | New Boost ; View Boosts | 🟡 | |
-| CMD-57 | Turn on Developer Mode for this site | ⬜ | |
-| CMD-58 | Settings ; Link Preferences ; Edit Keyboard Shortcuts ; Air Traffic Control ; Manage Passwords | 🟡 | Réglages et mots de passe |
-| CMD-59 | Add Extension ; Manage Extensions | 🟡 | |
-| CMD-60 | Mute all tabs / Unmute all tabs | ⬜ | |
+| CMD-57 | Turn on Developer Mode for this site | ✅ | « Mode développeur » du site (⌃D) ; self cmd (liste des actions) |
+| CMD-58 | Settings ; Link Preferences ; Edit Keyboard Shortcuts ; Air Traffic Control ; Manage Passwords | ✅ | Réglages des liens (routage), raccourcis, mots de passe ; self cmd (liste des actions) |
+| CMD-59 | Add Extension ; Manage Extensions | ✅ | « Gérer les extensions… » (volet où l'on en ajoute) ; self cmd (liste des actions) |
+| CMD-60 | Mute all tabs / Unmute all tabs | ✅ | self cmd (2 vérifications) |
 | CMD-61 | Toggle Sidebar ; Show Toolbar ; Theme | ✅ | |
-| CMD-62 | Copy URL ; Copy URL as Markdown ; Paste URL as New Tab | 🟡 | Pas de « coller comme onglet » (⌥⌘V) |
-| CMD-63 | Help Center ; Contact the Team ; What's new ; Getting Started | ⬜ | |
+| CMD-62 | Copy URL ; Copy URL as Markdown ; Paste URL as New Tab | ✅ | ⌥⌘V proposé dans la barre ; self cmd (liste des actions) |
+| CMD-63 | Help Center ; Contact the Team ; What's new ; Getting Started | ✅ | Centre d'aide, Signaler un problème, Nouveautés (dépôt GitHub), Bienvenue ; aussi au menu Aide ; self cmd |
 | CMD-64 | New Google Doc, New Linear Issue, New Google Meet, etc. | ➖ | Raccourcis vers des services tiers |
 
 ## ESP — Espaces et profils
@@ -467,28 +469,28 @@ Aucun geste n'a été rejoué sur Arc pendant cet inventaire (ils demandent la m
 | Id | Ce que fait Arc | Preuve Arc | État | Preuve Orbe | Note |
 | --- | --- | --- | --- | --- | --- |
 | BIB-1 | Bibliothèque ouverte par l'icône du bas ou ⇧⌘L | menu ; HC 19230634389911 | ✅ | M ; nat | S'ouvre dans un onglet, pas dans un panneau |
-| BIB-2 | Sections : Media, Downloads, Easels & Notes, Spaces, Archived Tabs, Boosts | HC 19230634389911 ; menu Window | 🟡 | Historique, Archive, Téléchargements, Médias, Tableaux | Espaces et Boosts absents |
-| BIB-3 | Elle rouvre sur la dernière section utilisée | HC 20498377604887 | ⬜ | | |
+| BIB-2 | Sections : Media, Downloads, Easels & Notes, Spaces, Archived Tabs, Boosts | HC 19230634389911 ; menu Window | ✅ | `library.js` | Historique, Archive, Téléchargements, Médias, Tableaux, Espaces, Boosts (les notes ont leur page) ; self bib ; ui 25 |
+| BIB-3 | Elle rouvre sur la dernière section utilisée | HC 20498377604887 | ✅ | | self bib « ⇧⌘L rouvre la Bibliothèque sur cette section » ; ui 25 |
 | BIB-4 | Survol de l'icône : fichiers récents, à ouvrir ou à glisser dehors | HC 19230634389911 | ⬜ | | Noté dans la feuille de route |
 | BIB-5 | Clic droit sur l'icône : types de fichiers affichés (captures, téléchargements, médias) | HC 19230634389911 ; binaire | ⬜ | | |
-| BIB-6 | Glisser un fichier hors de la Bibliothèque, même Arc en arrière-plan | HC 20498417809815 | ⬜ | | `webContents.startDrag` |
+| BIB-6 | Glisser un fichier hors de la Bibliothèque, même Arc en arrière-plan | HC 20498417809815 | ✅ | | webContents.startDrag avec l'icône du fichier ; self bib ; ui 25 (vraie souris, système remplacé par un témoin) |
 | BIB-7 | Médias du Bureau, de Documents et de Téléchargements à côté des captures ; filtre « Show media from: » | binaire | ⬜ | téléchargements et captures d'Orbe, en liste | Grille de vignettes |
 | BIB-8 | Les vidéos se lisent en aperçu | HC 20498417809815 | ⬜ | | |
-| BIB-9 | Supprimer un élément l'envoie à la corbeille | HC 20498293324823 ; binaire « Move to Trash » | 🟡 | à vérifier | |
-| BIB-10 | Menu d'un téléchargement : Open, Copy, Show in Finder, Hide from Arc, Move to Trash, Cancel | binaire « Download Context Menu » | 🟡 | Ouvrir, Afficher, Pause, Reprendre, Réessayer, Annuler (downloads.js) ; self « pause depuis la Bibliothèque », « annulation… » ; ui « Bibliothèque : pause, reprise et annulation » | Copier, masquer, corbeille |
-| BIB-11 | Envoyer une capture par iMessage ou AirDrop ; ouvrir dans Aperçu | binaire | ⬜ | | Feuille de partage macOS |
-| BIB-12 | Regroupement par période (« Earlier This Week »…) | binaire | 🟡 | groupes par jour dans `library.js` ; pas de test du regroupement | |
-| BIB-13 | Archive : recherche et filtres (fermé à la main ou d'office, par Espace, Little Arc) | allthings ; binaire « How was the tab closed? », « Where was the tab? » | 🟡 | recherche seule | Enregistrer la cause de fermeture |
-| BIB-14 | Restaurer un onglet archivé : il retourne dans son Espace d'origine | HC 20498377604887 | 🟡 | rouvert dans l'Espace courant, l'entrée reste | |
-| BIB-15 | Supprimer une entrée d'archive | binaire | ⬜ | | |
-| BIB-16 | Clear Archive avec confirmation « This action is permanent. » | binaire ; menu | 🟡 | sans confirmation | |
-| BIB-17 | État vide de l'archive : « Nothing here yet! » | binaire | ⬜ | | |
+| BIB-9 | Supprimer un élément l'envoie à la corbeille | HC 20498293324823 ; binaire « Move to Trash » | ✅ | `downloads.js`:trash | shell.trashItem ; self bib « Placer dans la corbeille » ; ui 25 |
+| BIB-10 | Menu d'un téléchargement : Open, Copy, Show in Finder, Hide from Arc, Move to Trash, Cancel | binaire « Download Context Menu » | ✅ | `downloads.js`:menuTemplate | Menu « ··· » et clic droit : Ouvrir, Copier, Afficher, Partager, Masquer, Corbeille, Pause/Reprendre/Annuler ; self bib (10 vérifications) ; ui 25 |
+| BIB-11 | Envoyer une capture par iMessage ou AirDrop ; ouvrir dans Aperçu | binaire | ✅ | | Article « Partager » (feuille de partage macOS) dans le menu du fichier ; self bib ; la feuille elle-même reste à voir à l'œil |
+| BIB-12 | Regroupement par période (« Earlier This Week »…) | binaire | ✅ | `library.js`:period | self bib « périodes, comme dans Arc » ; ui 25 |
+| BIB-13 | Archive : recherche et filtres (fermé à la main ou d'office, par Espace, Little Arc) | allthings ; binaire « How was the tab closed? », « Where was the tab? » | ✅ | `library.js` (principal et page) | Cause de fermeture enregistrée (main, d'office, petite fenêtre) ; filtres par cause et par Espace ; self bib (8 vérifications) ; ui 25 |
+| BIB-14 | Restaurer un onglet archivé : il retourne dans son Espace d'origine | HC 20498377604887 | ✅ | `library.js`:restore | self bib « restaurer un onglet archivé » ; ui 25 |
+| BIB-15 | Supprimer une entrée d'archive | binaire | ✅ | | Croix par ligne ; self bib ; ui 25 |
+| BIB-16 | Clear Archive avec confirmation « This action is permanent. » | binaire ; menu | ✅ | C:clearArchive | Même confirmation que par le menu ; self bib ; ui 25 |
+| BIB-17 | État vide de l'archive : « Nothing here yet! » | binaire | ✅ | | « Rien ici pour l'instant ! » et une ligne d'explication ; self bib ; ui 25 |
 | BIB-18 | View History ⌘Y | menu | ✅ | self | |
 | BIB-19 | Emplacement des téléchargements par profil : dossier, « Other… », « Ask every time » | warren ; binaire `arc.promptForDownload` | ✅ | réglage « Dossier des téléchargements », général ou propre à un profil (prefs.js), et « Toujours demander où enregistrer » (downloads.js) ; self « dossier des téléchargements propre à un profil », « dossier propre au profil : il prime sur le dossier général… », « Toujours demander où enregistrer… » | |
-| BIB-20 | Avertissements de sécurité du système sur les fichiers téléchargés | HC 20498377604887 | 🟡 | non vérifié | |
-| BIB-21 | « Downloads in progress » à la fermeture | binaire | ⬜ | | |
+| BIB-20 | Avertissements de sécurité du système sur les fichiers téléchargés | HC 20498377604887 | ✅ | `downloads.js`:quarantine | Marque « venu d'Internet » posée sur chaque fichier téléchargé (quarantaine macOS, zone Internet Windows) : Electron ne le fait pas ; self bib « le fichier téléchargé porte la marque… » |
+| BIB-21 | « Downloads in progress » à la fermeture | binaire | ✅ | | Question « Des téléchargements sont en cours » avant de quitter ; self bib (4 vérifications) |
 | BIB-22 | Téléchargements renommés automatiquement | HC 19335160678679 | ➖ | | Fonction d'IA, écartée |
-| BIB-23 | Sauvegardes locales de la barre, Help → Restore Data (10 du jour, 1 par jour sur 10 jours…) | HC 25625071960215 ; menu | 🟡 | une copie `.bak` | Historique de sauvegardes |
+| BIB-23 | Sauvegardes locales de la barre, Help → Restore Data (10 du jour, 1 par jour sur 10 jours…) | HC 25625071960215 ; menu | ✅ | `backups.js` | Copie à chaque lancement puis chaque heure (10 du jour, 1 par jour sur 10 jours) ; Aide → Dépannage → « Restaurer une sauvegarde » (relance) ; self bib (5 vérifications) |
 | BIB-24 | Lecteur audio miniature en bas de la barre en quittant un onglet qui joue ; plusieurs lecteurs empilés ; titre défilant ; croix | HC 19234766331799 | 🟡 | un seul média, lecture/pause et muet ; aucun test | |
 | BIB-25 | Lecteur : précédent/suivant (Spotify), ±15 s, volume de l'onglet, micro | binaire | ⬜ | | `navigator.mediaSession` |
 | BIB-26 | Touches multimédia du clavier | HC 20498417809815 | 🟡 | défaut de Chromium, non testé | |
@@ -496,7 +498,7 @@ Aucun geste n'a été rejoué sur Arc pendant cet inventaire (ils demandent la m
 | BIB-28 | Fenêtre d'image dans l'image propre à Arc : retour à l'onglet, fermer, réduire, vitesse, flèches pour chercher, espace pour pause | HC 20498377604887 ; binaire | 🟡 | fenêtre native de Chromium | |
 | BIB-29 | Désactivable par site et globalement | HC 25590734716823 | 🟡 | réglage global `autoPip` | |
 | BIB-30 | Google Meet : image dans l'image avec commandes de réunion | HC 20498293324823 | ➖ | | Propre à un service |
-| BIB-31 | Cast | menu | ⬜ | | Electron ne fournit pas Chromecast ; à écarter sans doute |
+| BIB-31 | Cast | menu | ➖ | | Écarté : Electron ne fournit ni Chromecast ni le sélecteur de diffusion de Chrome |
 
 ## BOO — Boosts
 
@@ -523,19 +525,19 @@ Aucun geste n'a été rejoué sur Arc pendant cet inventaire (ils demandent la m
 | TAB-1 | New Easel ⌃⇧E | menu | ✅ | self « ⌃⇧E crée un tableau » | |
 | TAB-2 | Le tableau s'ouvre comme onglet épinglé de l'Espace | HC 19231142050071 | 🟡 | onglet interne | |
 | TAB-3 | Dessin, texte, images, formes | HC 20498293324823 | ✅ | self (rectangle, texte, formes, flèche, image collée) ; `tests/easels.js` | |
-| TAB-4 | Guides d'alignement et magnétisme | HC 20498293324823 | ⬜ | | |
-| TAB-5 | Correcteur dans le texte | HC 20498293324823 | 🟡 | non vérifié | |
+| TAB-4 | Guides d'alignement et magnétisme | HC 20498293324823 | ✅ | | Bords et milieux, portée de 6 points, ⌘ pour s'en passer ; self easels (6 vérifications) ; ui 15 (2 vérifications) |
+| TAB-5 | Correcteur dans le texte | HC 20498293324823 | ✅ | `easel.js`:startEdit | Correcteur actif pendant la saisie ; self easels « correcteur actif pendant la saisie, coupé au repos » |
 | TAB-6 | Vidéos intégrées depuis une adresse collée | HC 20498293324823 | ⬜ | | |
 | TAB-7 | Captures vivantes (lecture/pause, ⌘R les rafraîchit) | HC 20498417809815 | ⬜ | captures figées | Gros morceau |
 | TAB-8 | Le lien d'une capture rouvre la page d'origine | binaire `CaptureLinkIconBackground` | ✅ | self | |
-| TAB-9 | Texte alternatif d'une image | binaire | ⬜ | | |
+| TAB-9 | Texte alternatif d'une image | binaire | ✅ | | Champ « Texte alternatif » de l'image sélectionnée ; self easels (3 vérifications) ; ui 15 |
 | TAB-10 | Annuler / rétablir | binaire | ✅ | self | |
-| TAB-11 | Export PNG (« Share Via… »), File → Save As | HC 19231142050071 | ⬜ | | |
+| TAB-11 | Export PNG (« Share Via… »), File → Save As | HC 19231142050071 | ✅ | | Bouton et commande « Exporter le tableau en PNG… » (boîte d'enregistrement) ; pas de feuille de partage ; self easels (4 vérifications) ; ui 15 |
 | TAB-12 | Partage en lecture ou en édition, collaborateurs, commentaires | HC 19231142050071 ; binaire | ➖ | | Demande un serveur |
 | TAB-13 | Liste des tableaux dans la Bibliothèque | menu « View Easels… » | ✅ | self (vignette, réouverture, suppression) | |
 | TAB-14 | Capture… ⇧⌘2 : choisir une zone, les éléments de la page sont détectés ; infobulle « Click or drag to capture a portion of this page » ; curseur en appareil photo | menu ; HC 20498417809815 ; binaire | ✅ | ⇧⌘2 capture toute la partie visible ; la zone n'existe que pour « vers un tableau » (self « capture d'une zone choisie à la souris ») | Fait le 8 oct. (zone + choix de l'action, son original, réglage) |
 | TAB-15 | Après la capture : envoyer, enregistrer, copier, reprendre, ajouter à un tableau | HC 20498417809815 ; binaire | ✅ | copie + fichier d'office | Fait le 8 oct. (zone + choix de l'action, son original, réglage) |
-| TAB-16 | Son à la capture | binaire `capture.wav` | ⬜ | | Voir SON-1 |
+| TAB-16 | Son à la capture | binaire `capture.wav` | ✅ | | Déjà en place (son d'Arc, réglage « Sons ») ; self « capture : le son de capture est demandé » |
 | TAB-17 | Capture Full Page (PNG dans le dossier de téléchargement) | menu ; HC 25481392111895 | ✅ | self | |
 | TAB-18 | Capture in Portrait Mode (page posée sur un fond) | menu ; HC 20468488031511 | ⬜ | | |
 | TAB-19 | Maintenir ⌘⇧ pour lancer une capture (option) | binaire | ⬜ | | |
@@ -545,9 +547,9 @@ Aucun geste n'a été rejoué sur Arc pendant cet inventaire (ils demandent la m
 | Id | Ce que fait Arc | Preuve Arc | État | Preuve Orbe | Note |
 | --- | --- | --- | --- | --- | --- |
 | NOT-1 | Les notes d'Arc ont été retirées en avril 2024 ; « New Note » ouvre l'application de documents du profil (Notion, Google Docs, Word, Confluence) | HC 22557798824855 | ✅ | Orbe garde des notes locales ; self « ⌃⌘N crée une note » | Orbe fait plus qu'Arc actuel |
-| NOT-2 | Raccourci ⌃⇧N d'après les notes de version ; Orbe utilise ⌃⌘N | HC 22557798824855 | 🟡 | M | Divergence à trancher (⌃⌘N est « Blank Window » dans Arc) |
-| NOT-3 | Note à côté de la page (en vue scindée) | binaire « Creates a new Note beside your current page » | ⬜ | | |
-| NOT-4 | Help → Export Arc Notes | menu | ⬜ | | Export en fichiers texte |
+| NOT-2 | Raccourci ⌃⇧N d'après les notes de version ; Orbe utilise ⌃⌘N | HC 22557798824855 | ✅ | C ; M | Tranché : ⌃⇧N (note) et ⌃⌥N (note à côté), comme dans Arc ; ⌃⌘N libéré ; self bib « notes : ⌃⇧N… » |
+| NOT-3 | Note à côté de la page (en vue scindée) | binaire « Creates a new Note beside your current page » | ✅ | | Commande « Nouvelle note à côté de la page » ; self cmd |
+| NOT-4 | Help → Export Arc Notes | menu | ✅ | | Aide → « Exporter les notes… » : un fichier texte par note ; self bib (7 vérifications) |
 | NOT-5 | Mise en forme (titres 1 à 3, image, lien) | binaire `TextEditor` | 🟡 | texte brut, première ligne en titre | |
 
 ## EXT — Extensions et contrôles du site
@@ -646,7 +648,7 @@ Relevé complet d'Arc par l'accessibilité. Orbe : `menu.js` ; test self « les 
 | MEN-9 | Arc → Sign Out | | ➖ | Pas de compte |
 | MEN-10 | File → New Tab… | ⌘T | ✅ | |
 | MEN-11 | File → New Window | ⌘N | ✅ | |
-| MEN-12 | File → Blank Window | ⌃⌘N | ⬜ | Dans Orbe, « Nouvelle fenêtre » ouvre déjà une fenêtre sans onglet ; ⌃⌘N est pris par « Nouvelle note » |
+| MEN-12 | File → Blank Window | ⌃⌘N | ⬜ | Dans Orbe, « Nouvelle fenêtre » ouvre déjà une fenêtre sans onglet ; ⌃⌘N est libre (la note a pris ⌃⇧N) |
 | MEN-13 | File → New Incognito Window | ⇧⌘N | ✅ | |
 | MEN-14 | File → New Little Arc Window | ⌥⌘N | ✅ | |
 | MEN-15 | File → Restore Last Closed Tab | ⇧⌘T | ✅ | |
@@ -741,7 +743,7 @@ Arc : `menu` pour ceux de la barre de menus, sinon la source indiquée. Orbe : `
 | RAC-1 | ⌘T | Barre de commande, nouvel onglet | menu | ✅ | |
 | RAC-2 | ⌘L | Modifier l'adresse | menu | ✅ | |
 | RAC-3 | ⌘N / ⇧⌘N / ⌥⌘N | Fenêtre, fenêtre privée, petite fenêtre | menu | ✅ | |
-| RAC-4 | ⌃⌘N | Fenêtre vierge | menu | ⬜ | Conflit avec « Nouvelle note » |
+| RAC-4 | ⌃⌘N | Fenêtre vierge | menu | ⬜ | ⌃⌘N est libre depuis que la note a pris ⌃⇧N |
 | RAC-5 | ⌘W / ⇧⌘W | Archiver l'onglet, fermer la fenêtre | menu | ✅ | |
 | RAC-6 | ⇧⌘T | Rouvrir | menu | ✅ | |
 | RAC-7 | ⌘Z / ⇧⌘Z | Annuler, rétablir (actions de la barre) | menu | 🟡 | |
@@ -769,7 +771,7 @@ Arc : `menu` pour ceux de la barre de menus, sinon la source indiquée. Orbe : `
 | RAC-29 | ⇧⌘L / ⇧⌘J | Bibliothèque, téléchargements | menu | ✅ | |
 | RAC-30 | ⇧⌘2 | Capture | menu | 🟡 | |
 | RAC-31 | ⌃⇧E | Nouveau tableau | menu | ✅ | |
-| RAC-32 | ⌃⇧N / ⌃⌥N | Nouvelle note, note en vue scindée | HC 22557798824855 | 🟡 | ⌃⌘N dans Orbe |
+| RAC-32 | ⌃⇧N / ⌃⌥N | Nouvelle note, note en vue scindée | HC 22557798824855 | ✅ | ⌃⇧N et ⌃⌥N ; self bib « notes : ⌃⇧N… » |
 | RAC-33 | ⇧⌘S / ⌘P | Enregistrer la page, imprimer | menu | 🟡 | Sans test |
 | RAC-34 | ⌥⌘U / ⌥⌘I / ⌥⌘C / ⌥⌘J | Source, outils, inspecteur, console | menu | 🟡 | Sans test |
 | RAC-35 | ⌃D | Mode développeur du site | menu | ✅ | `toggleDevMode` : barre d’outils et adresse entière pour le site ; Alt+Shift+D sous Windows ; self |

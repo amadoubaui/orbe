@@ -15,6 +15,7 @@ const adblock = require('./adblock');
 const boosts = require('./boosts');
 const platform = require('./platform');
 const prefs = require('./prefs');
+const palette = require('./palette');
 
 // Marge autour de la page : 10 pt, comme mesuré dans Arc.
 const PAD = 10;
@@ -1361,7 +1362,7 @@ class OrbeWindow {
 
   // ⌘W : un onglet du jour est archivé ; un onglet épinglé est simplement
   // déchargé et reste dans la barre latérale.
-  close(id = this.activeId, { silent = false, ask = true } = {}) {
+  close(id = this.activeId, { silent = false, ask = true, auto = false } = {}) {
     const loc = id && this.locate(id);
     if (!loc || loc.node.type === 'folder') return;
     const space = loc.space || this.space;
@@ -1378,7 +1379,7 @@ class OrbeWindow {
       rec = { tab: { ...tab }, spaceId: space.id, index: loc.index, active: wasActive, split };
       this.closed.push(rec);
       if (this.closed.length > 50) this.closed.shift();
-      if (!this.incognito) store.archive({ ...tab, spaceId: space.id });
+      if (!this.incognito) store.archive({ ...tab, spaceId: space.id, by: auto ? 'auto' : 'manual' });
       delete this.data.tabs[id];
     } else if (tab.homeUrl) {
       tab.url = tab.homeUrl;
@@ -2616,31 +2617,36 @@ class OrbeWindow {
     this.showModal('command', {
       value: tab && !isInternal(tab.url) ? tab.url : '',
       items: this.suggestLocal(''),
+      sites: palette.siteKeys(),
       centerX: Math.round(W / 2),
       anchor: mode === 'edit' && this.sidebarVisible ? { x: 8, y: 46, width: Math.max(460, this.sidebarWidth + 220) } : null,
     });
   }
 
   commandList() {
-    const { COMMANDS } = require('./commands');
-    return COMMANDS.filter((c) => c.palette !== false).map((c) => ({ command: c.name, title: t(c.label), shortcut: require('./shortcuts').keysOf(c.name) }));
+    return palette.commandList(this);
   }
 
-  suggestLocal(q) {
+  // `scope` : 'actions' (⇥ sur une barre vide : les actions seules) ou { site } (recherche dans un site).
+  suggestLocal(q, scope) {
+    if (scope && scope.site) return palette.siteItems(scope.site, q);
+    if (scope === 'actions') return suggest.local(q, { tabs: [], commands: this.commandList(), activeId: null, scope });
     const tabs = [];
     for (const sp of this.data.spaces) {
       for (const id of [...walk(sp.pinned), ...sp.today]) tabs.push(this.data.tabs[id]);
     }
     for (const list of Object.values(this.data.favs)) for (const id of list) tabs.push(this.data.tabs[id]);
     const items = suggest.local(q, { tabs, commands: this.commandList(), activeId: this.commandMode === 'edit' ? this.activeId : null });
+    // Aucun onglet à proposer sur une barre vide : de quoi démarrer (aide, réglages).
+    if (!items.length && !q.trim()) return palette.starters(this);
     return this.incognito ? items.filter((i) => i.kind !== 'history').map((i) => ({ ...i, favicon: '' })) : items;
   }
 
-  async suggest(q) {
+  async suggest(q, scope) {
     if (this.suggestAbort) this.suggestAbort.abort();
     const ctrl = (this.suggestAbort = new AbortController());
-    const items = this.suggestLocal(q);
-    if (!this.incognito) {
+    const items = this.suggestLocal(q, scope);
+    if (!this.incognito && !scope) {
       suggest.remote(q, ctrl.signal).then((more) => {
         if (ctrl.signal.aborted || !more.length || this.modalMode !== 'command' || this.gone || this.modal.webContents.isDestroyed()) return;
         const seen = new Set(items.map((i) => i.title.toLowerCase()));
@@ -2654,14 +2660,18 @@ class OrbeWindow {
     const mode = this.commandMode;
     this.hideModal();
     if (!item) return;
-    if (item.kind === 'command') return this.run(item.command);
+    if (item.kind === 'command') return this.run(String(item.command), item.arg);
     if (item.kind === 'tab' && this.locate(item.tabId)) {
       if (mode === 'split' && this.activeId) return this.splitWith(this.activeId, item.tabId);
       return this.activate(item.tabId);
     }
     const target = item.url || item.title;
     if (!target) return;
-    if (mode === 'edit' && this.activeId && !background) return this.navigate(target);
+    if (mode === 'edit' && this.activeId && !background) {
+      // ⌘L puis Entrée sans rien changer : la page est actualisée, comme dans Arc.
+      if (item.kind === 'raw' && target === this.data.tabs[this.activeId].url && live.has(this.activeId)) return this.reload(false);
+      return this.navigate(target);
+    }
     this.newTab(target, { background, split: mode === 'split' });
   }
 
@@ -3080,7 +3090,7 @@ class OrbeWindow {
     for (const id of s.favs[profileId] || []) {
       OrbeWindow.destroyView(id);
       OrbeWindow.forget(id, s);
-      store.archive(s.tabs[id]);
+      store.archive({ ...s.tabs[id], by: 'manual' });
       delete s.tabs[id];
     }
     delete s.favs[profileId];
@@ -3524,9 +3534,17 @@ class OrbeWindow {
         if (/^[a-z][a-z0-9+.-]*:/i.test(text) && !webUrl(text)) return undefined;
         return this.newTab(webUrl(text) || suggest.searchUrl(text));
       }
-      case 'suggest': return this.suggest(String(a || ''));
+      // Saisie seule, ou { q, scope } : 'actions', ou { site } pour la recherche dans un site.
+      case 'suggest': return a && typeof a === 'object' ? this.suggest(String(a.q || ''), a.scope === 'actions' ? 'actions' : (a.scope && typeof a.scope.site === 'string' ? { site: a.scope.site } : undefined)) : this.suggest(String(a || ''));
+      case 'suggestDelete': return this.incognito ? false : palette.forget(a);
       case 'run': return this.runItem(a.item, { background: !!a.background });
-      case 'closeOverlay': return this.hideModal();
+      // Clic sur le fond de la barre de commande : { x, y } ; tombé sur la barre latérale, il lui est rendu.
+      case 'closeOverlay': {
+        const through = this.modalMode === 'command' && a && typeof a === 'object';
+        this.hideModal();
+        if (through) palette.clickThrough(this, a);
+        return undefined;
+      }
       case 'switcherCommit': return this.switcherCommit();
       case 'find': return this.find(String(a.text || ''), a);
       case 'findClose': return this.closeFind();
@@ -3566,7 +3584,7 @@ function archiveStale() {
       const rt = live.get(id);
       if (activeIds.has(id) || (tab.lastActiveAt || 0) > limit) continue;
       if (rt && !rt.wc.isDestroyed() && rt.wc.isCurrentlyAudible()) continue;
-      any.close(id, { silent: true, ask: false });
+      any.close(id, { silent: true, ask: false, auto: true });
       count += 1;
     }
   }

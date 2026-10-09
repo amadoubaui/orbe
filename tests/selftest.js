@@ -901,7 +901,7 @@ module.exports = async function selftest(ctx) {
   await until(() => store.state.notes.length === 1 && nwc.executeJavaScript('document.querySelectorAll("#items .note").length === 1'), 'note créée');
   await nwc.executeJavaScript(`(() => { const e = document.getElementById('editor'); e.textContent = 'Idées pour Orbe'; e.dispatchEvent(new InputEvent('input')); })()`);
   await until(() => store.state.notes[0].text.startsWith('Idées pour Orbe'), 'note enregistrée');
-  check('⌃⌘N crée une note, enregistrée au fil de la frappe', tabs()[noteTab].internal === true);
+  check('⌃⇧N crée une note, enregistrée au fil de la frappe', tabs()[noteTab].internal === true);
   w.close(noteTab);
   w.activate(a.id);
 
@@ -1091,6 +1091,13 @@ module.exports = async function selftest(ctx) {
 
   // Vitesse et mémoire : vues d'appoint, veille, recherche… (tests/performances.js)
   await require('./performances')({ ...ctx, check, modalAtStart });
+
+  // Barre de commande : actions, portées, suppression d'une suggestion… (tests/commande.js)
+  // (Après les mesures : cet essai charge une extension, dont le script de complément reste en place.)
+  await require('./commande')({ ...ctx, check });
+
+  // Bibliothèque : archive, téléchargements, Espaces, Boosts ; notes (tests/bibliotheque.js)
+  await require('./bibliotheque')({ ...ctx, check });
 
   // Persistance
   await shot('final');

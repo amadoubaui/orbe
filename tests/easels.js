@@ -106,6 +106,125 @@ module.exports = async function easelTests(ctx) {
     && fs.readFileSync(path.join(dir, png.names[1])).subarray(1, 4).toString() === 'PNG' && png.pwn === 0, JSON.stringify([png, stored]));
   check('image invalide ou nom de fichier hors du dossier : refusés', png.bad === 0 && png.forged === null && png.outside === null, JSON.stringify(png));
 
+  // --- Guides d'alignement et aimantation ----------------------------------------------
+  {
+    const state = () => js('JSON.stringify({ items: E.items, view: E.view })').then(JSON.parse);
+    const s0 = await state();
+    const box = s0.items.find((it) => it.type === 'rect');
+    const round0 = s0.items.find((it) => it.type === 'ellipse');
+    const at = (it, fx = 0.5, fy = 0.5) => ({ x: (it.x + it.w * fx) * s0.view.z + s0.view.x, y: (it.y + it.h * fy) * s0.view.z + s0.view.y });
+    await js('E.setSel([])');
+    // L'ellipse est amenée à 4 points du bord gauche du rectangle, loin de tout repère horizontal (y = 500).
+    const from = at(round0);
+    const dx = box.x + 4 - round0.x;
+    const dy = 500 - round0.y;
+    mouse('mouseDown', from.x, from.y);
+    for (let i = 1; i <= 6; i++) { mouse('mouseMove', from.x + (dx * i) / 6, from.y + (dy * i) / 6, { modifiers: ['leftButtonDown'] }); await sleep(25); }
+    const during = await until(() => js(`(() => { const g = document.getElementById('guide-x'); return g.hidden ? null : { x: Math.round(g.getBoundingClientRect().left), y: document.getElementById('guide-y').hidden }; })()`), 'guide vertical affiché');
+    mouse('mouseUp', from.x + dx, from.y + dy);
+    await sleep(80);
+    const s1 = await state();
+    const round1 = s1.items.find((it) => it.id === round0.id);
+    check('aimantation : un bord amené à 4 points du bord d’un autre élément s’y cale exactement, un guide vertical marque l’alignement',
+      round1.x === box.x && Math.abs(round1.y - 500) <= 1 && Math.abs(during.x - (box.x * s0.view.z + s0.view.x)) <= 1 && during.y === true, JSON.stringify({ round1, box, during }));
+    check('le guide disparaît au relâchement', await js('document.getElementById("guide-x").hidden && document.getElementById("guide-y").hidden'));
+    // Au-delà de la portée : aucun calage. Avec ⌘ (Ctrl ailleurs) : déplacement libre.
+    const far = at(round1);
+    await dragMouse(far.x, far.y, far.x + 13, far.y);
+    const s2 = await state();
+    check('au-delà de 6 points : pas d’aimantation', Math.abs(s2.items.find((it) => it.id === round0.id).x - (box.x + 13)) <= 1);
+    const mod = platform.isMac ? 'meta' : 'control';
+    const back2 = at(s2.items.find((it) => it.id === round0.id));
+    mouse('mouseDown', back2.x, back2.y);
+    for (let i = 1; i <= 5; i++) { mouse('mouseMove', back2.x - (10 * i) / 5, back2.y, { modifiers: ['leftButtonDown', mod] }); await sleep(25); }
+    const freeGuide = await js('document.getElementById("guide-x").hidden');
+    mouse('mouseUp', back2.x - 10, back2.y, { modifiers: [mod] });
+    await sleep(80);
+    const s3 = await state();
+    check('⌘ maintenu : déplacement libre à 3 points du bord, sans guide', Math.abs(s3.items.find((it) => it.id === round0.id).x - (box.x + 3)) <= 1 && freeGuide === true, JSON.stringify(s3.items.find((it) => it.id === round0.id)));
+    check('milieux et bords : le calcul propose le repère le plus proche sur chaque axe', await js(`(() => {
+      const d = { gx: [100, 150, 200], gy: [50], base: { x: 0, y: 0, w: 40, h: 20 } };
+      const a = E.snapMove(d, 127, 43);   // milieu du lot (147) à 3 de 150 ; milieu vertical (53) à 3 de 50
+      const b = E.snapMove(d, 300, 300);  // rien à portée
+      return a.dx === 3 && a.x === 150 && a.dy === -3 && a.y === 50 && b.dx === 0 && b.dy === 0 && b.x === null && b.y === null;
+    })()`));
+    await js('E.undo(); E.undo(); E.undo(); E.setSel([])');
+    check('chaque déplacement aimanté s’annule d’un cran', (await state()).items.find((it) => it.id === round0.id).x === round0.x);
+  }
+
+  // --- Correcteur pendant la saisie, texte alternatif d'une image ------------------------
+  {
+    const textId = await js('E.items.find((it) => it.type === "text").id');
+    await js(`E.startEdit(${JSON.stringify(textId)})`);
+    const on = await js('JSON.stringify({ e: E.editing, attr: document.querySelector(".it.editing .tx").spellcheck, session: true })').then(JSON.parse);
+    await js('E.endEdit()');
+    const off = await js(`document.querySelector('.it[data-id="${textId}"] .tx').spellcheck`);
+    check('texte d’un tableau : correcteur actif pendant la saisie, coupé au repos', on.e && on.e.spellcheck === true && on.attr === true && off === false && wc.session.isSpellCheckerEnabled() === true, JSON.stringify(on));
+
+    const imgId = await js('E.items.find((it) => it.type === "image").id');
+    await js(`E.setSel([${JSON.stringify(imgId)}])`);
+    const field = await js('(() => { const a = document.getElementById("alt"); return { shown: !a.hidden && !document.getElementById("style").hidden, value: a.value, ph: a.placeholder }; })()');
+    await js(`(() => { const a = document.getElementById('alt'); a.focus(); a.value = '  Carte <b>du</b> trajet  '; a.dispatchEvent(new Event('change', { bubbles: true })); a.blur(); })()`);
+    const alt = await js(`JSON.stringify({ item: E.items.find((it) => it.id === ${JSON.stringify(imgId)}).alt, img: document.querySelector('.it[data-id="${imgId}"] img').getAttribute('alt'), html: document.querySelectorAll('.it img ~ b, .it b').length, undo: E.undoDepth })`).then(JSON.parse);
+    check('image sélectionnée : champ « Texte alternatif » ; la saisie devient l’attribut alt de l’image, en texte brut',
+      field.shown && field.value === '' && field.ph === ctx.store.t('easel.alt') && alt.item === 'Carte <b>du</b> trajet' && alt.img === 'Carte <b>du</b> trajet' && alt.html === 0, JSON.stringify([field, alt]));
+    await js('E.setSel([])');
+    const shownFor = await js(`(() => { E.setSel([E.items.find((it) => it.type === 'rect').id]); const h = document.getElementById('alt').hidden; E.setSel([]); return h; })()`);
+    check('autre élément sélectionné : pas de champ de texte alternatif', shownFor === true);
+    const cleaned = easels.cleanDoc({ items: [{ id: 'aaaaaaaa1', type: 'image', x: 0, y: 0, w: 5, h: 5, img: png.names[0], alt: 'x'.repeat(900) }, { id: 'aaaaaaaa2', type: 'image', x: 0, y: 0, w: 5, h: 5, img: png.names[0], alt: { a: 1 } }, { id: 'aaaaaaaa3', type: 'rect', x: 0, y: 0, w: 5, h: 5, alt: 'non' }] }, id);
+    check('texte alternatif revalidé par le processus principal : chaîne bornée, images seulement', cleaned.items.length === 3 && cleaned.items[0].alt.length === 500 && cleaned.items[1].alt === undefined && cleaned.items[2].alt === undefined, JSON.stringify(cleaned.items.map((x) => typeof x.alt)));
+  }
+
+  // --- Export en PNG ----------------------------------------------------------------------
+  {
+    const os = require('os');
+    const out = fs.mkdtempSync(path.join(os.tmpdir(), 'orbe-tableau-'));
+    const asked = [];
+    const save0 = easels.env.saveDialog;
+    let answer = path.join(out, 'sortie');
+    easels.env.saveDialog = async (parent, opts) => { asked.push(opts); return answer; };
+    await js(`(() => { const el = document.getElementById('title'); el.value = 'Plan: été/2026?'; el.dispatchEvent(new InputEvent('input')); })()`);
+    const size = await js('JSON.stringify(E.exportSize())').then(JSON.parse);
+    const written = await js('E.exportPng()');
+    const image = written ? require('electron').nativeImage.createFromPath(written) : null;
+    check('export du tableau en PNG : image entière, à la taille annoncée, enregistrée où l’utilisateur le demande (extension ajoutée)',
+      written === path.join(out, 'sortie.png') && fs.readFileSync(written).subarray(1, 4).toString() === 'PNG' && image.getSize().width === size.W && image.getSize().height === size.H && size.W > 400 && size.k <= 2, JSON.stringify([written, size]));
+    check('nom proposé : le titre du tableau, réduit à un nom de fichier', asked.length === 1 && path.basename(asked[0].defaultPath) === 'Plan été 2026.png' && asked[0].filters[0].extensions.join() === 'png', asked[0] && asked[0].defaultPath);
+    answer = '';
+    check('enregistrement annulé : aucun fichier', (await js('E.exportPng()')) === null && fs.readdirSync(out).length === 1);
+    answer = path.join(out, 'autre.png');
+    const refused = [
+      await easels.exportImage({ board: id, data: Buffer.from('<svg onload=alert(1)>') }, null),
+      await easels.exportImage({ board: 'f'.repeat(16), data: fs.readFileSync(written) }, null),
+      await easels.exportImage({ board: '../' + id, data: fs.readFileSync(written) }, null),
+      await easels.exportImage({ board: id, data: 'texte' }, null),
+      await easels.exportImage(null, null),
+    ];
+    check('export : ce qui n’est pas un PNG, ou vise un tableau inconnu, est refusé avant toute question', refused.every((r) => r === null) && asked.length === 2 && fs.readdirSync(out).length === 1, JSON.stringify(refused));
+    w.activate(tabId);
+    const sent = commands.run(w, 'exportEasel');
+    await until(() => fs.existsSync(path.join(out, 'autre.png')), 'export demandé par la commande');
+    // Une modification, puis l'onglet quitté aussitôt : l'enregistrement part sans vignette (rien ne
+    // se dessine dans une page masquée) ; elle doit être refaite au retour sur le tableau.
+    const thumbFile = path.join(dir, 'thumb.png');
+    await until(() => fs.existsSync(thumbFile), 'première vignette');
+    await sleep(700);
+    const stamp = fs.statSync(thumbFile).mtimeMs;
+    await js(`E.add([{ type: 'rect', x: 900, y: 600, w: 30, h: 30, sw: 2 }])`);
+    const elsewhere = w.openInternal('shortcuts.html');
+    await until(() => js('document.hidden'), 'tableau masqué');
+    await until(() => disk().items.some((it) => it.x === 900 && it.y === 600), 'modification enregistrée en quittant l’onglet');
+    const n = asked.length;
+    check('« Exporter le tableau en PNG… » (barre de commande) : agit sur le tableau affiché, rien ailleurs', sent === true && commands.run(w, 'exportEasel') === false && asked.length === n);
+    w.close(elsewhere.id);
+    w.activate(tabId);
+    await until(() => fs.statSync(thumbFile).mtimeMs > stamp, 'vignette refaite au retour');
+    check('tableau modifié puis quitté aussitôt : la vignette de la Bibliothèque est refaite au retour sur l’onglet', true);
+    await js('E.undo()');
+    easels.env.saveDialog = save0;
+    try { fs.rmSync(out, { recursive: true, force: true }); } catch {}
+  }
+
   // --- Enregistrement automatique ----------------------------------------------------
   await js(`(() => { const el = document.getElementById('title'); el.value = 'Idées de voyage'; el.dispatchEvent(new InputEvent('input')); })()`);
   await until(() => { const d = disk(); return d.items.length === 8 && d.title === 'Idées de voyage'; }, 'enregistrement automatique');

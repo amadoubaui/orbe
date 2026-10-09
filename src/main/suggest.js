@@ -1,6 +1,7 @@
 // Barre de commande : interprétation de la saisie et suggestions.
 const { net } = require('electron');
 const { store } = require('./store');
+const palette = require('./palette');
 
 const ENGINES = {
   google: { name: 'Google', search: 'https://www.google.com/search?q=%s', suggest: 'https://suggestqueries.google.com/complete/search?client=firefox&q=%s' },
@@ -48,6 +49,23 @@ function fields(x) {
   return c;
 }
 
+// Sites où la même page porte une foule d'adresses (une par vue, par onglet interne…) :
+// l'historique n'y propose qu'une ligne par titre. Liste d'Arc (`command_bar_behavior.json`).
+const DEDUP_HOSTS = ['figma.com', 'maps.google.com', 'notion.so', 'app.notion.com', 'zoom.us', 'opentable.com', 'zillow.com', 'github.com', 'app.mode.com', 'console.cloud.google.com'];
+// Clé « site + titre » d'une entrée de ces sites, sinon '' (jamais dédoublonnée).
+function dedupKey(c) {
+  if (c.dedup === undefined) {
+    const host = c.u.split(/[/?#]/, 1)[0];
+    c.dedup = c.title && DEDUP_HOSTS.some((d) => host === d || host.endsWith('.' + d)) ? host + '\n' + c.title : '';
+  }
+  return c.dedup;
+}
+
+// Titre d'une action, prêt à comparer : calculé une fois par action (les listes sont gardées par palette.js).
+const actionKey = (c) => (c.n === undefined ? (c.n = norm(c.title)) : c.n);
+const actionItem = (c) => ({ kind: 'command', command: c.command, arg: c.arg, title: c.title, subtitle: c.shortcut || c.sub || store.t('cmd.action') });
+const ACTIONS_MAX = 60; // ⇥ sur une barre vide : les actions seules, en liste déroulante
+
 // Recherche incrémentale : quand la saisie prolonge la précédente (« nav » puis
 // « navi »), seules les entrées d'historique déjà retenues peuvent encore
 // convenir ; les autres ne sont pas relues. `rev` change à chaque modification
@@ -56,9 +74,17 @@ let last = null; // { q, history, rev, kept }
 const stats = { scanned: 0, incremental: false }; // dernière recherche, pour les mesures et les tests
 
 // Suggestions locales, synchrones : la liste apparaît sans attendre le réseau.
-function local(query, { tabs, commands, activeId }) {
+function local(query, { tabs, commands, activeId, scope }) {
   const q = norm(query.trim());
   const out = [];
+  if (scope === 'actions') {
+    for (const c of commands) {
+      if (q && !actionKey(c).includes(q)) continue;
+      out.push(actionItem(c));
+      if (out.length >= ACTIONS_MAX) break;
+    }
+    return out;
+  }
   if (!q) {
     for (const t of tabs.filter((x) => x.id !== activeId).sort((a, b) => (b.lastActiveAt || 0) - (a.lastActiveAt || 0)).slice(0, 6)) {
       out.push({ kind: 'tab', tabId: t.id, title: t.title || strip(t.url), subtitle: strip(t.url), favicon: t.favicon });
@@ -93,12 +119,17 @@ function local(query, { tabs, commands, activeId }) {
   const best = hist[0];
   if (url) out.push({ kind: 'url', url, title: strip(url), subtitle: store.t('cmd.open') });
   else if (best && best.prefix) {
-    out.push({ kind: 'history', url: best.h.url, title: best.h.title || strip(best.h.url), subtitle: strip(best.h.url), favicon: best.h.favicon, complete: strip(best.h.url) });
+    out.push({ kind: 'history', url: best.h.url, title: best.h.title || strip(best.h.url), subtitle: strip(best.h.url), favicon: best.h.favicon, complete: strip(best.h.url), deletable: true });
     hist.shift();
   }
   out.push({ kind: 'search', url: searchUrl(query.trim()), title: query.trim(), subtitle: store.t('cmd.search', null, { engine: engine().name }) });
+  // La saisie désigne un site (« youtube », « yt ») : ⇥ ou espace cherche dedans.
+  const site = palette.siteHint(q);
+  if (site) out.push(site);
 
   const seen = new Set(out.map((o) => o.url));
+  const titles = new Set(); // « site + titre » déjà proposés (sites de DEDUP_HOSTS)
+  if (best && best.prefix && !url) { const k = dedupKey(fields(best.h)); if (k) titles.add(k); }
   for (const t of tabs) {
     if (t.id === activeId) continue;
     const f = fields(t);
@@ -108,10 +139,11 @@ function local(query, { tabs, commands, activeId }) {
       if (out.length >= 4) break;
     }
   }
+  const room = site ? 7 : 6;
   for (const c of commands) {
-    if (norm(c.title).includes(q)) {
-      out.push({ kind: 'command', command: c.command, title: c.title, subtitle: c.shortcut || store.t('cmd.action') });
-      if (out.length >= 6) break;
+    if (actionKey(c).includes(q)) {
+      out.push(actionItem(c));
+      if (out.length >= room) break;
     }
   }
   for (const a of store.state.archive) {
@@ -120,12 +152,14 @@ function local(query, { tabs, commands, activeId }) {
     const f = fields(a);
     if (!(f.title.includes(q) || f.u.includes(q))) continue;
     seen.add(a.url);
-    out.push({ kind: 'history', url: a.url, title: a.title || strip(a.url), subtitle: store.t('lib.archive'), favicon: a.favicon });
+    out.push({ kind: 'history', url: a.url, title: a.title || strip(a.url), subtitle: store.t('lib.archive'), favicon: a.favicon, deletable: true });
   }
   for (const { h } of hist) {
     if (out.length >= 8) break;
     if (seen.has(h.url)) continue;
-    out.push({ kind: 'history', url: h.url, title: h.title || strip(h.url), subtitle: strip(h.url), favicon: h.favicon });
+    const k = dedupKey(fields(h));
+    if (k) { if (titles.has(k)) continue; titles.add(k); }
+    out.push({ kind: 'history', url: h.url, title: h.title || strip(h.url), subtitle: strip(h.url), favicon: h.favicon, deletable: true });
   }
   return out;
 }
@@ -146,4 +180,4 @@ async function remote(query, signal) {
   }
 }
 
-module.exports = { ENGINES, resolve, toUrl, searchUrl, strip, local, remote, hooks, stats, forget: () => { last = null; } };
+module.exports = { DEDUP_HOSTS, ENGINES, resolve, toUrl, searchUrl, strip, local, remote, hooks, stats, forget: () => { last = null; } };

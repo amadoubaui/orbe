@@ -64,7 +64,7 @@ interface entièrement en français (anglais disponible dans les réglages).
 - **Mots de passe** : enregistrement et remplissage intégrés, chiffrés avec le
   trousseau du système, import et export CSV (Safari / iCloud, Chrome). Le
   modèle de menace est dans [docs/mots-de-passe.md](docs/mots-de-passe.md).
-- **Notes** (⌃⌘N) et **médias** dans la bibliothèque.
+- **Notes** (⌃⇧N, ⌃⌥N à côté de la page) et **médias** dans la bibliothèque.
 - **Tableaux** (⌃⇧E), les « Easels » d'Arc : un plan infini où poser textes,
   images collées ou déposées, formes, flèches, traits et pense-bêtes ;
   « Capturer vers un tableau » (⌥⇧⌘2) y envoie une zone de la page, avec un

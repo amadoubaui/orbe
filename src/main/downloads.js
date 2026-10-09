@@ -15,7 +15,7 @@
 //  - l'ouverture automatique n'a lieu que pour un téléchargement lancé par un
 //    geste de l'utilisateur, et « toujours demander » ne laisse pas une page
 //    enchaîner les fenêtres d'enregistrement.
-const { app, dialog, shell, BaseWindow } = require('electron');
+const { app, clipboard, ClipboardItem, dialog, nativeImage, shell, BaseWindow, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
@@ -37,6 +37,15 @@ const env = {
   saveDialog: (parent, opts) => (parent ? dialog.showSaveDialogSync(parent, opts) : dialog.showSaveDialogSync(opts)),
   confirm: async (parent, opts) => (await (parent ? dialog.showMessageBox(parent, opts) : dialog.showMessageBox(opts))).response === 0,
   openPath: (file) => shell.openPath(file),
+  quit: () => app.quit(),
+  reveal: (file) => shell.showItemInFolder(file),
+  // Corbeille du système : le fichier s'y retrouve, rien n'est détruit.
+  trash: (file) => shell.trashItem(file),
+  // Menu d'un téléchargement : rend la main quand il se referme.
+  popup: (template, parent) => new Promise((resolve) => {
+    const menu = Menu.buildFromTemplate(template);
+    menu.popup({ ...(parent ? { window: parent } : {}), callback: () => setTimeout(resolve, 30) });
+  }),
 };
 const items = new Map(); // identifiant -> DownloadItem en cours (cette exécution d'Orbe)
 const resuming = new Map(); // chemin du fichier -> enregistrement dont la reprise est demandée
@@ -91,6 +100,35 @@ function findRecord(id) {
 }
 const volatileRecords = new Set(); // navigation privée : jamais écrits sur disque
 
+// Marque « venu d'Internet » sur le fichier téléchargé, comme le font Safari et Chrome :
+// c'est elle qui fait dire au système « téléchargé depuis Internet, voulez-vous l'ouvrir ? »
+// (Gatekeeper sur macOS, SmartScreen et la zone Internet sur Windows). Electron ne la pose pas.
+// `withUrl` : faux en navigation privée (l'adresse d'origine n'est pas écrite à côté du fichier).
+function quarantine(file, url, withUrl = true) {
+  return new Promise((resolve) => {
+    if (process.platform === 'darwin') {
+      const value = `0081;${Math.floor(Date.now() / 1000).toString(16)};Orbe;${require('crypto').randomUUID().toUpperCase()}`;
+      require('child_process').execFile('/usr/bin/xattr', ['-w', 'com.apple.quarantine', value, file], { timeout: 5000 }, (err) => resolve(!err));
+    } else if (process.platform === 'win32') {
+      const host = withUrl && /^https?:/i.test(url || '') ? `HostUrl=${String(url).replace(/[\r\n]/g, '')}\r\n` : '';
+      fs.writeFile(file + ':Zone.Identifier', `[ZoneTransfer]\r\nZoneId=3\r\n${host}`, (err) => resolve(!err));
+    } else resolve(false);
+  });
+}
+
+// Quitter pendant qu'un téléchargement avance : la question est posée (« Downloads in progress » d'Arc).
+let quitConfirmed = false;
+function beforeQuit(e) {
+  const running = [...items.values()].filter((it) => { try { return it.getState() === 'progressing' && !it.isPaused(); } catch { return false; } }).length;
+  if (!running || quitConfirmed) return false;
+  e.preventDefault();
+  Promise.resolve(env.confirm(BaseWindow.getFocusedWindow(), {
+    type: 'warning', message: t('dl.quitTitle'), detail: t('dl.quitDetail', { n: running }), buttons: [t('dl.quitAnyway'), t('sheet.cancel')], defaultId: 1, cancelId: 1,
+  })).then((ok) => { if (ok) { quitConfirmed = true; env.quit(); } }).catch(() => {});
+  return true;
+}
+app.on('before-quit', beforeQuit);
+
 function track(d, item, wc, { persist, hooks }) {
   items.set(d.id, item);
   const note = () => {
@@ -119,6 +157,7 @@ function track(d, item, wc, { persist, hooks }) {
     // incomplet, créé pour ce téléchargement, est retiré.
     if (state === 'cancelled' && d.path) fs.unlink(d.path, () => {});
     if (persist) store.save();
+    if (state === 'completed' && d.path) quarantine(d.path, d.url, persist).then((ok) => { d.marked = ok; });
     hooks.onDownload('done', d, wc, item);
     // Ouverture automatique : un vrai PDF, téléchargé à la demande de l'utilisateur.
     if (state === 'completed' && d.gesture && store.state.settings.downloadOpenPdf && !dangerNow(d) && isPdfFile(d.path)) openFile(d, wc);
@@ -243,6 +282,72 @@ async function openFile(d, wc, { parent = null, confirmed = false } = {}) {
   return true;
 }
 
+// « Copier » : une image part comme image (elle se colle dans un message, un document) ;
+// tout autre fichier part comme fichier (il se colle dans le Finder ou l'Explorateur).
+const IMAGE = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tif', 'tiff']);
+async function copyFile(d) {
+  if (!d || d.state !== 'completed' || !fs.existsSync(d.path)) return false;
+  try {
+    if (IMAGE.has(extOf(d.path))) {
+      const img = nativeImage.createFromPath(d.path);
+      if (!img.isEmpty()) {
+        await clipboard.write([new ClipboardItem({ 'image/png': new Blob([img.toPNG()], { type: 'image/png' }) })]);
+        return 'image';
+      }
+    }
+    // « text/uri-list » avec une adresse file: : Chromium y met le fichier lui-même, sur chaque système.
+    await clipboard.write([new ClipboardItem({ 'text/uri-list': pathToFileURL(d.path).href })]);
+    return 'file';
+  } catch (err) {
+    console.error('[orbe] copie du fichier', err.message);
+    return false;
+  }
+}
+
+// Retire un téléchargement de la liste (le fichier reste où il est).
+function forget(d) {
+  if (items.has(d.id)) return false;
+  volatileRecords.delete(d);
+  const i = store.state.downloads.indexOf(d);
+  if (i >= 0) { store.state.downloads.splice(i, 1); store.save(); }
+  return true;
+}
+
+// « Placer dans la corbeille » : le fichier part à la corbeille du système, la ligne disparaît.
+async function trash(d) {
+  if (!d || items.has(d.id) || d.state === 'progressing') return false;
+  if (d.path && fs.existsSync(d.path)) {
+    try { await env.trash(d.path); } catch (err) { console.error('[orbe] corbeille', err.message); return false; }
+  }
+  return forget(d);
+}
+
+// Menu d'un téléchargement, comme dans Arc : Ouvrir, Copier, Afficher dans le Finder,
+// Partager (macOS), Masquer de la liste, Placer dans la corbeille ; Pause, Reprendre, Annuler.
+function menuTemplate(d, { parent = null } = {}) {
+  const running = d.state === 'progressing';
+  const exists = d.state === 'completed' && fs.existsSync(d.path);
+  const stopped = d.state === 'interrupted' || d.state === 'cancelled';
+  const live = items.has(d.id);
+  const tpl = [
+    { id: 'open', label: t('lib.open'), enabled: exists, click: () => openFile(d, null, { parent }) },
+    { id: 'copy', label: t('edit.copy'), enabled: exists, click: () => copyFile(d) },
+    { id: 'reveal', label: t('lib.reveal'), enabled: exists, click: () => env.reveal(d.path) },
+  ];
+  // Feuille de partage du système (AirDrop, Messages, Mail…).
+  if (process.platform === 'darwin' && exists) tpl.push({ id: 'share', role: 'shareMenu', sharingItem: { filePaths: [d.path] } });
+  tpl.push({ type: 'separator' });
+  if (running) {
+    tpl.push(d.paused || d.stalled ? { id: 'resume', label: t('dl.resume'), click: () => resume(d) } : { id: 'pause', label: t('dl.pause'), enabled: live, click: () => action('dl:pause', d.id) });
+    tpl.push({ id: 'cancel', label: t('dl.cancel'), click: () => cancel(d) });
+  } else {
+    if (stopped) tpl.push({ id: 'resume', label: t(d.state === 'interrupted' && d.canResume ? 'dl.resume' : 'dl.retry'), click: () => resume(d) });
+    tpl.push({ id: 'hide', label: t('dl.hide'), click: () => forget(d) });
+    tpl.push({ id: 'trash', label: t('dl.trash'), enabled: exists, click: () => trash(d) });
+  }
+  return tpl;
+}
+
 // Messages de la Bibliothèque et des réglages.
 async function action(name, a, sender) {
   const parent = (sender && env.ownerWindow(sender)) || BaseWindow.getFocusedWindow();
@@ -252,13 +357,11 @@ async function action(name, a, sender) {
   if (name === 'dl:resume') return resume(d);
   if (name === 'dl:cancel') return cancel(d);
   if (name === 'dl:open') return openFile(d, null, { parent });
-  if (name === 'dl:remove') {
-    if (items.has(d.id)) return false;
-    const i = store.state.downloads.indexOf(d);
-    if (i >= 0) { store.state.downloads.splice(i, 1); store.save(); }
-    return true;
-  }
+  if (name === 'dl:remove') return forget(d);
+  if (name === 'dl:trash') return trash(d);
+  if (name === 'dl:copy') return copyFile(d);
+  if (name === 'dl:menu') { await env.popup(menuTemplate(d, { parent }), parent); return true; }
   return undefined;
 }
 
-module.exports = { attach, bindProfile, action, resume, cancel, openFile, downloadDir, isDangerous, isPdfFile, safeName, env, internals: { items, resuming, DANGEROUS, asked, extOf } };
+module.exports = { quarantine, beforeQuit, attach, bindProfile, action, resume, cancel, openFile, copyFile, trash, forget, menuTemplate, downloadDir, isDangerous, isPdfFile, safeName, env, internals: { items, resuming, DANGEROUS, asked, extOf } };

@@ -242,6 +242,15 @@ un onglet sans lien `window.opener` avec la page.
   deux fenêtres d'enregistrement à moins de 10 s d'intervalle.
 - Reprise : même session (mêmes cookies) que le téléchargement d'origine ;
   validée par Chromium avec `ETag` / `Last-Modified`.
+- Marque « venu d'Internet » : Electron ne la pose pas, Orbe le fait à la fin de
+  chaque téléchargement (`quarantine`) — attribut `com.apple.quarantine` sur
+  macOS, flux `Zone.Identifier` (zone 3) sur Windows — pour que le système
+  avertisse à l'ouverture (Gatekeeper, SmartScreen). En navigation privée,
+  l'adresse d'origine n'est pas écrite à côté du fichier.
+- Bibliothèque : le menu d'un fichier, la corbeille, la copie et le glisser hors
+  d'Orbe ne reçoivent de la page qu'un identifiant de téléchargement ; le chemin
+  vient toujours des données d'Orbe (`library.js`, `downloads.js`).
+- Quitter pendant un téléchargement en cours demande confirmation.
 
 ## Liens vers d'autres applications (`permissions.js`, `openExternal`)
 

@@ -9,6 +9,8 @@ const easels = require('./easels');
 // Page de soutien de l'auteur d'Orbe.
 const SUPPORT_URL = 'https://buymeacoffee.com/amadouba';
 
+const REPO_URL = 'https://github.com/amadoubaui/orbe';
+
 const hooks = { newWindow: () => {}, newLittle: () => {}, openSettings: () => {}, settingsChanged: null, openBoost: () => {}, openPasswords: () => {}, importBookmarks: () => {}, menuChanged: () => {}, checkUpdates: () => {} };
 
 const wc = (w) => w.activeWc;
@@ -16,8 +18,9 @@ const wc = (w) => w.activeWc;
 const COMMANDS = [
   // Fichier
   { name: 'newTab', label: 'file.newTab', accel: 'Cmd+T', keys: '⌘T', palette: false, run: (w) => w.openCommand('new') },
-  { name: 'newWindow', label: 'file.newWindow', accel: 'Cmd+N', keys: '⌘N', global: true, run: () => hooks.newWindow({}) },
-  { name: 'newIncognito', label: 'file.newIncognito', accel: 'Shift+Cmd+N', keys: '⇧⌘N', global: true, run: () => hooks.newWindow({ incognito: true }) },
+  // Comme dans Arc : une fenêtre neuve, sans onglet, s'ouvre sur la barre de commande.
+  { name: 'newWindow', label: 'file.newWindow', accel: 'Cmd+N', keys: '⌘N', global: true, run: () => greet(hooks.newWindow({})) },
+  { name: 'newIncognito', label: 'file.newIncognito', accel: 'Shift+Cmd+N', keys: '⇧⌘N', global: true, run: () => greet(hooks.newWindow({ incognito: true })) },
   { name: 'newLittle', label: 'file.newLittle', accel: 'Alt+Cmd+N', keys: '⌥⌘N', global: true, run: () => hooks.newLittle('') },
   // ⌘Z / ⇧⌘Z : défait ou refait la dernière action de la barre latérale quand on
   // n'est pas en train d'écrire, sinon annulation classique du texte.
@@ -82,7 +85,20 @@ const COMMANDS = [
   { name: 'prevTab', label: 'tabs.prev', accel: 'Alt+Cmd+Up', keys: '⌥⌘↑', run: (w) => w.stepTab(-1) },
   { name: 'clearToday', label: 'tabs.clearToday', accel: 'Shift+Cmd+K', keys: '⇧⌘K', run: (w) => w.clearToday() },
   { name: 'toggleMute', label: 'tabs.mute', run: (w) => w.toggleMute() },
-  { name: 'duplicate', label: 'tabs.duplicate', run: (w) => w.duplicate() },
+  { name: 'muteAll', label: 'tabs.muteAll', run: (w) => palette().muteAll(w, true) },
+  { name: 'unmuteAll', label: 'tabs.unmuteAll', run: (w) => palette().muteAll(w, false) },
+  { name: 'duplicate', label: 'tabs.duplicateTab', run: (w) => w.duplicate() },
+  { name: 'renameTab', label: 'tabs.renameTab', run: (w) => { if (w.activeId && w.locate(w.activeId).list !== 'favorites') w.askRename(w.activeId); } },
+  // Le libellé suit l'onglet affiché : favori ou non, sorti de son adresse épinglée ou non.
+  { name: 'toggleFavorite', label: 'tabs.addFavorite', paletteLabel: (w) => (w.incognito || !w.activeId ? '' : (w.locate(w.activeId).list === 'favorites' ? 'tabs.removeFavorite' : 'tabs.addFavorite')), run: (w) => w.toggleFavorite() },
+  { name: 'resetTab', label: 'tabs.resetPinned', paletteLabel: (w) => (strayed(w) ? 'tabs.resetPinned' : ''), run: (w) => w.resetPinned() },
+  { name: 'replacePin', label: 'tabs.replacePinned', paletteLabel: (w) => (strayed(w) ? 'tabs.replacePinned' : ''), run: (w) => replacePin(w) },
+  // Actions à paramètre de la barre de commande (voir palette.js) : l'argument est vérifié là-bas.
+  { name: 'focusSpace', label: 'cmd.space', palette: false, run: (w, id) => palette().focusSpace(w, id) },
+  { name: 'moveTabToday', label: 'tabs.moveTo', palette: false, run: (w, id) => palette().moveTab(w, id, 'today') },
+  { name: 'moveTabPinned', label: 'tabs.moveTo', palette: false, run: (w, id) => palette().moveTab(w, id, 'pinned') },
+  { name: 'openFolder', label: 'cmd.folder', palette: false, run: (w, id) => palette().openFolder(w, String(id)) },
+  { name: 'extensionAction', label: 'cmd.extension', palette: false, run: (w, id) => palette().extensionAction(w, String(id)) },
   { name: 'revealTab', label: 'tabs.reveal', run: (w) => w.revealTab() },
   { name: 'resetTabs', label: 'tabs.resetAll', run: (w) => { if (w.resetTabs()) w.toast(store.t('toast.tabsReset')); } },
   { name: 'expandFolders', label: 'tabs.expandFolders', run: (w) => w.setFoldersOpen(true) },
@@ -90,21 +106,31 @@ const COMMANDS = [
   // Archive
   { name: 'back', label: 'archive.back', accel: 'Cmd+[', keys: '⌘[', palette: false, run: (w) => wc(w) && wc(w).navigationHistory.goBack() },
   { name: 'forward', label: 'archive.forward', accel: 'Cmd+]', keys: '⌘]', palette: false, run: (w) => wc(w) && wc(w).navigationHistory.goForward() },
-  { name: 'newNote', label: 'notes.new', accel: 'Ctrl+Cmd+N', keys: '⌃⌘N', run: (w) => w.openInternal('notes.html#new') },
+  // ⌃⇧N et ⌃⌥N, comme dans Arc (⌃⌘N y ouvre une fenêtre vierge).
+  { name: 'newNote', label: 'notes.new', accel: 'Ctrl+Shift+N', keys: '⌃⇧N', run: (w) => w.openInternal('notes.html#new') },
+  // « New Note (in Split) » d'Arc : la note s'ouvre à côté de la page affichée.
+  { name: 'newNoteSplit', label: 'notes.newSplit', accel: 'Ctrl+Alt+N', keys: '⌃⌥N', run: (w) => noteBeside(w) },
+  { name: 'exportNotes', label: 'notes.export', run: (w) => require('./notes').exportNotes(w) },
   { name: 'newEasel', label: 'easel.new', accel: 'Ctrl+Shift+E', keys: '⌃⇧E', run: (w) => easels.open(w) },
+  { name: 'exportEasel', label: 'easel.export', run: (w) => easels.exportActive(w) },
   { name: 'easels', label: 'easel.title', run: (w) => w.openInternal('library.html#easels') },
   { name: 'notes', label: 'notes.title', run: (w) => w.openInternal('notes.html') },
   { name: 'media', label: 'lib.media', run: (w) => w.openInternal('library.html#media') },
   { name: 'history', label: 'archive.history', accel: 'Cmd+Y', keys: '⌘Y', run: (w) => w.openInternal('library.html#history') },
   { name: 'viewArchive', label: 'archive.view', run: (w) => w.openInternal('library.html#archive') },
-  { name: 'clearArchive', label: 'archive.clear', palette: false, run: (w) => clearArchive(w) },
+  { name: 'clearArchive', label: 'archive.clear', run: (w) => clearArchive(w) },
   // Fenêtre
-  { name: 'library', label: 'window.library', accel: 'Shift+Cmd+L', keys: '⇧⌘L', run: (w) => w.openInternal('library.html#history') },
+  { name: 'library', label: 'window.library', accel: 'Shift+Cmd+L', keys: '⇧⌘L', run: (w) => w.openInternal('library.html#' + librarySection()) },
+  { name: 'librarySpaces', label: 'lib.viewSpaces', run: (w) => w.openInternal('library.html#spaces') },
   { name: 'downloads', label: 'window.downloads', accel: 'Shift+Cmd+J', keys: '⇧⌘J', run: (w) => w.openInternal('library.html#downloads') },
   { name: 'stayOnTop', label: 'window.onTop', palette: false, run: (w) => { w.win.setAlwaysOnTop(!w.win.isAlwaysOnTop()); hooks.menuChanged(); } },
   // Application
   { name: 'settings', label: 'app.settings', accel: 'Cmd+,', keys: '⌘,', global: true, run: () => hooks.openSettings() },
   { name: 'passwords', label: 'pw.title', global: true, run: () => hooks.openPasswords() },
+  // Volets des réglages, comme « Link Preferences », « Air Traffic Control » et « Edit Keyboard Shortcuts » d'Arc.
+  { name: 'linkSettings', label: 'app.linkSettings', global: true, run: () => hooks.openSettings('links') },
+  { name: 'editShortcuts', label: 'app.editShortcuts', global: true, run: () => hooks.openSettings('shortcuts') },
+  { name: 'manageExtensions', label: 'ext.manage', global: true, run: () => hooks.openSettings('extensions') },
   { name: 'defaultBrowser', label: 'app.defaultBrowser', global: true, run: (w) => { makeDefault(); if (w) w.toast(store.t(platform.isWin ? 'toast.defaultBrowserWin' : 'toast.defaultBrowser')); } },
   // Windows : retire l'inscription d'Orbe comme navigateur (registre de l'utilisateur).
   ...(platform.isWin ? [{ name: 'undoDefaultBrowser', label: 'app.undoDefaultBrowser', global: true, run: async (w) => { const ok = await platform.undoDefault(); if (w && ok) w.toast(store.t('toast.undoDefaultBrowser')); } }] : []),
@@ -120,7 +146,11 @@ const COMMANDS = [
   { name: 'shortcuts', label: 'help.shortcuts', run: (w) => w.openInternal('shortcuts.html') },
   // Menu de l'application, ouvert depuis la barre latérale (Windows : pas de barre de menus).
   { name: 'appMenu', label: 'side.menu', palette: false, run: (w) => platform.popupAppMenu(w.win) },
-  { name: 'github', label: 'help.github', run: (w) => w.newTab('https://github.com/amadoubaui/orbe') },
+  { name: 'github', label: 'help.github', run: (w) => w.newTab(REPO_URL) },
+  // Aide : l'équivalent de « Help Center », « Contact the Team » et « What's new » d'Arc.
+  { name: 'helpCenter', label: 'help.center', run: (w) => w.newTab(REPO_URL + '#readme') },
+  { name: 'reportIssue', label: 'help.contact', run: (w) => w.newTab(REPO_URL + '/issues/new') },
+  { name: 'whatsNew', label: 'help.whatsNew', run: (w) => w.newTab(REPO_URL + '/releases') },
   // Aide → Dépannage.
   { name: 'revealData', label: 'help.revealData', global: true, run: () => shell.showItemInFolder(app.getPath('userData')) },
   { name: 'copyInfo', label: 'help.copyInfo', global: true, run: (w) => { clipboard.writeText(appInfo()); if (w) w.toast(store.t('toast.infoCopied')); } },
@@ -128,6 +158,46 @@ const COMMANDS = [
 platform.adaptCommands(COMMANDS);
 
 const byName = new Map(COMMANDS.map((c) => [c.name, c]));
+
+function palette() {
+  return require('./palette');
+}
+
+// Fenêtre neuve : sans onglet à afficher, la barre de commande s'ouvre d'elle-même.
+function greet(w) {
+  if (w && typeof w.openCommand === 'function' && !w.activeId && !w.modalMode) w.openCommand('new');
+  return w;
+}
+
+// Onglet épinglé (ou favori) affiché, sorti de son adresse d'origine ?
+function strayed(w) {
+  const tab = w.activeId ? w.data.tabs[w.activeId] : null;
+  return !!tab && !!tab.homeUrl && tab.homeUrl !== tab.url;
+}
+
+// « Remplacer l'adresse épinglée par l'adresse actuelle ».
+function replacePin(w) {
+  if (!strayed(w)) return false;
+  const tab = w.data.tabs[w.activeId];
+  tab.homeUrl = tab.url;
+  w.changed();
+  return true;
+}
+
+// Section de la Bibliothèque affichée en dernier (réglage de fenêtre, voir `lib:section`).
+const LIBRARY_SECTIONS = ['history', 'archive', 'downloads', 'media', 'easels', 'spaces', 'boosts'];
+function librarySection() {
+  const last = store.state.window.librarySection;
+  return LIBRARY_SECTIONS.includes(last) ? last : 'history';
+}
+
+// Nouvelle note à côté de la page affichée (vue scindée) ; sans page, une note seule.
+function noteBeside(w) {
+  const beside = w.activeId;
+  const tab = w.openInternal('notes.html#new');
+  if (tab && beside && beside !== tab.id && w.locate(beside)) w.splitWith(beside, tab.id);
+  return tab;
+}
 
 function makeDefault() {
   return platform.makeDefault();
@@ -240,4 +310,4 @@ function run(win, name, arg) {
   }
 }
 
-module.exports = { COMMANDS, byName, run, hooks, makeDefault, setSetting, appInfo };
+module.exports = { COMMANDS, byName, run, hooks, makeDefault, setSetting, appInfo, clearArchive, LIBRARY_SECTIONS, librarySection, REPO_URL };

@@ -85,7 +85,7 @@ function build() {
     {
       label: t('menu.file'),
       submenu: [
-        item('newTab'), item('newWindow'), item('newIncognito'), item('newLittle'), item('newNote'), item('newEasel'), item('reopen'),
+        item('newTab'), item('newWindow'), item('newIncognito'), item('newLittle'), item('newNote'), item('newNoteSplit'), item('newEasel'), item('reopen'),
         sep, item('commandBar'), item('newProfile', { enabled: !!w && !w.incognito }),
         sep, item('closeTab'), item('closeWindow'),
         sep, item('capture'), item('captureFull'), item('captureToEasel'), item('savePage'), item('print'),
@@ -221,7 +221,7 @@ function build() {
         sep, { label: t('window.front'), role: 'front' },
       ],
     },
-    { label: t('menu.help'), role: 'help', submenu: [item('welcome'), item('shortcuts'), item('support'), item('github'), sep, { label: t('help.troubleshooting'), submenu: [item('revealData'), item('copyInfo')] }] },
+    { label: t('menu.help'), role: 'help', submenu: [item('welcome'), item('shortcuts'), item('helpCenter'), item('whatsNew'), item('reportIssue'), item('support'), item('github'), sep, item('exportNotes'), sep, { label: t('help.troubleshooting'), submenu: [item('revealData'), item('copyInfo'), sep, { label: t('backup.menu'), submenu: require('./backups').menuItems() }] }] },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(platform.menuTemplate(template)));
   if (platform.isMac && app.dock) app.dock.setMenu(Menu.buildFromTemplate(dockTemplate()));
