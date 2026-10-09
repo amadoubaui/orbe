@@ -1119,8 +1119,7 @@ class OrbeWindow {
     try { leave = hooks.leave(this, rt.wc); } finally { rt.asking = false; }
     note(rt, leave ? 'question : quitter' : 'question : rester');
     if (leave) { e.preventDefault(); return; }
-    // La page reste : Chromium ne doit pas la fermer d'office si elle tarde à en accuser réception.
-    hooks.shield(rt.wc);
+    // (La page reste : `hooks.leave` a levé le bouclier, voir unload.js.)
     const pending = rt.pendingClose;
     rt.pendingClose = null;
     if (rt.unloadAnswer) { rt.windowClosing = false; rt.unloadAnswer(false); }

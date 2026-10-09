@@ -27,7 +27,7 @@ const stays = new WeakMap(); // webContents -> instant du dernier « Rester »
 function confirm(parent, wc) {
   let host = '';
   try { host = new URL(wc.getURL()).host; } catch {}
-  if (wc && Date.now() - (stays.get(wc) || 0) < QUIET) return false;
+  if (wc && Date.now() - (stays.get(wc) || 0) < QUIET) { shield(wc); return false; }
   state.asked += 1;
   const t = (key, vars) => store.t(key, null, vars);
   let choice = 1;
@@ -41,7 +41,10 @@ function confirm(parent, wc) {
       cancelId: 1,
     });
   } catch (err) { console.error('[orbe] beforeunload', err.message); }
-  if (choice !== 0 && wc) stays.set(wc, Date.now());
+  // La page reste : Chromium ne doit pas la fermer d'office si elle tarde à en accuser
+  // réception (voir `shield`). Vaut pour tous ceux qui posent la question (onglets, aperçus,
+  // petites fenêtres).
+  if (choice !== 0 && wc) { stays.set(wc, Date.now()); shield(wc); }
   return choice === 0;
 }
 

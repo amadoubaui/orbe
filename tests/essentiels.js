@@ -679,6 +679,11 @@ module.exports = async function essentielsTests(ctx) {
   check('fermer l’onglet d’une page qui met plus d’une seconde à répondre : la question est posée quand même, « Rester » garde la page',
     asks.length === 1 && Date.now() - t0 >= 1400 && await intact(slowTab), JSON.stringify({ questions: asks.length, ms: Date.now() - t0, page: !slowTab.wc.isDestroyed(), journal: slowTab.rt0.trail }));
   if (!slowTab.wc.isDestroyed()) await until(() => w.data.tabs[slowTab.id] && win.live.get(slowTab.id) === slowTab.rt0, 'onglet lent revenu');
+  if (!slowTab.wc.isDestroyed()) {
+    check('pendant la consultation, la page est à l’abri du délai de Chromium (bouclier levé)', unload.shielded(slowTab.wc) && slowTab.wc.debugger.isAttached());
+    await until(() => !unload.shielded(slowTab.wc), 'bouclier retombé', 14000).catch(() => {});
+    check('la page a répondu : le bouclier retombe, le débogueur est rendu', !unload.shielded(slowTab.wc) && !slowTab.wc.debugger.isAttached());
+  }
   asks.length = 0;
   t0 = Date.now();
   slowWin.win.close();

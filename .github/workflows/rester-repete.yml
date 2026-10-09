@@ -24,10 +24,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Fermer la fenêtre puis « Rester », 150 fois
+      - name: Fermer la fenêtre puis « Rester », 200 fois
         shell: bash
         env:
-          RESTER_N: '150'
+          RESTER_N: '200'
+          ORBE_TEST_LIMIT: '1500'
+          ORBE_TEST_STALL: '1500'
           RESTER_BOUCLIER: ${{ matrix.bouclier }}
           RESTER_CHARGE: ${{ matrix.charge }}
           RESTER_ONGLETS: '14'
