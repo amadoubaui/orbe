@@ -10,17 +10,7 @@ const { Menu } = require('electron');
 const platform = require('../src/main/platform');
 const easels = require('../src/main/easels');
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-async function until(fn, label, timeout = 8000) {
-  const t0 = Date.now();
-  for (;;) {
-    let v;
-    try { v = await fn(); } catch { v = false; }
-    if (v) return v;
-    if (Date.now() - t0 > timeout) throw new Error('Délai dépassé : ' + label);
-    await sleep(40);
-  }
-}
+const { sleep, until, milieu, ignorer } = require('./outils');
 
 module.exports = async function easelTests(ctx) {
   const { first: w, win, commands } = ctx;
@@ -134,48 +124,59 @@ module.exports = async function easelTests(ctx) {
   const again = await js('JSON.stringify({ n: document.querySelectorAll("#world .it").length, title: document.getElementById("title").value, src: document.querySelector("#world .image img").src.slice(0, 5), text: document.querySelector("#world .text .tx").textContent })').then(JSON.parse);
   check('rechargement : éléments, titre et images restaurés', again.n === 8 && again.title === 'Idées de voyage' && again.src === 'blob:' && again.text === 'Orbe', JSON.stringify(again));
 
-  // --- Capture d'une page vers le tableau ------------------------------------------------
-  const src = w.newTab(base + '/source');
-  await until(() => w.data.tabs[src.id].title === 'Page source', 'page source chargée');
-  await sleep(300);
-  const got = await easels.capture(w, { full: true });
-  await until(() => js('E.items.length === 9'), 'capture reçue par la page ouverte');
-  const cap = await js('JSON.stringify({ it: E.items[8], label: document.querySelector("#world .src span").textContent, sel: E.sel.length })').then(JSON.parse);
-  check('« Capturer vers un tableau » : image ajoutée au tableau le plus récent, avec sa source', got && got.board === id && got.via === 'page' && cap.it.type === 'image'
-    && cap.it.sourceUrl === base + '/source' && cap.it.sourceTitle === 'Page source' && cap.label === `127.0.0.1:${server.address().port}` && fs.existsSync(path.join(dir, cap.it.img)), JSON.stringify([got && got.via, cap]));
+  // Les captures ont besoin d'un écran vivant : écran verrouillé ou en veille,
+  // Chromium ne livre aucune image de la page et rien n'arrive au tableau.
+  const env = await milieu(w);
+  if (!env.vivant) {
+    for (const n of ['« Capturer vers un tableau » : image ajoutée au tableau le plus récent, avec sa source', 'capture d’une zone choisie à la souris', 'le lien d’une capture ouvre sa page d’origine dans un nouvel onglet', 'capture vers un tableau fermé : ajoutée au fichier, sous le contenu']) ignorer(n, env.raison);
+    await js('E.save()');
+    w.close(tabId);
+    await until(() => !win.live.has(tabId), 'onglet du tableau fermé');
+  } else {
+    // --- Capture d'une page vers le tableau ------------------------------------------------
+    const src = w.newTab(base + '/source');
+    await until(() => w.data.tabs[src.id].title === 'Page source', 'page source chargée');
+    await sleep(300);
+    const got = await easels.capture(w, { full: true });
+    await until(() => js('E.items.length === 9'), 'capture reçue par la page ouverte');
+    const cap = await js('JSON.stringify({ it: E.items[8], label: document.querySelector("#world .src span").textContent, sel: E.sel.length })').then(JSON.parse);
+    check('« Capturer vers un tableau » : image ajoutée au tableau le plus récent, avec sa source', got && got.board === id && got.via === 'page' && cap.it.type === 'image'
+      && cap.it.sourceUrl === base + '/source' && cap.it.sourceTitle === 'Page source' && cap.label === `127.0.0.1:${server.address().port}` && fs.existsSync(path.join(dir, cap.it.img)), JSON.stringify([got && got.via, cap]));
 
-  // Zone choisie à la souris sur la page : voile, glisser, capture de la zone seule.
-  const swc = win.live.get(src.id).wc;
-  const pending = easels.capture(w);
-  await sleep(400);
-  swc.sendInputEvent({ type: 'mouseDown', x: 20, y: 20, button: 'left', clickCount: 1 });
-  for (let i = 1; i <= 5; i++) { swc.sendInputEvent({ type: 'mouseMove', x: 20 + i * 40, y: 20 + i * 24, button: 'left', modifiers: ['leftButtonDown'] }); await sleep(25); }
-  swc.sendInputEvent({ type: 'mouseUp', x: 220, y: 140, button: 'left', clickCount: 1 });
-  const region = await Promise.race([pending, sleep(6000).then(() => 'délai')]);
-  const veil = await swc.executeJavaScript('document.documentElement.children.length');
-  check('capture d’une zone choisie à la souris', region && region.item && Math.abs(region.item.w - 200) <= 2 && Math.abs(region.item.h - 120) <= 2 && veil === 2, JSON.stringify(region && region.item) + ' ' + veil);
-  await until(() => js('E.items.length === 10'), 'seconde capture');
+    // Zone choisie à la souris sur la page : voile, glisser, capture de la zone seule.
+    const swc = win.live.get(src.id).wc;
+    const pending = easels.capture(w);
+    await sleep(400);
+    swc.sendInputEvent({ type: 'mouseDown', x: 20, y: 20, button: 'left', clickCount: 1 });
+    for (let i = 1; i <= 5; i++) { swc.sendInputEvent({ type: 'mouseMove', x: 20 + i * 40, y: 20 + i * 24, button: 'left', modifiers: ['leftButtonDown'] }); await sleep(25); }
+    swc.sendInputEvent({ type: 'mouseUp', x: 220, y: 140, button: 'left', clickCount: 1 });
+    const region = await Promise.race([pending, sleep(6000).then(() => 'délai')]);
+    const veil = await swc.executeJavaScript('document.documentElement.children.length');
+    check('capture d’une zone choisie à la souris', region && region.item && Math.abs(region.item.w - 200) <= 2 && Math.abs(region.item.h - 120) <= 2 && veil === 2, JSON.stringify(region && region.item) + ' ' + veil);
+    await until(() => js('E.items.length === 10'), 'seconde capture');
 
-  // Clic sur le lien de la source : la page s'ouvre dans un nouvel onglet.
-  const count = Object.keys(w.data.tabs).length;
-  w.activate(tabId);
-  await js('document.querySelector("#world .src").click()');
-  await until(() => Object.keys(w.data.tabs).length === count + 1 && w.data.tabs[w.activeId].url === base + '/source', 'onglet de la source');
-  check('le lien d’une capture ouvre sa page d’origine dans un nouvel onglet', true);
-  w.close(w.activeId);
+    // Clic sur le lien de la source : la page s'ouvre dans un nouvel onglet.
+    const count = Object.keys(w.data.tabs).length;
+    w.activate(tabId);
+    await js('document.querySelector("#world .src").click()');
+    await until(() => Object.keys(w.data.tabs).length === count + 1 && w.data.tabs[w.activeId].url === base + '/source', 'onglet de la source');
+    check('le lien d’une capture ouvre sa page d’origine dans un nouvel onglet', true);
+    w.close(w.activeId);
 
-  // Tableau fermé : la capture est écrite directement dans le fichier.
-  w.activate(tabId);
-  await js('E.save()');
-  w.close(tabId);
-  await until(() => !win.live.has(tabId), 'onglet du tableau fermé');
-  w.activate(src.id);
-  await sleep(200);
-  const offline = await easels.capture(w, { rect: { x: 0, y: 0, width: 120, height: 80 } });
-  const d2 = disk();
-  check('capture vers un tableau fermé : ajoutée au fichier, sous le contenu', offline && offline.via === 'file' && d2.items.length === 11 && d2.items[10].sourceUrl === base + '/source'
-    && d2.items[10].y > Math.max(...d2.items.slice(0, 10).map((it) => it.y)), JSON.stringify([offline && offline.via, d2.items.length]));
-  w.close(src.id);
+    // Tableau fermé : la capture est écrite directement dans le fichier.
+    w.activate(tabId);
+    await js('E.save()');
+    w.close(tabId);
+    await until(() => !win.live.has(tabId), 'onglet du tableau fermé');
+    w.activate(src.id);
+    await sleep(200);
+    const offline = await easels.capture(w, { rect: { x: 0, y: 0, width: 120, height: 80 } });
+    const d2 = disk();
+    check('capture vers un tableau fermé : ajoutée au fichier, sous le contenu', offline && offline.via === 'file' && d2.items.length === 11 && d2.items[10].sourceUrl === base + '/source'
+      && d2.items[10].y > Math.max(...d2.items.slice(0, 10).map((it) => it.y)), JSON.stringify([offline && offline.via, d2.items.length]));
+    w.close(src.id);
+  }
+  const kept = disk().items.length; // 11 avec les trois captures, 8 sans
 
   // --- Validation côté processus principal ---------------------------------------------
   const clean = easels.cleanDoc({ title: 'x', evil: 1, items: [
@@ -198,7 +199,7 @@ module.exports = async function easelTests(ctx) {
   await lib('document.querySelector("#list .board .meta").click()');
   await until(() => w.activeId !== libId && w.data.tabs[w.activeId].url.endsWith('easel.html?id=' + id), 'tableau rouvert depuis la bibliothèque');
   const reopened = w.activeId;
-  await until(() => win.live.get(reopened).wc.executeJavaScript('typeof E === "object" && E.ready.then(() => E.items.length === 11)'), 'tableau rouvert avec la capture ajoutée');
+  await until(() => win.live.get(reopened).wc.executeJavaScript(`typeof E === "object" && E.ready.then(() => E.items.length === ${kept})`), 'tableau rouvert avec la capture ajoutée');
   check('un clic dans la bibliothèque rouvre le tableau, capture comprise', true);
   w.activate(libId);
   await lib('document.querySelector("#list .board [data-do=delete]").click()');

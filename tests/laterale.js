@@ -10,17 +10,10 @@ const path = require('path');
 const electron = require('electron');
 
 const { clipboard, Menu, app, dialog, shell } = electron;
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-async function until(fn, label, timeout = 10000) {
-  const t0 = Date.now();
-  for (;;) {
-    let v;
-    try { v = await fn(); } catch { v = false; }
-    if (v) return v;
-    if (Date.now() - t0 > timeout) throw new Error('Délai dépassé : ' + label);
-    await sleep(40);
-  }
-}
+const outils = require('./outils');
+
+const { sleep } = outils;
+const until = (fn, label, timeout = 10000) => outils.until(fn, label, timeout);
 
 function serve() {
   const hits = {};
@@ -446,11 +439,21 @@ module.exports = async function lateraleTests(ctx) {
   // L'événement de la fenêtre lui-même, avec la réponse du système simulée.
   w.win.isFocused = () => false;
   w.win.emit('blur');
-  await until(() => ui('document.body.classList.contains("blurred") && getComputedStyle(document.getElementById("top")).opacity === "0.7"'), 'barre estompée');
-  check('fenêtre à l’arrière-plan : le contenu de la barre s’estompe', true);
+  // L'opacité change par une transition : sans image présentée (écran verrouillé),
+  // elle n'avance pas. L'état, lui, se vérifie toujours.
+  const milieu = await outils.milieu(w);
+  await until(() => ui('document.body.classList.contains("blurred")'), 'barre marquée « à l’arrière-plan »');
+  if (milieu.images) {
+    await until(() => ui('getComputedStyle(document.getElementById("top")).opacity === "0.7"'), 'barre estompée');
+    check('fenêtre à l’arrière-plan : le contenu de la barre s’estompe', true);
+  } else {
+    check('fenêtre à l’arrière-plan : la barre est marquée pour s’estomper', true);
+    outils.ignorer('fenêtre à l’arrière-plan : le contenu de la barre s’estompe (opacité à 0,7 en fin de transition)', milieu.sansImages);
+  }
   w.win.isFocused = () => true;
   w.win.emit('focus');
-  await until(() => ui('!document.body.classList.contains("blurred") && getComputedStyle(document.getElementById("top")).opacity === "1"'), 'barre nette');
+  await until(() => ui('!document.body.classList.contains("blurred")'), 'barre de nouveau au premier plan');
+  if (milieu.images) await until(() => ui('getComputedStyle(document.getElementById("top")).opacity === "1"'), 'barre nette');
   check('… et revient quand la fenêtre repasse au premier plan', true);
   delete w.win.isFocused;
   if (w.win.isFocused !== focused) w.win.isFocused = focused;
@@ -546,7 +549,11 @@ module.exports = async function lateraleTests(ctx) {
   await wcOf(son).executeJavaScript('start()', true);
   // Session verrouillée : le système ne joue aucun son, rien à vérifier ici.
   const audible = await until(() => wcOf(son).isCurrentlyAudible(), 'onglet audible', 8000).then(() => true, () => false);
-  if (!audible) console.log('  – ignoré : onglet qui joue un média (session verrouillée : aucun son n’est joué)');
+  if (!audible) {
+    const env = await outils.milieu(w);
+    if (!env.muet) throw new Error('Délai dépassé : onglet audible');
+    outils.ignorer('onglet qui joue un média : ni effacé, ni archivé', env.muet);
+  }
   else {
     w.activate(pastedTab);
     const quiet = space.today.filter((id) => id !== pastedTab && id !== son);
@@ -601,15 +608,18 @@ module.exports = async function lateraleTests(ctx) {
   await until(() => ui('(() => { const o = document.getElementById("off-view"); return !o.hidden && o.classList.contains("down"); })()'), 'repère en bas');
   check('onglet affiché plus bas que la zone visible : un repère paraît en bas de la liste', true);
   await ui('document.getElementById("off-view").click()');
-  await until(() => ui(`(() => { const r = document.querySelector('#today [data-id="${last}"]').getBoundingClientRect(); const s = document.getElementById('scroll').getBoundingClientRect(); return r.top >= s.top - 1 && r.bottom <= s.bottom + 1 && document.getElementById('off-view').hidden; })()`), 'ligne revenue à l’écran');
-  check('… un clic dessus ramène la ligne à l’écran, et le repère disparaît', true);
+  // Le retour se fait par un défilement doux, qui n'avance qu'au rythme des images.
+  if (milieu.images) {
+    await until(() => ui(`(() => { const r = document.querySelector('#today [data-id="${last}"]').getBoundingClientRect(); const s = document.getElementById('scroll').getBoundingClientRect(); return r.top >= s.top - 1 && r.bottom <= s.bottom + 1 && document.getElementById('off-view').hidden; })()`), 'ligne revenue à l’écran');
+    check('… un clic dessus ramène la ligne à l’écran, et le repère disparaît', true);
+  } else outils.ignorer('… un clic dessus ramène la ligne à l’écran, et le repère disparaît', milieu.sansImages);
   w.activate(s3);
   await until(() => ui(`!!document.querySelector('#pinned [data-id="${s3}"].active')`), 'épinglé actif');
   await ui('document.getElementById("scroll").scrollTop = document.getElementById("scroll").scrollHeight');
   await until(() => ui('(() => { const o = document.getElementById("off-view"); return !o.hidden && o.classList.contains("up"); })()'), 'repère en haut');
   check('onglet affiché plus haut que la zone visible : le repère paraît en haut', true);
   await ui('document.getElementById("scroll").scrollTop = 0');
-  await until(() => ui('document.getElementById("off-view").hidden'), 'repère retiré');
+  if (milieu.images) await until(() => ui('document.getElementById("off-view").hidden'), 'repère retiré');
 
   // --- Barre de menus -----------------------------------------------------------------
   wipe();

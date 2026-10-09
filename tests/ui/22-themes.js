@@ -195,7 +195,7 @@ module.exports = {
       await jusqua(async () => !(await rendu()).grainy, 'texture retirée');
     });
 
-    await t.verifier('apparence de l’Espace (automatique, claire, sombre) : l’icône s’anime, la barre et les panneaux suivent', async () => {
+    await t.avecEcran('verifier', 'apparence de l’Espace (automatique, claire, sombre) : l’icône s’anime, la barre et les panneaux suivent', async () => {
       for (const [mode, anim] of [['dark', 'moon-rock'], ['light', 'rays-turn'], ['auto', 'star-twinkle']]) {
         await ctx.clic(modal, `#theme-modes .mode[data-mode=${mode}]`);
         const joue = await modal.evaluate((m) => [...document.querySelector(`.mode[data-mode=${m}]`).getAnimations({ subtree: true })].map((a) => a.animationName), mode);
@@ -299,6 +299,9 @@ module.exports = {
       assert.equal(nuit.family, 'dark');
       const reduit = await shell.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches);
       if (reduit) return t.ignorer('fondu entre Espaces', '« Réduire les animations » est actif');
+      // Le fondu se lit à mi-course : sans image présentée, il n'avance pas. Les deux
+      // Espaces et leurs thèmes, eux, sont en place pour la vérification suivante.
+      if (!ctx.milieu.vivant) return t.ignorer('fondu entre Espaces (lu à mi-course)', ctx.milieu.raison);
       await jusqua(() => shell.evaluate(() => !slide), 'listes au repos'); // eslint-disable-line no-undef
       await ctx.vitesseAnimations(0.15);
       try {

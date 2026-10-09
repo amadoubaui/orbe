@@ -11,6 +11,8 @@ const root = path.join(__dirname, '..', '..');
 const runtime = process.env.ORBE_RUNTIME || path.join(os.homedir(), '.orbe-dev');
 const electronBin = path.join(runtime, 'node_modules', 'electron', 'dist', 'Electron.app', 'Contents', 'MacOS', 'Electron');
 
+const { PROBE, juger, mesurer } = require('../outils');
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function delai(promise, ms, label) {
@@ -86,6 +88,32 @@ async function lancer() {
   });
 
   const ctx = { app, hote, hits, userData, root, sleep, jusqua, delai };
+
+  // --- Journal du processus principal ---------------------------------------------
+  // Tout ce qu'il écrit est gardé, avec le code ou le signal de sa fin : si
+  // l'application s'arrête au milieu d'un groupe, on sait comment et après quoi.
+  // (tests/ui/prelude.js y écrit qui ferme une fenêtre ou demande à quitter.)
+  const proc = app.process();
+  ctx.journal = [];
+  ctx.sortie = null; // { code, signal, at } une fois le processus terminé
+  ctx.fermeture = false; // vrai dès que c'est le test qui ferme l'application
+  const noter = (flux) => (buf) => {
+    for (const l of String(buf).split('\n')) {
+      if (!l.trim()) continue;
+      ctx.journal.push(`${new Date().toISOString().slice(11, 23)} ${flux} ${l}`);
+      if (ctx.journal.length > 2000) ctx.journal.shift();
+    }
+  };
+  if (proc.stdout) proc.stdout.on('data', noter('sortie'));
+  if (proc.stderr) proc.stderr.on('data', noter('erreur'));
+  proc.on('exit', (code, signal) => { ctx.sortie = { code, signal, at: Date.now(), voulue: ctx.fermeture }; });
+  ctx.arretInattendu = () => (ctx.sortie && !ctx.sortie.voulue ? ctx.sortie : null);
+  ctx.constat = () => {
+    const s = ctx.sortie;
+    if (!s) return 'application toujours en marche';
+    const comment = s.signal ? `tuée par le signal ${s.signal} (arrêt venu de l’extérieur ou plantage natif)` : `terminée d’elle-même, code ${s.code}`;
+    return `application arrêtée il y a ${((Date.now() - s.at) / 1000).toFixed(1)} s : ${comment}`;
+  };
   ctx.url = (chemin) => `http://${hote}${chemin}`;
 
   // Chaque webContents (coque, vues flottantes, onglets, réglages) est une
@@ -104,6 +132,12 @@ async function lancer() {
   await jusqua(() => ctx.shell.evaluate(() => typeof S === 'object' && S !== null), 'coque prête', 15000);
   // La barre latérale glisse en place au premier affichage : on attend la fin.
   await jusqua(async () => { const b = await ctx.shell.locator('#sidebar').boundingBox(); return b && b.x === 0; }, 'barre latérale en place', 15000);
+
+  // --- Écran vivant ? -----------------------------------------------------------
+  // Mesuré une fois par groupe, dans la coque (voir tests/outils.js) : sans image
+  // présentée, une cadence ou une animation ne prouve rien.
+  // (ORBE_UI_ECRAN=inactif : fait comme si aucune image n'était présentée, pour essayer ce chemin.)
+  ctx.milieu = process.env.ORBE_UI_ECRAN === 'inactif' ? juger({ frames: 0, ticks: 25, ms: 500, visible: 'simulé' }) : await mesurer(() => ctx.shell.evaluate(PROBE));
 
   // --- Processus principal ----------------------------------------------------
   // `require` n'existe pas dans le contexte d'évaluation de Playwright ; on
@@ -277,6 +311,27 @@ async function lancer() {
   // `avantLacher` : appelé pointeur arrivé, bouton encore enfoncé.
   ctx.glisser = async (de, vers, { pause = 120, avantLacher = null } = {}) => {
     const m = ctx.shell.mouse;
+    // Trace du geste vue par la coque (début, survols, dépôt, fin), rendue avec le
+    // repère : un glisser qui ne donne rien dit ainsi où il s'est arrêté.
+    await ctx.shell.evaluate(() => {
+      if (!window.__geste) {
+        window.__geste = [];
+        for (const n of ['dragstart', 'dragenter', 'drop', 'dragend']) document.addEventListener(n, (e) => window.__geste.push(`${n}@${Math.round(e.clientX)},${Math.round(e.clientY)}`), true);
+        // Événements répétés : comptés (« dragover×12 », « mousemove×7 », « rendu×2 »).
+        const compter = (nom) => { const g = window.__geste; const d = g[g.length - 1]; if (d && d.startsWith(nom + '×')) g[g.length - 1] = nom + '×' + (Number(d.slice(nom.length + 1)) + 1); else g.push(nom + '×1'); };
+        document.addEventListener('dragover', () => compter('dragover'), true);
+        for (const n of ['mousedown', 'mouseup']) document.addEventListener(n, () => window.__geste.push(n), true);
+        document.addEventListener('mousemove', () => compter('mousemove'), true);
+        // Liste redessinée pendant le geste (lignes ajoutées ou retirées).
+        new MutationObserver((ms) => { if (ms.some((m) => [...m.addedNodes, ...m.removedNodes].some((n) => n.classList && n.classList.contains('row')))) compter('rendu'); }).observe(document.getElementById('scroll') || document.body, { childList: true, subtree: true });
+      }
+      window.__geste.length = 0;
+    }).catch(() => {});
+    // Vues de l'interface nées pendant le geste (réserve de la coque) : notées aussi.
+    const nees = [];
+    const nee = (p) => nees.push(`${Date.now() - debut} ms ${p.url().slice(-24)}`);
+    const debut = Date.now();
+    app.on('window', nee);
     const geste = (async () => {
       await m.move(de.x, de.y);
       await m.down();
@@ -302,6 +357,12 @@ async function lancer() {
     if (avantLacher) await delai(avantLacher(), 8000, 'avant de lâcher');
     await delai(m.up(), 5000, 'déposer');
     await sleep(60);
+    app.off('window', nee);
+    repere.geste = await ctx.shell.evaluate(() => (window.__geste || []).slice()).catch(() => []);
+    repere.vuesNees = nees;
+    repere.duree = Date.now() - debut;
+    repere.de = de;
+    repere.vers = { x: Math.round(vers.x), y: Math.round(vers.y) };
     return repere;
   };
 
@@ -378,6 +439,7 @@ async function lancer() {
   };
 
   ctx.fermer = async () => {
+    ctx.fermeture = true;
     try { await delai(app.close(), 6000, 'fermeture'); } catch { try { app.process().kill('SIGKILL'); } catch {} }
     if (server.closeAllConnections) server.closeAllConnections();
     await new Promise((r) => server.close(r));

@@ -113,11 +113,19 @@ Il faut [Node.js](https://nodejs.org) 20 ou plus récent.
 git clone https://github.com/amadoubaui/orbe.git
 cd orbe
 npm start        # lance le navigateur
-npm test         # tests de bout en bout (529 vérifications)
-npm run test:ui  # tests d'interface Playwright, souris et clavier réels (281 vérifications)
+npm test         # tests de bout en bout (plus de 700 vérifications)
+npm run test:ui  # tests d'interface Playwright, souris et clavier réels (321 vérifications)
+npm run test:ext # couche d'API des extensions, dans le vrai navigateur (146 vérifications)
 # tests au clavier réel (prennent le clavier) : voir tests/natif/
 npm run build    # fabrique ~/.orbe-dev/dist/Orbe.app (-- --install pour /Applications)
 ```
+
+Les essais se surveillent eux-mêmes : aucune boîte de dialogue native ne peut
+s'ouvrir sans réponse préparée, une exception non rattrapée fait échouer le
+scénario, et un essai qui n'avance plus s'arrête en écrivant ce qu'il attendait
+(fenêtres, pages, appels sans réponse ; piles d'appels natives si le fil
+principal est figé). Écran verrouillé ou en veille, les vérifications qui ont
+besoin d'images ou de son sont ignorées une par une, avec la raison.
 
 Vidéos protégées (Widevine) : `ORBE_DRM=1 npm start` utilise un moteur qui les
 lit ; voir [docs/etude-extensions-et-distribution.md](docs/etude-extensions-et-distribution.md).

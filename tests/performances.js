@@ -209,7 +209,8 @@ module.exports = async function performancesTests(ctx) {
     await until(() => tabs.every((x) => w.data.tabs[x.id].title.startsWith('Veille')), 'onglets d’essai chargés');
     const rendu = () => app.getAppMetrics().filter((m) => m.type === 'Tab').length;
     const mem = win.tabMemory();
-    check('mémoire relevée par onglet et au total (processus comptés une fois)', mem.total > 0 && tabs.every((x) => mem.of(x.id) > 0) && mem.total >= tabs.reduce((a, x) => a + mem.of(x.id), 0) - 1);
+    check('mémoire relevée par onglet et au total (processus comptés une fois)', mem.total > 0 && tabs.every((x) => mem.of(x.id) > 0) && mem.total >= tabs.reduce((a, x) => a + mem.of(x.id), 0) - 1,
+      JSON.stringify({ total: mem.total, parOnglet: tabs.map((x) => mem.of(x.id)), processus: tabs.map((x) => { try { return win.live.get(x.id).wc.getOSProcessId(); } catch { return null; } }) }));
     const count0 = rendu();
     const old = Date.now() - 4 * 36e5;
     for (const x of tabs) win.live.get(x.id).lastUsed = old;

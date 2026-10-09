@@ -13,6 +13,7 @@ const debug = require('./ext-debug'); // chrome.debugger
 const more = require('./ext-more'); // commands, identity, tabGroups…
 const access = require('./ext-access'); // activeTab
 const { store } = require('./store');
+const { boundsOf } = require('./motion');
 
 // Chargé à la demande : window.js dépend de sessions.js, qui dépend de ext-api.js.
 let windowModule = null;
@@ -30,7 +31,7 @@ function describe(rt, index) {
   const owner = rt.owner;
   const data = owner.data.tabs[rt.id] || {};
   const shown = rt.wc.getURL();
-  const b = rt.view.getBounds();
+  const b = boundsOf(rt.view);
   return {
     id: rt.wc.id,
     key: rt.id,

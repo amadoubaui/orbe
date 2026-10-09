@@ -19,7 +19,7 @@ const api = require('./ext-api');
 
 const X = api.internals;
 const GAP = 8; // même écart qu'entre deux volets (window.js)
-const PAD = 10;
+const PAD = 10; // même marge qu'autour des pages (window.js)
 const RADIUS = 10;
 const HEADER = 34;
 const MIN = 260;
@@ -443,4 +443,4 @@ const ownerOf = (wc) => (wc && owners.get(wc.id)) || null;
 // Panneau affiché dans une fenêtre : { extId, tabId, url, wc, view } ou null.
 const shownIn = (w) => { const rec = records.get(w); return (rec && rec.shown && !rec.shown.gone && rec.shown) || null; };
 
-module.exports = { rightInset, place, refresh, refreshAll, actionClick, ownerOf, shownIn, userClose, setWidth, widthIn, makeChrome, disposeChrome, records, HEADER, GAP, CHANNEL };
+module.exports = { rightInset, place, refresh, refreshAll, actionClick, ownerOf, shownIn, userClose, setWidth, widthIn, makeChrome, disposeChrome, records, HEADER, GAP, PAD, CHANNEL };

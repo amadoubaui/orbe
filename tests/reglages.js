@@ -10,17 +10,7 @@ const path = require('path');
 const { Menu, dialog, globalShortcut } = require('electron');
 const platform = require('../src/main/platform');
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-async function until(fn, label, timeout = 8000) {
-  const t0 = Date.now();
-  for (;;) {
-    let v;
-    try { v = await fn(); } catch { v = false; }
-    if (v) return v;
-    if (Date.now() - t0 > timeout) throw new Error('Délai dépassé : ' + label);
-    await sleep(40);
-  }
-}
+const { sleep, until } = require('./outils');
 
 function serve() {
   const server = http.createServer((req, res) => {
@@ -583,7 +573,9 @@ module.exports = async function reglagesTests(ctx) {
   await until(() => sw.isDestroyed(), 'fenêtre fermée');
   const sw3 = openSettings();
   await until(async () => sw3.isVisible() && (await sw3.webContents.executeJavaScript('(document.querySelector("#tabs [aria-selected=true]") || {dataset:{}}).dataset.pane')) === 'extensions', 'dernier volet rouvert');
-  await sw3.webContents.executeJavaScript('window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); 1');
+  // Sans attendre la réponse : Échap ferme la fenêtre, qui peut être détruite avant
+  // d'avoir répondu — la promesse n'était alors jamais réglée (essai bloqué).
+  sw3.webContents.executeJavaScript('window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); 1').catch(() => {});
   await until(() => sw3.isDestroyed(), 'fermeture par Échap');
   check('la fenêtre rouvre sur le dernier volet ; Échap la ferme', true);
   store.state.window.settingsPane = 'general';

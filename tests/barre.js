@@ -6,17 +6,7 @@
 // qu'emprunte la barre latérale, pour vérifier aussi le contrôle des arguments.
 const { clipboard } = require('electron');
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-async function until(fn, label, timeout = 8000) {
-  const t0 = Date.now();
-  for (;;) {
-    let v;
-    try { v = await fn(); } catch { v = false; }
-    if (v) return v;
-    if (Date.now() - t0 > timeout) throw new Error('Délai dépassé : ' + label);
-    await sleep(40);
-  }
-}
+const { sleep, until } = require('./outils');
 
 module.exports = async function barreTests(ctx) {
   const { first: w, store, win, commands } = ctx;

@@ -46,6 +46,10 @@ jobs:
       - name: Tests de bout en bout
         run: node scripts/dev.js --selftest
 
+      # Couche d'API des extensions, dans le vrai navigateur, sans réseau.
+      - name: Extensions dans le navigateur
+        run: node scripts/test-ext.js
+
       # Après les tests de bout en bout : sous Windows, le moteur installé
       # (electron.exe) sert d'exécutable d'essai. Ailleurs, ces essais sont sautés.
       - name: Fabrication pour Windows (fusibles, ressources de l'exécutable, registre)

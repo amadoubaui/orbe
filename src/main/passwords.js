@@ -15,6 +15,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const { store, uid } = require('./store');
+const { boundsOf } = require('./motion');
 const platform = require('./platform');
 
 const PAGE_PRELOAD = path.join(__dirname, '../preload/page.js');
@@ -691,7 +692,7 @@ function showPicker(st, focus, items, at) {
   const where = locate(st.wc);
   if (!where) return;
   const o = overlayOf(where.win);
-  const b = where.view.getBounds();
+  const b = boundsOf(where.view);
   const width = Math.min(320, b.width);
   // Hauteur fixe (la liste défile à l'intérieur) : la taille de la vue ne dit
   // rien du nombre de comptes.
@@ -826,7 +827,7 @@ function placePrompt(o) {
   if (!o.pending || !o.prompt || o.win.isDestroyed()) return;
   const where = locate(o.pending.wc);
   if (!where || where.win !== o.win) return detach(o, o.prompt);
-  const b = where.view.getBounds();
+  const b = boundsOf(where.view);
   const width = Math.min(372, b.width);
   const height = Math.min(168, b.height);
   o.prompt.setBounds({ x: b.x + b.width - width - 4, y: b.y + 4, width, height });

@@ -111,11 +111,11 @@ module.exports = {
         }).observe(document.body, { childList: true });
       });
       let enRoute = null;
-      await ctx.glisser(await ctx.centre(ligne('Page B')), async () => {
+      const geste = await ctx.glisser(await ctx.centre(ligne('Page B')), async () => {
         enRoute = await shell.evaluate(() => [...document.querySelectorAll('#today .dragging-self .title')].map((el) => el.textContent));
         return ctx.centre(ligne('Page E'), 0.5, 0.2);
       });
-      await jusqua(async () => (await today()).join() === 'Page D,Page B,Page E,Page C,Page A,Page Saisie', 'D et B en tête, dans leur ordre');
+      await jusqua(async () => (await today()).join() === 'Page D,Page B,Page E,Page C,Page A,Page Saisie', 'D et B en tête, dans leur ordre — geste : ' + JSON.stringify({ ...geste, enRoute }));
       assert.deepEqual(enRoute, ['Page D', 'Page B'], 'les deux lignes sont emportées');
       assert.equal(await shell.evaluate(() => window.__pastille), '2', 'pastille « 2 » sur l’image du glisser');
       await attendreSelection([]);

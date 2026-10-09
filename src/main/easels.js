@@ -11,6 +11,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { store } = require('./store');
+const { boundsOf } = require('./motion');
 
 const PAGE = 'orbe://app/easel.html';
 const ID = /^[a-f0-9]{16}$/;
@@ -456,7 +457,7 @@ async function capture(w, opts = {}) {
   const image = await wc.capturePage(rect).catch(() => null);
   if (!image || image.isEmpty()) return null;
   // Taille à l'écran (points), pas en pixels de l'image : une capture « Retina » en compte le double.
-  const shown = w.activeRt && w.activeRt.wc === wc ? w.activeRt.view.getBounds() : image.getSize();
+  const shown = w.activeRt && w.activeRt.wc === wc ? boundsOf(w.activeRt.view) : image.getSize();
   const size = rect || { width: Math.max(1, shown.width), height: Math.max(1, shown.height) };
   const board = list()[0] || meta(create());
   const stored = await putImage(board.id, image.toPNG());

@@ -20,10 +20,37 @@ const bogues = [];
 // ORBE_UI_DETAIL=1 : message d'erreur entier (différences comprises).
 const court = (err) => (process.env.ORBE_UI_DETAIL ? String((err && err.message) || err) : String((err && err.message) || err).split('\n')[0].slice(0, 300));
 
+// Vérification en échec : ce que montrait la barre latérale à cet instant
+// (lignes, sélection, glisser en cours) et une capture de la coque.
+async function constater(ctx, groupe, n) {
+  if (ctx.arretInattendu()) return;
+  try {
+    const vu = await delai(ctx.shell.evaluate(() => ({
+      aujourdhui: [...document.querySelectorAll('#today .row.tab')].map((r) => (r.querySelector('.title') || r).textContent + (r.classList.contains('active') ? '*' : '') + (r.classList.contains('sel') ? '+' : '') + (r.classList.contains('out') ? '(sort)' : '')),
+      epingles: [...document.querySelectorAll('#pinned .row .title')].map((el) => el.textContent),
+      corps: document.body.className,
+      animations: document.getAnimations().filter((a) => a.playState === 'running').length,
+    })), 3000, 'état de la barre');
+    console.log(`      barre : ${JSON.stringify(vu)}`);
+    const nom = `echec-${groupe.replace(/[^\p{L}\p{N}]+/gu, '-').toLowerCase()}-${n}`;
+    await delai(ctx.capture(nom), 4000, 'capture');
+    console.log(`      capture : ${path.join(ctx.captures, nom + '.png')}`);
+  } catch (err) {
+    console.log(`      (état de la barre illisible : ${String(err.message).split('\n')[0]})`);
+  }
+}
+
 function rapport(groupe, ctx) {
   const essai = async (fn) => {
     if (ctx.bloque) throw new Error('application bloquée par une vérification précédente');
-    await delai(Promise.resolve().then(fn), 40000, 'vérification');
+    if (ctx.arretInattendu()) throw new Error(ctx.constat());
+    try {
+      await delai(Promise.resolve().then(fn), 40000, 'vérification');
+    } catch (err) {
+      // L'application s'est arrêtée pendant la vérification : c'est la vraie cause.
+      if (ctx.arretInattendu()) err.message = `${ctx.constat()} — ${String(err.message).split('\n')[0]}`;
+      throw err;
+    }
   };
   const t = {
     // Vérification normale : son échec fait échouer la suite.
@@ -37,6 +64,7 @@ function rapport(groupe, ctx) {
         total.ko += 1;
         echecs.push(`${groupe} › ${nom}`);
         console.log(`  ✗ ${nom} — ${court(err)}`);
+        await constater(ctx, groupe, total.ko);
         return false;
       }
     },
@@ -57,6 +85,12 @@ function rapport(groupe, ctx) {
     ignorer(nom, raison) {
       total.ignores += 1;
       console.log(`  – ignoré : ${nom} (${raison})`);
+    },
+    // Vérifications qui ont besoin d'images présentées à l'écran (cadence, animation
+    // jouée jusqu'au bout) : écran verrouillé ou en veille, elles sont ignorées, avec la raison.
+    avecEcran(mode, nom, fn) {
+      if (!ctx.milieu.vivant) return t.ignorer(nom, ctx.milieu.raison);
+      return t[mode](nom, fn);
     },
     // Vérifications qui lisent le focus natif : la fenêtre doit être au premier
     // plan, ce qui prend le clavier. Uniquement avec ORBE_UI_FOCUS=1.
@@ -81,15 +115,35 @@ async function main() {
     const groupe = require(path.join(__dirname, f));
     console.log(`\n${groupe.nom}`);
     let ctx = null;
+    const avant = total.ko;
     try {
       ctx = await delai(lancer(), 45000, 'lancement du navigateur');
+      if (!ctx.milieu.vivant) console.log(`  – écran : ${ctx.milieu.resume}`);
       await groupe.test(ctx, rapport(groupe.nom, ctx));
     } catch (err) {
       total.ko += 1;
       echecs.push(`${groupe.nom} › (groupe interrompu)`);
-      console.log(`  ✗ groupe interrompu — ${court(err)}`);
+      console.log(`  ✗ groupe interrompu — ${ctx && ctx.arretInattendu() ? ctx.constat() + ' — ' : ''}${court(err)}`);
     } finally {
-      if (ctx) await ctx.fermer();
+      if (ctx) {
+        const arret = ctx.arretInattendu();
+        // Application arrêtée sans qu'on le lui demande : ce qu'elle a écrit en dernier.
+        if (arret) {
+          console.log(`  ! ${ctx.constat()}`);
+          console.log('  ! dernières lignes du processus principal :');
+          for (const l of ctx.journal.slice(-40)) console.log('      ' + l.slice(0, 400));
+        }
+        // Groupe en échec : journal entier du processus principal, à côté des captures.
+        if (total.ko > avant || arret) {
+          try {
+            fs.mkdirSync(ctx.captures, { recursive: true });
+            const fichier = path.join(ctx.captures, `journal-${f.replace(/\.js$/, '')}.log`);
+            fs.writeFileSync(fichier, ctx.journal.join('\n') + `\n\n${ctx.constat()}\n`);
+            console.log(`  ! journal du processus principal : ${fichier}`);
+          } catch {}
+        }
+        await ctx.fermer();
+      }
     }
   }
 

@@ -13,7 +13,9 @@ module.exports = {
     const { shell, jusqua, sleep } = ctx;
     const today = () => ctx.titres('#today');
     const reduit = await shell.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches);
-    const animer = (titre, fn) => (reduit ? t.ignorer(titre, '« Réduire les animations » est actif') : t.verifier(titre, fn));
+    // Un mouvement ne se vérifie que s'il est joué : animations actives, et images
+    // réellement présentées (écran verrouillé ou en veille : ignoré, avec la raison).
+    const animer = (titre, fn) => (reduit ? t.ignorer(titre, '« Réduire les animations » est actif') : t.avecEcran('verifier', titre, fn));
     // Animations en cours sur les lignes : glissements (`flip`), apparition, retrait.
     const enCours = () => shell.evaluate(() => document.getElementById('scroll').getAnimations({ subtree: true }).filter((a) => a.playState === 'running').map((a) => {
       const el = a.effect.target;
@@ -157,7 +159,7 @@ module.exports = {
       assert.equal(await shell.locator('#today .out').count(), 0);
     });
 
-    await t.verifier('chargement : une lueur aux couleurs de l’Espace court le long du bord haut de la page, par transformation', async () => {
+    await t.avecEcran('verifier', 'chargement : une lueur aux couleurs de l’Espace court le long du bord haut de la page, par transformation', async () => {
       await ctx.nouvelOnglet();
       await ctx.taper(ctx.hote + '/lent?ms=1800');
       await ctx.modal.keyboard.press('Enter');
@@ -397,7 +399,8 @@ module.exports = {
       await shell.emulateMedia({ reducedMotion: 'reduce' });
       try {
         await jusqua(() => shell.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches), 'réglage pris en compte');
-        await ctx.ouvrir('/d', 'Page D');
+        // Page jamais ouverte dans ce groupe : la vérification ne dépend pas des précédentes.
+        await ctx.ouvrir('/saisie', 'Page Saisie');
         await sleep(60);
         const apres = await enCours();
         assert.deepEqual(apres.filter((x) => x.nom === 'flip'), [], 'aucun glissement');
@@ -407,8 +410,8 @@ module.exports = {
         await shell.mouse.move(c.x, c.y);
         for (let i = 0; i < 4; i++) { await shell.mouse.wheel(0, -14); await sleep(16); }
         assert.equal(await shell.evaluate(() => getComputedStyle(document.getElementById('scroll')).translate), 'none');
-        await fermer('Page D');
-        await jusqua(async () => !(await today()).includes('Page D'), 'onglet fermé');
+        await fermer('Page Saisie');
+        await jusqua(async () => !(await today()).includes('Page Saisie'), 'onglet fermé');
         assert.equal(await shell.locator('#today .out').count(), 0, 'la ligne est retirée aussitôt');
       } finally {
         await shell.emulateMedia({ reducedMotion: null });
