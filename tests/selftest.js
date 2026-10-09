@@ -8,7 +8,7 @@ const { Menu, clipboard } = require('electron');
 
 const platform = require('../src/main/platform');
 
-const { sleep, until, milieu, ignorer, ignores } = require('./outils');
+const { sleep, until, milieu, ignorer, ignores, profilPret } = require('./outils');
 
 function serve() {
   const page = (title, body) => `<!doctype html><meta charset="utf-8"><title>${title}</title><body style="font:16px sans-serif;padding:40px">${body}</body>`;
@@ -82,7 +82,8 @@ module.exports = async function selftest(ctx) {
   check('la barre latérale reçoit son état', await ui('S.space.name') === store.t('spaces.firstName'));
   check('aucun onglet au départ', w.activeId === null && await ui('document.body.classList.contains("no-tab")'));
 
-  // Onglets
+  // Onglets (le profil d'abord : voir profilPret, tests/outils.js)
+  await profilPret(w);
   const a = w.newTab(base + '/a');
   await until(() => titleOf(a.id) === 'Page A', 'titre de la page A');
   check('nouvel onglet chargé et actif', w.activeId === a.id && win.live.has(a.id));
@@ -1088,7 +1089,10 @@ module.exports = async function selftest(ctx) {
   store.flush();
   const saved = JSON.parse(fs.readFileSync(store.file, 'utf8'));
   const histFile = path.join(path.dirname(store.file), 'history.json');
-  check('historique enregistré dans son propre fichier, hors de l’état', fs.existsSync(histFile) && Object.keys(JSON.parse(fs.readFileSync(histFile, 'utf8'))).length === Object.keys(store.state.history).length && !('history' in JSON.parse(fs.readFileSync(store.file, 'utf8'))));
+  const onDisk = fs.existsSync(histFile) ? Object.keys(JSON.parse(fs.readFileSync(histFile, 'utf8'))) : null;
+  const inMemory = Object.keys(store.state.history);
+  check('historique enregistré dans son propre fichier, hors de l’état', !!onDisk && onDisk.length === inMemory.length && !('history' in JSON.parse(fs.readFileSync(store.file, 'utf8'))),
+    JSON.stringify({ fichier: onDisk ? onDisk.length : 'absent', memoire: inMemory.length, seulementEnMemoire: onDisk ? inMemory.filter((k) => !onDisk.includes(k)).slice(0, 5) : [], seulementSurDisque: onDisk ? onDisk.filter((k) => !inMemory.includes(k)).slice(0, 5) : [], dansEtat: 'history' in JSON.parse(fs.readFileSync(store.file, 'utf8')) }));
   // Ancien format (historique dans orbe.json) : repris tel quel au chargement.
   const { Store: StoreClass } = { Store: store.constructor };
   const old = new StoreClass();

@@ -110,10 +110,32 @@ async function milieu(w) {
   return measured;
 }
 
+// --- Profil prêt -----------------------------------------------------------------
+// À appeler avant la première page d'un scénario. Une requête n'est envoyée
+// qu'une fois le magasin de témoins de la session ouvert (relevé sur 240
+// démarrages sous Windows : la page arrive toujours après lui, 70 ms plus tard en
+// médiane). Son ouverture prend d'ordinaire moins d'une seconde, parfois plus de
+// huit sur une machine d'intégration : la première page dépassait alors son
+// délai. On attend donc le profil, et on le dit s'il tarde.
+let pret = null;
+function profilPret(w) {
+  if (pret) return pret;
+  const t0 = Date.now();
+  const fin = garde.waiting('magasin de témoins du profil');
+  pret = Promise.race([w.session.cookies.get({}).then(() => true, () => true), sleep(60000).then(() => false)]).then((ok) => {
+    fin();
+    if (!ok) throw new Error('Délai dépassé : magasin de témoins du profil toujours fermé après 60 s');
+    const ms = Date.now() - t0;
+    if (ms > 3000) console.log(`  – profil prêt après ${ms} ms (magasin de témoins lent à s’ouvrir)`);
+    return ms;
+  });
+  return pret;
+}
+
 // Vérification ignorée : dite, avec sa raison, et comptée.
 function ignorer(nom, raison) {
   garde.state.skipped.push({ nom, raison });
   console.log(`  – ignoré : ${nom} (${raison})`);
 }
 
-module.exports = { sleep, until, milieu, ignorer, ignores: garde.state.skipped, PROBE, juger, mesurer };
+module.exports = { sleep, until, milieu, ignorer, ignores: garde.state.skipped, PROBE, juger, mesurer, profilPret };

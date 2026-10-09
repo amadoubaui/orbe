@@ -6,7 +6,7 @@ const http = require('http');
 const path = require('path');
 const { BrowserWindow } = require('electron');
 
-const { sleep, until } = require('./outils');
+const { sleep, until, profilPret } = require('./outils');
 
 function serve() {
   const server = http.createServer((req, res) => {
@@ -47,6 +47,7 @@ module.exports = async function extApiTest({ first: w, OrbeWindow, win, extApi, 
 
   const ext = await ses.extensions.loadExtension(path.join(__dirname, 'ext-fixture'));
   // Ouvert après le chargement de l'extension : son script de contenu s'y exécute.
+  await profilPret(w);
   const a = w.newTab(base + '/a');
   await until(() => w.data.tabs[a.id].title === 'Page a', 'page a');
   const rtA = win.live.get(a.id);
