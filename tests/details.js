@@ -31,7 +31,8 @@ module.exports = async function detailsTests(ctx) {
     await until(() => !l1.opening, 'ouverture terminée', 3000);
     const steps = l1.win.getOpacity();
     check('petite fenêtre : elle s’ouvre en se dévoilant (opacité de 0 à 1) et en montant de quelques points, sans changer de taille',
-      at0.opacity === 0 && at0.opening && at0.visible && steps === 1 && l1.win.getPosition()[1] === pos0[1] - little.OPEN.rise && l1.win.getPosition()[0] === pos0[0] && l1.win.getSize().join('x') === at0.size,
+      // (Près du haut de l'écran, le système retient la fenêtre sous la barre des menus : elle monte alors moins.)
+      at0.opacity === 0 && at0.opening && at0.visible && steps === 1 && l1.win.getPosition()[1] <= pos0[1] && l1.win.getPosition()[1] >= pos0[1] - little.OPEN.rise && l1.win.getPosition()[0] === pos0[0] && l1.win.getSize().join('x') === at0.size,
       JSON.stringify({ at0, pos0, fin: l1.win.getPosition(), opacite: steps }));
 
     // Première fois : bandeau d'explication, une seule fois.

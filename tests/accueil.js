@@ -68,6 +68,8 @@ module.exports = async function accueilTests(ctx) {
   const pick = '#10b981';
   await click(`#colors button[data-color="${pick}"]`);
   await until(() => w.space.color === pick, 'couleur appliquée à l’Espace');
+  // La pastille n'est marquée qu'une fois la réponse du processus principal revenue à la page.
+  await until(() => js(`(document.querySelector('#colors button[aria-pressed=true]') || { dataset: {} }).dataset.color === '${pick}'`), 'pastille choisie marquée');
   check('étape couleur : un clic teinte l’Espace affiché, la pastille choisie est marquée',
     (await js(`document.querySelector('#colors button[aria-pressed=true]').dataset.color`)) === pick && (await js('document.querySelectorAll("#colors button[aria-pressed=true]").length')) === 1);
 
