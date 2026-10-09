@@ -306,16 +306,18 @@ module.exports = async function finitions2Tests(ctx) {
     const profiles0 = d.profiles.slice();
     const labelsOf = () => { const m = w.tabMenuTemplate(B).find((x) => x.label === T('tabs.moveTo')); return m ? m.submenu.map((x) => x.label) : []; };
     d.profiles.length = 1;
-    const single = win.spaceLabel(other, d);
+    const single = win.spaceLabel(other, d, space.profileId);
     check('un seul profil : le nom d’un Espace dans un menu ne dit rien du profil', single === '💼 Travail <b>' && labelsOf().includes(single), single);
     d.profiles.splice(0, d.profiles.length, ...profiles0);
     const pro = { id: 'fin2-pro', name: 'Bureau' };
     d.profiles.push(pro);
     d.favs[pro.id] = [];
     other.profileId = pro.id;
-    check('plusieurs profils : le profil de l’Espace est rappelé à la suite de son nom (« Déplacer vers », menu Espaces)',
-      win.spaceLabel(other, d) === '💼 Travail <b>  ·  Bureau' && labelsOf().includes('💼 Travail <b>  ·  Bureau') && win.spaceLabel(other, d, '  ') === '💼  Travail <b>  ·  Bureau'
-      && win.spaceLabel({ icon: 'x', name: 'y', profileId: 'inconnu' }, d) === 'x y', JSON.stringify(labelsOf()));
+    check('plusieurs profils : le profil d’un Espace d’un autre profil est rappelé à la suite de son nom (« Déplacer vers », menu Espaces)',
+      win.spaceLabel(other, d, space.profileId) === '💼 Travail <b>  ·  Bureau' && labelsOf().includes('💼 Travail <b>  ·  Bureau') && win.spaceLabel(other, d, space.profileId, '  ') === '💼  Travail <b>  ·  Bureau'
+      && win.spaceLabel({ icon: 'x', name: 'y', profileId: 'inconnu' }, d, space.profileId) === 'x y', JSON.stringify(labelsOf()));
+    check('… mais pas pour un Espace du même profil que celui d’où l’on part', win.spaceLabel(other, d, pro.id) === '💼 Travail <b>' && win.spaceLabel(other, d) === '💼 Travail <b>'
+      && labelsOf().filter((x) => x.includes('  ·  ')).length === 1, JSON.stringify(labelsOf()));
     w.selection = [B, C];
     const many = w.tabsMenuTemplate([B, C]).find((x) => x.label === T('tabs.moveTo'));
     check('… aussi dans le menu d’une sélection', !!many && many.submenu.some((x) => x.label === '💼 Travail <b>  ·  Bureau'));
@@ -450,6 +452,34 @@ module.exports = async function finitions2Tests(ctx) {
     })()`);
     check('barre d’outils affichée : les boutons d’extension sont à droite de l’adresse (et plus sous la pastille) ; masquée, ils reviennent sous l’adresse',
       seen.on.tb === 1 && seen.on.side === 0 && seen.on.title === 'Essai <i>' && seen.on.tags === 0 && seen.on.badge === '7' && seen.on.after === 'tb-exts' && seen.off.tb === 0 && seen.off.side === 1 && seen.rest === true, JSON.stringify(seen));
+  }
+
+  // --- Barre resserrée au minimum, zones qui déplacent la fenêtre (BL-5, BL-12) ----------------------
+  {
+    const width0 = w.sidebarWidth;
+    w.setSidebarWidth(40);
+    await until(() => ui('S.sidebar.width === 200 && Math.round(document.getElementById("sidebar").getBoundingClientRect().width) === 200'), 'barre au minimum');
+    const narrow = await ui(`(() => {
+      const side = document.getElementById('sidebar').getBoundingClientRect();
+      const ids = ['b-sidebar', 'b-back', 'b-forward', 'b-reload'];
+      const boxes = ids.map((id) => document.getElementById(id).getBoundingClientRect());
+      const inside = boxes.every((r) => r.width >= 24 && r.left >= side.left && r.right <= side.right);
+      const apart = boxes.every((r, i) => i === 0 || r.left >= boxes[i - 1].right - 0.5);
+      const hit = ids.every((id, i) => { const r = boxes[i]; const el = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return document.getElementById(id).disabled ? !!el && el.id === 'top' : !!el && !!el.closest('#' + id); });
+      return { inside, apart, hit, lights: boxes[0].left };
+    })()`);
+    check('barre resserrée au minimum (200 px) : précédent, suivant et actualiser restent entiers, côte à côte, cliquables, à droite des boutons de la fenêtre',
+      w.sidebarWidth === 200 && narrow.inside && narrow.apart && narrow.hit && (process.platform !== 'darwin' || narrow.lights >= 60), JSON.stringify(narrow));
+    w.setSidebarWidth(width0);
+    await until(() => ui(`S.sidebar.width === ${width0}`), 'largeur rétablie');
+    const region = await ui(`(() => {
+      const of = (el) => { const cs = getComputedStyle(el); return cs.getPropertyValue('app-region') || cs.getPropertyValue('-webkit-app-region') || cs.webkitAppRegion || ''; };
+      const top = document.getElementById('top');
+      const gap = top.querySelector('.drag').getBoundingClientRect();
+      return { top: of(top), gap: of(top.querySelector('.drag')), gapW: gap.width, buttons: ['b-sidebar', 'b-back', 'b-forward', 'b-reload'].map((id) => of(document.getElementById(id))).join(), list: of(document.getElementById('scroll')), blank: of(document.getElementById('blank')), resize: of(document.getElementById('resize')) };
+    })()`);
+    check('le haut de la barre (entre les boutons) déplace la fenêtre ; les boutons, la liste et son vide (double-clic : nouvel onglet) non',
+      region.top === 'drag' && region.gap === 'drag' && region.gapW > 20 && region.buttons === 'no-drag,no-drag,no-drag,no-drag' && region.list !== 'drag' && region.blank !== 'drag' && region.resize === 'no-drag', JSON.stringify(region));
   }
 
   // --- Remise en état ---------------------------------------------------------------------

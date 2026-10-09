@@ -313,8 +313,8 @@ module.exports = async function lateraleTests(ctx) {
 
   // --- Menus de l'Espace, du vide de la barre et du « + » -----------------------
   tpl = w.spaceMenuTemplate();
-  check('menu de l’Espace : renommer, thème, icône, profil, en-tête, dossier, Espace, supprimer',
-    labels(tpl).join('|') === ['spaces.rename', 'spaces.editTheme', 'spaces.changeIcon', 'spaces.profile', 'spaces.hideHeader', 'spaces.toFolder', 'spaces.manage', 'tabs.newFolder', 'spaces.new', 'spaces.delete'].map((k) => T(k)).join('|'), labels(tpl).join('|'));
+  check('menu de l’Espace : renommer, thème, icône, profil, en-tête, gérer, exporter, dossier, Espace, supprimer',
+    labels(tpl).join('|') === ['spaces.rename', 'spaces.editTheme', 'spaces.changeIcon', 'spaces.profile', 'spaces.hideHeader', 'spaces.toFolder', 'spaces.manage', 'spaces.export', 'tabs.newFolder', 'spaces.new', 'spaces.delete'].map((k) => T(k)).join('|'), labels(tpl).join('|'));
   const profs = pick(tpl, 'spaces.profile').submenu;
   check('menu de l’Espace → Profil : un article par profil, celui de l’Espace coché, puis « Nouveau profil »',
     profs.filter((x) => x.type === 'radio').length === d.profiles.length && profs.find((x) => x.checked).label === d.profiles.find((p) => p.id === space.profileId).name && labels(profs).pop() === T('spaces.newProfile'));

@@ -109,13 +109,13 @@ function resumed(saved, spaces, on) {
   if (!on) return { spaceId: spaces[0].id, activeBySpace: {} };
   return { spaceId: spaces.some((s) => s.id === saved.spaceId) ? saved.spaceId : spaces[0].id, activeBySpace: { ...(saved.activeBySpace || {}) } };
 }
-// Nom d'un Espace dans un menu. Dès qu'il existe plusieurs profils, le profil de l'Espace
-// est rappelé à la suite (pastille de profil d'Arc) : déplacer un onglet vers un Espace
-// d'un autre profil change ses cookies et ses identifiants, autant le voir avant.
-function spaceLabel(sp, data = store.state, gap = ' ') {
+// Nom d'un Espace dans un menu. Quand son profil n'est pas celui de l'Espace d'où l'on
+// part (`from`), il est rappelé à la suite (pastille de profil d'Arc) : déplacer un onglet
+// vers un Espace d'un autre profil change ses cookies et ses identifiants, autant le voir avant.
+function spaceLabel(sp, data = store.state, from = null, gap = ' ') {
   const base = `${sp.icon}${gap}${sp.name}`;
   const profiles = (data && data.profiles) || [];
-  if (profiles.length < 2) return base;
+  if (profiles.length < 2 || !from || sp.profileId === from) return base;
   const p = profiles.find((x) => x.id === sp.profileId);
   return p && p.name ? `${base}  ·  ${p.name}` : base;
 }
@@ -4167,7 +4167,7 @@ class OrbeWindow {
       { label: t(tab.muted ? 'tabs.unmute' : 'tabs.mute'), click: () => this.toggleMute(id) },
     ];
     // « Déplacer vers » : les autres Espaces, puis les dossiers de celui-ci (sauf le sien).
-    const dest = fav ? [] : others.map((s) => ({ label: spaceLabel(s, this.data), click: () => this.moveToSpace(id, s.id) }));
+    const dest = fav ? [] : others.map((s) => ({ label: spaceLabel(s, this.data, this.space.profileId), click: () => this.moveToSpace(id, s.id) }));
     const folders = [];
     const each = (nodes, trail) => {
       for (const n of nodes) {
@@ -4223,7 +4223,7 @@ class OrbeWindow {
       { label: t('tabs.folderFromSelection'), click: () => this.folderFromSelection(ids) },
     ];
     if (others.length && !lists.includes('favorites')) {
-      tpl.push({ label: t('tabs.moveTo'), submenu: others.map((s) => ({ label: spaceLabel(s, this.data), click: () => this.moveManyToSpace(ids, s.id) })) });
+      tpl.push({ label: t('tabs.moveTo'), submenu: others.map((s) => ({ label: spaceLabel(s, this.data, this.space.profileId), click: () => this.moveManyToSpace(ids, s.id) })) });
     }
     tpl.push({ type: 'separator' }, { label: t('tabs.closeMany', { n }), click: () => this.closeMany(ids) });
     return tpl;

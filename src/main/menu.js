@@ -183,7 +183,7 @@ function build() {
         sep, item('nextSpace'), item('prevSpace'),
         sep,
         ...spaces.map((sp, i) => ({
-          label: require('./window').spaceLabel(sp, store.state, '  '),
+          label: require('./window').spaceLabel(sp, store.state, w && w.shared ? w.space.profileId : null, '  '),
           type: 'checkbox',
           checked: !!w && sp.id === w.spaceId,
           accelerator: i < 9 ? platform.accel(`Ctrl+${i + 1}`) : undefined,

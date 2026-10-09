@@ -427,10 +427,11 @@ module.exports = async function reglagesTests(ctx) {
     hadDefault && nowReserved.has(more.parseAccelerator('Ctrl+Alt+Y')) && !nowReserved.has(histDefault));
 
   // Coque : le libellé qui cite ⌘S suit le raccourci.
-  const titleBefore = await ui('document.getElementById("b-sidebar").title');
+  // (L'infobulle est celle d'Orbe : le raccourci y est lu au moment de l'afficher.)
+  const titleBefore = await ui('KEYS[document.getElementById("b-sidebar").dataset.tipKey]');
   shortcuts.assign('toggleSidebar', 'Ctrl+Alt+B');
-  await until(async () => (await ui('document.getElementById("b-sidebar").title')).includes(shortcuts.display('Ctrl+Alt+B')), 'infobulle à jour');
-  check('coque : l’infobulle de la barre latérale cite le nouveau raccourci', titleBefore.includes(commands.byName.get('toggleSidebar').keys));
+  await until(async () => (await ui('KEYS[document.getElementById("b-sidebar").dataset.tipKey]')) === shortcuts.display('Ctrl+Alt+B'), 'infobulle à jour');
+  check('coque : l’infobulle de la barre latérale cite le nouveau raccourci', titleBefore === commands.byName.get('toggleSidebar').keys);
 
   check('Windows : la table de correspondance n’est pas touchée par les changements',
     platform.WIN_ACCEL['Cmd+Y'] === 'Ctrl+H' && platform.accel('Cmd+Y') === (platform.isMac ? 'Cmd+Y' : 'Ctrl+H') && commands.byName.get('history').accel === platform.accel('Cmd+Y')

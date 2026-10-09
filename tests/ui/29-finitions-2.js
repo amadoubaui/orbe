@@ -294,6 +294,38 @@ module.exports = {
       await jusqua(() => tip.evaluate((el) => el.hidden), 'infobulle effacée');
     });
 
+    // --- Barre resserrée -----------------------------------------------------------------------
+    await t.verifier('bord de la barre tiré jusqu’au minimum : précédent, suivant et actualiser restent visibles ; « actualiser » répond au clic ; le haut de la barre reste une zone qui déplace la fenêtre', async () => {
+      const avant = (await ctx.etat()).largeur;
+      const bord = await ctx.centre(shell.locator('#resize'), 0.5, 0.4);
+      await shell.mouse.move(bord.x, bord.y);
+      await shell.mouse.down();
+      await shell.mouse.move(150, bord.y, { steps: 6 });
+      await shell.mouse.up();
+      await jusqua(async () => (await ctx.etat()).largeur === 200, 'largeur minimale');
+      const barre = await shell.locator('#sidebar').boundingBox();
+      for (const id of ['#b-back', '#b-forward', '#b-reload']) {
+        const b = await shell.locator(id).boundingBox();
+        assert.ok(b && b.width >= 24 && b.x >= barre.x && b.x + b.width <= barre.x + barre.width, `${id} entier dans la barre : ${JSON.stringify([b, barre])}`);
+      }
+      await ctx.clic(shell, ctx.ligne('Page B'));
+      await jusqua(async () => (await volets()).actif === 'Page B', 'Page B affichée');
+      const vus = ctx.hits['/b'];
+      await ctx.clic(shell, '#b-reload');
+      await jusqua(() => ctx.hits['/b'] > vus, 'page rechargée');
+      await ctx.principal(({ w }, l) => w.setSidebarWidth(l), avant);
+      await jusqua(async () => (await ctx.etat()).largeur === avant, 'largeur rétablie');
+      // Entre le bouton de la barre et les flèches : la zone qui déplace la fenêtre (un vrai déplacement ne se pilote pas d'ici).
+      const zone = await shell.evaluate(() => {
+        const a = document.getElementById('b-sidebar').getBoundingClientRect();
+        const b = document.getElementById('b-back').getBoundingClientRect();
+        const el = document.elementFromPoint((a.right + b.left) / 2, a.top + a.height / 2);
+        const cs = getComputedStyle(el);
+        return { large: b.left - a.right, region: cs.getPropertyValue('app-region') || cs.getPropertyValue('-webkit-app-region') };
+      });
+      assert.ok(zone.large > 20 && zone.region === 'drag', JSON.stringify(zone));
+    });
+
     // --- Échap en plein écran -------------------------------------------------------------
     const plein = () => ctx.principal(({ w }) => w.win.isFullScreen());
     await ctx.menu('Ctrl+Cmd+F');
