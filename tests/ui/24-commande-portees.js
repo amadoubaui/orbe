@@ -41,20 +41,21 @@ module.exports = {
     });
 
     await t.verifier('la saisie filtre les actions ; aucune recherche ni page proposée', async () => {
-      await ctx.taper('latérale', false);
-      await jusqua(async () => { const s = await ctx.suggestions(); return s.length > 0 && s.length < 8 && s.every((x) => /latérale/i.test(x)); }, 'actions filtrées');
-      assert.ok((await ctx.suggestions()).includes('Masquer la barre latérale'));
+      await ctx.taper('outils', false);
+      await jusqua(async () => { const s = await ctx.suggestions(); return s.length > 0 && s.length < 8 && s.every((x) => /outils/i.test(x)); }, 'actions filtrées');
+      assert.ok((await ctx.suggestions()).includes('Afficher la barre d’outils'));
       assert.ok(!(await sous()).some((s) => /Rechercher avec|Ouvrir la page/.test(s)));
     });
 
     await t.verifier('Entrée exécute l’action choisie', async () => {
-      const i = (await ctx.suggestions()).indexOf('Masquer la barre latérale');
+      const i = (await ctx.suggestions()).indexOf('Afficher la barre d’outils');
+      assert.ok(i >= 0, (await ctx.suggestions()).join(' | '));
       for (let k = 0; k < i; k++) await modal.keyboard.press('ArrowDown');
       await modal.keyboard.press('Enter');
       await fermee();
-      await jusqua(async () => (await ctx.etat()).lateraleVisible === false, 'barre latérale masquée');
-      await ctx.menu('Cmd+S');
-      await jusqua(async () => { const b = await shell.locator('#sidebar').boundingBox(); return (await ctx.etat()).lateraleVisible === true && b && b.x === 0; }, 'barre latérale revenue');
+      await jusqua(() => shell.evaluate(() => document.body.classList.contains('toolbar')), 'barre d’outils affichée');
+      await ctx.menu('Shift+Cmd+D');
+      await jusqua(() => shell.evaluate(() => !document.body.classList.contains('toolbar')), 'barre d’outils masquée');
     });
 
     await t.verifier('retour arrière sur le champ vide : on quitte la portée « Actions »', async () => {

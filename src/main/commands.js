@@ -21,6 +21,8 @@ const COMMANDS = [
   // Comme dans Arc : une fenêtre neuve, sans onglet, s'ouvre sur la barre de commande.
   { name: 'newWindow', label: 'file.newWindow', accel: 'Cmd+N', keys: '⌘N', global: true, run: () => greet(hooks.newWindow({})) },
   { name: 'newIncognito', label: 'file.newIncognito', accel: 'Shift+Cmd+N', keys: '⇧⌘N', global: true, run: () => greet(hooks.newWindow({ incognito: true })) },
+  // « Blank Window » d'Arc (⌃⌘N) : une fenêtre hors des Espaces.
+  { name: 'newBlank', label: 'file.newBlank', accel: 'Ctrl+Cmd+N', keys: '⌃⌘N', global: true, run: () => greet(hooks.newWindow({ blank: true })) },
   { name: 'newLittle', label: 'file.newLittle', accel: 'Alt+Cmd+N', keys: '⌥⌘N', global: true, run: () => hooks.newLittle('') },
   // ⌘Z / ⇧⌘Z : défait ou refait la dernière action de la barre latérale quand on
   // n'est pas en train d'écrire, sinon annulation classique du texte.
@@ -43,13 +45,26 @@ const COMMANDS = [
   { name: 'copyUrlMarkdown', label: 'edit.copyUrlMarkdown', accel: 'Alt+Shift+Cmd+C', keys: '⌥⇧⌘C', run: (w) => w.copyUrl(true) },
   { name: 'copyUrlQuote', label: 'edit.copyUrlQuote', accel: 'Ctrl+Shift+Cmd+C', keys: '⌃⇧⌘C', run: (w) => w.copyQuote() },
   { name: 'find', label: 'edit.find', accel: 'Cmd+F', keys: '⌘F', run: (w) => w.openFind() },
+  // « Find and Replace » d'Arc (⌥⌘F) : la barre de recherche, avec « Remplacer par ».
+  { name: 'findReplace', label: 'edit.findReplace', accel: 'Alt+Cmd+F', keys: '⌥⌘F', run: (w) => w.openFind(undefined, { replace: true }) },
   { name: 'findNext', label: 'edit.findNext', accel: 'Cmd+G', keys: '⌘G', palette: false, run: (w) => w.findStep(true) },
   { name: 'findPrev', label: 'edit.findPrev', accel: 'Shift+Cmd+G', keys: '⇧⌘G', palette: false, run: (w) => w.findStep(false) },
   { name: 'useSelectionFind', label: 'edit.useSelection', palette: false, run: (w) => findSelection(w) },
   // ⌥⌘V, comme dans Arc : l'adresse du presse-papiers s'ouvre dans un nouvel onglet.
+  // « Jump to Selection » d'Arc (⌘J) : la sélection de la page revient au milieu de l'écran.
+  { name: 'jumpToSelection', label: 'edit.jumpToSelection', accel: 'Cmd+J', keys: '⌘J', palette: false, run: (w) => jumpToSelection(wc(w)) },
+  // Format → Police : gras, italique, souligné, dans le champ où l'on écrit. Aucun raccourci n'est
+  // attaché à ces articles : ⌘B, ⌘I et ⌘U restent aux pages (les éditeurs en ligne les gèrent
+  // eux-mêmes, et Chromium les applique déjà dans les zones de texte enrichi). Le menu ne peut
+  // donc jamais passer avant un site. Qui veut un raccourci peut en choisir un dans les réglages.
+  ...[['bold', 'B'], ['italic', 'I'], ['underline', 'U']].map(([k, key]) => ({ name: 'format' + key, label: 'edit.' + k, palette: false, run: (w) => formatText(w, k) })),
+  // Transformations (macOS) : la sélection du champ de texte passe en majuscules, en minuscules, ou prend des capitales.
+  ...['upper', 'lower', 'capitalize'].map((k) => ({ name: 'transform' + k[0].toUpperCase() + k.slice(1), label: 'edit.' + k, palette: false, run: (w) => transformText(w, k) })),
   { name: 'pasteUrl', label: 'edit.pasteUrl', accel: 'Alt+Cmd+V', keys: '⌥⌘V', run: (w) => w.pasteUrl() },
   // Présentation
-  { name: 'toggleSidebar', label: 'view.hideSidebar', accel: 'Cmd+S', keys: '⌘S', run: (w) => w.toggleSidebar() },
+  // Comme dans Arc : sans onglet ouvert, ⌘S ne masque pas la barre latérale (elle est alors
+  // le seul moyen d'en ouvrir un) ; masquée, il la ramène toujours.
+  { name: 'toggleSidebar', label: 'view.hideSidebar', accel: 'Cmd+S', keys: '⌘S', paletteLabel: (w) => (w.sidebarVisible ? (w.activeId ? 'view.hideSidebar' : '') : 'view.showSidebar'), run: (w) => (w.activeId || !w.sidebarVisible ? w.toggleSidebar() : undefined) },
   { name: 'toggleToolbar', label: 'view.showToolbar', accel: 'Shift+Cmd+D', keys: '⇧⌘D', run: () => setSetting('showToolbar', !store.state.settings.showToolbar) },
   { name: 'collapsePinned', label: 'view.collapsePinned', run: (w) => w.togglePinnedCollapsed() },
   { name: 'stop', label: 'view.stop', accel: 'Cmd+.', keys: '⌘.', palette: false, run: (w) => wc(w) && wc(w).stop() },
@@ -58,6 +73,8 @@ const COMMANDS = [
   { name: 'clearCookies', label: 'view.clearCookies', run: (w) => w.clearAndReload('cookies') },
   { name: 'clearCache', label: 'view.clearCache', run: (w) => w.clearAndReload('cache') },
   { name: 'addSplit', label: 'view.addSplit', accel: 'Ctrl+Shift+=', keys: '⌃⇧=', run: (w) => w.addSplit() },
+  // « Add Right/Left/Top/Bottom Split » d'Arc : la page choisie ensuite se place de ce côté.
+  ...['right', 'left', 'top', 'bottom'].map((side) => ({ name: 'addSplit' + side[0].toUpperCase() + side.slice(1), label: 'view.addSplit.' + side, run: (w) => w.addSplit(side) })),
   ...[1, 2, 3, 4].map((n) => ({ name: 'pane' + n, label: 'view.pane', accel: `Ctrl+Shift+${n}`, keys: `⌃⇧${n}`, palette: false, run: (w) => w.focusPane(n) })),
   { name: 'splitDirection', label: 'view.splitDirection', run: (w) => w.toggleSplitDirection() },
   { name: 'closeSplit', label: 'view.closeSplit', accel: 'Ctrl+Shift+-', keys: '⌃⇧-', run: (w) => w.closeSplitPane() },
@@ -73,6 +90,8 @@ const COMMANDS = [
   { name: 'source', label: 'view.source', accel: 'Alt+Cmd+U', keys: '⌥⌘U', run: (w) => wc(w) && w.newTab('view-source:' + wc(w).getURL()) },
   { name: 'devtools', label: 'view.devtools', accel: 'Alt+Cmd+I', keys: '⌥⌘I', run: (w) => wc(w) && wc(w).toggleDevTools() },
   { name: 'inspect', label: 'view.inspect', accel: 'Alt+Cmd+C', keys: '⌥⌘C', palette: false, run: (w) => wc(w) && wc(w).openDevTools({ mode: 'right', activate: true }) },
+  // « Network Inspector » d'Arc : les outils de développement, sur l'onglet Réseau.
+  { name: 'network', label: 'view.network', palette: false, run: (w) => showNetwork(wc(w)) },
   { name: 'console', label: 'view.console', accel: 'Alt+Cmd+J', keys: '⌥⌘J', palette: false, run: (w) => wc(w) && wc(w).openDevTools({ mode: 'bottom', activate: true }) },
   // Mode développeur du site affiché (⌃D dans Arc) : barre d'outils et adresse entière.
   { name: 'toggleDevMode', label: 'view.devMode', accel: 'Ctrl+D', keys: '⌃D', run: (w) => w.toggleDevMode() },
@@ -82,6 +101,8 @@ const COMMANDS = [
   { name: 'editTheme', label: 'spaces.editTheme', run: (w) => w.openTheme() },
   { name: 'renameSpace', label: 'spaces.rename', run: (w) => w.askRename(w.spaceId) },
   { name: 'deleteSpace', label: 'spaces.delete', palette: false, run: (w) => w.deleteSpace() },
+  // « Manage Spaces… » d'Arc : la section Espaces de la Bibliothèque.
+  { name: 'manageSpaces', label: 'spaces.manage', run: (w) => w.openInternal('library.html#spaces') },
   { name: 'nextSpace', label: 'spaces.next', accel: 'Alt+Cmd+Right', keys: '⌥⌘→', run: (w) => w.stepSpace(1) },
   { name: 'prevSpace', label: 'spaces.prev', accel: 'Alt+Cmd+Left', keys: '⌥⌘←', run: (w) => w.stepSpace(-1) },
   // Onglets
@@ -163,6 +184,8 @@ const COMMANDS = [
   { name: 'whatsNew', label: 'help.whatsNew', run: (w) => w.newTab(REPO_URL + '/releases') },
   // Aide → Dépannage.
   { name: 'revealData', label: 'help.revealData', global: true, run: () => shell.showItemInFolder(app.getPath('userData')) },
+  // « Record Trace » : enregistre l'activité de Chromium, puis range la trace dans Téléchargements.
+  { name: 'recordTrace', label: 'help.recordTrace', global: true, palette: false, run: (w) => recordTrace(w) },
   { name: 'copyInfo', label: 'help.copyInfo', global: true, run: (w) => { clipboard.writeText(appInfo()); if (w) w.toast(store.t('toast.infoCopied')); } },
 ];
 platform.adaptCommands(COMMANDS);
@@ -211,6 +234,89 @@ function noteBeside(w) {
 
 function makeDefault() {
   return platform.makeDefault();
+}
+
+// « Aller à la sélection » : la commande du moteur n'agit que si la page a le clavier (ce
+// n'est pas toujours le cas, sous Windows notamment) ; la page fait donc aussi défiler
+// elle-même le début de sa sélection (ou le champ où l'on écrit) au milieu de l'écran.
+function jumpToSelection(page) {
+  if (!page || page.isDestroyed()) return false;
+  page.centerSelection();
+  page.executeJavaScript(`(() => {
+    const s = getSelection();
+    const e = document.activeElement;
+    const node = s && s.rangeCount && !s.isCollapsed ? s.getRangeAt(0).startContainer : null;
+    const el = node ? (node.nodeType === 1 ? node : node.parentElement) : (e && /^(INPUT|TEXTAREA)$/.test(e.tagName) ? e : null);
+    if (el) el.scrollIntoView({ block: 'center', inline: 'nearest' });
+    return !!el;
+  })()`).catch(() => {});
+  return true;
+}
+
+// Gras, italique, souligné : commande d'édition du champ en cours de saisie (sans effet ailleurs).
+function formatText(w, kind) {
+  const page = require('electron').webContents.getFocusedWebContents() || wc(w);
+  if (!page || !['bold', 'italic', 'underline'].includes(kind)) return undefined;
+  return page.executeJavaScript(`document.execCommand(${JSON.stringify(kind)})`, true).catch(() => false);
+}
+
+// Majuscules, minuscules, capitales : la sélection du champ de texte est lue, transformée
+// ici, puis remise par la commande d'édition « remplacer » (annulable par ⌘Z dans la page).
+const TRANSFORMS = {
+  upper: (s) => s.toLocaleUpperCase(),
+  lower: (s) => s.toLocaleLowerCase(),
+  capitalize: (s) => s.toLocaleLowerCase().replace(/(^|[\s'’(\[«“-])(\p{L})/gu, (m, a, b) => a + b.toLocaleUpperCase()),
+};
+async function transformText(w, kind) {
+  const page = require('electron').webContents.getFocusedWebContents() || wc(w);
+  if (!page || !TRANSFORMS[kind]) return false;
+  const text = await page.executeJavaScript(`(() => {
+    const e = document.activeElement;
+    if (e && /^(INPUT|TEXTAREA)$/.test(e.tagName) && typeof e.selectionStart === 'number') return e.value.slice(e.selectionStart, e.selectionEnd);
+    return e && e.isContentEditable ? String(getSelection()) : '';
+  })()`).catch(() => '');
+  if (typeof text !== 'string' || !text || text.length > 100000) return false;
+  page.replace(TRANSFORMS[kind](text));
+  return true;
+}
+
+// « Minimize All » (⌥⌘M, macOS) : toutes les fenêtres d'Orbe vont au Dock.
+function minimizeAll() {
+  let n = 0;
+  for (const x of require('electron').BaseWindow.getAllWindows()) if (x.isVisible() && !x.isMinimized() && x.isMinimizable()) { x.minimize(); n += 1; }
+  return n;
+}
+
+// Outils de développement ouverts sur l'onglet Réseau.
+function showNetwork(page) {
+  if (!page) return;
+  const show = () => { const d = page.devToolsWebContents; if (d && !d.isDestroyed()) d.executeJavaScript('DevToolsAPI.showPanel("network")').catch(() => {}); };
+  if (page.isDevToolsOpened()) return show();
+  page.once('devtools-opened', () => setTimeout(show, 300));
+  page.openDevTools({ mode: 'bottom', activate: true });
+}
+
+// Trace de Chromium : premier appel, l'enregistrement commence ; second appel, il s'arrête
+// et le fichier est montré dans le dossier des téléchargements.
+const trace = { on: false };
+async function recordTrace(w) {
+  const { contentTracing } = require('electron');
+  const say = (key, vars) => { if (w && !w.gone) w.toast(store.t(key, null, vars)); };
+  try {
+    if (!trace.on) {
+      await contentTracing.startRecording({ included_categories: ['*'] });
+      trace.on = true;
+      say('toast.traceOn');
+    } else {
+      trace.on = false;
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const file = await contentTracing.stopRecording(require('path').join(app.getPath('downloads'), `orbe-trace-${stamp}.json`));
+      say('toast.traceSaved');
+      shell.showItemInFolder(file);
+    }
+  } catch (err) { trace.on = false; console.error('[orbe] trace', err.message); }
+  hooks.menuChanged();
+  return trace.on;
 }
 
 // « Utiliser la sélection pour rechercher » : le texte sélectionné dans la page
@@ -263,7 +369,7 @@ async function undo(w, way = 'undo') {
 async function importArc(w) {
   const arc = require('./import-arc');
   const t = (k, v) => store.t(k, null, v);
-  if (w.incognito) return;
+  if (!w.shared) return;
   let data;
   try { data = arc.read(); } catch { data = null; }
   if (!data || !data.spaces.length) {
@@ -322,4 +428,4 @@ function run(win, name, arg) {
   }
 }
 
-module.exports = { COMMANDS, byName, run, hooks, makeDefault, setSetting, appInfo, clearArchive, LIBRARY_SECTIONS, librarySection, REPO_URL };
+module.exports = { TRANSFORMS, tracing: () => trace.on, minimizeAll, COMMANDS, byName, run, hooks, makeDefault, setSetting, appInfo, clearArchive, LIBRARY_SECTIONS, librarySection, REPO_URL };

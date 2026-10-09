@@ -2,7 +2,7 @@
 // bascule d'onglets, thème), de barre de recherche ou de notification.
 const $ = (id) => document.getElementById(id);
 const send = O.send;
-const panels = ['command', 'switcher', 'theme', 'find', 'toast', 'peek', 'status', 'drop', 'swipe'];
+const panels = ['command', 'switcher', 'theme', 'icons', 'find', 'toast', 'peek', 'status', 'drop', 'swipe'];
 let mode = null;
 
 function show(name) {
@@ -469,6 +469,93 @@ function drawSwipe(msg) {
   box._p = p;
 }
 
+// --- Sélecteur d'icône --------------------------------------------------------
+// Un émoji pour un Espace, un dossier ou un onglet (emojis.js). Recherche par
+// mots-clés, teinte de peau retenue, flèches et Entrée au clavier ; le choix
+// part au processus principal, qui le vérifie.
+const iconsInput = $('icons-input');
+const iconsList = $('icons-list');
+let iconsState = null; // { kind, current, tone, at }
+const iconButtons = () => [...iconsList.querySelectorAll('.em-pick')];
+
+function drawIcons() {
+  const q = iconsInput.value.trim();
+  const found = emojiSearch(q);
+  iconsList.textContent = '';
+  let grid = null;
+  let group = null;
+  for (const x of found) {
+    // Sans recherche : une rubrique par titre ; avec : une seule grille.
+    if (!grid || (!q && x.group !== group)) {
+      group = x.group;
+      if (!q) iconsList.appendChild(Object.assign(document.createElement('h4'), { textContent: t('icons.group.' + x.group) }));
+      grid = Object.assign(document.createElement('div'), { className: 'icons-grid' });
+      iconsList.appendChild(grid);
+    }
+    const e = emojiTone(x.e, iconsState.tone);
+    const b = Object.assign(document.createElement('button'), { className: 'em-pick' + (e === iconsState.current ? ' sel' : ''), textContent: e });
+    b.dataset.e = e;
+    grid.appendChild(b);
+  }
+  if (!found.length) iconsList.appendChild(Object.assign(document.createElement('div'), { id: 'icons-empty', textContent: t('icons.none') }));
+  iconsState.at = -1;
+  for (const b of $('icons-tones').children) b.classList.toggle('sel', Number(b.dataset.tone) === iconsState.tone);
+}
+
+function iconsMove(delta) {
+  const all = iconButtons();
+  if (!all.length) return;
+  const at = Math.max(0, Math.min(all.length - 1, iconsState.at < 0 ? 0 : iconsState.at + delta));
+  if (all[iconsState.at]) all[iconsState.at].classList.remove('at');
+  iconsState.at = at;
+  all[at].classList.add('at');
+  all[at].scrollIntoView({ block: 'nearest' });
+}
+
+function openIcons(p) {
+  show('icons');
+  iconsState = { kind: p.kind, current: p.current || '', tone: p.tone || 0, at: -1 };
+  $('icons').style.left = (p.x || 260) + 'px';
+  $('icons-tones').textContent = '';
+  EMOJI_TONES.forEach((m, i) => {
+    const b = Object.assign(document.createElement('button'), { className: 'tone', textContent: '✋' + m, title: t('icons.tone') });
+    b.dataset.tone = i;
+    $('icons-tones').appendChild(b);
+  });
+  // Un Espace garde toujours une icône ; un dossier ou un onglet peut reprendre la sienne.
+  $('icons-reset').hidden = p.kind === 'space' || !p.current;
+  iconsInput.value = '';
+  drawIcons();
+  iconsList.scrollTop = 0;
+  iconsInput.focus();
+}
+
+iconsInput.addEventListener('input', drawIcons);
+iconsInput.addEventListener('keydown', (e) => {
+  const step = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 9, ArrowUp: -9 }[e.key];
+  if (step && (e.key === 'ArrowDown' || e.key === 'ArrowUp' || iconsState.at >= 0)) { e.preventDefault(); iconsMove(step); }
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  const all = iconButtons();
+  const b = all[iconsState.at] || (iconsInput.value.trim() ? all[0] : null);
+  if (b) send('icon', { emoji: b.dataset.e, tone: iconsState.tone });
+});
+iconsList.addEventListener('click', (e) => {
+  const b = e.target.closest('.em-pick');
+  if (b) send('icon', { emoji: b.dataset.e, tone: iconsState.tone });
+});
+// Les boutons ne prennent pas le clavier : on continue de taper dans le champ.
+for (const id of ['icons-list', 'icons-tones', 'icons-reset']) $(id).addEventListener('mousedown', (e) => e.preventDefault());
+$('icons-tones').addEventListener('click', (e) => {
+  const b = e.target.closest('.tone');
+  if (!b) return;
+  iconsState.tone = Number(b.dataset.tone);
+  const top = iconsList.scrollTop;
+  drawIcons();
+  iconsList.scrollTop = top;
+});
+$('icons-reset').onclick = () => send('icon', { emoji: '', tone: iconsState.tone });
+
 // --- Recherche dans la page -------------------------------------------------
 const findInput = $('find-input');
 findInput.addEventListener('input', () => send('find', { text: findInput.value }));
@@ -476,7 +563,20 @@ findInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') { e.preventDefault(); send('find', { text: findInput.value, forward: !e.shiftKey, next: true }); }
 });
 // Les boutons ne prennent pas le clavier : on continue de taper dans le champ.
-for (const id of ['find-next', 'find-prev']) $(id).addEventListener('mousedown', (e) => e.preventDefault());
+for (const id of ['find-next', 'find-prev', 'find-one', 'find-all']) $(id).addEventListener('mousedown', (e) => e.preventDefault());
+// Remplacer : l'occurrence désignée (Entrée dans « Remplacer par », ou le bouton), ou toutes.
+const findWith = $('find-with');
+const replaceFound = (all) => { if (findInput.value) send('findReplace', { text: findInput.value, with: findWith.value, all }); };
+findWith.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); replaceFound(false); }
+  // ⇥ et ⇧⇥ passent d'un champ à l'autre, sans s'arrêter sur les boutons.
+  if (e.key === 'Tab') { e.preventDefault(); findInput.focus(); findInput.select(); }
+});
+findInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Tab' && !$('find-replace').hidden) { e.preventDefault(); findWith.focus(); findWith.select(); }
+});
+$('find-one').onclick = () => replaceFound(false);
+$('find-all').onclick = () => replaceFound(true);
 $('find-next').onclick = () => send('find', { text: findInput.value, forward: true, next: true });
 $('find-prev').onclick = () => send('find', { text: findInput.value, forward: false, next: true });
 $('find-close').onclick = () => send('findClose');
@@ -489,8 +589,15 @@ O.on('overlay', (p) => {
   if (p.mode === 'command') openCommand(p);
   else if (p.mode === 'switcher') openSwitcher(p);
   else if (p.mode === 'theme') openTheme(p);
+  else if (p.mode === 'icons') openIcons(p);
+  else if (p.mode === 'command-value') {
+    // Barre de commande déjà ouverte : une autre adresse à modifier (adresse d'un épinglé).
+    if (mode === 'command' && typeof p.value === 'string') { input.value = p.value; input.select(); input.dispatchEvent(new Event('input')); }
+  }
   else if (p.mode === 'find') {
     show('find');
+    $('find').classList.toggle('replace', !!p.replace);
+    $('find-replace').hidden = !p.replace;
     $('find-count').textContent = '';
     // « Utiliser la sélection pour rechercher » : le texte vient de la page.
     if (typeof p.text === 'string') findInput.value = p.text;
@@ -561,7 +668,7 @@ $('peek-split').onclick = () => send('peekSplit');
 $('backdrop').addEventListener('mousedown', (e) => {
   // Barre de commande : le point du clic part avec la fermeture (la barre latérale reste cliquable).
   if (mode === 'command') send('closeOverlay', { x: e.clientX, y: e.clientY });
-  else if (mode === 'theme') send('closeOverlay');
+  else if (mode === 'theme' || mode === 'icons') send('closeOverlay');
   else if (mode === 'peek') send('peekClose');
 });
 // Bascule d'onglets : Tab ne déplace pas le focus, relâcher ⌃ valide.

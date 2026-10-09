@@ -7,6 +7,8 @@ const fs = require('fs');
 const os = require('os');
 const { store, uid, SPACE_COLORS, DEFAULT_SETTINGS } = require('./store');
 const veille = require('./veille');
+const icons = require('./icons');
+const keepalive = require('./keepalive');
 const Theme = require('../renderer/theme');
 const sounds = require('./sounds');
 const sessions = require('./sessions');
@@ -63,6 +65,8 @@ const loadingUi = new WeakSet(); // vues de l'interface créées à part, dont l
 // Une page détruite hors d'Orbe moins de quinze secondes après « Rester » n'est pas une page
 // qui s'est fermée d'elle-même : son onglet reste (voir `wire`, événement `destroyed`).
 const STAY_GUARD = 15000;
+const HISTORY_MAX = 50; // pages du parcours rendues à un onglet rouvert
+const REPLACE_MAX = 500; // « Tout remplacer » : nombre d'occurrences traitées au plus en une fois
 const SLEEP_WAIT = 4000; // temps laissé à une page pour répondre à une veille avant de la reproposer
 let lastLost = null; // dernière page ainsi perdue (diagnostic)
 // Journal court, par page, de ce qui a mené à sa fermeture : qui l'a consultée, ce qu'elle a
@@ -272,7 +276,7 @@ class OrbeWindow {
   static get primary() {
     return OrbeWindow.focused && !OrbeWindow.focused.incognito
       ? OrbeWindow.focused
-      : OrbeWindow.all.find((w) => !w.incognito) || null;
+      : OrbeWindow.all.find((w) => w.shared) || OrbeWindow.all.find((w) => !w.incognito) || null;
   }
   static ownerOf(wc) {
     if (wcOwner.has(wc.id)) return wcOwner.get(wc.id);
@@ -291,19 +295,26 @@ class OrbeWindow {
     });
   }
 
-  constructor({ incognito = false } = {}) {
+  // `blank` : fenêtre vierge, comme dans Arc — hors des Espaces. Elle a ses propres
+  // onglets, que rien n'enregistre dans la barre latérale des autres fenêtres, mais
+  // garde la session ordinaire (cookies, historique, archive), à la différence de
+  // la navigation privée.
+  constructor({ incognito = false, blank = false } = {}) {
     this.incognito = incognito;
-    const saved = incognito ? {} : store.state.window;
-    const first = !OrbeWindow.all.some((w) => !w.incognito);
-    this.data = incognito
-      ? { spaces: [store.makeSpace(t('incognito.title'), '🕶️', '#52525b')], tabs: {}, favs: { default: [] }, profiles: [{ id: 'default', name: '' }] }
+    this.blank = !incognito && !!blank;
+    const apart = incognito || this.blank;
+    const saved = apart ? {} : store.state.window;
+    const first = !OrbeWindow.all.some((w) => w.shared);
+    this.data = apart
+      ? { spaces: [incognito ? store.makeSpace(t('incognito.title'), '🕶️', '#52525b') : store.makeSpace(t('blank.title'), '◻️', '#71717a')], tabs: {}, favs: { default: [] }, profiles: [{ id: 'default', name: '' }] }
       : store.state;
     this.session = incognito ? sessions.incognitoSession() : sessions.mainSession();
-    const restore = !incognito && first;
+    const restore = !apart && first;
     const resume = resumed(saved, this.data.spaces, restore && store.state.settings.restoreSession !== false);
     this.spaceId = resume.spaceId;
     this.activeBySpace = resume.activeBySpace;
     this.closed = [];
+    this.histories = new Map(); // onglet rouvert, pas encore affiché : son parcours à rendre (voir `historyOf`)
     this.undoStack = [];
     this.redoStack = [];
     this.sidebarVisible = restore ? saved.sidebarVisible !== false : true;
@@ -556,7 +567,13 @@ class OrbeWindow {
 
   // La plus ancienne fenêtre normale encore ouverte mémorise son état.
   get persistent() {
-    return !this.incognito && OrbeWindow.all.find((w) => !w.incognito) === this;
+    return this.shared && OrbeWindow.all.find((w) => w.shared) === this;
+  }
+
+  // Fenêtre ordinaire : elle montre les Espaces enregistrés, partagés entre fenêtres
+  // (ni navigation privée, ni fenêtre vierge).
+  get shared() {
+    return !this.incognito && !this.blank;
   }
 
   // Retire toute trace d'un onglet (actif, vue scindée, lecteur) dans les
@@ -817,7 +834,7 @@ class OrbeWindow {
     if (this.findOpen && this.findView) {
       const i = Math.max(0, ids.indexOf(this.activeId));
       const right = panes[i] ? panes[i].x + panes[i].width : rect.x + paneW;
-      this.findView.setBounds({ x: Math.round(right - 372), y: (panes[i] ? panes[i].y + panes[i].bar : rect.y) + 10, width: 360, height: 50 });
+      this.findView.setBounds({ x: Math.round(right - 372), y: (panes[i] ? panes[i].y + panes[i].bar : rect.y) + 10, width: 360, height: this.findReplace ? 90 : 50 });
     }
     if (this.toastView) {
       // Au-dessus du volet concerné (le volet actif), pas au milieu de la vue scindée.
@@ -964,7 +981,13 @@ class OrbeWindow {
     rt = { id, view, wc: view.webContents, owner: this, loading: false, lastUsed: Date.now(), internal };
     live.set(id, rt);
     this.wire(rt, tab);
-    if (!viewOptions && !existing) rt.wc.loadURL(tab.url).catch(() => {});
+    if (!viewOptions && !existing) {
+      // Onglet rouvert (⇧⌘T, ⌘Z) : il retrouve son parcours — précédent et suivant fonctionnent.
+      const past = this.histories.get(id);
+      this.histories.delete(id);
+      if (past && past.entries[past.index] && past.entries[past.index].url === tab.url) rt.wc.navigationHistory.restore(past).catch(() => { if (!rt.wc.isDestroyed()) rt.wc.loadURL(tab.url).catch(() => {}); });
+      else rt.wc.loadURL(tab.url).catch(() => {});
+    }
     return rt;
   }
 
@@ -1313,7 +1336,8 @@ class OrbeWindow {
       lastUsed: rt.lastUsed,
       mb: mem ? mem.of(rt.id) : 0,
       // Épargné par les règles automatiques : l'utilisateur y a agi, la page charge, ou elle a refusé une veille.
-      typed: !!rt.typed || !!rt.loading || !!rt.objected,
+      // … ou c'est un site qui reste vivant (messagerie, courrier, musique : keepalive.js).
+      typed: !!rt.typed || !!rt.loading || !!rt.objected || keepalive.matches(rt.wc.getURL()),
       kept: visible.has(rt.id) || rt.wc.isCurrentlyAudible() || rt.wc.isDevToolsOpened() || hooks.busy(rt)
         // Image dans l'image, page filmée par une autre, téléchargement en cours, veille demandée à
         // l'instant (une page qui n'y a toujours pas répondu redevient candidate, limite en nombre comprise).
@@ -1500,7 +1524,8 @@ class OrbeWindow {
     let rec = null;
     if (loc.list === 'today') {
       loc.arr.splice(loc.index, 1);
-      rec = { tab: { ...tab }, spaceId: space.id, index: loc.index, active: wasActive, split };
+      rec = { tab: { ...tab }, spaceId: space.id, index: loc.index, active: wasActive, split, history: this.historyOf(id) || this.histories.get(id) || null };
+      this.histories.delete(id);
       this.closed.push(rec);
       if (this.closed.length > 50) this.closed.shift();
       if (!this.incognito) store.archive({ ...tab, spaceId: space.id, by: auto ? 'auto' : 'manual' });
@@ -1521,6 +1546,21 @@ class OrbeWindow {
     this.remember();
     this.changed();
     return undefined;
+  }
+
+  // Parcours d'un onglet qu'on ferme (pages précédentes et suivantes), pour le lui rendre
+  // s'il est rouvert. Gardé en mémoire seulement, avec la trace de fermeture ; adresses et
+  // titres, sans le contenu des formulaires. Rien si l'onglet n'a qu'une page, ou si son
+  // parcours passe par autre chose que des pages web.
+  historyOf(id) {
+    const rt = live.get(id);
+    if (!rt || rt.internal || rt.wc.isDestroyed() || this.incognito) return null;
+    let entries;
+    let index;
+    try { entries = rt.wc.navigationHistory.getAllEntries(); index = rt.wc.navigationHistory.getActiveIndex(); } catch { return null; }
+    if (!Array.isArray(entries) || entries.length < 2 || entries.length > HISTORY_MAX || !entries[index]) return null;
+    if (!entries.every((e) => e && webUrl(e.url))) return null;
+    return { entries: entries.map((e) => ({ url: e.url, title: String(e.title || '').slice(0, 300) })), index };
   }
 
   // ⇧⌘T : le dernier onglet (ou aperçu) fermé revient, à sa place.
@@ -1791,6 +1831,18 @@ class OrbeWindow {
     this.recordPlaces('undo.moveToSpace', before);
     for (const w of windows.values()) if (w.data === this.data) w.layout();
     this.changed();
+    if (!this.replaying) this.movedToast(id, target);
+  }
+
+  // « Tab moved! Click to go there. » d'Arc : l'onglet a quitté l'Espace affiché ; un clic sur
+  // le message mène à lui, dans son nouvel Espace.
+  movedToast(id, target, n = 1) {
+    if (target === this.space) return;
+    this.toast(t(n > 1 ? 'toast.tabsMoved' : 'toast.tabMoved', { space: target.name, n }), null, () => {
+      if (!this.data.spaces.includes(target) || !this.locate(id)) return;
+      this.switchSpace(target.id);
+      this.activate(id);
+    });
   }
 
   // --- Sélection multiple ---------------------------------------------------
@@ -1914,6 +1966,7 @@ class OrbeWindow {
     this.recordPlaces('undo.moveToSpace', before);
     this.dropSelection();
     this.changed();
+    this.movedToast(ids[0], this.data.spaces.find((s) => s.id === spaceId), ids.length);
   }
 
   copyLinks(ids) {
@@ -2102,6 +2155,7 @@ class OrbeWindow {
       if (d.tabs[id]) continue;
       const space = d.spaces.find((s) => s.id === rec.spaceId) || this.space;
       d.tabs[id] = { ...rec.tab, lastActiveAt: Date.now() };
+      if (rec.history) this.histories.set(id, rec.history);
       space.today.splice(clamp(rec.index, 0, space.today.length), 0, id);
       const i = this.closed.indexOf(rec);
       if (i >= 0) this.closed.splice(i, 1);
@@ -2254,12 +2308,72 @@ class OrbeWindow {
     this.activate(tab.id);
   }
 
-  deleteFolder(id) {
-    const f = findNode(this.space.pinned, id);
+  // Comme dans Arc : supprimer un dossier archive les onglets qu'il contient
+  // (sous-dossiers compris). Vide, il part sans question ; sinon la question le
+  // nomme et dit ce que deviennent ses onglets. ⌘Z remet tout en place.
+  async deleteFolder(id) {
+    const f = this.locate(id);
     if (!f || f.node.type !== 'folder') return;
-    let back = this.dissolveFolder(id);
-    this.record('undo.deleteFolder', () => back(), () => { back = this.dissolveFolder(id); });
+    const n = [...walk(f.node.children)].length;
+    if (n) {
+      const r = await dialog.showMessageBox(this.win, {
+        type: 'warning',
+        message: t('tabs.deleteFolderConfirm', { name: f.node.name }),
+        detail: t('tabs.deleteFolderDetail'),
+        buttons: [t('tabs.deleteFolder'), t('dialog.cancel')],
+        defaultId: 0,
+        cancelId: 1,
+      });
+      if (r.response !== 0 || this.gone || !this.locate(id)) return;
+    }
+    let back = this.removeFolder(id);
+    if (!back) return;
+    this.record('undo.deleteFolder', () => back(), () => { back = this.removeFolder(id) || back; });
+    if (n) this.toast(require('./shortcuts').inText(t('toast.folderDeleted', { n }), 'undo'));
+  }
+
+  // Retire un dossier et archive ses onglets, sans rien demander. Renvoie de quoi
+  // le rétablir : le dossier à sa place, ses onglets, leurs vues scindées.
+  removeFolder(id) {
+    const loc = this.locate(id);
+    if (!loc || loc.node.type !== 'folder') return null;
+    const folder = loc.node;
+    const space = loc.space;
+    const place = this.placeOf(id);
+    const ids = [...walk(folder.children)];
+    const tabs = {};
+    const archived = [];
+    const splits = (space.splits || []).filter((g) => g.some((x) => ids.includes(x))).map((g) => Object.assign([...g], g.ratios ? { ratios: [...g.ratios] } : {}));
+    const active = ids.includes(this.activeBySpace[space.id]) ? this.activeBySpace[space.id] : null;
+    for (const tid of ids) {
+      const tab = this.data.tabs[tid];
+      tabs[tid] = tab;
+      if (!this.incognito) {
+        const top = store.state.archive[0];
+        store.archive({ ...tab, title: tab.customTitle || tab.title, spaceId: space.id });
+        if (store.state.archive[0] !== top) archived.push(store.state.archive[0]);
+      }
+      OrbeWindow.destroyView(tid);
+      OrbeWindow.forget(tid, this.data);
+      delete this.data.tabs[tid];
+    }
+    loc.arr.splice(loc.index, 1);
+    for (const w of windows.values()) if (w.data === this.data) w.layout();
     this.changed();
+    return () => {
+      if (this.locate(id)) return;
+      Object.assign(this.data.tabs, tabs);
+      this.restorePlaces([place]);
+      if (!this.incognito) store.state.archive = store.state.archive.filter((a) => !archived.includes(a));
+      for (const g of splits) {
+        const members = g.filter((x) => this.data.tabs[x]);
+        if (members.length < 2 || members.some((x) => this.groupOf(x))) continue;
+        (space.splits || (space.splits = [])).push(Object.assign(members, g.ratios && members.length === g.length ? { ratios: [...g.ratios] } : {}));
+      }
+      if (active && this.data.tabs[active] && !this.activeBySpace[space.id]) this.activeBySpace[space.id] = active;
+      for (const w of windows.values()) if (w.data === this.data) w.layout();
+      this.changed();
+    };
   }
 
   askRename(id) {
@@ -2324,7 +2438,7 @@ class OrbeWindow {
   }
 
   newSpace() {
-    if (this.incognito) return;
+    if (!this.shared) return;
     const used = new Set(this.data.spaces.map((s) => s.color));
     const color = SPACE_COLORS.find((c) => !used.has(c));
     const space = store.makeSpace(t('spaces.defaultName'), '✨', color);
@@ -2334,6 +2448,7 @@ class OrbeWindow {
     let back = null;
     this.record('undo.newSpace', () => { back = this.removeSpace(space.id); }, () => back && back());
     this.changed();
+    this.toast(t('toast.spaceCreated')); // « New Space Created », comme dans Arc
     this.askRename(space.id);
   }
 
@@ -2360,6 +2475,164 @@ class OrbeWindow {
   toggleSpaceHeader(space = this.space) {
     space.hideHeader = !space.hideHeader;
     this.changed();
+  }
+
+  // --- Dossier ↔ Espace (« Turn into Folder » d'Arc, et son inverse) -----------------
+  // Aucun onglet n'est fermé ni rechargé : seules les listes changent. Les deux
+  // gestes sont l'inverse l'un de l'autre, ce qui sert aussi à ⌘Z.
+  //
+  // Dossier → Espace : le dossier devient un Espace placé juste après le sien (même
+  // profil), ses lignes en deviennent les épinglés. `into` (pour défaire l'inverse) :
+  // { space, index, today } — l'Espace d'origine, son rang, ses onglets du jour.
+  folderToSpace(id, into) {
+    const loc = this.locate(id);
+    if (!this.shared || !loc || loc.node.type !== 'folder') return null;
+    const d = this.data;
+    const src = loc.space;
+    const folder = loc.node;
+    const place = this.placeOf(id);
+    const used = new Set(d.spaces.map((s) => s.color));
+    const sp = (into && into.space) || Object.assign(store.makeSpace(folder.name, folder.icon || '📁', SPACE_COLORS.find((c) => !used.has(c))), { profileId: src.profileId });
+    if (d.spaces.includes(sp)) return null;
+    loc.arr.splice(loc.index, 1);
+    sp.name = folder.name;
+    if (folder.icon) sp.icon = folder.icon;
+    sp.pinned = folder.children;
+    folder.children = [];
+    sp.today = ((into && into.today) || []).filter((x) => src.today.includes(x));
+    src.today = src.today.filter((x) => !sp.today.includes(x));
+    d.spaces.splice(clamp(into && Number.isInteger(into.index) ? into.index : d.spaces.indexOf(src) + 1, 0, d.spaces.length), 0, sp);
+    const ids = new Set([...walk(sp.pinned), ...sp.today]);
+    this.carrySplits(src, sp, ids);
+    for (const w of windows.values()) {
+      if (w.data !== d) continue;
+      const act = w.activeBySpace[src.id];
+      if (act && ids.has(act)) { delete w.activeBySpace[src.id]; w.activeBySpace[sp.id] = act; }
+    }
+    if (sp.profileId !== src.profileId) for (const tid of ids) OrbeWindow.destroyView(tid);
+    for (const w of windows.values()) if (w.data === d) w.layout();
+    this.changed();
+    return { space: sp, folder, place };
+  }
+
+  // Espace → dossier : l'Espace disparaît ; ses épinglés forment un dossier à son nom
+  // dans l'Espace voisin (celui d'avant, sinon le suivant), ses onglets du jour
+  // rejoignent ceux du voisin. `into` (pour défaire l'inverse) : { folder, place }.
+  spaceToFolder(spaceId, into) {
+    const d = this.data;
+    const i = d.spaces.findIndex((s) => s.id === spaceId);
+    if (!this.shared || i < 0 || d.spaces.length < 2) return null;
+    const sp = d.spaces[i];
+    const home = into && into.place ? d.spaces.find((s) => s.id === into.place.spaceId && s !== sp) : null;
+    const dest = home || d.spaces[i - 1] || d.spaces[i + 1];
+    const folder = (into && into.folder) || { type: 'folder', id: uid(), open: true, children: [] };
+    folder.name = sp.name;
+    folder.icon = sp.icon;
+    folder.children = sp.pinned;
+    sp.pinned = [];
+    const today = [...sp.today];
+    const ids = new Set([...walk(folder.children), ...today]);
+    dest.today.push(...today);
+    sp.today = [];
+    if (home && into.place) this.restorePlaces([{ ...into.place, node: folder }]); else dest.pinned.push(folder);
+    this.carrySplits(sp, dest, ids);
+    d.spaces.splice(i, 1);
+    for (const w of windows.values()) {
+      if (w.data !== d) continue;
+      const act = w.activeBySpace[sp.id];
+      delete w.activeBySpace[sp.id];
+      if (w.spaceId === sp.id) { w.spaceId = dest.id; if (act) w.activeBySpace[dest.id] = act; }
+    }
+    if (sp.profileId !== dest.profileId) for (const tid of ids) OrbeWindow.destroyView(tid);
+    for (const w of windows.values()) if (w.data === d) w.layout();
+    this.remember();
+    this.changed();
+    return { space: sp, index: i, today, folder };
+  }
+
+  // Les vues scindées dont tous les volets changent d'Espace le suivent.
+  carrySplits(from, to, ids) {
+    const moved = (from.splits || []).filter((g) => g.every((x) => ids.has(x)));
+    if (!moved.length) return;
+    from.splits = from.splits.filter((g) => !moved.includes(g));
+    (to.splits || (to.splits = [])).push(...moved);
+    for (const g of moved) {
+      if (from.splitDirs && from.splitDirs[g[0]]) { (to.splitDirs || (to.splitDirs = {}))[g[0]] = from.splitDirs[g[0]]; delete from.splitDirs[g[0]]; }
+    }
+  }
+
+  turnFolderIntoSpace(id) {
+    const r = this.folderToSpace(id);
+    if (!r) return false;
+    this.switchSpace(r.space.id);
+    let back = null;
+    this.record('undo.folderToSpace',
+      () => { back = this.spaceToFolder(r.space.id, { folder: r.folder, place: r.place }); },
+      () => { if (back && this.folderToSpace(id, { space: r.space, index: back.index, today: back.today })) this.switchSpace(r.space.id); });
+    return true;
+  }
+
+  turnSpaceIntoFolder(spaceId = this.spaceId) {
+    const r = this.spaceToFolder(spaceId);
+    if (!r) return false;
+    this.record('undo.spaceToFolder',
+      () => { if (this.folderToSpace(r.folder.id, { space: r.space, index: r.index, today: r.today })) this.switchSpace(r.space.id); },
+      () => { this.spaceToFolder(spaceId, { folder: r.folder }); });
+    return true;
+  }
+
+  // --- Icône d'un Espace, d'un dossier ou d'un onglet -----------------------------
+  // Ce qui porte l'icône : l'Espace, le nœud du dossier, ou l'onglet.
+  iconHolder(kind, id) {
+    if (kind === 'space') return this.data.spaces.find((s) => s.id === id) || null;
+    const loc = this.locate(id);
+    if (!loc) return null;
+    if (kind === 'folder') return loc.node.type === 'folder' ? loc.node : null;
+    return kind === 'tab' && loc.node.type !== 'folder' ? this.data.tabs[id] : null;
+  }
+
+  // Sélecteur d'émojis (recherche, teintes de peau), à côté de la barre latérale.
+  openIcons(kind, id) {
+    const holder = this.iconHolder(kind, id);
+    if (!holder) return;
+    this.iconTarget = { kind, id };
+    const tone = Number((store.state.window || {}).emojiTone) || 0;
+    this.showModal('icons', { kind, current: holder.icon || '', tone: clamp(Math.floor(tone), 0, 5), x: this.sidebarVisible ? this.sidebarWidth + 10 : 20 });
+  }
+
+  // Choix fait dans le sélecteur : { emoji, tone }. L'émoji est vérifié (icons.js) ; vide, il
+  // rend l'icône d'origine (icône du site, dossier) — un Espace garde toujours une icône.
+  chooseIcon(a) {
+    const target = this.iconTarget;
+    if (!target || this.modalMode !== 'icons' || !a || typeof a !== 'object') return false;
+    const emoji = icons.clean(a.emoji);
+    if (emoji === null || (!emoji && target.kind === 'space')) return false;
+    if (Number.isInteger(a.tone) && a.tone >= 0 && a.tone <= 5 && store.state.window) store.state.window.emojiTone = a.tone;
+    this.hideModal();
+    return this.setIcon(target.kind, target.id, emoji);
+  }
+
+  setIcon(kind, id, emoji) {
+    const holder = this.iconHolder(kind, id);
+    if (!holder || (emoji && !icons.valid(emoji))) return false;
+    const before = holder.icon || '';
+    if (before === emoji) return false;
+    // L'onglet est relu à chaque fois : archivé puis rouvert, ce n'est plus le même objet.
+    const put = (v) => { const h = this.iconHolder(kind, id); if (!h) return; if (v) h.icon = v; else delete h.icon; this.changed(); };
+    put(emoji);
+    this.record('undo.changeIcon', () => put(before), () => put(emoji));
+    return true;
+  }
+
+  // « Réinitialiser le nom et l'icône » d'un onglet : il reprend le titre et l'icône de sa page.
+  resetNameIcon(id) {
+    const tab = this.data.tabs[id];
+    if (!tab || (!tab.customTitle && !tab.icon)) return false;
+    const was = { customTitle: tab.customTitle, icon: tab.icon };
+    const put = (v) => { const x = this.data.tabs[id]; if (!x) return; for (const k of ['customTitle', 'icon']) { if (v[k]) x[k] = v[k]; else delete x[k]; } this.changed(); };
+    put({});
+    this.record('undo.resetNameIcon', () => put(was), () => put({}));
+    return true;
   }
 
   // Section épinglée repliée : seul l'onglet affiché y reste visible.
@@ -2392,7 +2665,7 @@ class OrbeWindow {
       type: 'warning',
       message: t('spaces.deleteConfirm', { name: space.name }),
       detail: t('spaces.deleteDetail'),
-      buttons: [t('spaces.delete').replace('…', ''), t('edit.undo')],
+      buttons: [t('spaces.delete').replace('…', ''), t('dialog.cancel')],
       defaultId: 1,
       cancelId: 1,
     });
@@ -2417,9 +2690,10 @@ class OrbeWindow {
     for (const tid of [...walk(space.pinned), ...space.today]) {
       const tab = this.data.tabs[tid];
       tabs[tid] = tab;
-      if (space.today.includes(tid) && !this.incognito) {
+      // Comme dans Arc : tout va dans l'archive, les épinglés et le contenu des dossiers aussi.
+      if (!this.incognito) {
         const top = store.state.archive[0];
-        store.archive({ ...tab, spaceId: space.id });
+        store.archive({ ...tab, title: tab.customTitle || tab.title, spaceId: space.id });
         if (store.state.archive[0] !== top) archived.push(store.state.archive[0]);
       }
       OrbeWindow.destroyView(tid);
@@ -2450,7 +2724,7 @@ class OrbeWindow {
 
   // --- Profils --------------------------------------------------------------
   setProfile(profileId, space = this.space) {
-    if (this.incognito || space.profileId === profileId || !this.data.profiles.some((p) => p.id === profileId)) return;
+    if (!this.shared || space.profileId === profileId || !this.data.profiles.some((p) => p.id === profileId)) return;
     for (const id of [...walk(space.pinned), ...space.today]) OrbeWindow.destroyView(id);
     space.profileId = profileId;
     for (const w of windows.values()) w.layout();
@@ -2458,7 +2732,7 @@ class OrbeWindow {
   }
 
   newProfile() {
-    if (this.incognito) return;
+    if (!this.shared) return;
     const profile = { id: uid(), name: t('profiles.name', { n: this.data.profiles.length + 1 }) };
     this.data.profiles.push(profile);
     this.data.favs[profile.id] = [];
@@ -2498,11 +2772,31 @@ class OrbeWindow {
     if (!quiet) this.activate(b);
   }
 
-  addSplit() {
+  // `side` (« Add Right/Left/Top/Bottom Split » d'Arc) : où se place le volet qu'on va choisir
+  // par rapport à la page affichée ; sans côté, à sa droite (ou dessous, vue empilée).
+  addSplit(side) {
     if (!this.activeId) return this.openCommand('new');
     const g = this.groupOf(this.activeId);
     if (g && g.length >= 4) return this.toast(t('toast.splitMax'), 'error');
+    const closing = this.modalMode === 'command' && this.commandMode === 'split'; // second appel : la barre se referme
     this.openCommand('split');
+    this.splitSide = !closing && ['left', 'right', 'top', 'bottom'].includes(side) ? side : null;
+    return undefined;
+  }
+
+  // Place le volet `added` du côté voulu de `anchor` : avant ou après lui, et la vue
+  // passe côte à côte (gauche, droite) ou empilée (haut, bas).
+  placeSplit(anchor, added, side) {
+    const g = this.groupOf(anchor);
+    if (!side || !g || !g.includes(added) || anchor === added) return;
+    const vertical = side === 'top' || side === 'bottom';
+    this.setVertical(g, false);
+    g.splice(g.indexOf(added), 1);
+    g.splice(g.indexOf(anchor) + (side === 'left' || side === 'top' ? 0 : 1), 0, added);
+    delete g.ratios;
+    this.setVertical(g, vertical);
+    this.layout();
+    this.changed();
   }
 
   focusPane(n) {
@@ -2591,6 +2885,9 @@ class OrbeWindow {
     return [
       { label: t('edit.copyUrl'), click: () => { clipboard.writeText(cleanUrl(tab.url)); this.toast(t('toast.urlCopied')); } },
       { label: t('ctx.reload'), enabled: !!rt, click: () => { if (rt && !rt.wc.isDestroyed()) rt.wc.reload(); } },
+      // Propres à ce volet : sa copie dans un nouvel onglet, son propre son.
+      { label: t('tabs.duplicate'), click: () => this.duplicate(id) },
+      { label: t(tab.muted ? 'tabs.unmute' : 'tabs.mute'), click: () => this.toggleMute(id) },
       { type: 'separator' },
       { label: t(vertical ? 'pane.moveUp' : 'pane.moveLeft'), enabled: i > 0, click: () => this.movePane(id, -1) },
       { label: t(vertical ? 'pane.moveDown' : 'pane.moveRight'), enabled: i < g.length - 1, click: () => this.movePane(id, 1) },
@@ -2847,6 +3144,7 @@ class OrbeWindow {
   // 'new' : nouvel onglet ; 'edit' : modifie l'adresse de l'onglet actif ;
   // 'split' : ouvre le résultat dans un nouveau volet.
   openCommand(mode = 'new') {
+    this.pinEdit = null; // voir `editPinned`
     if (mode === 'edit' && !this.activeId) mode = 'new';
     if (this.modalMode === 'command' && this.commandMode === mode) return this.hideModal();
     this.commandMode = mode;
@@ -2860,6 +3158,19 @@ class OrbeWindow {
       centerX: Math.round(W / 2),
       anchor: mode === 'edit' && this.sidebarVisible ? { x: 8, y: 46, width: Math.max(460, this.sidebarWidth + 220) } : null,
     });
+  }
+
+  // « Edit Pinned Page → Edit… » d'Arc : la barre d'adresse s'ouvre sur l'adresse épinglée ;
+  // l'adresse validée devient celle de l'épinglé (ou du favori), qui s'y rend.
+  editPinned(id) {
+    const tab = this.data.tabs[id];
+    const loc = this.locate(id);
+    if (!tab || !loc || loc.list === 'today' || !tab.homeUrl) return;
+    if (this.activeId !== id) this.activate(id);
+    if (this.modalMode === 'command') this.hideModal();
+    this.openCommand('edit');
+    this.sendUi(this.modal, 'overlay', { mode: 'command-value', value: tab.homeUrl }, () => this.modalMode === 'command');
+    this.pinEdit = id;
   }
 
   commandList() {
@@ -2897,21 +3208,35 @@ class OrbeWindow {
 
   runItem(item, { background = false } = {}) {
     const mode = this.commandMode;
+    const side = mode === 'split' ? this.splitSide : null;
+    this.splitSide = null;
+    const anchor = this.activeId;
+    const pinEdit = mode === 'edit' && this.pinEdit === this.activeId ? this.pinEdit : null;
     this.hideModal();
+    this.pinEdit = null;
     if (!item) return;
     if (item.kind === 'command') return this.run(String(item.command), item.arg);
     if (item.kind === 'tab' && this.locate(item.tabId)) {
-      if (mode === 'split' && this.activeId) return this.splitWith(this.activeId, item.tabId);
+      if (mode === 'split' && this.activeId) { this.splitWith(this.activeId, item.tabId); return this.placeSplit(anchor, item.tabId, side); }
       return this.activate(item.tabId);
     }
     const target = item.url || item.title;
     if (!target) return;
     if (mode === 'edit' && this.activeId && !background) {
       // ⌘L puis Entrée sans rien changer : la page est actualisée, comme dans Arc.
+      const home = pinEdit && item.kind !== 'tab' ? webUrl(suggest.resolve(target)) : null;
+      if (home) {
+        const tab = this.data.tabs[pinEdit];
+        const before = tab.homeUrl;
+        const put = (v) => { const x = this.data.tabs[pinEdit]; if (x) { x.homeUrl = v; this.changed(); } };
+        if (before !== home) { put(home); this.record('undo.editPinned', () => put(before), () => put(home)); }
+        return this.navigate(home);
+      }
       if (item.kind === 'raw' && target === this.data.tabs[this.activeId].url && live.has(this.activeId)) return this.reload(false);
       return this.navigate(target);
     }
-    this.newTab(target, { background, split: mode === 'split' });
+    const tab = this.newTab(target, { background, split: mode === 'split' });
+    if (tab && side) this.placeSplit(anchor, tab.id, side);
   }
 
   run(name, arg) {
@@ -3007,9 +3332,11 @@ class OrbeWindow {
   }
 
   // `text` : recherche posée d'avance dans le champ (« Utiliser la sélection pour rechercher »).
-  openFind(text) {
+  // `replace` : la barre montre aussi « Remplacer par » (⌥⌘F, « Find and Replace » d'Arc).
+  openFind(text, { replace = false } = {}) {
     const wc = this.activeWc;
     if (!wc) return;
+    this.findReplace = !!replace;
     if (!this.findView) {
       this.findView = this.makeUiView('overlay.html#find');
       this.findView.setVisible(false);
@@ -3020,7 +3347,7 @@ class OrbeWindow {
     this.findView.setVisible(true);
     const show = () => {
       if (this.gone || this.findView.webContents.isDestroyed()) return;
-      this.findView.webContents.send('overlay', typeof text === 'string' ? { mode: 'find', text } : { mode: 'find' });
+      this.findView.webContents.send('overlay', { mode: 'find', replace: this.findReplace, ...(typeof text === 'string' ? { text } : null) });
       this.findView.webContents.focus();
     };
     if (this.findView.webContents.isLoading()) this.findView.webContents.once('did-finish-load', show);
@@ -3041,13 +3368,83 @@ class OrbeWindow {
     if (this.findText) this.find(this.findText, { forward, next: true });
   }
 
+  // Recherche dont on attend le résultat complet (remplacement) ; null si la page ne répond pas.
+  findAwait(wc, text, options) {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => { this.findWaiter = null; resolve(null); }, 2000);
+      this.findWaiter = (r) => { clearTimeout(timer); resolve(r); };
+      wc.findInPage(text, options);
+    });
+  }
+
+  // « Remplacer » : l'occurrence désignée par la recherche devient la sélection de la page ;
+  // si elle se trouve dans un champ de saisie ou une zone de texte modifiable, la commande
+  // d'édition « remplacer » y met le nouveau texte (annulable par ⌘Z dans la page), puis la
+  // recherche passe à la suivante. Hors d'une zone modifiable, rien n'est changé.
+  // `all` : toutes les occurrences, une à une, au plus autant qu'il y en avait au départ.
+  // Renvoie le nombre de remplacements.
+  async replaceFound(a) {
+    const rt = this.activeRt;
+    if (!rt || rt.wc.isDestroyed() || !this.findOpen || !this.findReplace || this.replacing || !a || typeof a !== 'object') return 0;
+    const wc = rt.wc;
+    const text = String(a.text || '').slice(0, 500);
+    const by = String(a.with == null ? '' : a.with).slice(0, 5000);
+    if (!text) return 0;
+    this.replacing = true;
+    let done = 0;
+    try {
+      let found = this.findText === text && this.findLast && this.findLast.matches ? this.findLast : await this.findAwait(wc, text, { forward: true, findNext: true });
+      this.findText = text;
+      const total = found ? found.matches : 0;
+      const turns = a.all ? Math.min(total, REPLACE_MAX) : Math.min(total, 1);
+      for (let i = 0; i < turns && found && found.matches; i++) {
+        wc.stopFindInPage('keepSelection');
+        // La sélection est-elle l'occurrence, dans une zone modifiable ? Sinon on se place juste après.
+        const selected = (skip) => wc.executeJavaScript(`(() => {
+          const want = ${JSON.stringify(text.toLowerCase())};
+          const e = document.activeElement;
+          if (e && /^(INPUT|TEXTAREA)$/.test(e.tagName) && !e.readOnly && !e.disabled && typeof e.selectionStart === 'number' && e.value.slice(e.selectionStart, e.selectionEnd).toLowerCase() === want) return true;
+          const s = getSelection();
+          const node = s.rangeCount ? s.getRangeAt(0).commonAncestorContainer : null;
+          const host = node && (node.nodeType === 1 ? node : node.parentElement);
+          if (host && host.isContentEditable && String(s).toLowerCase() === want) return true;
+          if (${skip ? 'true' : 'false'} && s.rangeCount) s.collapseToEnd();
+          return false;
+        })()`).catch(() => false);
+        // (Quelques essais : la fin de la recherche, elle aussi, peut arriver un instant après.)
+        let editable = false;
+        for (let k = 0; k < 4 && editable !== true && !wc.isDestroyed(); k++) editable = await selected(k === 3);
+        if (wc.isDestroyed() || this.activeRt !== rt || !this.findOpen) break;
+        if (editable === true) {
+          wc.replace(by);
+          // La commande d'édition et la recherche suivante ne voyagent pas par le même canal : la
+          // recherche pouvait arriver la première et laisser l'occurrence en place. On attend donc
+          // que la page ait remplacé (la sélection n'est plus l'occurrence) avant de chercher la suite.
+          let gone = false;
+          for (let k = 0; k < 40 && !gone && !wc.isDestroyed(); k++) gone = (await selected(false)) !== true;
+          if (gone) done += 1;
+          if (wc.isDestroyed() || this.activeRt !== rt || !this.findOpen) break;
+        }
+        found = await this.findAwait(wc, text, { forward: true, findNext: true });
+      }
+    } finally { this.replacing = false; }
+    if (!this.gone && (a.all || !done)) this.toast(t(done ? 'find.replaced' : 'find.replacedNone', { n: done }));
+    return done;
+  }
+
   sendFind(result) {
+    if (result && result.finalUpdate) {
+      this.findLast = result;
+      if (this.findWaiter) { const done = this.findWaiter; this.findWaiter = null; done(result); }
+    }
     if (this.findOpen && this.findView) this.findView.webContents.send('find-result', { matches: result.matches, current: result.activeMatchOrdinal });
   }
 
   closeFind() {
     if (!this.findOpen) return;
     this.findOpen = false;
+    this.findReplace = false;
+    this.findLast = null;
     this.findText = '';
     this.findView.setVisible(false);
     try { this.win.contentView.removeChildView(this.findView); } catch {}
@@ -3560,9 +3957,11 @@ class OrbeWindow {
       { label: t('tabs.copyLinkMarkdown'), click: () => clipboard.writeText(mdLink(tab.customTitle || tab.title, tab.url)) },
       { label: t('tabs.duplicate'), click: () => this.duplicate(id) },
       { label: t('tabs.rename'), visible: !fav, click: () => this.askRename(id) },
+      { label: t('tabs.changeIcon'), click: () => this.openIcons('tab', id) },
+      { label: t('tabs.resetNameIcon'), visible: !!(tab.customTitle || tab.icon), click: () => this.resetNameIcon(id) },
       { type: 'separator' },
       { label: t(pinned ? 'tabs.unpin' : 'tabs.pin'), visible: !fav, click: () => this.togglePin(id) },
-      { label: t(fav ? 'tabs.removeFavorite' : 'tabs.addFavorite'), visible: !this.incognito, click: () => this.toggleFavorite(id) },
+      { label: t(fav ? 'tabs.removeFavorite' : 'tabs.addFavorite'), visible: this.shared, click: () => this.toggleFavorite(id) },
       { label: t('tabs.openSplit'), enabled: !!this.activeId && this.activeId !== id, click: () => this.splitWith(this.activeId, id) },
       { label: t('tabs.separateAll'), visible: !!this.groupOf(id), click: () => this.separateAll(id) },
       { label: t(tab.muted ? 'tabs.unmute' : 'tabs.mute'), click: () => this.toggleMute(id) },
@@ -3587,6 +3986,7 @@ class OrbeWindow {
         { label: t('tabs.resetPinned'), click: () => this.resetPinned(id) },
         { label: t('tabs.replacePinned'), click: () => { tab.homeUrl = tab.url; this.changed(); } });
     }
+    if (tab.homeUrl && loc.list !== 'today') tpl.push({ label: t('tabs.editPinned'), click: () => this.editPinned(id) });
     // Un épinglé ou un favori ne s'archive pas : sa page se ferme, il reste dans la barre.
     const kept = loc.list !== 'today';
     tpl.push({ type: 'separator' }, { label: t(kept ? 'tabs.closeKeep' : 'tabs.close'), enabled: !kept || live.has(id), click: () => this.close(id) });
@@ -3619,7 +4019,7 @@ class OrbeWindow {
       { label: t('tabs.duplicate'), click: () => this.duplicateMany(ids) },
       { type: 'separator' },
       { label: t(pinned ? 'tabs.unpinMany' : 'tabs.pinMany', { n }), visible: !favs, enabled: pinned || lists.includes('today'), click: () => this.pinMany(ids) },
-      { label: t(favs ? 'tabs.removeFavorite' : 'tabs.addFavorite'), visible: !this.incognito, click: () => this.favoriteMany(ids) },
+      { label: t(favs ? 'tabs.removeFavorite' : 'tabs.addFavorite'), visible: this.shared, click: () => this.favoriteMany(ids) },
       { label: t('tabs.folderFromSelection'), click: () => this.folderFromSelection(ids) },
     ];
     if (others.length && !lists.includes('favorites')) {
@@ -3640,6 +4040,7 @@ class OrbeWindow {
     const any = !walk(f.node.children).next().done;
     return [
       { label: t('tabs.renameFolder'), click: () => this.askRename(id) },
+      { label: t('tabs.changeIcon'), click: () => this.openIcons('folder', id) },
       { label: t('tabs.duplicateFolder'), click: () => this.duplicateFolder(id) },
       { type: 'separator' },
       { label: t('tabs.copyAllLinks'), enabled: any, click: () => this.copyFolderLinks(id, false) },
@@ -3648,6 +4049,7 @@ class OrbeWindow {
       { label: t('tabs.newNestedFolder'), click: () => this.newFolder(id) },
       { label: t('tabs.pasteUrlTab'), enabled: !!pasteable, click: () => this.pasteInFolder(id) },
       { label: t(f.node.open !== false ? 'tabs.closeFolder' : 'tabs.openFolder'), click: () => this.toggleFolder(id) },
+      { label: t('tabs.folderToSpace'), visible: this.shared, click: () => this.turnFolderIntoSpace(id) },
       { type: 'separator' },
       { label: t('tabs.deleteFolder'), click: () => this.deleteFolder(id) },
     ];
@@ -3670,12 +4072,14 @@ class OrbeWindow {
     return [
       { label: t('spaces.rename'), click: () => this.askRename(this.spaceId) },
       { label: t('spaces.editTheme'), click: () => this.openTheme() },
-      { label: t('spaces.changeIcon'), click: () => this.openTheme() },
-      { label: t('spaces.profile'), enabled: !this.incognito, submenu: this.profileItems() },
+      { label: t('spaces.changeIcon'), click: () => this.openIcons('space', this.spaceId) },
+      { label: t('spaces.profile'), enabled: this.shared, submenu: this.profileItems() },
       { label: t(this.space.hideHeader ? 'spaces.showHeader' : 'spaces.hideHeader'), click: () => this.toggleSpaceHeader() },
+      { label: t('spaces.toFolder'), visible: this.shared, enabled: this.data.spaces.length > 1, click: () => this.turnSpaceIntoFolder() },
+      { label: t('spaces.manage'), visible: this.shared, click: () => this.run('manageSpaces') },
       { type: 'separator' },
       { label: t('tabs.newFolder'), click: () => this.newFolder() },
-      { label: t('spaces.new'), enabled: !this.incognito, click: () => this.newSpace() },
+      { label: t('spaces.new'), enabled: this.shared, click: () => this.newSpace() },
       { type: 'separator' },
       { label: t('spaces.delete'), enabled: this.data.spaces.length > 1, click: () => this.deleteSpace() },
     ];
@@ -3692,7 +4096,7 @@ class OrbeWindow {
     const create = [
       { label: t('tabs.newTab'), click: () => this.openCommand('new') },
       { label: t('tabs.newFolder'), click: () => this.newFolder() },
-      { label: t('spaces.new'), enabled: !this.incognito, click: () => this.newSpace() },
+      { label: t('spaces.new'), enabled: this.shared, click: () => this.newSpace() },
       { type: 'separator' },
     ];
     if (plus) {
@@ -3705,7 +4109,7 @@ class OrbeWindow {
     }
     return [...create,
       { label: t('spaces.editTheme'), click: () => this.openTheme() },
-      { label: t('spaces.profile'), enabled: !this.incognito, submenu: this.profileItems() },
+      { label: t('spaces.profile'), enabled: this.shared, submenu: this.profileItems() },
       { type: 'separator' },
       { label: t('tabs.expandFolders'), click: () => this.setFoldersOpen(true) },
       { label: t('tabs.collapseFolders'), click: () => this.setFoldersOpen(false) },
@@ -3830,6 +4234,7 @@ class OrbeWindow {
         title: tab.customTitle || tab.title || suggest.strip(tab.url) || '…',
         url: tab.url,
         favicon: tab.favicon,
+        ...(tab.icon ? { icon: tab.icon } : null),
         loading: !!(alive && rt.loading),
         audible: !!(alive && rt.wc.isCurrentlyAudible()),
         muted: !!tab.muted,
@@ -3839,14 +4244,14 @@ class OrbeWindow {
         split: g ? this.splits.indexOf(g) + 1 : 0,
         // Comme dans Arc, une vue scindée n'occupe qu'une ligne : celle de son
         // premier onglet, qui porte les icônes et les titres des autres.
-        partners: g && g[0] === id ? g.slice(1).filter((x) => d.tabs[x]).map((x) => ({ id: x, title: d.tabs[x].customTitle || d.tabs[x].title || suggest.strip(d.tabs[x].url), favicon: d.tabs[x].favicon, url: d.tabs[x].url })) : null,
+        partners: g && g[0] === id ? g.slice(1).filter((x) => d.tabs[x]).map((x) => ({ id: x, title: d.tabs[x].customTitle || d.tabs[x].title || suggest.strip(d.tabs[x].url), favicon: d.tabs[x].favicon, ...(d.tabs[x].icon ? { icon: d.tabs[x].icon } : null), url: d.tabs[x].url })) : null,
         grouped: !!g && g[0] !== id,
         active: g && g[0] === id ? g.includes(activeId) : id === activeId,
         shown: false,
       };
     };
     const nodeVM = (n) => (n.type === 'folder'
-      ? { type: 'folder', id: n.id, name: n.name, open: n.open !== false, children: n.children.map(nodeVM) }
+      ? { type: 'folder', id: n.id, name: n.name, ...(n.icon ? { icon: n.icon } : null), open: n.open !== false, children: n.children.map(nodeVM) }
       : tabVM(n.id));
     // Listes des Espaces voisins : la barre latérale les fait glisser à côté de la
     // liste courante pendant le balayage à deux doigts, avant tout changement.
@@ -3877,6 +4282,7 @@ class OrbeWindow {
       translucent: settings.translucent,
       dark: nativeTheme.shouldUseDarkColors,
       incognito: this.incognito,
+      blank: this.blank,
       sidebar: { visible: this.sidebarVisible, peek: this.peek, width: this.sidebarWidth },
       toolbar,
       fullUrl: settings.showFullUrl !== false || (!!tab && prefs.devMode(tab.url)),
@@ -4019,6 +4425,8 @@ class OrbeWindow {
       case 'switcherCommit': return this.switcherCommit();
       case 'find': return this.find(String(a.text || ''), a);
       case 'findClose': return this.closeFind();
+      case 'findReplace': return this.replaceFound(a);
+      case 'icon': return this.chooseIcon(a);
       case 'theme': return this.setTheme(a);
       case 'themeExtra': return this.setThemeExtra(a || {});
       case 'themeGet': return this.themeNow();
@@ -4069,7 +4477,7 @@ function applyBoosts(host) {
 }
 
 function archiveStale() {
-  const any = OrbeWindow.all.find((w) => !w.incognito);
+  const any = OrbeWindow.all.find((w) => w.shared);
   if (!any) return;
   const activeIds = new Set();
   for (const w of windows.values()) {
@@ -4078,6 +4486,7 @@ function archiveStale() {
     for (const g of w.splits) for (const id of g) activeIds.add(id);
   }
   let count = 0;
+  let delay = 0;
   for (const space of store.state.spaces) {
     // Délai du profil de l'Espace, sinon délai général ; 0 : jamais.
     const hours = prefs.get('archiveAfterHours', space.profileId);
@@ -4090,7 +4499,14 @@ function archiveStale() {
       if (rt && !rt.wc.isDestroyed() && rt.wc.isCurrentlyAudible()) continue;
       any.close(id, { silent: true, ask: false, auto: true });
       count += 1;
+      delay = hours;
     }
+  }
+  // La première fois seulement (comme le bandeau d'Arc) : un message explique l'archivage
+  // d'office et mène au réglage du délai.
+  if (count && store.state.window && !store.state.window.archiveNoticed) {
+    store.state.window.archiveNoticed = true;
+    any.toast(t('toast.autoArchive', { n: count, hours: delay }), null, () => hooks.openSettings());
   }
   if (count) { store.save(); for (const w of windows.values()) w.layout(); OrbeWindow.pushAll(); }
 }
