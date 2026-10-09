@@ -25,6 +25,7 @@
 //     affiché pour une vérification automatique.
 // Le module ne dépend pas d'Electron : tout lui est passé par `configure`.
 const crypto = require('crypto');
+const { execFile } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
@@ -59,11 +60,14 @@ const deps = {
   show: () => {}, // ouvre les réglages sur la carte des mises à jour
   changed: () => {},
   now: () => Date.now(),
+  idleMs: 30e3, // téléchargement : silence au-delà duquel on abandonne
+  mark: null, // remplace le marquage « venu d'Internet » (essais)
 };
 let checking = null;
 let lastError = '';
 let download = { state: 'idle' }; // idle | running | done | error
 let timer = null;
+let aborter = null; // téléchargement en cours
 
 function parseVersion(v) {
   const m = VERSION.exec(String(v || '').trim());
@@ -96,11 +100,24 @@ function localOrigin(url) {
 // En test, le serveur local qui remplace GitHub sert aussi l'archive.
 const testOrigin = () => (deps.test ? localOrigin(deps.endpoint) : '');
 
-function assetUrlOk(url) {
-  if (typeof url !== 'string' || url.length > 600) return false;
-  if (url.startsWith(DOWNLOAD_PREFIX)) return true;
+// Adresse de l'archive : jamais reprise de la réponse, toujours reconstruite à
+// partir de parties validées (étiquette « vX.Y.Z » ou « X.Y.Z », nom exact du fichier).
+function assetUrl(tag, name) {
+  if (!VERSION.test(String(tag || '')) || !name || !/^[A-Za-z0-9.-]+$/.test(name)) return '';
   const local = testOrigin();
-  return !!local && url.startsWith(local + '/');
+  return local ? `${local}/releases/download/${tag}/${name}` : `${DOWNLOAD_PREFIX}${tag}/${name}`;
+}
+
+// Une requête de la session des mises à jour (question, téléchargement, et chaque
+// saut de redirection) n'est permise que vers ces adresses : HTTPS, hôte exact.
+// En test, seul le serveur local qui joue GitHub s'y ajoute.
+function hopAllowed(url) {
+  let u;
+  try { u = new URL(url); } catch { return false; }
+  if (u.username || u.password) return false;
+  if (u.protocol === 'https:' && (u.hostname === API_HOST || ASSET_HOSTS.has(u.hostname)) && (u.port === '' || u.port === '443')) return true;
+  const local = testOrigin();
+  return !!local && u.origin === local;
 }
 
 // Lit la réponse de GitHub (objet déjà décodé). Rend la version décrite, ou null
@@ -115,15 +132,18 @@ function parseRelease(json, { platform = deps.platform, arch = deps.arch } = {})
   let asset = null;
   for (const a of Array.isArray(json.assets) ? json.assets.slice(0, 40) : []) {
     if (!a || typeof a !== 'object' || a.name !== want || !want) continue;
-    if (!assetUrlOk(a.browser_download_url) || !Number.isInteger(a.size) || a.size <= 0 || a.size > MAX_ASSET) continue;
+    if (!Number.isInteger(a.size) || a.size <= 0 || a.size > MAX_ASSET) continue;
+    // Sans empreinte publiée, pas de téléchargement par Orbe : seule la page de la version est proposée.
     const digest = typeof a.digest === 'string' && /^sha256:[0-9a-f]{64}$/i.test(a.digest) ? a.digest.slice(7).toLowerCase() : '';
-    asset = { name: want, url: a.browser_download_url, size: a.size, digest };
+    const url = assetUrl(String(json.tag_name).trim(), want);
+    if (!digest || !url) continue;
+    asset = { name: want, url, size: a.size, digest };
     break;
   }
   // La page de la version : reconstruite, jamais reprise telle quelle.
   const url = `${RELEASES}/tag/v${version}`;
   const published = typeof json.published_at === 'string' && !Number.isNaN(Date.parse(json.published_at)) ? new Date(json.published_at).toISOString() : '';
-  return { version, name: text(json.name, 120), notes: text(json.body, MAX_NOTES), url, publishedAt: published, asset };
+  return { version, tag: String(json.tag_name).trim(), name: text(json.name, 120), notes: text(json.body, MAX_NOTES), url, publishedAt: published, asset };
 }
 
 // Ce qui a été retenu sur le disque est revalidé à la lecture.
@@ -133,9 +153,10 @@ function stored() {
   let latest = null;
   if (l && parseVersion(l.version)) {
     const version = parseVersion(l.version).join('.');
-    const a = l.asset && typeof l.asset === 'object' && l.asset.name === assetName(version) && assetUrlOk(l.asset.url) && Number.isInteger(l.asset.size) && l.asset.size > 0 && l.asset.size <= MAX_ASSET
-      ? { name: l.asset.name, url: l.asset.url, size: l.asset.size, digest: /^[0-9a-f]{64}$/.test(l.asset.digest || '') ? l.asset.digest : '' } : null;
-    latest = { version, name: text(l.name, 120), notes: text(l.notes, MAX_NOTES), url: `${RELEASES}/tag/v${version}`, publishedAt: text(l.publishedAt, 40), asset: a };
+    const tag = VERSION.test(String(l.tag || '')) && parseVersion(l.tag).join('.') === version ? String(l.tag) : `v${version}`;
+    const a = l.asset && typeof l.asset === 'object' && l.asset.name === assetName(version) && assetUrl(tag, l.asset.name) && Number.isInteger(l.asset.size) && l.asset.size > 0 && l.asset.size <= MAX_ASSET && /^[0-9a-f]{64}$/.test(l.asset.digest || '')
+      ? { name: l.asset.name, url: assetUrl(tag, l.asset.name), size: l.asset.size, digest: l.asset.digest } : null;
+    latest = { version, tag, name: text(l.name, 120), notes: text(l.notes, MAX_NOTES), url: `${RELEASES}/tag/v${version}`, publishedAt: text(l.publishedAt, 40), asset: a };
   }
   return { checkedAt: Number(s.checkedAt) || 0, triedAt: Number(s.triedAt) || 0, latest, dismissed: parseVersion(s.dismissed) ? String(s.dismissed) : '' };
 }
@@ -273,27 +294,65 @@ function freeName(dir, name) {
   return path.join(dir, `${base}-${Date.now()}${ext}`);
 }
 
+// Marque le fichier comme « venu d'Internet », comme le ferait un navigateur :
+// macOS le soumettra à Gatekeeper et à XProtect (attribut com.apple.quarantine),
+// Windows à SmartScreen (flux Zone.Identifier, zone 3). Rend true si la marque
+// est posée et relue ; sur les autres systèmes, il n'y a rien à poser.
+function quarantineValue(now = Date.now()) {
+  return `0081;${Math.floor(now / 1000).toString(16)};Orbe;`;
+}
+function markDownloaded(file, source) {
+  if (deps.mark) return Promise.resolve(deps.mark(file, source)).then((v) => !!v, () => false);
+  if (deps.platform === 'darwin') {
+    const run = (args) => new Promise((resolve) => execFile('/usr/bin/xattr', args, { timeout: 8000 }, (err, out) => resolve(err ? null : String(out))));
+    const value = quarantineValue(deps.now());
+    return run(['-w', 'com.apple.quarantine', value, file]).then((ok) => (ok === null ? false : run(['-p', 'com.apple.quarantine', file]).then((got) => got !== null && got.trim() === value)));
+  }
+  if (deps.platform === 'win32') {
+    const zone = `[ZoneTransfer]\r\nZoneId=3\r\nHostUrl=${source}\r\n`;
+    try {
+      fs.writeFileSync(file + ':Zone.Identifier', zone);
+      return Promise.resolve(fs.readFileSync(file + ':Zone.Identifier', 'utf8') === zone);
+    } catch { return Promise.resolve(false); }
+  }
+  return Promise.resolve(true);
+}
+
 // Télécharge l'archive de la version disponible dans le dossier des
-// téléchargements, la vérifie, puis la montre. Rien n'est ouvert.
-async function fetchAsset() {
+// téléchargements, la vérifie, la marque comme venue d'Internet, puis la montre.
+// Rien n'est ouvert. Chaque saut de redirection est contrôlé par la session
+// (`hopAllowed`, branché sur webRequest par main.js) : une redirection vers un
+// autre hôte, ou vers du HTTP, fait échouer la requête.
+let job = null; // promesse du téléchargement en cours
+function fetchAsset() {
+  if (job) return Promise.resolve({ error: 'running' });
+  const p = runFetch();
+  job = p;
+  return p.finally(() => { if (job === p) job = null; });
+}
+async function runFetch() {
   const s = stored();
   const asset = available(s) && s.latest.asset;
-  if (!asset || !deps.fetch) return { error: 'noAsset' };
+  if (!asset || !asset.digest || !deps.fetch) return { error: 'noAsset' };
   if (download.state === 'running') return { error: 'running' };
   const dir = deps.downloadsDir();
   if (!dir) return { error: 'noDir' };
+  if (!hopAllowed(asset.url)) return { error: 'host' };
   const target = freeName(dir, asset.name);
   const part = target + '.part';
+  const ctl = new AbortController();
+  aborter = ctl;
   download = { state: 'running', version: s.latest.version, received: 0, total: asset.size };
   deps.changed();
   let out = null;
   let lastTick = 0;
+  // Silence trop long (serveur muet, réseau tombé) : abandon.
+  let idle = null;
+  let stalled = false;
+  const alive = () => { clearTimeout(idle); idle = setTimeout(() => { stalled = true; ctl.abort(); }, deps.idleMs); };
   try {
-    const res = await deps.fetch(asset.url, { method: 'GET', redirect: 'follow', credentials: 'omit', cache: 'no-store', referrerPolicy: 'no-referrer' });
-    // Adresse finale, après redirections : HTTPS, chez GitHub.
-    const final = new URL(res.url || asset.url);
-    const local = testOrigin();
-    if (!((final.protocol === 'https:' && ASSET_HOSTS.has(final.host)) || (local && final.origin === local))) throw new Error('host');
+    alive();
+    const res = await deps.fetch(asset.url, { method: 'GET', redirect: 'follow', credentials: 'omit', cache: 'no-store', referrerPolicy: 'no-referrer', signal: ctl.signal });
     if (!res.ok || !res.body) throw new Error('http' + res.status);
     fs.mkdirSync(dir, { recursive: true });
     // Fichier ouvert avant la première écriture, refermé avant toute suppression :
@@ -306,6 +365,7 @@ async function fetchAsset() {
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
+      alive();
       n += value.byteLength;
       if (n > asset.size) { try { await reader.cancel(); } catch {} throw new Error('size'); }
       const buf = Buffer.from(value);
@@ -314,23 +374,46 @@ async function fetchAsset() {
       download.received = n;
       if (Date.now() - lastTick > 250) { lastTick = Date.now(); deps.changed(); }
     }
+    clearTimeout(idle);
     await out.close();
     out = null;
+    if (ctl.signal.aborted) throw new Error('aborted');
     if (n !== asset.size) throw new Error('size');
-    if (asset.digest && hash.digest('hex') !== asset.digest) throw new Error('digest');
+    if (hash.digest('hex') !== asset.digest) throw new Error('digest');
+    // Marquée avant de prendre son nom définitif : il n'existe jamais d'archive sans marque.
+    if (!(await markDownloaded(part, asset.url))) throw new Error('mark');
     fs.renameSync(part, target);
-    download = { state: 'done', version: s.latest.version, path: target, name: path.basename(target), verified: !!asset.digest };
+    download = { state: 'done', version: s.latest.version, path: target, name: path.basename(target), verified: true };
     deps.changed();
     deps.reveal(target);
     return { ok: true, path: target };
   } catch (err) {
+    clearTimeout(idle);
     if (out) { try { await out.close(); } catch {} }
     try { fs.rmSync(part, { force: true }); } catch {}
-    const code = ['size', 'digest', 'host'].includes(err.message) ? err.message : 'network';
+    if (ctl.signal.aborted && !stalled) {
+      // Annulé par l'utilisateur : retour à l'état de départ, sans message.
+      download = { state: 'idle' };
+      deps.changed();
+      return { error: 'cancelled' };
+    }
+    const code = ['size', 'digest', 'mark'].includes(err.message) ? err.message : 'network';
     download = { state: 'error', version: s.latest.version, error: code };
     deps.changed();
+    // Archive impossible à marquer : on ne la garde pas, la page de la version s'ouvre à la place.
+    if (code === 'mark') openPage();
     return { error: code };
+  } finally {
+    if (aborter === ctl) aborter = null;
   }
+}
+
+// Arrête le téléchargement en cours ; rend la main une fois l'état revenu à « rien en cours ».
+async function cancelDownload() {
+  if (!aborter) return false;
+  aborter.abort();
+  if (job) await job.catch(() => {});
+  return true;
 }
 
 function reveal() {
@@ -358,6 +441,7 @@ function configure(d) {
   // Un autre serveur que GitHub n'est accepté qu'en test, et seulement sur cette machine.
   if (!deps.test || !localOrigin(deps.endpoint)) deps.endpoint = ENDPOINT;
   lastError = '';
+  if (aborter) aborter.abort();
   download = { state: 'idle' };
 }
 
@@ -369,9 +453,10 @@ async function action(name) {
     case 'update:dismiss': dismiss(); return status();
     case 'update:open': openPage(); return status();
     case 'update:download': fetchAsset(); return status();
+    case 'update:cancel': await cancelDownload(); return status();
     case 'update:reveal': reveal(); return status();
     default: return undefined;
   }
 }
 
-module.exports = { internals: () => ({ ...deps }), ENDPOINT, RELEASES, DAY, MAX_NOTES, configure, compare, parseVersion, parseRelease, assetName, check, status, note, dismiss, openPage, fetchAsset, reveal, start, stop, action, endpointOk };
+module.exports = { internals: () => ({ ...deps }), hopAllowed, assetUrl, markDownloaded, quarantineValue, cancelDownload, ENDPOINT, RELEASES, DAY, MAX_NOTES, configure, compare, parseVersion, parseRelease, assetName, check, status, note, dismiss, openPage, fetchAsset, reveal, start, stop, action, endpointOk };

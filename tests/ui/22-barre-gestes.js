@@ -285,6 +285,20 @@ module.exports = {
       assert.equal(await repere.getAttribute('class'), 'down');
       await ctx.clic(shell, repere);
       await jusqua(async () => !(await repere.isVisible()), 'repère retiré');
+      // Défilement doux qui n'avance pas (aucune image présentée : écran verrouillé, fenêtre
+      // recouverte) : simulé ici en le rendant sans effet. Le clic doit quand même ramener la ligne.
+      await shell.locator('#scroll').evaluate((el) => { el.scrollTop = 0; });
+      await jusqua(() => repere.isVisible(), 'repère de nouveau visible');
+      await shell.evaluate(() => {
+        const vrai = Element.prototype.scrollIntoView;
+        window.__doux = 0;
+        Element.prototype.scrollIntoView = function scrollIntoView(o) { if (o && o.behavior === 'smooth') { window.__doux += 1; return undefined; } return vrai.call(this, o); };
+        window.__retablir = () => { Element.prototype.scrollIntoView = vrai; };
+      });
+      await ctx.clic(shell, repere);
+      await jusqua(async () => !(await repere.isVisible()), 'repère retiré malgré un défilement doux à l’arrêt', 5000);
+      const vue = await shell.evaluate(() => { window.__retablir(); const r = document.querySelector('#scroll .row.tab.active').getBoundingClientRect(); const s = document.getElementById('scroll').getBoundingClientRect(); return { doux: window.__doux, dedans: r.top >= s.top && r.bottom <= s.bottom }; });
+      assert.ok(vue.dedans, 'la ligne de l’onglet affiché est entièrement en vue : ' + JSON.stringify(vue));
       await jusqua(() => shell.evaluate(() => {
         const r = document.querySelector('#today .row.tab.active').getBoundingClientRect();
         const s = document.getElementById('scroll').getBoundingClientRect();
