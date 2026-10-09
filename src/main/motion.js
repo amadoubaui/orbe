@@ -11,7 +11,7 @@ let nativeAnim = true;
 // Les essais peuvent imposer l'un ou l'autre (`forceMotion`), le réglage des
 // machines d'intégration n'étant pas le même d'un système à l'autre.
 let motionForced = null;
-function forceMotion(on) { motionForced = on; }
+function forceMotion(on) { const before = motionForced; motionForced = on; return before; } // rend l'ancien réglage, pour le remettre
 function motion(ms) {
   if (motionForced !== null) return motionForced ? ms : 0;
   try { if (systemPreferences.getAnimationSettings().prefersReducedMotion) return 0; } catch {}

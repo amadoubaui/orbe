@@ -24,7 +24,7 @@ module.exports = async function detailsTests(ctx) {
 
     // Ouverture animée : opacité et position seulement.
     delete store.state.window.littleSeen;
-    win.forceMotion(true);
+    const motion0 = win.forceMotion(true);
     const l1 = new LittleWindow('');
     const at0 = { opacity: l1.win.getOpacity(), opening: !!l1.opening, visible: l1.win.isVisible(), size: l1.win.getSize().join('x') };
     const pos0 = l1.win.getPosition();
@@ -45,7 +45,7 @@ module.exports = async function detailsTests(ctx) {
     win.forceMotion(false);
     const l2 = new LittleWindow('');
     check('fenêtres suivantes : pas de bandeau ; « Réduire les animations » : ouverte d’un coup', l2.hint === false && !l2.opening && l2.win.getOpacity() === 1 && l2.win.isVisible());
-    win.forceMotion(null);
+    win.forceMotion(motion0);
 
     // Profil retenu par site.
     little.hooks.profiles = () => ['default', 'travail'];
@@ -126,7 +126,7 @@ module.exports = async function detailsTests(ctx) {
     let pointer = { x: -500, y: -500 };
     w.statusPointer = () => pointer;
     S.expandAfter = 120;
-    win.forceMotion(false);
+    const motion0 = win.forceMotion(false);
     const page = win.boundsOf(rt.view);
     const long = 'https://exemple.invalid/' + 'chemin/'.repeat(40);
     const shortUrl = 'https://exemple.invalid/a';
@@ -156,7 +156,7 @@ module.exports = async function detailsTests(ctx) {
     check('lien quitté : la pastille disparaît et plus rien ne surveille le pointeur', true);
     Object.assign(S, { short: saved.short, expandAfter: saved.expandAfter });
     w.statusPointer = saved.pointer;
-    win.forceMotion(null);
+    win.forceMotion(motion0);
     w.close(tab.id, { silent: true, ask: false });
   }
 

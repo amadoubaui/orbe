@@ -419,7 +419,7 @@ Chiffres d'Arc : seuls ANI-1 à ANI-4 ont été mesurés. Pour le reste, l'exist
 | ANI-17 | Passage en plein écran simplifié | HC 20498417809815 | 🟡 | natif | |
 | ANI-18 | Image dans l'image : élastique sous la taille minimale, lancer vers un coin | inverse ; HC 20498417809815 | ⬜ | fenêtre native de Chromium | |
 | ANI-19 | Le lecteur audio rejoint la position de l'image dans l'image en s'animant | HC 20498377604887 | ⬜ | | |
-| ANI-20 | Pastille d'état du lien : s'étend après 1,5 s, s'écarte de la souris | HC 20498377604887 | ⬜ | | |
+| ANI-20 | Pastille d'état du lien : s'étend après 1,5 s, s'écarte de la souris | HC 20498377604887 | ✅ | | courte (420 pt) puis étendue après 1,5 s (160 ms), passe de l’autre côté quand le pointeur vient dessus (140 ms) ; self tests/details.js (5 vérif.) |
 | ANI-21 | Apparition et retrait d'une ligne d'onglet | non vérifié | ✅ | SH `flip` : la ligne paraît ou s'efface (opacité, échelle), les voisines glissent à leur place (240 ms, ressort) ; ui 23 « fermer un onglet », « nouvel onglet » | Une mise en page par changement, aucune par image (mesuré) |
 | ANI-22 | Les lignes s'écartent pendant un glisser | non vérifié | ✅ | ui 17 ; transformations de 140 ms, relevé unique des positions, aucune mise en page pendant le geste | Mesures dans ameliorations.md (PERF-25) |
 | ANI-23 | Ouverture d'un dossier : hauteur animée | non vérifié | ✅ | SH `flip` : le contenu paraît en fondu, la suite de la liste glisse ; au repli elle remonte ; ui 23 « dossier » | Glissement par transformation plutôt qu'une hauteur animée |
