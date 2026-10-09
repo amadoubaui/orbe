@@ -631,6 +631,13 @@ $('media-play').onclick = () => send('mediaToggle');
 $('media-mute').onclick = () => S && S.media && send('toggleMute', S.media.id);
 $('update-open').onclick = () => send('update:show');
 $('update-close').onclick = () => send('update:dismiss');
+$('exts').addEventListener('contextmenu', (e) => {
+  const b = e.target.closest('[data-ext]');
+  if (!b) return;
+  e.preventDefault();
+  e.stopPropagation();
+  send('ext:menu', { id: b.dataset.ext });
+});
 $('exts').addEventListener('click', (e) => {
   const b = e.target.closest('[data-ext]');
   if (!b) return;

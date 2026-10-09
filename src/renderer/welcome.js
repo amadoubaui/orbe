@@ -1,10 +1,71 @@
-// Page d'accueil du premier lancement.
-document.title = t('welcome.title');
+// Accueil du premier lancement : bienvenue, import, couleur, navigateur par
+// défaut, premiers gestes. Chaque étape est facultative ; « Passer » ferme tout.
+const steps = [...document.querySelectorAll('.step')];
+const dots = document.getElementById('dots');
+const next = document.getElementById('next');
+const back = document.getElementById('back');
+let at = 0;
+let info = null;
+
+for (const s of steps) dots.appendChild(document.createElement('i')).dataset.step = s.dataset.step;
+
+function show(i) {
+  at = Math.max(0, Math.min(steps.length - 1, i));
+  steps.forEach((s, k) => s.classList.toggle('on', k === at));
+  [...dots.children].forEach((d, k) => d.classList.toggle('on', k === at));
+  back.hidden = at === 0;
+  next.textContent = t(at === 0 ? 'welcome.begin' : at === steps.length - 1 ? 'welcome.finish' : 'welcome.next');
+  document.getElementById('skip').hidden = at === steps.length - 1;
+  document.title = t('welcome.title');
+  scrollTo(0, 0);
+  if (steps[at].dataset.step === 'default') refreshInfo();
+}
+
+// Fin de l'accueil : l'onglet se ferme, la barre de commande s'ouvre pour un premier onglet.
+const finish = () => O.send('welcome:done');
+next.onclick = () => (at === steps.length - 1 ? finish() : show(at + 1));
+back.onclick = () => show(at - 1);
+document.getElementById('skip').onclick = finish;
+
 document.addEventListener('click', (e) => {
   const b = e.target.closest('[data-cmd]');
-  if (b) O.send('command', b.dataset.cmd);
+  if (!b) return;
+  O.send('command', b.dataset.cmd).then(() => { if (b.dataset.cmd === 'defaultBrowser') setTimeout(refreshInfo, 600); });
 });
-O.send('welcome:info').then((info) => {
-  if (!info || !info.arc) document.getElementById('row-import').style.display = 'none';
+document.addEventListener('keydown', (e) => {
+  if (e.target.closest('select, input')) return;
+  if (e.key === 'ArrowRight' && at < steps.length - 1) show(at + 1);
+  if (e.key === 'ArrowLeft') show(at - 1);
 });
-O.on('settings', (s) => { if (setLang(s.lang)) document.title = t('welcome.title'); });
+
+function drawColors() {
+  const box = document.getElementById('colors');
+  box.textContent = '';
+  for (const c of info.colors) {
+    const b = document.createElement('button');
+    b.style.setProperty('--c', c);
+    b.dataset.color = c;
+    b.title = c;
+    b.setAttribute('aria-pressed', String(c === info.color));
+    b.onclick = async () => { await O.send('theme', { color: c }); info.color = c; drawColors(); };
+    box.appendChild(b);
+  }
+}
+
+function drawDefault() {
+  document.getElementById('default-state').textContent = t(info.isDefault ? 'set.defaultYes' : 'welcome.defaultHint');
+  document.getElementById('make-default').hidden = !!info.isDefault;
+}
+
+async function refreshInfo() {
+  info = (await O.send('welcome:info')) || { colors: [] };
+  document.getElementById('row-import').hidden = !info.arc;
+  drawColors();
+  drawDefault();
+}
+
+mountImport(document.getElementById('welcome-browsers'), { preferCurrent: true });
+refreshInfo();
+show(0);
+window.addEventListener('focus', refreshInfo);
+O.on('settings', (s) => { if (setLang(s.lang)) show(at); });

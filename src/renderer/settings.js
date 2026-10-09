@@ -295,7 +295,7 @@ function drawKeys() {
   };
   group(t('keys.global'), [keyRow(KEYLIST.global)]);
   for (const g of KEYLIST.groups) group(g.title, g.items.map((i) => keyRow(i)));
-  group(t('keys.extensions'), KEYLIST.extensions.map((x) => keyRow({ name: '', label: `${x.extension} — ${x.command}`, keys: x.keys }, { fixed: true })), t('keys.extensionsHint'));
+  group(t('keys.extensions'), KEYLIST.extensions.map((x) => keyRow(x)), t('keys.extensionsHint'));
   if (!shown) box.appendChild(make('div', 'empty', t('keys.none')));
   box.scrollTop = top;
   el('keys-reset-all').disabled = !KEYLIST.changed;
@@ -471,12 +471,26 @@ function drawExtensions(list) {
       open.onclick = () => O.send('ext:popup', x.id);
       line.appendChild(open);
     }
+    const small = (cls, key, fn) => { const b = make('button', 'btn ' + cls, t(key)); b.onclick = fn; line.appendChild(b); return b; };
+    if (x.options) small('ext-options', 'ext.options', () => O.send('ext:options', x.id)).disabled = !x.enabled;
+    const pin = small('ext-pin', x.pinned ? 'ext.pinned' : 'ext.pin', async () => drawExtensions(await O.send('ext:pin', { id: x.id, pinned: !x.pinned })));
+    pin.setAttribute('aria-pressed', String(!!x.pinned));
+    pin.title = t('ext.pinHint');
+    const up = small('ext-update', 'ext.update', async () => {
+      up.disabled = true;
+      el('ext-msg').textContent = t('ext.installing');
+      const r = await O.send('ext:update', x.id);
+      el('ext-msg').textContent = (r && (r.error || r.message)) || t('ext.hint');
+      if (r && r.list) drawExtensions(r.list); else up.disabled = false;
+    });
+    line.dataset.ext = x.id;
     const on = document.createElement('input');
     on.type = 'checkbox';
     on.checked = x.enabled;
+    on.title = t('ext.enabledHint');
     on.onchange = async () => drawExtensions(await O.send('ext:toggle', { id: x.id, enabled: on.checked }));
     const del = document.createElement('button');
-    del.className = 'btn';
+    del.className = 'btn ext-remove';
     del.textContent = t('set.profileDelete');
     del.onclick = async () => drawExtensions(await O.send('ext:remove', x.id));
     line.append(on, del);
@@ -527,6 +541,7 @@ function drawImport() {
   el('import-arc').disabled = !DATA.arc;
   el('import-arc-hint').textContent = t(DATA.arc ? 'imp.arcHint' : 'imp.arcMissing');
 }
+mountImport(el('import-browsers'), { onChange: () => refresh() });
 el('import-arc').onclick = () => O.send('settings:importArc');
 el('import-passwords').onclick = () => O.send('pw:open');
 el('import-bookmarks').onclick = async () => {
@@ -598,7 +613,7 @@ el('clearData').onclick = async (e) => { if (await O.send('settings:clearData'))
 O.on('settings', (s) => {
   const langChanged = setLang(s.lang);
   S = s;
-  if (DATA) { DATA.settings = s; routes = (s.routes || []).slice(); drawExternal(); fill(s); drawProfiles(DATA.profiles); drawRoutes(); drawDefault(); drawLittleKeys(); drawAllow(); drawImport(); drawUpdate(drawUpdate.last); }
+  if (DATA) { DATA.settings = s; routes = (s.routes || []).slice(); drawExternal(); fill(s); drawProfiles(DATA.profiles); drawRoutes(); drawDefault(); drawLittleKeys(); drawAllow(); drawImport(); drawUpdate(drawUpdate.last); O.send('ext:list').then(drawExtensions); }
   if (current === 'shortcuts' && !recording && !pending && !keyError && (langChanged || Date.now() - keysBusy > 800)) loadKeys();
 });
 // Raccourcis changés : celui de la petite fenêtre est rappelé dans le volet Liens.

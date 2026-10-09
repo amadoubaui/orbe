@@ -58,6 +58,10 @@ const DEFAULT_SETTINGS = {
   downloadDir: '',
   profileSettings: {},
   shortcuts: {},
+  // Raccourcis des extensions choisis dans les réglages : { '<id>/<commande>': accélérateur, ou '' s'il a été retiré }.
+  extShortcuts: {},
+  // Extensions dont le bouton est détaché de la barre latérale (elles restent dans le menu du bouclier et le menu Extensions).
+  extHidden: [],
   adblock: true,
   adblockAllow: [],
   passwordSave: true,

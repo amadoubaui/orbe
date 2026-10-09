@@ -425,6 +425,47 @@ module.exports = async function extApiTest({ first: w, OrbeWindow, win, extApi, 
   extHost.closePopup(w);
   await until(() => extHost.popups.size === 0, 'fermeture de la fenêtre surgissante');
 
+  // Raccourcis modifiables depuis Réglages → Raccourcis (EXT-7).
+  const panes = require('../src/main/panes');
+  const store = require('../src/main/store').store;
+  const keyName = (c) => `ext:${ext.id}/${c}`;
+  const rows = () => Object.fromEntries(panes.shortcutList().extensions.map((x) => [x.command, x]));
+  const shortcutNow = async (c) => (await call('commands.getAll')).find((x) => x.name === c).shortcut;
+  const mac = process.platform === 'darwin';
+  const listed = rows();
+  check('réglages : chaque commande d’extension est listée, avec son raccourci en vigueur et celui que l’extension propose',
+    Object.keys(listed).sort().join() === '_execute_action,essai,prise' && listed.essai.keys === (mac ? '⌥⇧Y' : 'Alt+Shift+Y') && listed.essai.label === 'Orbe — extension d\'essai — Commande d\'essai' && listed.essai.name === keyName('essai')
+    && listed.prise.keys === '' && listed.prise.defaultKeys !== '' && !listed.essai.changed && /bouton/.test(listed._execute_action.label), listed);
+  const mine = mac ? 'Ctrl+Alt+F9' : 'Ctrl+Alt+F9';
+  const set1 = await panes.handle('shortcuts:assign', { name: keyName('essai'), accel: mine });
+  check('un raccourci choisi remplace celui que l’extension proposait : commands.getAll le rend', set1.ok && (await shortcutNow('essai')) === (mac ? '⌃⌥F9' : 'Ctrl+Alt+F9') && rows().essai.changed && store.state.settings.extShortcuts[`${ext.id}/essai`] === 'Ctrl+Alt+F9', set1);
+  press('Y');
+  await sleep(250);
+  const stillOne = (await events('commands.onCommand')).length === 1;
+  for (const type of ['keyDown', 'keyUp']) rtA.wc.sendInputEvent({ type, keyCode: 'F9', modifiers: ['control', 'alt'] });
+  await until(async () => (await events('commands.onCommand')).length === 2, 'commande par le nouveau raccourci');
+  check('l’ancien raccourci ne fait plus rien, le nouveau émet commands.onCommand', stillOne && (await events('commands.onCommand'))[1].args[0] === 'essai');
+  const orbeKey = mac ? 'Cmd+T' : 'Ctrl+T';
+  const clash = await panes.handle('shortcuts:assign', { name: keyName('essai'), accel: orbeKey });
+  const odd = await panes.handle('shortcuts:assign', { name: keyName('essai'), accel: mac ? 'Cmd+Tab' : 'Alt+Tab' });
+  const noMod = await panes.handle('shortcuts:assign', { name: keyName('essai'), accel: 'J' });
+  const ghost = await panes.handle('shortcuts:assign', { name: keyName('inconnue'), accel: 'Ctrl+Alt+K' });
+  const alien = await panes.handle('shortcuts:assign', { name: 'ext:' + 'a'.repeat(32) + '/essai', accel: 'Ctrl+Alt+K' });
+  check('raccourci d’Orbe, du système, sans touche de modification, commande ou extension inconnue : refusés, rien ne change',
+    (clash.conflict === 'newTab' || clash.error === 'reserved') && !!odd.error && noMod.error === 'modifier' && ghost.error === 'unknown' && alien.error === 'unknown' && (await shortcutNow('essai')) === (mac ? '⌃⌥F9' : 'Ctrl+Alt+F9'), { clash, odd, noMod, ghost, alien });
+  const dup = await panes.handle('shortcuts:assign', { name: keyName('prise'), accel: mine });
+  check('raccourci déjà donné à une autre commande d’extension : la question est posée, en la nommant', dup.conflict === keyName('essai') && /essai/.test(dup.label) && (await shortcutNow('prise')) === '', dup);
+  const forced = await panes.handle('shortcuts:assign', { name: keyName('prise'), accel: mine, force: true });
+  check('« Réattribuer » : la seconde commande le prend, la première le perd', forced.ok && (await shortcutNow('prise')) === (mac ? '⌃⌥F9' : 'Ctrl+Alt+F9') && (await shortcutNow('essai')) === '', forced);
+  await panes.handle('shortcuts:clear', keyName('prise'));
+  const cleared = await shortcutNow('prise');
+  await panes.handle('shortcuts:reset', { name: keyName('essai') });
+  await panes.handle('shortcuts:reset', { name: keyName('prise') });
+  check('retirer un raccourci, puis rétablir : chaque commande retrouve ce que l’extension proposait', cleared === '' && (await shortcutNow('essai')) === (mac ? '⌥⇧Y' : 'Alt+Shift+Y') && (await shortcutNow('prise')) === '' && Object.keys(store.state.settings.extShortcuts).length === 0, store.state.settings.extShortcuts);
+  await panes.handle('shortcuts:assign', { name: keyName('essai'), accel: mine });
+  extHost.more.forgetKeys(ext.id);
+  check('extension désinstallée : ses raccourcis choisis sont oubliés', Object.keys(store.state.settings.extShortcuts).length === 0);
+
   // Zoom, téléchargements, réglages d'entreprise, quota de captures.
   await call('tabs.setZoom', rtA.wc.id, 1.5);
   check('tabs.setZoom et getZoom agissent sur l’onglet d’Orbe', Math.abs(rtA.wc.getZoomFactor() - 1.5) < 0.01 && Math.abs(await call('tabs.getZoom', rtA.wc.id) - 1.5) < 0.01 && Math.abs(await call('tabs.getZoom') - 1.5) < 0.01);
@@ -488,6 +529,92 @@ module.exports = async function extApiTest({ first: w, OrbeWindow, win, extApi, 
     check('les autorisations accordées survivent au réveil', (await pilot2.webContents.executeJavaScript('sw({ type: "call", path: "permissions.contains", args: [{ permissions: ["contextMenus"] }] })')).value === false);
     pilot2.destroy();
   } else console.log('  – réveil du service worker non vérifié : il ne s’est pas arrêté');
+
+  // --- Interface : bouton épinglé, menu du bouton, options, mise à jour, retrait (EXT-1, EXT-3, EXT-5) ---
+  // L'extension d'essai est aussi posée comme une extension installée par Orbe (dossier Extensions du profil).
+  {
+    const fs = require('fs');
+    const { app, dialog } = require('electron');
+    const extUi = require('../src/main/ext-ui');
+    const extensions = require('../src/main/extensions');
+    const dirExt = path.join(app.getPath('userData'), 'Extensions');
+    fs.cpSync(path.join(__dirname, 'ext-fixture'), path.join(dirExt, ext.id, '1.0.0_essai'), { recursive: true });
+    fs.writeFileSync(path.join(dirExt, 'state.json'), JSON.stringify({ version: 1, extensions: { [ext.id]: { enabled: true, current: '1.0.0_essai', installedAt: 1 } } }));
+    extensions.configure({ dir: dirExt });
+    const ui = (js) => w.ui.webContents.executeJavaScript(js);
+    const button = () => ui(`!!document.querySelector('#exts [data-ext="${ext.id}"]')`);
+    w.activate(a.id);
+    const one = extUi.list()[0];
+    check('réglages : l’extension installée est décrite (options, bouton épinglé, fenêtre)', extUi.list().length === 1 && one.id === ext.id && one.options && one.pinned && one.popup && one.enabled && one.name === 'Orbe — extension d\'essai', one);
+    await until(button, 'bouton de l’extension dans la barre latérale');
+    extUi.setPinned(ext.id, false);
+    await until(async () => !(await button()), 'bouton détaché');
+    check('détacher : le bouton quitte la barre latérale, l’extension reste dans le menu du bouclier et le menu Extensions',
+      store.state.settings.extHidden.join() === ext.id && extHost.actionsFor(w).some((x) => x.id === ext.id) && !extUi.list()[0].pinned);
+    await extUi.action('ext:pin', { id: ext.id, pinned: true }, w.ui.webContents);
+    await until(button, 'bouton épinglé de nouveau');
+    check('épingler : le bouton revient', store.state.settings.extHidden.length === 0 && extUi.list()[0].pinned);
+
+    // Clic droit sur le bouton : menu de l'extension.
+    const realPopup = w.popup;
+    const menus = [];
+    w.popup = (tpl) => { menus.push(tpl); };
+    await ui(`document.querySelector('#exts [data-ext="${ext.id}"]').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))`);
+    await until(() => menus.length === 1, 'menu contextuel du bouton');
+    const labels = menus[0].filter((i) => i.type !== 'separator').map((i) => i.label);
+    check('clic droit sur le bouton : nom, Options, Détacher, Désactiver, « Retirer d’Orbe… », Gérer',
+      labels.join('|') === ['Orbe — extension d\'essai', 'Options', 'Détacher de la barre latérale', 'Désactiver', 'Retirer d’Orbe…', 'Gérer les extensions…'].join('|') && menus[0][0].enabled === false, labels.join('|'));
+    const item = (label) => menus[0].find((i) => i.label === label);
+    const tabsBefore = Object.keys(w.data.tabs).length;
+    item('Options').click();
+    await until(() => Object.values(w.data.tabs).some((x) => x.url === ext.url + 'options.html'), 'page d’options ouverte');
+    item('Options').click();
+    check('« Options » ouvre la page d’options dans un onglet, ou y revient si elle est déjà ouverte : jamais deux', Object.keys(w.data.tabs).length <= tabsBefore + 1 && Object.values(w.data.tabs).filter((x) => x.url === ext.url + 'options.html').length === 1 && w.data.tabs[w.activeId].url === ext.url + 'options.html', { n: Object.keys(w.data.tabs).length - tabsBefore, actif: w.data.tabs[w.activeId] && w.data.tabs[w.activeId].url, urls: Object.values(w.data.tabs).map((x) => x.url) });
+    w.close(w.activeId);
+    check('page d’options hors de l’extension (manifeste piégé) : refusée', (() => {
+      const mf = path.join(dirExt, ext.id, '1.0.0_essai', 'manifest.json');
+      const keep = fs.readFileSync(mf, 'utf8');
+      const bad = (page) => { fs.writeFileSync(mf, JSON.stringify({ ...JSON.parse(keep), options_page: page })); return extUi.optionsUrl(ext.id); };
+      const r = [bad('https://pirate.example/x.html'), bad('//pirate.example/x.html'), bad('chrome-extension://' + 'b'.repeat(32) + '/x.html'), bad('javascript:alert(1)'), bad(42)];
+      fs.writeFileSync(mf, keep);
+      return r.every((u) => u === '') && extUi.optionsUrl(ext.id) === ext.url + 'options.html';
+    })());
+    item('Détacher de la barre latérale').click();
+    await until(async () => !(await button()), 'détaché par le menu');
+    check('« Détacher de la barre latérale » depuis le menu', !extUi.isPinned(ext.id));
+    extUi.setPinned(ext.id, true);
+
+    // Mise à jour : réinstallation depuis le Store (remplacée ici), version comparée.
+    const realInstall = extensions.install;
+    extensions.install = async () => ({ ...extensions.get(ext.id), version: '1.0.1' });
+    const up1 = await extUi.action('ext:update', ext.id, w.ui.webContents);
+    extensions.install = async () => extensions.get(ext.id);
+    const up2 = await extUi.update(ext.id);
+    extensions.install = async () => { throw Object.assign(new Error('x'), { code: 'EXT_BAD_SIGNATURE' }); };
+    const up3 = await extUi.update(ext.id);
+    extensions.install = realInstall;
+    check('« Mettre à jour » : nouvelle version annoncée, « à jour » sinon, signature refusée dite',
+      up1.updated === true && /1\.0\.0 → 1\.0\.1/.test(up1.message) && up1.list.length === 1 && up2.updated === false && /à jour \(1\.0\.0\)/.test(up2.message) && /EXT_BAD_SIGNATURE/.test(up3.error), { up1: up1.message, up2: up2.message, up3 });
+    check('ces actions n’existent que pour l’interface : identifiant mal formé ignoré', (await extUi.action('ext:pin', { id: '../x', pinned: false }, w.ui.webContents)) === undefined && (await extUi.action('ext:menu', { id: 'x' }, w.ui.webContents)) === undefined);
+
+    // « Retirer d'Orbe… » : question, puis désinstallation.
+    const realBox = dialog.showMessageBox;
+    const boxes = [];
+    dialog.showMessageBox = async (...args) => { boxes.push(args[args.length - 1]); return { response: boxes.length === 1 ? 1 : 0 }; };
+    await require('../src/main/panes').handle('shortcuts:assign', { name: keyName('essai'), accel: 'Ctrl+Alt+F9' });
+    extUi.setPinned(ext.id, false);
+    await item('Retirer d’Orbe…').click();
+    await until(() => boxes.length === 1, 'question posée');
+    await sleep(100);
+    const kept = !!extensions.get(ext.id);
+    await item('Retirer d’Orbe…').click();
+    await until(() => !extensions.get(ext.id), 'extension retirée');
+    check('« Retirer d’Orbe… » : la question nomme l’extension ; « Annuler » garde tout ; confirmé, elle est désinstallée, ses raccourcis et son réglage d’épingle oubliés',
+      boxes[0].message === 'Retirer l’extension « Orbe — extension d\'essai » ?' && boxes[0].cancelId === 1 && kept && extUi.list().length === 0 && !fs.existsSync(path.join(dirExt, ext.id))
+      && Object.keys(store.state.settings.extShortcuts).length === 0 && store.state.settings.extHidden.length === 0, boxes[0]);
+    dialog.showMessageBox = realBox;
+    w.popup = realPopup;
+  }
 
   const errors = swLogs.filter((m) => /error|not a function|undefined/i.test(m));
   check('aucune erreur dans la console du service worker', errors.length === 0, errors.join(' | '));

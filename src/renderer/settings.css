@@ -64,6 +64,11 @@ html.win #bar { padding-top: 34px; }
 #update-notes:empty { display: none; }
 #update-new > .line:last-child { border-bottom: 0.5px solid var(--line); }
 
+/* --- Import depuis un navigateur ---------------------------------------------------- */
+.imp-controls { display: flex; align-items: center; gap: 6px; flex: none; }
+.imp-controls select { max-width: 190px; }
+.imp-name { font-weight: 500; }
+
 /* --- Profils -------------------------------------------------------------------- */
 .profile .head .pname { font-size: 14px; font-weight: 600; }
 
