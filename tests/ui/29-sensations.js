@@ -189,6 +189,56 @@ module.exports = {
       await jusqua(async () => (await panneau.count()) === 0, 'panneau refermé par le clic');
     });
 
+    // --- Icônes animées des sections de la Bibliothèque ---------------------------------
+    const lib = await ctx.attendrePage('library.html');
+    lib.setDefaultTimeout(6000);
+    const NOMS = { history: 'ti-clock', archive: 'ti-lid', downloads: 'ti-drop', media: 'ti-rise', easels: 'ti-sway', spaces: 'ti-hop', boosts: 'ti-zap' };
+    const mouvement = (nom) => lib.evaluate(`(() => { const b = document.querySelector('.tabs [data-tab="${nom}"]'); const as = b.getAnimations({ subtree: true }).filter((a) => a.animationName); return { noms: [...new Set(as.map((a) => a.animationName))].sort(), props: [...new Set(as.flatMap(${PROPS}))].sort(), duree: Math.max(0, ...as.map((a) => a.effect.getTiming().duration)), enCours: as.some((a) => a.playState === 'running') }; })()`);
+
+    await t.verifier('Bibliothèque : chaque section porte son icône, le libellé reste du texte, la rangée tient dans la page', async () => {
+      await jusqua(() => lib.evaluate(() => document.querySelectorAll('.tabs [data-tab].on').length === 1), 'section choisie');
+      if (process.env.ORBE_UI_SHOTS) await ctx.capture('bibliotheque-icones', lib);
+      const vu = await lib.evaluate(() => { const bs = [...document.querySelectorAll('.tabs [data-tab]')]; return { icones: bs.filter((b) => b.querySelector('svg.ti')).length, textes: bs.map((b) => b.textContent), hauts: [...new Set([...document.querySelectorAll('.tabs button')].map((b) => Math.round(b.getBoundingClientRect().top)))].length, large: document.documentElement.scrollWidth <= innerWidth }; });
+      assert.equal(vu.icones, 7);
+      assert.deepEqual(vu.textes, ['Historique', 'Archive', 'Téléchargements', 'Médias', 'Tableaux', 'Espaces', 'Boosts']);
+      assert.ok(vu.hauts <= 2, 'deux lignes de boutons au plus : ' + vu.hauts);
+      assert.ok(vu.large);
+    });
+
+    await animer('survol d’une section : son icône s’anime une fois, en transformations et opacité seulement ; chacune a son mouvement', async () => {
+      await ctx.vitesseAnimations(0.25);
+      const vitesse = await lib.context().newCDPSession(lib);
+      await vitesse.send('Animation.enable');
+      await vitesse.send('Animation.setPlaybackRate', { playbackRate: 0.25 });
+      try {
+        for (const [nom, anim] of Object.entries(NOMS)) {
+          if (await lib.locator(`.tabs [data-tab="${nom}"].on`).count()) continue; // la section affichée a déjà joué la sienne
+          await lib.mouse.move(600, 500);
+          await lib.locator(`.tabs [data-tab="${nom}"]`).hover();
+          const m = await jusqua(async () => { const x = await mouvement(nom); return x.enCours ? x : null; }, 'icône en mouvement : ' + nom);
+          assert.ok(m.noms.includes(anim), nom + ' : ' + m.noms.join());
+          assert.ok(m.props.every((p) => p === 'transform' || p === 'opacity'), nom + ' : ' + m.props.join());
+          assert.ok(m.duree >= 300 && m.duree <= 700, nom + ' : ' + m.duree + ' ms');
+        }
+        await lib.mouse.move(600, 500);
+        await lib.locator('.tabs [data-tab="boosts"]').click();
+        await lib.mouse.move(600, 500);
+        const choisi = await jusqua(async () => { const x = await mouvement('boosts'); return x.noms.includes('ti-zap') ? x : null; }, 'icône de la section choisie');
+        assert.deepEqual(choisi.props, ['transform']);
+        assert.equal(await lib.locator('.tabs [data-tab="boosts"] .ti').evaluate((el) => getComputedStyle(el).color !== getComputedStyle(document.querySelector('.tabs [data-tab="spaces"] .ti')).color), true, 'icône choisie à la couleur d’accent');
+      } finally { await vitesse.send('Animation.setPlaybackRate', { playbackRate: 1 }); await ctx.vitesseAnimations(1); }
+    });
+
+    await t.verifier('« Réduire les animations » : les icônes des sections ne bougent plus', async () => {
+      await lib.emulateMedia({ reducedMotion: 'reduce' });
+      try {
+        await lib.mouse.move(600, 500);
+        await lib.locator('.tabs [data-tab="archive"]').hover();
+        const d = await lib.evaluate(() => parseFloat(getComputedStyle(document.querySelector('.tabs [data-tab="archive"] .m')).animationDuration) * 1000);
+        assert.ok(d <= 0.011, 'durée : ' + d + ' ms');
+      } finally { await lib.emulateMedia({ reducedMotion: null }); await lib.mouse.move(600, 500); }
+    });
+
     await t.verifier('aucune sorte cochée, ou rien de récent : le survol ne montre rien', async () => {
       await ctx.principal(({ store }) => { store.state.downloads = []; });
       await shell.mouse.move(700, 300);
