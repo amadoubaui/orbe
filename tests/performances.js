@@ -394,11 +394,15 @@ module.exports = async function performancesTests(ctx) {
 
     // --- Sites gardés éveillés par l'utilisateur (MEM-9) et empreinte réelle (MEM-8) ---
     {
+      const keepalive = require('../src/main/keepalive');
       const mine = { neverSleep: ['exemple.fr/outil', 'messagerie.test', 'localhost:3000'] };
       check('sites gardés éveillés : le site, ses sous-domaines, son port et son début de chemin — jamais un texte trouvé ailleurs dans l’adresse',
-        veille.spared('https://git.exemple.fr/outil/1', mine) && veille.spared('https://www.messagerie.test/x?y', mine) && veille.spared('http://localhost:3000/', mine)
-        && !veille.spared('https://git.exemple.fr/autre', mine) && !veille.spared('https://pirate.invalid/?u=https://messagerie.test/', mine) && !veille.spared('https://messagerie.test.pirate.invalid/', mine)
-        && !veille.spared('http://localhost:4000/', mine) && !veille.spared('file:///messagerie.test/', mine) && !veille.spared('', mine) && !veille.spared('https://messagerie.test/', {}));
+        keepalive.user('https://git.exemple.fr/outil/1', mine) && keepalive.user('https://www.messagerie.test/x?y', mine) && keepalive.user('http://localhost:3000/', mine)
+        && !keepalive.user('https://git.exemple.fr/autre', mine) && !keepalive.user('https://pirate.invalid/?u=https://messagerie.test/', mine) && !keepalive.user('https://messagerie.test.pirate.invalid/', mine)
+        && !keepalive.user('http://localhost:4000/', mine) && !keepalive.user('file:///messagerie.test/', mine) && !keepalive.user('', mine) && !keepalive.user('https://messagerie.test/', {}));
+      check('un seul mécanisme : la liste d’Orbe et celle de l’utilisateur passent par la même question, posée une fois par la veille',
+        keepalive.matches('https://mail.google.com/mail/u/0/', {}) && keepalive.matches('https://git.exemple.fr/outil/1', mine) && !keepalive.matches('https://git.exemple.fr/outil/1', {}) && !keepalive.matches('https://exemple.org/', mine)
+        && typeof veille.spared === 'undefined' && (fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'window.js'), 'utf8').match(/keepalive\.matches\(/g) || []).length === 1);
       const prefs = require('../src/main/prefs');
       check('réglage « neverSleep » : seules des règles bien écrites, sans doublon, cent au plus',
         prefs.SETTABLE.neverSleep(['github.com', 'exemple.fr/outil', 'localhost:3000']) && !prefs.SETTABLE.neverSleep(['https://GitHub.com/']) && !prefs.SETTABLE.neverSleep(['a.fr', 'a.fr'])

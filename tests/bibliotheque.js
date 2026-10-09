@@ -378,9 +378,9 @@ module.exports = async function bibliothequeTests(ctx) {
     const accels = [];
     const collect = (m) => { for (const it of m.items) { if (it.accelerator) accels.push(it.accelerator); if (it.submenu) collect(it.submenu); } };
     collect(Menu.getApplicationMenu());
-    check('notes : ⌃⇧N (nouvelle note) et ⌃⌥N (à côté de la page), comme dans Arc ; ⌃⌘N est libre',
+    check('notes : ⌃⇧N (nouvelle note) et ⌃⌥N (à côté de la page), comme dans Arc ; ⌃⌘N ouvre la fenêtre vierge',
       commands.byName.get('newNote').accel === platform.accel('Ctrl+Shift+N') && commands.byName.get('newNoteSplit').accel === platform.accel('Ctrl+Alt+N')
-      && accels.includes(platform.accel('Ctrl+Shift+N')) && accels.includes(platform.accel('Ctrl+Alt+N')) && !accels.includes('Ctrl+Cmd+N') && new Set(accels).size === accels.length,
+      && accels.includes(platform.accel('Ctrl+Shift+N')) && accels.includes(platform.accel('Ctrl+Alt+N')) && commands.byName.get('newBlank').accel === platform.accel('Ctrl+Cmd+N') && accels.includes(platform.accel('Ctrl+Cmd+N')) && new Set(accels).size === accels.length,
       accels.filter((x, i) => accels.indexOf(x) !== i).join());
     const notes0 = store.state.notes;
     store.state.notes = [

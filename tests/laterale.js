@@ -116,7 +116,7 @@ module.exports = async function lateraleTests(ctx) {
   w.activate(A);
   let tpl = w.tabMenuTemplate(C);
   check('menu d’un onglet du jour : lien, lien Markdown, dupliquer, renommer, épingler, favoris, vue scindée, son, déplacer, archiver (celui-ci, en dessous, au-dessus, les autres)',
-    labels(tpl).join('|') === ['tabs.copyLink', 'tabs.copyLinkMarkdown', 'tabs.duplicate', 'tabs.rename', 'tabs.pin', 'tabs.addFavorite', 'tabs.openSplit', 'tabs.mute', 'tabs.moveTo', 'tabs.close', 'tabs.closeOthers', 'tabs.closeAbove', 'tabs.closeAllOthers'].map((k) => T(k)).join('|'), labels(tpl).join('|'));
+    labels(tpl).join('|') === ['tabs.copyLink', 'tabs.copyLinkMarkdown', 'tabs.duplicate', 'tabs.rename', 'tabs.changeIcon', 'tabs.pin', 'tabs.addFavorite', 'tabs.openSplit', 'tabs.mute', 'tabs.moveTo', 'tabs.close', 'tabs.closeOthers', 'tabs.closeAbove', 'tabs.closeAllOthers'].map((k) => T(k)).join('|'), labels(tpl).join('|'));
   pick(tpl, 'tabs.copyLink').click();
   await until(async () => (await clipboard.readText()) === dead('C'), 'lien copié');
   check('menu : « Copier le lien »', true);
@@ -240,7 +240,7 @@ module.exports = async function lateraleTests(ctx) {
   d.tabs[D].customTitle = 'Mon D';
   tpl = w.folderMenuTemplate(folder.id);
   check('menu d’un dossier : renommer, dupliquer, copier tous les liens (aussi en Markdown), sous-dossier, coller l’adresse, replier, supprimer',
-    labels(tpl).join('|') === ['tabs.renameFolder', 'tabs.duplicateFolder', 'tabs.copyAllLinks', 'tabs.copyAllLinksMarkdown', 'tabs.newNestedFolder', 'tabs.pasteUrlTab', 'tabs.closeFolder', 'tabs.deleteFolder'].map((k) => T(k)).join('|'), labels(tpl).join('|'));
+    labels(tpl).join('|') === ['tabs.renameFolder', 'tabs.changeIcon', 'tabs.duplicateFolder', 'tabs.copyAllLinks', 'tabs.copyAllLinksMarkdown', 'tabs.newNestedFolder', 'tabs.pasteUrlTab', 'tabs.closeFolder', 'tabs.folderToSpace', 'tabs.deleteFolder'].map((k) => T(k)).join('|'), labels(tpl).join('|'));
   pick(tpl, 'tabs.copyAllLinks').click();
   await until(async () => (await clipboard.readText()) === `${dead('D')}\n${dead('C')}`, 'liens du dossier');
   check('dossier : « Copier tous les liens », sous-dossiers compris, un par ligne', true);
@@ -314,7 +314,7 @@ module.exports = async function lateraleTests(ctx) {
   // --- Menus de l'Espace, du vide de la barre et du « + » -----------------------
   tpl = w.spaceMenuTemplate();
   check('menu de l’Espace : renommer, thème, icône, profil, en-tête, dossier, Espace, supprimer',
-    labels(tpl).join('|') === ['spaces.rename', 'spaces.editTheme', 'spaces.changeIcon', 'spaces.profile', 'spaces.hideHeader', 'tabs.newFolder', 'spaces.new', 'spaces.delete'].map((k) => T(k)).join('|'), labels(tpl).join('|'));
+    labels(tpl).join('|') === ['spaces.rename', 'spaces.editTheme', 'spaces.changeIcon', 'spaces.profile', 'spaces.hideHeader', 'spaces.toFolder', 'spaces.manage', 'tabs.newFolder', 'spaces.new', 'spaces.delete'].map((k) => T(k)).join('|'), labels(tpl).join('|'));
   const profs = pick(tpl, 'spaces.profile').submenu;
   check('menu de l’Espace → Profil : un article par profil, celui de l’Espace coché, puis « Nouveau profil »',
     profs.filter((x) => x.type === 'radio').length === d.profiles.length && profs.find((x) => x.checked).label === d.profiles.find((p) => p.id === space.profileId).name && labels(profs).pop() === T('spaces.newProfile'));
@@ -774,7 +774,7 @@ module.exports = async function lateraleTests(ctx) {
 
   // Aide → Dépannage.
   const help = menuItem('help.troubleshooting');
-  check('Aide → Dépannage : « Afficher les données d’Orbe », « Copier les infos d’Orbe », « Restaurer une sauvegarde »', !!help && help.submenu.items.filter((x) => x.type !== 'separator').map((x) => x.label).join('|') === [T('help.revealData'), T('help.copyInfo'), T('backup.menu')].join('|'));
+  check('Aide → Dépannage : « Afficher les données d’Orbe », « Copier les infos d’Orbe », « Restaurer une sauvegarde »', !!help && help.submenu.items.filter((x) => x.type !== 'separator').map((x) => x.label).join('|') === [T('help.revealData'), T('help.copyInfo'), T('help.recordTrace'), T('backup.menu')].join('|'));
   menuItem('help.copyInfo').click();
   await until(async () => (await clipboard.readText()).startsWith(`Orbe ${app.getVersion()}\nElectron ${process.versions.electron}\nChromium ${process.versions.chrome}\n${process.platform}`), 'infos copiées');
   check('« Copier les infos d’Orbe » : versions d’Orbe, d’Electron, de Chromium et du système', true);
