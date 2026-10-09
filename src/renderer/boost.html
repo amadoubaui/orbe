@@ -37,6 +37,10 @@ input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); }
 .item .grow { flex: 1; min-width: 0; }
 .item .site { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .item .what { color: var(--dim); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.item .what { color: var(--dim); }
+#review { position: fixed; inset: 38px 0 0 0; z-index: 5; background: var(--base); padding: 0 16px 14px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+#review pre { margin: 0; max-height: 170px; overflow: auto; border-radius: 10px; background: var(--pill); color: var(--fg); padding: 10px; font: 12px/1.5 ui-monospace, Menlo, monospace; white-space: pre-wrap; word-break: break-all; user-select: text; flex: none; }
+#to-review { display: flex; gap: 8px; align-items: center; }
 [hidden] { display: none !important; }
 </style>
 </head>
@@ -45,6 +49,7 @@ input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); }
 <main id="editor" hidden>
   <div class="rowb"><h1 id="host" class="grow"></h1><input type="checkbox" id="on"><span data-t="boost.enabled"></span></div>
   <input id="name" maxlength="60" spellcheck="false" data-t-ph="boost.name">
+  <div class="hint warn" id="to-review" hidden><span class="grow" data-t="boost.toReviewHint"></span><button class="btn" id="review-open" data-t="boost.reviewBtn"></button></div>
   <div class="hint" id="note" hidden></div>
 
   <h2 data-t="boost.look"></h2>
@@ -90,6 +95,21 @@ input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); }
     <button class="btn" id="export-all" data-t="boost.exportAll"></button>
   </div>
 </main>
+<section id="review" hidden>
+  <h1 data-t="boost.reviewTitle"></h1>
+  <div class="hint" id="review-host"></div>
+  <div class="hint" data-t="boost.reviewHint"></div>
+  <div class="hint warn" id="review-warn" hidden></div>
+  <div class="hint" id="review-look" data-t="boost.reviewLook" hidden></div>
+  <h2>CSS</h2>
+  <pre id="review-css"></pre>
+  <div id="review-zaps-box" hidden><h2 data-t="boost.reviewZaps"></h2><pre id="review-zaps"></pre></div>
+  <div id="review-js-box" hidden><h2>JavaScript</h2><div class="hint" data-t="boost.reviewJs"></div><pre id="review-js"></pre></div>
+  <div id="foot">
+    <button class="btn primary" id="review-ok" data-t="boost.reviewOk"></button>
+    <button class="btn" id="review-cancel" data-t="sheet.cancel"></button>
+  </div>
+</section>
 <script src="common.js"></script>
 <script src="boost.js"></script>
 </body>

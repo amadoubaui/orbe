@@ -19,6 +19,8 @@ const env = {
   window: () => null,
   startDrag: (wc, item) => wc.startDrag(item),
   clearArchive: (w) => require('./commands').clearArchive(w),
+  // Relecture d'un Boost importé avant sa première activation : posé par main.js.
+  reviewBoost: () => {},
 };
 
 const t = (key, vars) => store.t(key, null, vars);
@@ -67,8 +69,10 @@ function removeArchived(id) {
   const list = archive();
   const i = list.findIndex((a) => a.id === id);
   if (i < 0) return false;
-  list.splice(i, 1);
+  const [gone] = list.splice(i, 1);
   store.save();
+  // Supprimée ici, supprimée aussi des sauvegardes de l'état.
+  require('./backups').forget({ archiveIds: [gone.id], archiveUrls: gone.url ? [gone.url] : [] });
   return true;
 }
 
@@ -78,7 +82,10 @@ let fallbackIcon = null;
 
 // L'icône d'un fichier se demande au système, sans attendre : elle doit être prête
 // au moment où l'utilisateur commence à glisser.
-function warmIcon(file) {
+// Jamais pour un fichier exécutable ou resté sans marque « venu d'Internet » : le
+// système lirait le fichier lui-même (icône d'un .exe, cible d'un raccourci).
+function warmIcon(file, d) {
+  if (d && (d.danger || downloads.isDangerous(file) || downloads.unmarked(d))) return;
   if (icons.has(file)) return;
   icons.set(file, null);
   if (icons.size > 400) icons.delete(icons.keys().next().value);
@@ -103,7 +110,7 @@ function fileRows(list, q, media) {
     if (!match(d)) continue;
     const exists = d.state === 'completed' && fs.existsSync(d.path);
     if (media && !exists) continue;
-    if (exists) warmIcon(d.path);
+    if (exists) warmIcon(d.path, d);
     rows.push({ ...d, exists });
     if (rows.length >= 200) break;
   }
@@ -114,6 +121,9 @@ function fileRows(list, q, media) {
 function drag(sender, id) {
   const d = store.state.downloads.find((x) => x.id === id);
   if (!d || d.state !== 'completed' || !sender || sender.isDestroyed() || !fs.existsSync(d.path)) return false;
+  // Fichier resté sans marque « venu d'Internet » : glissé tel quel, le système l'ouvrirait
+  // sans rien demander. La question est posée ; le geste suivant passera s'il est accepté.
+  if (!downloads.dragAllowed(d)) { downloads.cleared(d, null).catch(() => {}); return false; }
   const icon = dragIcon(d.path);
   if (!icon || icon.isEmpty()) return false;
   env.startDrag(sender, { file: d.path, icon });
@@ -134,14 +144,13 @@ function boostRows(q) {
   return Object.entries(store.state.boosts)
     .filter(([host]) => !q || host.toLowerCase().includes(q))
     .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([host, b]) => ({ host, enabled: b.enabled !== false, zaps: (b.zaps || []).length, css: (b.css || '').trim().length }));
+    .map(([host, b]) => ({ host, review: b.review === true, enabled: b.enabled !== false, zaps: (b.zaps || []).length, css: (b.css || '').trim().length }));
 }
 
-// Après un changement de Boost : les pages ouvertes de ce site le reprennent.
+// Après un changement de Boost : les onglets ordinaires de ce site le reprennent
+// (même chemin que partout ailleurs : ni navigation privée, ni page interne).
 function reapplyBoost(host) {
-  const boosts = require('./boosts');
-  const { live } = require('./window');
-  for (const rt of live.values()) if (!rt.wc.isDestroyed() && boosts.hostOf(rt.wc.getURL()) === host) boosts.apply(rt.wc);
+  return require('./window').applyBoosts(host);
 }
 
 // --- Messages ----------------------------------------------------------------------
@@ -172,10 +181,14 @@ async function action(name, a, sender) {
       if (SECTIONS.includes(a) && s.window.librarySection !== a) { s.window.librarySection = a; store.save(true); }
       return true;
     case 'lib:clear':
-      if (a === 'history') { s.history = {}; store.historyCount = 0; store.saveHistory(true); }
+      if (a === 'history') { s.history = {}; store.historyCount = 0; store.saveHistory(true); require('./backups').forget({ historyAll: true }); }
       // Vider l'archive ne se rattrape pas : la question est posée d'abord.
       if (a === 'archive') return env.clearArchive(w);
-      if (a === 'downloads') s.downloads = s.downloads.filter((d) => d.state === 'progressing');
+      if (a === 'downloads') {
+        const gone = s.downloads.filter((d) => d.state !== 'progressing').map((d) => d.id);
+        s.downloads = s.downloads.filter((d) => d.state === 'progressing');
+        if (gone.length) require('./backups').forget({ downloads: gone });
+      }
       store.save();
       return true;
     case 'lib:restore':
@@ -209,7 +222,13 @@ async function action(name, a, sender) {
       const o = a && typeof a === 'object' ? a : {};
       const host = String(o.host || '');
       if (!Object.hasOwn(s.boosts, host)) return false;
-      if (o.do === 'toggle') s.boosts[host].enabled = s.boosts[host].enabled === false;
+      if (o.do === 'toggle') {
+        const boosts = require('./boosts');
+        const b = boosts.get(host);
+        // Boost importé, pas encore relu : son contenu est d'abord montré (éditeur de Boost).
+        if (b.review && !b.enabled) { env.reviewBoost(w, host); return { review: true }; }
+        boosts.set(host, { enabled: !b.enabled });
+      }
       else if (o.do === 'delete') delete s.boosts[host];
       else if (o.do === 'open') return w ? !!w.newTab('https://' + host) : false;
       else return false;
@@ -222,4 +241,4 @@ async function action(name, a, sender) {
   }
 }
 
-module.exports = { action, env, SECTIONS, HOW, MEDIA, archive, restore, removeArchived, drag, internals: { icons, dragIcon } };
+module.exports = { action, env, SECTIONS, HOW, MEDIA, archive, restore, removeArchived, drag, internals: { icons, dragIcon, warmIcon } };

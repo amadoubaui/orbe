@@ -613,7 +613,7 @@ module.exports = async function selftest(ctx) {
   OrbeWindow.pushAll();
 
   // Aiguillage des liens venus d'autres applications
-  store.state.settings.routes = [{ match: '/b', to: s2.id }];
+  store.state.settings.routes = [{ match: '127.0.0.1/b', to: s2.id }];
   openUrl(base + '/b');
   check('aiguillage : le lien s’ouvre dans l’Espace de la règle', w.space === s2 && tabs()[w.activeId].url === base + '/b');
   w.close(w.activeId);
@@ -1101,6 +1101,9 @@ module.exports = async function selftest(ctx) {
 
   // Bibliothèque : archive, téléchargements, Espaces, Boosts ; notes (tests/bibliotheque.js)
   await require('./bibliotheque')({ ...ctx, check });
+
+  // Correctifs de la revue de sécurité : quarantaine, sauvegardes, aiguillage, Boosts, adresses étroites.
+  await require('./securite')({ ...ctx, check });
 
   // Persistance
   await shot('final');

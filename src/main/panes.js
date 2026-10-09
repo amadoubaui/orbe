@@ -215,7 +215,8 @@ const quit = {
   },
 };
 function beforeQuit(e) {
-  if (!store.state || !store.state.settings.warnOnQuit || quit.confirmed) return;
+  // (Restauration d'une sauvegarde : l'accord vient d'être donné, la question n'est pas reposée.)
+  if (!store.state || !store.state.settings.warnOnQuit || quit.confirmed || require('./backups').restoring()) return;
   e.preventDefault();
   quit.ask().then((ok) => { if (ok) { quit.confirmed = true; app.quit(); } }).catch(() => {});
 }

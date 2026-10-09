@@ -12,13 +12,22 @@
 //    sans aucun accès à Orbe), jamais dans une page interne, un aperçu, une
 //    feuille ou une vue de l'interface, et seulement si le site affiché par le
 //    cadre principal est bien celui du Boost — vérifié ici, au dernier moment ;
-//  - un Boost importé arrive désactivé, son script coupé : rien ne s'exécute à l'import.
+//  - le script ne part jamais sur une page « http: » (le réseau peut y avoir mis
+//    autre chose que le site attendu), sauf une adresse de la machine elle-même ;
+//    il commence par vérifier, dans la page, qu'il est bien sur le site du Boost ;
+//  - le CSS n'est inséré que si le document en place dans le cadre principal est
+//    celui du site du Boost — vérifié juste avant et juste après l'insertion — et
+//    il est retiré dès que la page passe à un autre site ;
+//  - un Boost importé arrive désactivé, son script coupé, et « à relire » : il ne
+//    s'active qu'après que son contenu a été montré (`reviewOf`, `approve`).
 const { store } = require('./store');
 
-const applied = new WeakMap(); // webContents -> clé du CSS inséré
+const applied = new WeakMap(); // webContents -> { key : clé du CSS inséré, host : site pour lequel il l'a été }
 // `extraCss(wc)` : CSS ajouté par Orbe à la page (bandeaux de cookies, couleurs du thème).
 // `canScript(wc)` : la page est-elle un onglet web ordinaire ? (posé par window.js)
-const hooks = { extraCss: () => '', canScript: () => false };
+// `parse(liste)` : fait lire des sélecteurs par le moteur CSS, dans une page de
+//   l'interface (bac à sable) ; renvoie un booléen par sélecteur (posé par window.js).
+const hooks = { extraCss: () => '', canScript: () => false, parse: null };
 
 const CSS_MAX = 50000;
 const JS_MAX = 50000;
@@ -53,6 +62,43 @@ function hostOf(url) {
 // Nom d'hôte tel que `hostOf` le rend (clé d'un Boost) : rien d'autre n'est accepté d'un fichier.
 const validHost = (h) => typeof h === 'string' && h.length <= 255 && /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?(:\d{1,5})?$/i.test(h) && hostOf('http://' + h) === h.toLowerCase();
 
+// Texte CSS une fois ses échappements lus (« \75 » -> « u », « \( » -> « ( »).
+function unescapeCss(s) {
+  return String(s).replace(/\\([0-9a-f]{1,6})[ \t\n\r\f]?/gi, (m, h) => { try { return String.fromCodePoint(parseInt(h, 16) || 0xfffd); } catch { return '\ufffd'; } }).replace(/\\(.)/g, '$1');
+}
+
+// Sélecteur qui masquerait la page entière (« html », « body », « * », « :root »,
+// seuls ou enchaînés, ou habillés d'un « :not(…) ») : jamais un Zap.
+const BROAD = /^(html|body|\*)?(:root|:scope)*$/;
+function tooBroad(sel) {
+  let s = String(sel).toLowerCase();
+  for (let i = 0; i < 8 && /:not\([^()]*\)/.test(s); i++) s = s.replace(/:not\([^()]*\)/g, '');
+  s = s.replace(/:(is|where)\(([^()]*)\)/g, (m, f, inner) => (inner.split(',').some((x) => BROAD.test(x.trim())) ? '*' : m));
+  const parts = s.split(/\s*[>+~]\s*|\s+/).filter(Boolean);
+  return !parts.length || parts.every((p) => BROAD.test(p));
+}
+
+// Lecture par le moteur CSS lui-même (dans une page de l'interface, voir `hooks.parse`) :
+// le sélecteur doit donner exactement une règle, qui ne fait que masquer.
+const PARSE = `(list) => list.map((s) => { try {
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync(s + ' { display: none !important; }');
+  if (sheet.cssRules.length !== 1) return false;
+  const r = sheet.cssRules[0];
+  if (!(r instanceof CSSStyleRule) || r.style.length !== 1 || r.style.display !== 'none' || (r.cssRules && r.cssRules.length)) return false;
+  document.querySelector(s);
+  return true;
+} catch { return false; } })`;
+
+// Sélecteurs venus d'ailleurs (page, fichier importé) : filtre d'ici, puis lecture par le moteur.
+async function vet(list) {
+  const ok = [...new Set((Array.isArray(list) ? list : []).filter((z) => validSelector(z) && !tooBroad(z)))].slice(0, ZAP_MAX);
+  if (!ok.length || !hooks.parse) return ok;
+  let res = null;
+  try { res = await hooks.parse(ok); } catch {}
+  return Array.isArray(res) && res.length === ok.length ? ok.filter((z, i) => res[i] === true) : ok;
+}
+
 // Un sélecteur CSS seul, qui ne peut ni fermer la règle ni en ouvrir une autre :
 // pas d'accolade, de point-virgule ni d'arobase, pas de commentaire, parenthèses,
 // crochets et guillemets fermés, pas de virgule hors parenthèses.
@@ -62,6 +108,10 @@ function validSelector(sel) {
   if (!s || s.length > SELECTOR_MAX || s !== sel) return false;
   // eslint-disable-next-line no-control-regex
   if (/[\u0000-\u001f\u007f{};@<]/.test(s) || s.includes('/*') || s.includes('*/')) return false;
+  // « url( » : le moteur CSS lit ce qui suit autrement que le reste (une adresse sans
+  // guillemets, où parenthèses et guillemets ne se comptent plus comme ici). Refusé,
+  // même écrit avec des échappements (« \75rl( »).
+  if (/url\s*\(/i.test(s) || /url\s*\(/i.test(unescapeCss(s))) return false;
   const stack = [];
   let quote = '';
   for (let i = 0; i < s.length; i++) {
@@ -102,11 +152,13 @@ function clean(b) {
   return {
     name: String(x.name || '').replace(/\s+/g, ' ').trim().slice(0, NAME_MAX),
     css: String(x.css || '').slice(0, CSS_MAX),
-    zaps: [...new Set((Array.isArray(x.zaps) ? x.zaps : []).filter(validSelector))].slice(0, ZAP_MAX),
+    zaps: [...new Set((Array.isArray(x.zaps) ? x.zaps : []).filter((z) => validSelector(z) && !tooBroad(z)))].slice(0, ZAP_MAX),
     look: cleanLook(x.look),
     js: String(x.js || '').slice(0, JS_MAX),
     jsOn: x.jsOn === true,
     enabled: x.enabled !== false,
+    // Importé, pas encore relu (voir `approve`).
+    review: x.review === true,
   };
 }
 
@@ -118,9 +170,13 @@ function get(host) {
 
 const has = (host) => !!host && Object.hasOwn(store.state.boosts, host);
 
-function set(host, patch) {
+// `reviewed` : l'utilisateur vient de relire ce Boost importé (seul `approve` le dit).
+function set(host, patch, { reviewed = false } = {}) {
   if (!host) return get(host);
-  const next = clean({ ...get(host), ...(patch && typeof patch === 'object' ? patch : {}) });
+  const cur = get(host);
+  const next = clean({ ...cur, ...(patch && typeof patch === 'object' ? patch : {}) });
+  // Boost importé, pas encore relu : ni activé, ni script armé, quoi que demande le message.
+  if (cur.review && !reviewed) { next.review = true; next.enabled = false; next.jsOn = false; } else next.review = false;
   if (empty(next)) delete store.state.boosts[host];
   else store.state.boosts[host] = next;
   store.save();
@@ -134,11 +190,41 @@ function remove(host) {
   return true;
 }
 
+// Ce qu'un Boost importé va faire, pour la relecture avant sa première activation :
+// son CSS, son script, ses éléments masqués, et ce qui mérite un avertissement
+// (« url( » et « @import » font charger des adresses choisies par l'auteur du fichier).
+function reviewOf(host) {
+  if (!has(host)) return null;
+  const b = get(host);
+  const plain = unescapeCss(b.css);
+  return {
+    host, name: b.name, css: b.css, js: b.js, zaps: b.zaps, look: !plainLook(b.look), pending: b.review,
+    warnUrl: /url\s*\(/i.test(b.css) || /url\s*\(/i.test(plain) || /image-set\s*\(/i.test(plain),
+    warnImport: /@import/i.test(b.css) || /@import/i.test(plain),
+  };
+}
+
+// Relecture faite : le Boost s'active. Son script reste coupé (case à part, et réglage général).
+function approve(host) {
+  if (!has(host)) return null;
+  return set(host, { enabled: true, jsOn: false }, { reviewed: true });
+}
+
+// Sélecteurs d'un Boost tout juste importé : relus par le moteur CSS.
+async function vetImported(hosts) {
+  for (const host of hosts || []) {
+    if (!has(host)) continue;
+    const b = get(host);
+    const kept = await vet(b.zaps);
+    if (kept.length !== b.zaps.length) set(host, { zaps: kept });
+  }
+}
+
 // Tous les Boosts, pour la liste : site, nom, état, ce qu'ils contiennent.
 function list() {
   return Object.keys(store.state.boosts).sort().map((host) => {
     const b = get(host);
-    return { host, name: b.name, enabled: b.enabled, css: !!b.css.trim(), zaps: b.zaps.length, look: !plainLook(b.look), js: !!b.js.trim(), jsOn: b.jsOn };
+    return { host, name: b.name, enabled: b.enabled, css: !!b.css.trim(), zaps: b.zaps.length, look: !plainLook(b.look), js: !!b.js.trim(), jsOn: b.jsOn, review: b.review };
   });
 }
 
@@ -197,14 +283,38 @@ function apply(wc) {
   return next;
 }
 
+// Site du document en place dans le cadre principal (adresse validée par le moteur).
+// `wc.getURL()` peut déjà nommer une navigation en attente : ce n'est pas lui qu'on lit.
+function committedHost(wc) {
+  try {
+    const f = wc.mainFrame;
+    return hostOf(f ? f.url : wc.getURL());
+  } catch { return ''; }
+}
+
 async function applyNow(wc) {
   if (!wc || wc.isDestroyed()) return;
   const old = applied.get(wc);
-  if (old) { applied.delete(wc); await wc.removeInsertedCSS(old).catch(() => {}); }
-  const css = (globallyOn() ? cssFor(hostOf(wc.getURL())) : '') + hooks.extraCss(wc);
-  if (!css.trim() || wc.isDestroyed()) return;
+  if (old) { applied.delete(wc); await wc.removeInsertedCSS(old.key).catch(() => {}); }
+  if (wc.isDestroyed()) return;
+  const host = committedHost(wc);
+  const css = (globallyOn() ? cssFor(host) : '') + hooks.extraCss(wc);
+  if (!css.trim()) return;
+  // Vérifié au dernier moment, puis après coup : si la page a changé de site pendant
+  // l'insertion, le CSS d'un site ne reste pas dans la page d'un autre.
+  if (wc.isDestroyed() || committedHost(wc) !== host) return;
   const key = await wc.insertCSS(css).catch(() => null);
-  if (key) applied.set(wc, key);
+  if (!key || wc.isDestroyed()) return;
+  if (committedHost(wc) !== host) { await wc.removeInsertedCSS(key).catch(() => {}); return; }
+  applied.set(wc, { key, host });
+}
+
+// La page vient de changer de document : si elle a changé de site, le CSS posé pour
+// l'ancien est retiré tout de suite et celui du nouveau site prend sa place.
+function navigated(wc) {
+  if (!wc || wc.isDestroyed()) return Promise.resolve();
+  const cur = applied.get(wc);
+  return cur && cur.host !== committedHost(wc) ? apply(wc) : Promise.resolve();
 }
 
 // Le script d'un Boost a-t-il le droit de s'exécuter pour ce site ?
@@ -222,20 +332,45 @@ function scriptFor(host) {
 // Le site est relu sur le cadre lui-même, au moment d'exécuter : si la page a
 // changé de site entre-temps, le cadre n'est plus le même et rien ne part.
 const ran = { count: 0, last: null }; // pour les essais et l'éditeur
+
+// Une page « http: » n'est pas forcément celle du site : n'importe qui sur le réseau
+// peut l'avoir fournie. Le script d'un Boost n'y est jamais lancé — sauf sur la machine
+// elle-même (localhost), où rien ne passe par le réseau. Le CSS, lui, reste appliqué.
+function scriptable(url) {
+  try {
+    const u = new URL(url);
+    if (u.protocol === 'https:') return true;
+    return u.protocol === 'http:' && /^(localhost|127\.0\.0\.1|\[::1\]|[a-z0-9-]+\.localhost)$/i.test(u.hostname);
+  } catch { return false; }
+}
+
+// Le script tel qu'il part dans la page. Il commence par vérifier, là où il s'exécute,
+// qu'il est bien sur le site et le protocole vérifiés ici : entre la vérification du
+// processus principal et l'exécution, la page a pu changer.
+const SKIPPED = '\u0000orbe-boost-hors-site';
+function scriptCode(js, host, protocol) {
+  return `(async () => { if (location.host.replace(/^www\\./, '') !== ${JSON.stringify(host)} || location.protocol !== ${JSON.stringify(protocol)}) return ${JSON.stringify(SKIPPED)}; try {\n${js}\n} catch (e) { console.error('[Boost]', e); return String((e && e.message) || e).slice(0, 300); } return ''; })()`;
+}
+
 async function runScript(wc) {
   if (!wc || wc.isDestroyed() || !hooks.canScript(wc)) return false;
   const frame = wc.mainFrame;
   if (!frame || frame.isDestroyed()) return false;
-  const host = hostOf(frame.url);
+  const url = frame.url;
+  const host = hostOf(url);
+  if (!scriptable(url)) return false;
   const js = host && hostOf(wc.getURL()) === host ? scriptFor(host) : '';
   if (!js) return false;
-  ran.count += 1;
-  ran.last = { host, at: Date.now(), error: '' };
-  const mine = ran.last;
+  const mine = { host, at: Date.now(), error: '' };
   // Monde principal de la page (celui de ses propres scripts) : droits de la page, rien de plus.
   // L'erreur du script est rendue comme un texte, pour l'éditeur ; la valeur du script est ignorée.
-  const code = `(async () => { try {\n${js}\n} catch (e) { console.error('[Boost]', e); return String((e && e.message) || e).slice(0, 300); } return ''; })()`;
-  try { mine.error = String((await frame.executeJavaScript(code, false)) || '').slice(0, 300); } catch (err) { mine.error = String((err && err.message) || err).slice(0, 300); }
+  const code = scriptCode(js, host, new URL(url).protocol);
+  let out = '';
+  try { out = String((await frame.executeJavaScript(code, false)) || ''); } catch (err) { out = String((err && err.message) || err); }
+  if (out === SKIPPED) return false; // la page n'était plus celle du site : rien n'a tourné
+  mine.error = out.slice(0, 300);
+  ran.count += 1;
+  ran.last = mine;
   return true;
 }
 
@@ -281,8 +416,11 @@ const PICKER = `new Promise((resolve) => {
 async function zap(wc, forHost) {
   const host = hostOf(wc.getURL());
   if (!host || (forHost && forHost !== host)) return null;
-  const sel = await wc.executeJavaScript(PICKER, true).catch(() => '');
-  if (!validSelector(sel) || wc.isDestroyed() || hostOf(wc.getURL()) !== host) return null;
+  // (Sans « geste de l'utilisateur » prêté à la page : le sélecteur n'en a pas besoin.)
+  const sel = await wc.executeJavaScript(PICKER, false).catch(() => '');
+  if (!validSelector(sel) || tooBroad(sel) || wc.isDestroyed() || hostOf(wc.getURL()) !== host) return null;
+  // Lu aussi par le moteur CSS, hors de la page qui l'a fabriqué.
+  if (!(await vet([sel])).length || wc.isDestroyed() || hostOf(wc.getURL()) !== host) return null;
   const b = get(host);
   set(host, { zaps: [...b.zaps, sel], enabled: true });
   await apply(wc);
@@ -319,6 +457,7 @@ function importData(data) {
       js: typeof raw.js === 'string' ? raw.js : '',
       jsOn: false,
       enabled: false,
+      review: true,
     });
     if (empty(b)) { out.rejected += 1; continue; }
     store.state.boosts[host] = b;
@@ -337,4 +476,4 @@ function importText(text) {
   return importData(data);
 }
 
-module.exports = { hostOf, get, set, has, remove, list, apply, zap, cssFor, lookCss, cleanLook, validSelector, validHost, scriptFor, runScript, ran, exportData, importData, importText, hooks, FONTS, CASES, SWATCHES, FILE_MAX };
+module.exports = { hostOf, get, set, has, remove, list, apply, navigated, zap, vet, vetImported, tooBroad, reviewOf, approve, scriptable, scriptCode, PARSE, internals: { applied, applyNow, committedHost, SKIPPED }, cssFor, lookCss, cleanLook, validSelector, validHost, scriptFor, runScript, ran, exportData, importData, importText, hooks, FONTS, CASES, SWATCHES, FILE_MAX };

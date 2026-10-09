@@ -438,24 +438,47 @@ function offView() {
 // Par minuterie, pas par image : une fenêtre masquée ou recouverte ne dessine
 // pas, et le repère resterait en attente.
 function offViewSoon() { if (!offFrame) offFrame = setTimeout(offView, 60); }
-let offSettle = 0;
+// Écart entre la ligne de l'onglet affiché et la partie visible de la liste : négatif
+// si elle est au-dessus, positif si elle est en dessous, 0 si elle est entièrement
+// en vue ; null s'il n'y a pas de ligne.
+function offGap() {
+  const row = document.querySelector('#scroll .row.tab.active');
+  if (!row) return null;
+  const r = row.getBoundingClientRect();
+  const sr = scroller.getBoundingClientRect();
+  return r.top < sr.top ? r.top - sr.top : (r.bottom > sr.bottom ? r.bottom - sr.bottom : 0);
+}
+let offWatch = 0;
 offEl.onclick = () => {
   const row = document.querySelector('#scroll .row.tab.active');
   if (!row) return;
   row.scrollIntoView({ block: 'nearest', behavior: reducedMotion.matches ? 'auto' : 'smooth' });
   // Le défilement doux avance image par image : fenêtre recouverte ou écran
-  // verrouillé (aucune image présentée), ou liste redessinée en route, il
-  // s'arrête à mi-chemin et le repère reste. Passé son temps normal, si la ligne
-  // n'est toujours pas en vue, on y va d'un coup.
-  clearTimeout(offSettle);
-  offSettle = setTimeout(() => {
-    const now = document.querySelector('#scroll .row.tab.active');
-    if (!now) return;
-    const r = now.getBoundingClientRect();
-    const sr = scroller.getBoundingClientRect();
-    if (r.top < sr.top || r.bottom > sr.bottom) now.scrollIntoView({ block: 'nearest', behavior: 'auto' });
-    offViewSoon();
-  }, 900);
+  // verrouillé (aucune image présentée), ou liste redessinée en route, il peut
+  // caler à mi-chemin, et le repère resterait. On le SUIT donc, au lieu d'attendre
+  // un délai fixe : s'il n'avance plus alors que la ligne n'est pas en vue, on y va
+  // d'un coup ; et si la liste part dans l'autre sens (l'utilisateur a défilé
+  // ailleurs entre-temps), on n'y touche plus. (Un rattrapage à délai fixe ramenait
+  // la liste sur l'onglet 900 ms après le clic, quoi qu'on ait fait depuis.)
+  clearTimeout(offWatch);
+  let last = scroller.scrollTop;
+  let tries = 0;
+  const watch = () => {
+    const gap = offGap();
+    if (!gap) { offViewSoon(); return; } // arrivée (ou plus de ligne)
+    const moved = (scroller.scrollTop - last) * Math.sign(gap); // > 0 : vers la ligne
+    last = scroller.scrollTop;
+    if (moved < -1) return; // on s'en éloigne : quelqu'un d'autre défile
+    tries += 1;
+    if (moved < 0.5 || tries > 15) {
+      const now = document.querySelector('#scroll .row.tab.active');
+      if (now) now.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+      offViewSoon();
+      return;
+    }
+    offWatch = setTimeout(watch, 120);
+  };
+  offWatch = setTimeout(watch, 120);
 };
 addEventListener('resize', offViewSoon);
 // Les lignes qui apparaissent ou se replient déplacent les autres : on revérifie à la fin.
@@ -1106,7 +1129,8 @@ function drawPanes(list) {
       url.appendChild(faviconEl(p.favicon, host(p.url) || p.title || '?'));
       const span = document.createElement('span');
       span.className = 'pane-text';
-      span.textContent = text;
+      // Page web : domaine en avant, nom d'hôte jamais coupé par la droite (common.js).
+      if (p.internal) span.textContent = text; else addressInto(span, text);
       url.appendChild(span);
     }
     url.title = p.internal ? '' : p.url;

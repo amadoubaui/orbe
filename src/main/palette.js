@@ -211,6 +211,8 @@ function forget(item) {
   }
   const kept = s.archive.filter((a) => a.url !== url);
   if (kept.length !== s.archive.length) { s.archive = kept; store.save(); done = true; }
+  // Oubliée ici, oubliée aussi dans les sauvegardes de l'état et la copie de secours de l'historique.
+  if (done) require('./backups').forget({ archiveUrls: [url], historyUrls: [url] });
   return done;
 }
 

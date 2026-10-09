@@ -220,7 +220,18 @@ un onglet sans lien `window.opener` avec la page.
 
 ## Téléchargements (`src/main/downloads.js`)
 
-- Nom proposé par le site réduit à un simple nom ; jamais d'écrasement.
+- Nom proposé par le site réduit à un simple nom ; jamais d'écrasement. Le nom
+  qu'une **extension** impose (`chrome.downloads.download({ filename })`) passe
+  par le même traitement (`rename` : `safeName`, dossier déjà choisi, numéro si
+  le fichier existe) ; si l'utilisateur a choisi lui-même l'emplacement
+  (« toujours demander »), l'extension ne le change pas.
+- L'enregistrement de la Bibliothèque décrit le fichier **réellement écrit** :
+  à la fin du téléchargement, le chemin est relu sur l'objet d'Electron
+  (`item.getSavePath()`), et le nom, le caractère « exécutable » et la marque
+  « venu d'Internet » portent sur ce fichier-là. (Avant : le chemin noté à
+  « will-download » restait, alors qu'une extension pouvait le changer juste
+  après — la marque partait sur un fichier qui n'existait pas, et un
+  exécutable renommé n'était plus signalé.)
 - Fichiers exécutables (`.dmg`, `.pkg`, `.exe`, `.app`, `.command`, scripts…) :
   signalés, jamais ouverts automatiquement ; les ouvrir depuis Orbe demande
   une confirmation qui nomme l'hôte d'origine.
@@ -247,6 +258,29 @@ un onglet sans lien `window.opener` avec la page.
   macOS, flux `Zone.Identifier` (zone 3) sur Windows — pour que le système
   avertisse à l'ouverture (Gatekeeper, SmartScreen). En navigation privée,
   l'adresse d'origine n'est pas écrite à côté du fichier.
+  - Elle est posée **avant** que le téléchargement soit annoncé terminé (liste,
+    notification, ouverture automatique d'un PDF) : rien n'ouvre le fichier
+    entre-temps.
+  - Si elle ne peut pas être posée (disque qui ne garde pas les attributs,
+    `xattr` en échec), une seconde tentative est faite ; en cas de nouvel
+    échec le fichier est noté **sans marque** (`marked: false`). Il n'est
+    alors jamais ouvert d'office, la Bibliothèque le signale, et l'ouvrir, le
+    copier, le partager ou le glisser hors d'Orbe repose d'abord la marque
+    puis, si elle manque toujours, demande confirmation (le glisser, qui ne
+    peut pas attendre une réponse, est refusé tant que l'accord n'a pas été
+    donné).
+  - « Enregistrer la page » : Electron ne l'annonce pas par « will-download »
+    (vérifié par essai). La page et le contenu de son dossier « …_files » sont
+    marqués un par un (`markTree`).
+  - Fichiers écrits par l'API de téléchargement des extensions : ce sont des
+    téléchargements de la session, marqués comme les autres.
+- « Copier » un fichier téléchargé : une image n'est décodée dans le processus
+  principal que si elle fait moins de 32 Mo, que son en-tête (lu sans la
+  décoder) annonce au plus 16 384 points de côté et 64 millions de points, et
+  qu'elle n'est ni exécutable ni sans marque ; sinon c'est le fichier qui est
+  copié, sans être lu. L'icône du système (`app.getFileIcon`, pour le glisser)
+  n'est jamais demandée pour un exécutable ou un fichier sans marque : le
+  système lirait le fichier lui-même (icône d'un `.exe`, cible d'un raccourci).
 - Bibliothèque : le menu d'un fichier, la corbeille, la copie et le glisser hors
   d'Orbe ne reçoivent de la page qu'un identifiant de téléchargement ; le chemin
   vient toujours des données d'Orbe (`library.js`, `downloads.js`).
@@ -281,13 +315,18 @@ JavaScript si l'utilisateur l'a permis.
 | Menace | Réponse |
 | --- | --- |
 | Le script d'un Boost atteint Orbe (pont `window.orbe`, Node) | Il s'exécute dans le **monde principal de la page** (`frame.executeJavaScript`), celui des scripts du site : il a les droits de la page, rien de plus. Les pages web n'ont ni préchargement privilégié ni `window.orbe`. Vérifié : `typeof window.orbe`, `require` et `process` valent `undefined` dans le script. |
-| Le script s'exécute ailleurs que sur son site | Le site est relu **dans le processus principal, sur le cadre principal, au moment d'exécuter** (`hostOf(frame.url)`), jamais d'après la page. Le script part une fois par chargement (`dom-ready`), dans le cadre principal seulement — pas dans les cadres intégrés. |
+| Le script s'exécute ailleurs que sur son site | Le site est relu **dans le processus principal, sur le cadre principal, au moment d'exécuter** (`hostOf(frame.url)`), jamais d'après la page. Le script part une fois par chargement (`dom-ready`), dans le cadre principal seulement — pas dans les cadres intégrés. Entre cette vérification et l'exécution la page peut encore changer : le script commence donc par vérifier **dans la page** (`scriptCode`) que `location.host` et le protocole sont ceux qui ont été vérifiés, et ne fait rien sinon. |
+| Le CSS d'un Boost atterrit dans la page d'un autre site (navigation pendant l'insertion) | Le site est celui du **document en place** dans le cadre principal (`mainFrame.url`), pas celui d'une navigation en attente (`getURL()`). Il est vérifié juste avant `insertCSS` et juste après : si la page a changé de site entre-temps, le CSS est retiré aussitôt. À chaque changement de document (`did-navigate`), le CSS posé pour un autre site est retiré. |
+| Page « http: » : le réseau peut servir autre chose que le site, sous son nom | Les Boosts sont rangés par nom d'hôte, sans le protocole. Le **script** d'un Boost ne part donc jamais sur une page `http:` (sauf la machine elle-même : `localhost`, `127.0.0.1`, `*.localhost`). Le CSS, l'apparence et les éléments masqués restent appliqués en `http:` — c'est le choix le plus strict qui laisse les Boosts utilisables. |
+| Navigation privée | Aucun chemin n'y applique un Boost : chargement, réglages, éditeur, centre de contrôle et Bibliothèque passent tous par `applyBoosts`, qui écarte fenêtres privées et pages internes (la Bibliothèque avait son propre chemin, sans ce filtre : corrigé). |
 | Le script s'exécute dans une page d'Orbe, une feuille, un aperçu, une petite fenêtre | `canScript` n'accepte que la page web d'un onglet ordinaire : ni page interne (`orbe://`), ni navigation privée ; aperçus, petites fenêtres, feuilles et vues de l'interface ne sont pas des onglets et ne reçoivent ni CSS ni script. Vérifié cas par cas. |
 | Un script s'exécute sans que l'utilisateur l'ait voulu | Trois accords : les Boosts sont actifs, le réglage « Autoriser le JavaScript des Boosts » est coché (**décoché par défaut**), et la case du Boost l'est aussi. |
-| Un Boost importé exécute du code, ou vole des données par son CSS (sélecteurs d'attributs + images distantes) | À l'import **rien n'est appliqué ni exécuté** : le Boost arrive désactivé, son script coupé, et ne remplace jamais un Boost existant. Le fichier est du JSON borné (2 Mo, 300 Boosts) ; seuls les champs connus sont lus, chacun borné. Activer un Boost importé est un geste explicite, après relecture. |
-| Sélecteur de « Zap » piégé (venu de la page cliquée ou d'un fichier) qui ferme la règle et injecte du CSS | `validSelector` : ni accolade, ni point-virgule, ni arobase, ni commentaire ; parenthèses, crochets et guillemets fermés ; pas de virgule hors parenthèses ; 500 caractères au plus. Une règle par sélecteur. |
+| Un Boost importé exécute du code, ou vole des données par son CSS (sélecteurs d'attributs + images distantes) | À l'import **rien n'est appliqué ni exécuté** : le Boost arrive désactivé, son script coupé, et ne remplace jamais un Boost existant. Le fichier est du JSON borné (2 Mo, 300 Boosts) ; seuls les champs connus sont lus, chacun borné. Il arrive aussi **« à relire »** (`review`) : tant qu'il l'est, aucun message ne peut l'activer ni armer son script (`boosts.set` le refuse). La première activation passe par une étape de relecture (liste des Boosts, éditeur, Bibliothèque) qui montre son CSS, ses éléments masqués et son script tels quels, avec un avertissement explicite quand le CSS contient `url(` ou `@import` (adresses chargées à chaque visite, choisies par l'auteur du fichier). « Activer ce Boost » l'active ; le script reste coupé (case à part). Un Boost revenu d'une sauvegarde après avoir été supprimé ou modifié suit le même chemin. |
+| Sélecteur de « Zap » piégé (venu de la page cliquée ou d'un fichier) qui ferme la règle et injecte du CSS | `validSelector` : ni accolade, ni point-virgule, ni arobase, ni commentaire ; parenthèses, crochets et guillemets fermés ; pas de virgule hors parenthèses ; 500 caractères au plus ; **pas de `url(`**, même échappé (`\75rl(`) — le moteur CSS lit ce qui suit `url(` comme une adresse sans guillemets, où parenthèses et guillemets ne se comptent plus comme le fait ce filtre. En plus du filtre, chaque sélecteur venu de la page ou d'un fichier est **lu par le moteur CSS lui-même** (`vet` : `CSSStyleSheet.replaceSync` puis `document.querySelector`, dans la coque d'une fenêtre — page de l'interface en bac à sable —, jamais dans la page qui l'a fourni) : il doit donner exactement une règle, qui ne fait que masquer. Une règle par sélecteur. |
+| La page cliquée au « Zap » rend un sélecteur qui masque tout (`html`, `body`, `*`, `:root`) | `tooBroad` : refusé, seul, enchaîné (`html > body`, `body *`) ou habillé (`body:not(.x)`, `:is(body, .a)`). Le sélecteur d'élément est lancé **sans** « geste de l'utilisateur » prêté à la page (`executeJavaScript(…, false)`) : il n'en a pas besoin, et la page n'en hérite pas. |
 | Valeur d'apparence piégée (couleur, police, taille…) | Le CSS de l'apparence est **fabriqué** par Orbe à partir de nombres bornés et de valeurs prises dans une liste ; aucun texte du Boost n'y est recopié. |
 | Une page web écrit ou lit des Boosts | Les messages `boost:*` ne sont acceptés que de la **fenêtre de l'éditeur** (reconnue à son `webContents`). L'éditeur est lié au site de l'onglet à son ouverture : si l'onglet change de site, rien n'est écrit pour le nouveau. Le sélecteur rendu par la page au « Zap » est rangé pour le site que le processus principal voit affiché. |
+| L'éditeur est pointé sur un autre Boost pendant qu'un enregistrement différé de l'ancien site est en route | Chaque message de l'éditeur d'un site (`boost:set`, `zap`, `reset`, `reload`, `export`) **nomme le site** qu'il croit modifier ; le processus principal refuse celui qui ne correspond plus au site de l'éditeur. La page relève ce nom à la frappe, pas à l'envoi. |
 | Retirer un Boost | Décocher, « Tout réinitialiser » ou supprimer depuis la liste retire le CSS aussitôt. Un script déjà exécuté ne se « retire » pas : il faut recharger la page (bouton de l'éditeur) — c'est dit dans l'éditeur. |
 
 Limites assumées : le CSS libre d'un Boost est du CSS quelconque (`@import`,
@@ -295,6 +334,99 @@ images distantes) — c'est le but de la fonction ; un Boost activé par
 l'utilisateur a donc sur son site le pouvoir d'une feuille de style
 d'utilisateur. « Traduire la page » (menu de page) transmet l'adresse de la
 page au service de traduction de Google, sur un clic seulement.
+
+## Sauvegardes de l'état (`src/main/backups.js`)
+
+Une sauvegarde est une copie entière d'`orbe.json` : onglets, archive, liste
+des téléchargements, notes, autorisations des sites, Boosts. Orbe en garde les
+dix dernières du jour et une par jour sur dix jours (une vingtaine de fichiers,
+dans « sauvegardes », à côté de l'état), sur l'ordinateur seulement.
+
+| Menace | Réponse |
+| --- | --- |
+| Un autre compte de la machine lit les sauvegardes | Dossier en `0700`, fichiers en `0600` (posé à la création, et au lancement pour les sauvegardes d'une version précédente). Sans effet sous Windows, où le profil n'est ouvert qu'à l'utilisateur. |
+| Une donnée supprimée par l'utilisateur reste dix jours dans les sauvegardes | **Supprimé veut dire supprimé** (`forget`) : supprimer une entrée de l'archive, vider l'archive, « oublier » une suggestion de la barre de commande, masquer un téléchargement ou vider la liste, supprimer une note, effacer l'historique (Bibliothèque, « Effacer les données de navigation ») et réinitialiser les autorisations retirent la même donnée des sauvegardes déjà faites, qui sont récrites. Avec une entrée d'archive partent les onglets des sauvegardes fermés depuis (ils y figuraient encore comme ouverts). Les copies de secours `orbe.json.bak` et `history.json.bak` sont traitées de même. Une sauvegarde qu'on ne peut pas récrire est supprimée. Les demandes rapprochées sont groupées (une récriture par fichier), et exécutées au plus tard à l'arrêt, avant toute restauration et avant toute nouvelle sauvegarde ; la sauvegarde horaire écrit d'abord l'état en mémoire, pour ne pas recopier une suppression pas encore écrite. La question « Vider l'archive ? » le dit. |
+| Restaurer rend un droit que l'utilisateur avait retiré | `plan` : les **autorisations des sites restent celles du moment** (rien de ce qui a été retiré depuis ne revient) ; « Autoriser le JavaScript des Boosts » n'est **jamais rallumé** ; un Boost supprimé ou modifié depuis revient **désactivé, script coupé, à relire** (comme un Boost importé) ; un Boost inchangé garde son état du moment. La question de la restauration le dit, compte les Boosts concernés, et rappelle ce qu'Orbe garde comme sauvegardes. |
+| La restauration coupe Orbe d'un coup (`app.exit`) : historique en attente perdu, téléchargement en cours abandonné sans question | La restauration demande un **arrêt normal** (`app.quit`) : la question « Des téléchargements sont en cours » est posée d'abord (« Annuler » abandonne la restauration, rien n'est touché), chaque module écrit ce qu'il a en attente, une page peut encore retenir l'arrêt (« Rester » abandonne la restauration). L'état n'est remplacé qu'à `will-quit`, quand plus rien ne retient ni n'écrira, puis Orbe se relance. |
+
+Limites : les onglets fermés par la suppression d'un Espace ou d'un profil ne
+sont pas retirés des sauvegardes (ils en sortent avec elles, en dix jours au
+plus) ; un Boost supprimé y reste lui aussi (il ne reviendrait que désactivé,
+à relire). `orbe.json` lui-même garde les droits par défaut du système (`0644`
+dans un dossier de profil que macOS réserve déjà à l'utilisateur).
+
+## Aiguillage des liens (`src/main/prefs.js`, `routeFor`)
+
+Une règle envoie les liens d'un site vers un Espace (donc un profil, avec ses
+cookies) ou vers la petite fenêtre. Elle sert aux liens venus d'autres
+applications et aux liens cliqués dans une page qui s'ouvriraient en aperçu
+(onglet épinglé, ⇧clic).
+
+- Avant, la règle cherchait son texte **n'importe où dans l'adresse** : un lien
+  `https://evil.tld/?github.com` s'ouvrait dans l'Espace que l'utilisateur
+  réserve à `github.com`.
+- Maintenant, une règle **nomme un site** et se compare au nom d'hôte de
+  l'adresse (`new URL(url).hostname`) : égal, ou sous-domaine (`gist.github.com`
+  pour `github.com`). Elle peut préciser un port (`localhost:3000`) et, si elle
+  contient un chemin, un **début de chemin** comparé segment par segment
+  (`github.com/orbe` ne vaut pas pour `github.com/orbeX`). Paramètres,
+  fragment et identifiant (`github.com@evil.tld`) ne comptent jamais ; seules
+  les adresses `http(s):` sont aiguillées. Le même code sert aux deux chemins
+  (`openUrl` et `peekTarget`).
+- Règles d'avant : au lancement, celles qui nomment un site sont récrites sous
+  leur forme normale (`https://www.Figma.com/` → `figma.com`). Celles qui ne
+  nomment pas un site (un mot avec espace, un bout de chemin) restent dans la
+  liste, signalées dans les réglages, et **n'aiguillent plus rien**. Un mot
+  seul (`figma`) est lu comme un nom d'hôte sans point : il ne vaut plus pour
+  `figma.com` — c'est dit dans l'aide du réglage.
+- Les réglages n'acceptent une nouvelle règle que si elle nomme un site.
+
+## Adresses affichées à l'étroit (`src/renderer/common.js`, `addressInto`)
+
+Ce qui dit à qui l'on a affaire est la **fin** du nom d'hôte. Coupée par la
+droite, `compte.banque.fr.connexion-securisee.example` ne montrait que
+`compte.banque.fr…`. Dans la petite barre d'un volet (vue scindée), l'adresse
+d'un aperçu et la barre d'une petite fenêtre :
+
+- le domaine enregistré est mis en avant (plus gras ; le reste estompé) ;
+- quand la place manque, le chemin cède d'abord, puis le nom d'hôte s'efface
+  **par la gauche** : sa fin reste toujours visible.
+
+Le domaine enregistré est estimé dans la page (deux étiquettes, trois pour les
+suffixes à deux étages les plus courants) : pour un suffixe absent de cette
+liste, la mise en avant peut tomber un étage trop court ; la coupe à gauche,
+elle, ne dépend pas de la liste.
+
+## Copie d'adresse (`cleanUrl`, `mdLink` dans `src/main/window.js`)
+
+- Une fiche Amazon est réduite à son identifiant de produit — seulement sur un
+  domaine d'Amazon **nommé dans une liste** (`amazon.fr`, `amazon.co.uk`…).
+  `amazon.<n'importe quoi>` ne suffit plus (`amazon.zip`, `amazon.attack`).
+- « Copier le lien en Markdown », la citation et « Copier tous les liens » :
+  le titre vient de la page. Crochets et barre oblique inverse y sont échappés
+  (un `]` fermait le texte du lien, et la suite du titre devenait l'adresse) ;
+  dans l'adresse, parenthèses, espaces et chevrons sont encodés.
+
+## Revue d'octobre 2026 : ce qui a été corrigé
+
+Chaque ligne a un essai qui échoue sur le code d'avant (`tests/securite.js`,
+sauf mention).
+
+| Constat | Correctif | Essai |
+| --- | --- | --- |
+| Quarantaine posée sur un chemin périmé quand une extension impose un nom ; exécutable renommé non signalé | Chemin relu à la fin, enregistrement mis à jour, nom d'extension nettoyé comme celui d'un site | `securite.js` (partie 1), `ext-api.js` (téléchargement réel) |
+| Quarantaine sans conséquence en cas d'échec, posée après l'annonce ; « Enregistrer la page » jamais marquée | Marque avant l'annonce, seconde tentative, fichier « sans marque » traité comme douteux ; `markTree` | parties 1 et 2 |
+| Sauvegardes : données supprimées conservées, fichiers `0644`, restauration qui rend des droits, arrêt forcé | `forget`, `0600`/`0700`, `plan`, arrêt normal puis `will-quit` | partie 3, `bibliotheque.js` |
+| Aiguillage : texte cherché dans toute l'adresse | Nom d'hôte (et début de chemin explicite) | partie 4, `fenetres.js`, `selftest.js` |
+| Bibliothèque : Boost réappliqué en navigation privée | Chemin unique `applyBoosts` | partie 5 |
+| Éditeur de Boost : site tenu par une seule variable | Site nommé dans chaque message | `fenetres.js` |
+| Boosts : course à l'exécution (script, CSS) ; `http:` et `https:` confondus | Garde dans la page, document en place vérifié avant et après, retrait à la navigation ; pas de script en `http:` | partie 6 |
+| `validSelector` et `url(` ; sélecteur du « Zap » : geste prêté, sélecteurs trop larges | Refus de `url(`, lecture par le moteur CSS, `tooBroad`, plus de geste | partie 6 |
+| Boost importé activable sans l'avoir vu | Étape de relecture | partie 6 |
+| Images et icônes de fichiers téléchargés décodées sans borne | Bornes lues dans l'en-tête ; jamais pour un fichier douteux | partie 1 |
+| Adresse étroite coupée par la droite | Domaine en avant, coupe à gauche | partie 7 |
+| Fiche Amazon : domaines sosies | Liste de domaines | partie 8 |
+| Lien Markdown : titre non échappé | `mdLink` | partie 8 |
 
 ## Mises à jour (`src/main/updates.js`)
 

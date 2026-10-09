@@ -111,6 +111,22 @@ module.exports = {
       await jusqua(async () => (await reglage('routes')).length === 0, 'règle supprimée');
     });
 
+    await t.verifier('règle d’aiguillage : elle doit nommer un site — un bout d’adresse est refusé, une adresse entière est ramenée à son site', async () => {
+      await r.click('#route-match');
+      await r.keyboard.type('?github.com', { delay: 10 });
+      await r.keyboard.press('Enter');
+      await jusqua(() => r.locator('#route-msg').isVisible(), 'refus expliqué');
+      assert.equal((await reglage('routes')).length, 0, 'rien n’est enregistré');
+      await r.locator('#route-match').fill('');
+      await r.keyboard.type('https://www.GitHub.com/Orbe/', { delay: 10 });
+      await r.keyboard.press('Enter');
+      await jusqua(async () => (await reglage('routes')).length === 1, 'règle enregistrée');
+      assert.equal((await reglage('routes'))[0].match, 'github.com/orbe');
+      assert.equal(await r.locator('#route-msg').isVisible(), false);
+      await r.locator('#routes .line .btn').first().click();
+      await jusqua(async () => (await reglage('routes')).length === 0, 'règle supprimée');
+    });
+
     await t.verifier('liens des autres applications : la liste propose chaque Espace', async () => {
       const espace = (await ctx.etat()).espaces[0];
       await r.selectOption('#externalLinks', 'space:' + espace.id);

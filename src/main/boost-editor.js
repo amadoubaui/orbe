@@ -2,6 +2,9 @@
 // l'ouverture, et liste de tous les Boosts (« Afficher les Boosts… »).
 // Le site modifié est fixé à l'ouverture (`host`) : si l'onglet change de site
 // pendant que l'éditeur est ouvert, rien n'est écrit pour le nouveau site.
+// Chaque message de l'éditeur nomme le site qu'il croit modifier : s'il ne
+// correspond plus à `host` (l'éditeur a été pointé ailleurs entre-temps, et un
+// enregistrement différé de l'ancien site arrive après coup), il est refusé.
 const { BrowserWindow, dialog, nativeTheme } = require('electron');
 const fs = require('fs');
 const path = require('path');
@@ -13,6 +16,7 @@ const { live, trusted, UI_PRELOAD, INTERNAL, OrbeWindow, applyBoosts } = require
 let win = null;
 let target = null; // webContents de l'onglet d'où l'éditeur a été ouvert
 let host = ''; // site du Boost en cours de modification ('' : la liste seule)
+let toReview = ''; // Boost importé dont la relecture est demandée à l'ouverture de la liste
 const hooks = { openSettings: () => {} };
 
 // Champs qu'un message de l'éditeur peut modifier (chacun est ensuite borné par boosts.set).
@@ -66,6 +70,19 @@ function state() {
 
 const listState = () => ({ items: boosts.list(), jsAllowed: store.state.settings.boostsJs === true });
 
+// Ouvre la liste sur la relecture d'un Boost importé (demandée depuis la Bibliothèque).
+function review(w, site) {
+  if ((w && w.incognito) || !boosts.has(site)) return null;
+  host = '';
+  target = null;
+  toReview = site;
+  return show();
+}
+
+// Site nommé par le message. Les messages de l'éditeur d'un site doivent nommer `host`.
+const named = (a) => (a && typeof a === 'object' && typeof a.host === 'string' ? a.host : '');
+const mine = (a) => !!host && named(a) === host;
+
 async function exportTo(w, hosts) {
   const data = boosts.exportData(hosts);
   if (!data.boosts.length) return { ok: false };
@@ -93,41 +110,61 @@ async function action(name, a, sender) {
   switch (name) {
     case 'boost:get': return state();
     case 'boost:set': {
-      if (!host || !a || typeof a !== 'object') return state();
+      if (!mine(a) || !a.patch || typeof a.patch !== 'object') return null;
       const patch = {};
-      for (const k of EDITABLE) if (Object.hasOwn(a, k)) patch[k] = a[k];
+      for (const k of EDITABLE) if (Object.hasOwn(a.patch, k)) patch[k] = a.patch[k];
+      // Une liste de sélecteurs qui arrive par message est relue comme toute autre (filtre, puis moteur CSS).
+      if (Object.hasOwn(patch, 'zaps')) patch.zaps = await boosts.vet(patch.zaps);
+      if (!mine(a)) return null; // l'éditeur a été pointé ailleurs pendant la relecture
       boosts.set(host, patch);
       await applyHost(host);
       OrbeWindow.pushAll();
       return state();
     }
     case 'boost:zap': {
+      if (!mine(a)) return null;
       const wc = page();
       if (!wc) return state();
       wc.focus();
-      await boosts.zap(wc, host);
+      await boosts.zap(wc, a.host);
       if (win && !win.isDestroyed()) win.focus();
       return state();
     }
     // « Tout réinitialiser » : le Boost du site est retiré en entier.
-    case 'boost:reset': if (host) { boosts.remove(host); await applyHost(host); OrbeWindow.pushAll(); } return state();
+    case 'boost:reset': if (!mine(a)) return null; boosts.remove(host); await applyHost(host); OrbeWindow.pushAll(); return state();
     // Le script d'un Boost ne s'exécute (ou ne disparaît) qu'au chargement de la page.
-    case 'boost:reload': { const wc = page(); if (wc) wc.reload(); return state(); }
+    case 'boost:reload': { if (!mine(a)) return null; const wc = page(); if (wc) wc.reload(); return state(); }
     case 'boost:settings': hooks.openSettings(); return null;
-    case 'boost:list': return listState();
+    case 'boost:list': { const r = listState(); if (toReview) { r.review = boosts.reviewOf(toReview); toReview = ''; } return r; }
     case 'boost:toggle': {
-      const site = a && typeof a.host === 'string' ? a.host : '';
-      if (boosts.has(site)) { boosts.set(site, { enabled: a.enabled === true }); await applyHost(site); OrbeWindow.pushAll(); }
+      const site = named(a);
+      if (!boosts.has(site)) return listState();
+      // Boost importé, jamais relu : son contenu est montré d'abord (voir « boost:approve »).
+      if (a.enabled === true && boosts.get(site).review) return { ...listState(), review: boosts.reviewOf(site) };
+      boosts.set(site, { enabled: a.enabled === true });
+      await applyHost(site);
+      OrbeWindow.pushAll();
       return listState();
     }
+    // Contenu d'un Boost importé, pour la relecture (liste, ou éditeur de ce site).
+    case 'boost:review': { const site = named(a); return host && site !== host ? null : boosts.reviewOf(site); }
+    // « Activer ce Boost », après relecture. Depuis l'éditeur d'un site : ce site seulement.
+    case 'boost:approve': {
+      const site = named(a);
+      if ((host && site !== host) || !boosts.has(site)) return null;
+      boosts.approve(site);
+      await applyHost(site);
+      OrbeWindow.pushAll();
+      return host ? state() : listState();
+    }
     case 'boost:delete': {
-      const site = a && typeof a.host === 'string' ? a.host : '';
+      const site = named(a);
       if (boosts.remove(site)) { await applyHost(site); OrbeWindow.pushAll(); }
       return listState();
     }
     // Depuis la liste : ouvrir l'éditeur d'un Boost existant (l'onglet qui affiche ce site, s'il y en a un, sert d'aperçu).
     case 'boost:edit': {
-      const site = a && typeof a.host === 'string' ? a.host : '';
+      const site = named(a);
       if (!boosts.has(site)) return null;
       host = site;
       target = null;
@@ -136,10 +173,19 @@ async function action(name, a, sender) {
       return null;
     }
     case 'boost:showList': host = ''; target = null; show(); return null;
-    case 'boost:export': return exportTo(win, a && typeof a.host === 'string' ? [a.host] : (host && !(a && a.all) ? [host] : null));
-    case 'boost:import': { const r = await importFrom(win); return { result: r, ...listState() }; }
+    // Depuis l'éditeur d'un site : ce site (nommé par le message) ; depuis la liste : le site de la ligne, ou tous.
+    case 'boost:export': {
+      if (host) return mine(a) ? exportTo(win, [host]) : null;
+      return exportTo(win, named(a) ? [named(a)] : null);
+    }
+    case 'boost:import': {
+      const r = await importFrom(win);
+      // Sélecteurs du fichier : relus par le moteur CSS, en plus du filtre.
+      if (r && r.added && r.added.length) await boosts.vetImported(r.added);
+      return { result: r, ...listState() };
+    }
     default: return null;
   }
 }
 
-module.exports = { open, action, hooks, state: () => ({ win, host, target }) };
+module.exports = { open, review, action, hooks, state: () => ({ win, host, target }) };

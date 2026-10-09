@@ -475,6 +475,28 @@ module.exports = async function extApiTest({ first: w, OrbeWindow, win, extApi, 
   await until(async () => (await events('downloads.onChanged')).some((e) => e.args[0].id === dl && e.args[0].state.current === 'complete'), 'downloads.onChanged');
   const got = (await call('downloads.search', { id: dl }))[0];
   check('downloads.download puis search : fichier dans le dossier des téléchargements, sous le nom demandé', got.state === 'complete' && path.dirname(got.filename) === require('electron').app.getPath('downloads') && path.basename(got.filename) === 'essai.txt' && require('fs').readFileSync(got.filename, 'utf8') === 'bonjour', got);
+  // Le nom imposé par l'extension change le chemin après « will-download » : la liste
+  // d'Orbe, la marque « venu d'Internet » et la mise en garde suivent le vrai fichier.
+  {
+    const fs = require('fs');
+    const rec = store.state.downloads.find((x) => x.path === got.filename);
+    // (L'extension apprend la fin dès que le fichier est écrit ; Orbe ne l'annonce qu'une fois la marque posée.)
+    await until(() => rec && rec.state === 'completed', 'téléchargement marqué puis annoncé');
+    let marked = !!rec && rec.marked === true;
+    if (marked && process.platform === 'darwin') { try { marked = /^0081;/.test(require('child_process').execFileSync('/usr/bin/xattr', ['-p', 'com.apple.quarantine', got.filename]).toString()); } catch { marked = false; } }
+    if (marked && process.platform === 'win32') { try { marked = /ZoneId=3/.test(fs.readFileSync(got.filename + ':Zone.Identifier', 'utf8')); } catch { marked = false; } }
+    check('téléchargement d’une extension sous un nom imposé : la liste d’Orbe décrit le fichier réellement écrit, et c’est lui qui est marqué « venu d’Internet »',
+      !!rec && rec.name === 'essai.txt' && rec.state === 'completed' && marked, JSON.stringify(rec || store.state.downloads.slice(0, 2)));
+    const dl2 = await call('downloads.download', { url: base + '/fichier.txt', filename: 'sous/dossier/orbe-essai-outil.command' });
+    await until(async () => (await events('downloads.onChanged')).some((e) => e.args[0].id === dl2 && e.args[0].state.current === 'complete'), 'second téléchargement');
+    const got2 = (await call('downloads.search', { id: dl2 }))[0];
+    const rec2 = store.state.downloads.find((x) => x.path === got2.filename);
+    await until(() => rec2 && rec2.state === 'completed', 'second téléchargement marqué puis annoncé');
+    check('extension, fichier exécutable sous un nom imposé : signalé comme tel (confirmation avant ouverture), rangé à plat dans le dossier des téléchargements',
+      !!rec2 && rec2.danger === true && /^orbe-essai-outil( \(\d+\))?\.command$/.test(rec2.name) && path.dirname(got2.filename) === require('electron').app.getPath('downloads') && rec2.marked === true, JSON.stringify(rec2 || got2));
+    try { fs.unlinkSync(got2.filename); } catch {}
+    if (rec2) store.state.downloads.splice(store.state.downloads.indexOf(rec2), 1);
+  }
   check('storage.managed.get rend un objet vide, comme Chrome sans stratégie', JSON.stringify(await call('storage.managed.get', null)) === '{}');
   await sleep(1100);
   const shots = await Promise.all([1, 2, 3].map(() => call('tabs.captureVisibleTab').then(() => 'ok', (e) => e.message)));

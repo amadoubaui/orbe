@@ -437,16 +437,10 @@ function watchDownloads(ses) {
     clearTimeout(d.timer);
     d.item = item;
     d.mime = item.getMimeType();
-    // Nom proposé par l'extension : un simple nom de fichier, dans le dossier
-    // déjà choisi par Orbe (jamais de chemin).
-    const current = item.getSavePath();
-    if (d.wanted && current) {
-      const fs = require('fs');
-      const parsed = path.parse(d.wanted);
-      let target = path.join(path.dirname(current), parsed.base);
-      for (let i = 1; fs.existsSync(target); i++) target = path.join(path.dirname(current), `${parsed.name} (${i})${parsed.ext}`);
-      item.setSavePath(target);
-    }
+    // Nom proposé par l'extension : traité comme celui d'un site (un simple nom,
+    // sans dossier ni caractère caché, jamais à la place d'un fichier existant), et
+    // l'enregistrement de la Bibliothèque suit (src/main/downloads.js, `rename`).
+    if (d.wanted) require('./downloads').rename(item, d.wanted);
     d.filename = item.getSavePath() || '';
     X.emit(ses, d.extId, 'downloads.onCreated', [downloadObject(d)]);
     item.once('done', (ev, state) => {
@@ -458,11 +452,10 @@ function watchDownloads(ses) {
   });
 }
 
-// Nom de fichier proposé par une extension, réduit à un nom sans dossier.
+// Nom de fichier proposé par une extension : gardé tel quel jusqu'au téléchargement,
+// où il est réduit à un simple nom (downloads.js).
 function safeName(name) {
-  if (typeof name !== 'string') return '';
-  const base = name.split(/[\\/]/).pop().replace(/[\x00-\x1f<>:"|?*]/g, '_').replace(/^\.+/, '').slice(0, 200);
-  return base;
+  return typeof name === 'string' ? name.slice(0, 1000) : '';
 }
 
 // --- API ----------------------------------------------------------------------------

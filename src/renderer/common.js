@@ -54,6 +54,61 @@ function host(url) {
   }
 }
 
+// --- Adresse affichée à l'étroit (volet d'une vue scindée, aperçu, petite fenêtre) ----
+// Ce qui dit à qui l'on a affaire, c'est la FIN du nom d'hôte : le domaine que
+// quelqu'un a enregistré. Dans « compte.banque.fr.connexion-securisee.example »,
+// c'est « connexion-securisee.example ». Coupée à droite, une adresse longue ne
+// montrerait que son début, choisi par le site. Ici le domaine est mis en avant,
+// et quand la place manque c'est la GAUCHE qui s'efface (puis le chemin, avant
+// le nom d'hôte) : la fin du nom d'hôte reste toujours visible.
+// Suffixes à deux étages les plus courants. Ce n'est pas la liste publique entière : pour
+// un suffixe absent d'ici, la mise en avant peut tomber un étage trop court — la fin du
+// nom d'hôte, elle, reste visible dans tous les cas.
+const SUFFIX2 = new Set(['co.uk', 'org.uk', 'ac.uk', 'gov.uk', 'me.uk', 'ltd.uk', 'com.au', 'net.au', 'org.au', 'edu.au', 'gov.au', 'co.nz', 'org.nz', 'co.jp', 'ne.jp', 'or.jp', 'ac.jp', 'go.jp',
+  'co.kr', 'or.kr', 'co.in', 'net.in', 'org.in', 'co.za', 'org.za', 'co.il', 'com.br', 'net.br', 'org.br', 'gov.br', 'com.mx', 'com.ar', 'com.co', 'com.pe', 'com.ve', 'com.tr', 'com.cn', 'net.cn', 'org.cn',
+  'com.hk', 'com.sg', 'com.tw', 'com.my', 'com.ph', 'com.vn', 'co.th', 'co.id', 'com.ua', 'com.pl', 'com.ru', 'com.eg', 'com.sa', 'com.ng', 'com.gh', 'co.ke', 'co.ma', 'com.sn', 'gouv.fr', 'asso.fr', 'com.fr',
+  'gouv.sn', 'com.be', 'com.es', 'com.pt', 'com.gr', 'co.at', 'or.at', 'com.de', 'github.io', 'gitlab.io', 'pages.dev', 'workers.dev', 'web.app', 'firebaseapp.com', 'vercel.app', 'netlify.app', 'herokuapp.com',
+  'appspot.com', 'blogspot.com', 'cloudfront.net', 'azurewebsites.net', 's3.amazonaws.com', 'glitch.me', 'repl.co', 'ngrok.io', 'ngrok-free.app', 'onrender.com', 'fly.dev', 'r2.dev']);
+// Nom d'hôte -> { sub : ce qui précède le domaine enregistré (avec son point), domain }.
+function siteParts(hostname) {
+  const h = String(hostname || '');
+  const labels = h.split('.');
+  if (labels.length < 3 || /^\[.*\]$/.test(h) || /^\d+(\.\d+){3}$/.test(h)) return { sub: '', domain: h };
+  const n = SUFFIX2.has(labels.slice(-2).join('.').toLowerCase()) ? 3 : 2;
+  return { sub: labels.slice(0, -n).join('.') + (labels.length > n ? '.' : ''), domain: labels.slice(-n).join('.') };
+}
+// Écrit `text` (une adresse, avec ou sans « https:// ») dans `el`, en trois parties :
+// ce qui précède le domaine, le domaine (et son port), le reste. Le texte de `el`
+// reste exactement `text`.
+function addressInto(el, text) {
+  const s = String(text || '');
+  el.textContent = '';
+  el.classList.add('addr');
+  const m = /^([a-z][a-z0-9+.-]*:\/\/)?([^/?#\s]*)([^]*)$/i.exec(s);
+  const at = m ? m[2].lastIndexOf('@') : -1;
+  const hostport = m ? m[2].slice(at + 1) : '';
+  const hp = /^(\[[^\]]*\]|[^:]*)(:\d*)?$/.exec(hostport);
+  if (!m || !hp || !hp[1] || !/^[^\s]+$/.test(hp[1]) || (!m[1] && !/[.:]|^localhost$/i.test(hostport))) { el.classList.remove('addr'); el.textContent = s; return el; }
+  const parts = siteParts(hp[1]);
+  const hostEl = document.createElement('span');
+  hostEl.className = 'addr-host';
+  const inner = document.createElement('bdi');
+  inner.dir = 'ltr';
+  const sub = document.createElement('span');
+  sub.className = 'addr-sub';
+  sub.textContent = (m[1] || '') + m[2].slice(0, at + 1) + parts.sub;
+  const dom = document.createElement('span');
+  dom.className = 'addr-domain';
+  dom.textContent = parts.domain + (hp[2] || '');
+  inner.append(sub, dom);
+  hostEl.appendChild(inner);
+  const rest = document.createElement('span');
+  rest.className = 'addr-rest';
+  rest.textContent = m[3];
+  el.append(hostEl, rest);
+  return el;
+}
+
 // Pastille de remplacement quand un site n'a pas d'icône.
 function letterIcon(text) {
   const span = document.createElement('span');

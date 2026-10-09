@@ -205,11 +205,28 @@ function drawRoutes() {
     box.appendChild(line);
   });
   el('route-to').innerHTML = spaceNames.map((x) => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('') + `<option value="little">${esc(t('set.externalLittle'))}</option>`;
+  // Règle d'avant qui ne nomme pas un site (un mot, un bout de chemin) : elle n'aiguille plus rien, la ligne le dit.
+  const shown = routes.map((r) => r.match);
+  O.send('settings:routeCheck', shown).then((ok) => {
+    if (!Array.isArray(ok) || shown.join('\n') !== routes.map((r) => r.match).join('\n')) return;
+    [...box.children].forEach((line, i) => {
+      if (ok[i] !== false || line.querySelector('.sub')) return;
+      line.classList.add('bad-route');
+      const note = document.createElement('div');
+      note.className = 'sub danger';
+      note.textContent = t('route.invalid');
+      line.firstChild.appendChild(note);
+    });
+  });
 }
-el('route-add').onclick = () => {
-  const match = el('route-match').value.trim();
+el('route-add').onclick = async () => {
+  const raw = el('route-match').value.trim();
+  if (!raw) return;
+  // La règle nomme un site (« figma.com », « github.com/orbe ») : mise sous sa forme normale, ou refusée.
+  const match = await O.send('settings:routeText', raw);
+  el('route-msg').hidden = !!match;
   if (!match) return;
-  routes.push({ match, to: el('route-to').value });
+  if (!routes.some((r) => r.match === match)) routes.push({ match, to: el('route-to').value });
   O.send('settings:set', { routes });
   el('route-match').value = '';
   drawRoutes();
