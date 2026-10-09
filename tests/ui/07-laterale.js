@@ -69,7 +69,7 @@ module.exports = {
     await ctx.capture('laterale-420');
 
     await t.verifier('largeur bornée : 200 px au moins', async () => {
-      await tirer(60);
+      await tirer(130);
       await jusqua(async () => (await largeur()) === 200, 'barre à 200 px');
       assert.equal((await ctx.etat()).vuePage.x, 200);
     });
@@ -93,6 +93,37 @@ module.exports = {
     await ctx.capture('laterale-200');
     await tirer(250);
     await jusqua(async () => (await largeur()) === 250, 'barre à 250 px');
+
+    await t.verifier('double-clic sur le bord : la barre reprend sa largeur par défaut', async () => {
+      await tirer(340);
+      await jusqua(async () => (await largeur()) === 340, 'barre à 340 px');
+      const sw = await largeur();
+      await shell.mouse.dblclick(sw - 2, 420);
+      await jusqua(async () => (await largeur()) === 250, 'barre à 250 px');
+      assert.equal((await ctx.etat()).largeur, 250);
+      assert.equal((await ctx.etat()).vuePage.x, 250);
+    });
+
+    await t.verifier('tirer le bord tout à gauche (sous 100 px) : la barre se masque ; ⌘S la ramène à sa largeur', async () => {
+      const sw = await largeur();
+      await shell.mouse.move(sw - 2, 420);
+      await shell.mouse.down();
+      await shell.mouse.move(180, 422, { steps: 4 });
+      await shell.mouse.move(40, 424, { steps: 6 });
+      await jusqua(async () => (await ctx.etat()).lateraleVisible === false, 'barre masquée');
+      // Le geste est fini : continuer à bouger ne redimensionne ni ne réaffiche rien.
+      await shell.mouse.move(300, 424, { steps: 4 });
+      await shell.mouse.up();
+      await ctx.sleep(150);
+      const e = await ctx.etat();
+      assert.equal(e.lateraleVisible, false);
+      assert.equal(e.largeur, 250, 'la largeur réglée est conservée');
+      assert.equal(e.vuePage.x, 10);
+      assert.equal(await shell.evaluate(() => document.body.classList.contains('no-anim')), false);
+      await ctx.menu('Cmd+S');
+      await jusqua(async () => (await ctx.etat()).vuePage.x === 250, 'page à 250 px');
+      await jusqua(async () => (await shell.locator('#sidebar').boundingBox()).x === 0, 'barre en place');
+    });
 
     await t.verifier('la poignée (7 px) n’est pas recouverte par la page sur toute sa largeur', async () => {
       const r = await shell.locator('#resize').boundingBox();
