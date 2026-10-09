@@ -31,6 +31,20 @@ function png(side, color = [200, 80, 40, 255]) {
   return nativeImage.createFromBitmap(raw, { width: side, height: side }).toPNG();
 }
 
+// PNG valide d'un bit par point, tout noir, aux dimensions voulues : quelques kilo-octets
+// sur le fil, des dizaines ou des centaines de méga-octets une fois décodé.
+function pngBits(width, height) {
+  const zlib = require('zlib');
+  const chunk = (type, data) => {
+    const head = Buffer.alloc(8); head.writeUInt32BE(data.length, 0); head.write(type, 4, 'latin1');
+    const crc = Buffer.alloc(4); crc.writeUInt32BE(zlib.crc32(Buffer.concat([head.subarray(4), data])) >>> 0, 0);
+    return Buffer.concat([head, data, crc]);
+  };
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(width, 0); ihdr.writeUInt32BE(height, 4); ihdr[8] = 1; // 1 bit, niveaux de gris
+  const rows = zlib.deflateSync(Buffer.alloc(height * (1 + Math.ceil(width / 8))), { level: 9 });
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', rows), chunk('IEND', Buffer.alloc(0))]);
+}
+
 const HOSTILE = '<img src=x onerror="window.pwned=1">Un titre de morceau vraiment très long, bien plus large que la barre latérale';
 
 function serve(cover) {
@@ -43,6 +57,12 @@ function serve(cover) {
     hits[url.pathname] = (hits[url.pathname] || 0) + 1;
     if (url.pathname === '/son.wav') { res.setHeader('content-type', 'audio/wav'); res.setHeader('accept-ranges', 'bytes'); res.setHeader('content-length', sound.length); return res.end(sound); }
     if (url.pathname === '/pochette.png') { res.setHeader('content-type', 'image/png'); return res.end(cover); }
+    if (server.extra && server.extra[url.pathname]) { res.setHeader('content-type', 'image/png'); return res.end(server.extra[url.pathname]); }
+    if (url.pathname === '/interne.png' || url.pathname === '/rebond.png') { res.setHeader('content-type', 'image/png'); return res.end(cover); }
+    // Redirections : vers la machine elle-même, vers un autre hôte « public », sans fin.
+    if (url.pathname === '/redir') { res.statusCode = 302; res.setHeader('location', `http://127.0.0.1:${server.address().port}/interne.png`); return res.end(); }
+    if (url.pathname === '/redir-ok') { res.statusCode = 302; res.setHeader('location', 'http://images.exemple.test/pochette.png'); return res.end(); }
+    if (url.pathname === '/boucle') { res.statusCode = 302; res.setHeader('location', 'http://img.exemple.test/boucle'); return res.end(); }
     if (url.pathname === '/faux.png') { res.setHeader('content-type', 'text/html'); return res.end('<script>1</script>'); }
     if (url.pathname === '/menteur.png') { res.setHeader('content-type', 'image/png'); return res.end('pas une image'); }
     if (url.pathname === '/enorme.png') { res.setHeader('content-type', 'image/png'); return res.end(Buffer.alloc(3 * 1024 * 1024, 1)); }
@@ -59,6 +79,7 @@ function serve(cover) {
           await document.getElementById('a').play();
           return true;
         };
+        window.setArt = (n, title) => { navigator.mediaSession.metadata = new MediaMetadata({ title: title || 'Titre', artist: 'Artiste ${m[1]}', artwork: [{ src: '/pochette.png?n=' + n, sizes: '300x300', type: 'image/png' }] }); return true; };
       </script>`));
     }
     if (url.pathname === '/calme') return res.end(page('Calme', '<h1>Calme</h1>'));
@@ -100,13 +121,75 @@ module.exports = async function mediasTests(ctx) {
   check('lecteur : réponse absente ou d’un autre type → lecteur vide, sans erreur', [null, undefined, 'x', 42, []].every((v) => { const r = mediaLib.clean(v); return r.has === false && r.track === '' && r.duration === 0 && !r.prev && !r.next; }));
   const kinds = ['javascript:alert(1)', 'file:///etc/passwd', 'blob:http://x/1', 'orbe://settings', 'data:text/html;base64,AAAA', 'data:image/svg+xml;base64,AAAA', 'data:image/png;base64,' + 'A'.repeat(mediaLib.LIMITS.dataUrl), 'http://' + 'a'.repeat(3000), '', 7].map(mediaLib.artworkKind);
   check('pochette : seules http(s) et data:image (png, jpeg, webp, gif) bornées sont acceptées', kinds.every((k) => k === '') && mediaLib.artworkKind('https://exemple.test/a.png') === 'http' && mediaLib.artworkKind('data:image/png;base64,AAAA') === 'data', kinds.join('|'));
-  const art = await mediaLib.loadArtwork(w.session, base + '/pochette.png');
+  const artLib = mediaLib.art;
+  const page = base + '/';
+  const art = await mediaLib.loadArtwork(w.session, base + '/pochette.png', page);
   const artSize = art ? nativeImage.createFromDataURL(art).getSize() : {};
   check('pochette : téléchargée dans la session de la page, recodée en PNG de 192 px au plus', art.startsWith('data:image/png;base64,') && artSize.width === 192 && artSize.height === 192, JSON.stringify(artSize));
-  const refused = [await mediaLib.loadArtwork(w.session, base + '/faux.png'), await mediaLib.loadArtwork(w.session, base + '/menteur.png'), await mediaLib.loadArtwork(w.session, base + '/enorme.png'), await mediaLib.loadArtwork(w.session, 'file:///etc/hosts'), await mediaLib.loadArtwork(w.session, 'data:image/png;base64,' + Buffer.from('pas une image').toString('base64'))];
-  check('pochette refusée : pas une image, fausse image, trop lourde (plus de 2 Mo), autre protocole', refused.every((r) => r === ''), refused.map((r) => r.length).join());
-  const dataArt = await mediaLib.loadArtwork(w.session, 'data:image/png;base64,' + png(64).toString('base64'));
+  const refused = [await mediaLib.loadArtwork(w.session, base + '/faux.png', page), await mediaLib.loadArtwork(w.session, base + '/menteur.png', page), await mediaLib.loadArtwork(w.session, base + '/enorme.png', page), await mediaLib.loadArtwork(w.session, 'file:///etc/hosts', page), await mediaLib.loadArtwork(w.session, 'data:image/png;base64,' + Buffer.from('pas une image').toString('base64'), page), await mediaLib.loadArtwork(w.session, base + '/pochette.png', 'file:///tmp/page.html'), await mediaLib.loadArtwork(w.session, base.replace('http://', 'http://moi:secret@') + '/pochette.png', page)];
+  check('pochette refusée : pas une image, fausse image, trop lourde (plus de 2 Mo), autre protocole, page qui n’est pas du web, identifiants dans l’adresse', refused.every((r) => r === ''), refused.map((r) => r.length).join());
+  const dataArt = await mediaLib.loadArtwork(w.session, 'data:image/png;base64,' + png(64).toString('base64'), page);
   check('pochette en data:image : redessinée par Orbe', dataArt.startsWith('data:image/png;base64,') && nativeImage.createFromDataURL(dataArt).getSize().width === 64);
+
+  // --- Image minuscule sur le fil, immense une fois décodée : jamais décodée -----------
+  const decoded = [];
+  const realDecode = artLib.hooks.decode;
+  artLib.hooks.decode = (buf) => { decoded.push(buf.length); return realDecode(buf); };
+  const geante = pngBits(8192, 8192);
+  const colossale = pngBits(30000, 30000);
+  // GIF dont l'écran logique est petit mais la première image immense ; BMP (format non admis).
+  const gif = Buffer.concat([Buffer.from('GIF89a', 'latin1'), Buffer.from([10, 0, 10, 0, 0, 0, 0, 0x21, 0xf9, 4, 0, 0, 0, 0, 0, 0x2c, 0, 0, 0, 0, 0x30, 0x75, 0x30, 0x75, 0, 2, 2, 0x4c, 1, 0, 0x3b])]);
+  const bmp = Buffer.alloc(64); bmp.write('BM', 0, 'latin1'); bmp.writeInt32LE(16, 18); bmp.writeInt32LE(16, 22);
+  server.extra = { '/geante.png': geante, '/colossale.png': colossale, '/large.png': pngBits(2049, 8), '/dense.png': pngBits(2048, 2000), '/limite.png': pngBits(2048, 1900), '/ecran.gif': gif, '/image.bmp': bmp };
+  check('images d’essai : PNG de 8192 × 8192 et de 30000 × 30000 points en quelques kilo-octets', geante.length < 64 * 1024 && colossale.length < 400 * 1024 && artLib.header(geante).width === 8192 && artLib.header(colossale).height === 30000, [geante.length, colossale.length].join());
+  const huge = [];
+  for (const name of ['geante.png', 'colossale.png', 'large.png', 'dense.png', 'ecran.gif', 'image.bmp']) huge.push(await mediaLib.loadArtwork(w.session, base + '/' + name, page));
+  huge.push(await mediaLib.loadArtwork(w.session, 'data:image/png;base64,' + geante.toString('base64'), page));
+  huge.push(await mediaLib.loadArtwork(w.session, 'data:image/png;base64,' + pngBits(30000, 2).toString('base64'), page));
+  check('pochette aux dimensions démesurées (8192², 30000², plus de 2048 px de côté, plus de 4 millions de points, GIF à l’image plus grande que son écran) ou d’un autre format : refusée d’après son en-tête, sans jamais être décodée',
+    huge.every((r) => r === '') && decoded.length === 0 && server.hits['/geante.png'] === 1 && server.hits['/colossale.png'] === 1, JSON.stringify({ rendu: huge.map((r) => r.length), decodages: decoded }));
+  const limite = await mediaLib.loadArtwork(w.session, base + '/limite.png', page);
+  check('pochette à la limite (2048 × 1900) : décodée une fois, rendue en 192 px', decoded.length === 1 && limite.startsWith('data:image/png;base64,') && nativeImage.createFromDataURL(limite).getSize().width === 192, String(decoded.length));
+  artLib.hooks.decode = realDecode;
+  server.extra = null;
+
+  // --- Règles de réseau refaites pour la pochette ---------------------------------------
+  const L = artLib.localAddress;
+  const locals = ['127.0.0.1', '127.8.9.1', '10.1.2.3', '172.16.0.1', '172.31.255.255', '192.168.1.33', '169.254.169.254', '100.103.131.21', '0.0.0.0', '224.0.0.1', '::1', '::', 'fc00::1', 'fd12:3456::1', 'fe80::1', '::ffff:127.0.0.1', '::ffff:c0a8:0101', '64:ff9b::7f00:1', 'ff02::1', 'pas une adresse'];
+  const publics = ['93.184.216.34', '8.8.8.8', '172.32.0.1', '172.15.0.1', '100.128.0.1', '2606:4700:10::6814:179a', '::ffff:8.8.8.8'];
+  check('adresses locales reconnues : boucle locale, réseaux privés, lien local, CGNAT, IPv6 locales uniques et de lien, IPv4 logée dans une IPv6', locals.every((a) => L(a) === true) && publics.every((a) => L(a) === false), locals.filter((a) => !L(a)).concat(publics.filter(L)).join());
+  check('noms locaux : localhost, .local, nom sans point ; hôte résolu vers une adresse privée parmi d’autres',
+    artLib.hostLocal('localhost') === true && artLib.hostLocal('imprimante.local') === true && artLib.hostLocal('routeur') === true && artLib.hostLocal('[::1]') === true && artLib.hostLocal('192.168.0.1') === true
+    && artLib.hostLocal('exemple.test', ['93.184.216.34']) === false && artLib.hostLocal('exemple.test', ['93.184.216.34', '10.0.0.5']) === true && artLib.hostLocal('exemple.test', []) === null && artLib.hostLocal('8.8.8.8') === false);
+  const R = artLib.refusal;
+  check('règle : pochette en http refusée pour une page en https ; hôte local refusé pour une page publique, permis pour une page locale ; hôte inconnu refusé',
+    R('https://site.test/', 'http://img.test/a.png', false, false) === 'contenu mixte' && R('https://site.test/', 'https://img.test/a.png', false, false) === '' && R('http://site.test/', 'http://img.test/a.png', false, false) === ''
+    && R('https://site.test/', 'https://192.168.1.1/a.png', false, true) === 'réseau local' && R('http://site.test/', 'http://127.0.0.1/a.png', null, true) === 'réseau local' && R('http://127.0.0.1:3000/', 'http://192.168.1.1/a.png', true, true) === ''
+    && R('http://site.test/', 'http://img.test/a.png', false, null) === 'hôte inconnu' && R('http://site.test/', 'ftp://img.test/a.png', false, false) === 'protocole' && R('http://site.test/', 'http://a:b@img.test/a.png', false, false) === 'identifiants');
+  // Serveurs « publics » : une session d'essai dont le mandataire est le serveur local, et une
+  // résolution de noms simulée. Les adresses de la machine, elles, sont jointes directement.
+  const { session } = require('electron');
+  const pub = session.fromPartition('essai-pochette-' + Date.now());
+  await pub.setProxy({ proxyRules: `http=127.0.0.1:${server.address().port}` });
+  const resolve = async (host) => (host === 'double.exemple.test' ? ['93.184.216.34', '10.0.0.5'] : /\.test$/.test(host) ? ['93.184.216.34'] : []);
+  const reasons = [];
+  const fetchArt = (src, from = 'http://site.exemple.test/') => mediaLib.loadArtwork(pub, src, from, { resolve, trace: (u, why) => reasons.push(why) });
+  const direct = await fetchArt('http://img.exemple.test/pochette.png');
+  const followed = await fetchArt('http://img.exemple.test/redir-ok');
+  check('pochette d’un hôte public, directe ou après une redirection vers un autre hôte public : acceptée', direct.startsWith('data:image/png') && followed.startsWith('data:image/png') && server.hits['/redir-ok'] === 1, [direct.length, followed.length].join());
+  const before = { ...server.hits };
+  const toLoop = await fetchArt('http://img.exemple.test/redir');
+  check('redirection d’un hôte public vers 127.0.0.1 : refusée, la machine ne reçoit aucune requête', toLoop === '' && server.hits['/redir'] === (before['/redir'] || 0) + 1 && !server.hits['/interne.png'] && reasons.includes('réseau local'), JSON.stringify([toLoop.length, server.hits['/interne.png'], reasons]));
+  const blind = [await fetchArt(`http://127.0.0.1:${server.address().port}/interne.png`), await fetchArt(`http://localhost:${server.address().port}/interne.png`), await fetchArt(`http://[::1]:${server.address().port}/interne.png`), await fetchArt('http://double.exemple.test/rebond.png'), await fetchArt('http://inconnu.invalid/rebond.png')];
+  check('page publique : pochette sur la boucle locale, sur un nom résolu vers une adresse privée ou sur un hôte introuvable → aucune requête', blind.every((r) => r === '') && !server.hits['/interne.png'] && !server.hits['/rebond.png'], JSON.stringify(server.hits));
+  const mixedBefore = server.hits['/pochette.png'];
+  const mixed = await fetchArt('http://img.exemple.test/pochette.png', 'https://site.exemple.test/');
+  check('pochette en http pour une page en https : refusée, aucune requête', mixed === '' && server.hits['/pochette.png'] === mixedBefore && reasons.includes('contenu mixte'));
+  const loop = await fetchArt('http://img.exemple.test/boucle');
+  check('redirections sans fin : trois suivies, pas une de plus', loop === '' && server.hits['/boucle'] === 4, String(server.hits['/boucle']));
+  const fromLocal = await mediaLib.loadArtwork(w.session, base + '/redir', page);
+  check('page de la machine elle-même : sa pochette locale, même après redirection, reste permise', fromLocal.startsWith('data:image/png') && server.hits['/interne.png'] === 1);
+  await pub.clearStorageData().catch(() => {});
 
   // --- Gestes refusés ------------------------------------------------------------------
   const calme = await load('/calme', 'Calme');
@@ -204,6 +287,40 @@ module.exports = async function mediasTests(ctx) {
     await until(async () => (await active()) === false, 'activation éteinte', 15000);
     await w.mediaAct({ id: p1, act: 'seek', value: 8 });
     check('après une recherche depuis le lecteur : la page n’a aucune activation d’utilisateur (navigator.userActivation.isActive)', (await active()) === false && (await wcOf(p1).executeJavaScript('document.getElementById("a").currentTime', false)) >= 8);
+
+    // Page qui change de pochette sans arrêt : une recherche en cours au plus, puis une attente.
+    // (Le moteur va lui aussi chercher ces images, pour les commandes du système : ce sont
+    // les recherches d'Orbe que l'on compte, par ses décodages.)
+    const rt1 = win.live.get(p1);
+    const every0 = artLib.ART.every;
+    await until(() => !rt1.artBusy, 'aucune pochette en cours');
+    let decodes = 0;
+    const decode0 = artLib.hooks.decode;
+    artLib.hooks.decode = (buf) => { decodes += 1; return decode0(buf); };
+    artLib.ART.every = 60000;
+    rt1.artAt = 0;
+    for (let n = 0; n < 12; n++) { await quiet(`setArt(${n})`); await media.refresh(w, p1); }
+    await until(() => !rt1.artBusy, 'pochette cherchée');
+    await media.refresh(w, p1);
+    check('pochette changée douze fois de suite : une seule recherche, une seule image décodée', decodes === 1 && rt1.media.artSrc.endsWith('n=11') && rt1.media.art === '', String(decodes));
+    // Le délai passé, la dernière image annoncée est cherchée ; une image déjà vue revient sans recherche.
+    artLib.ART.every = 0;
+    await media.refresh(w, p1);
+    await until(() => !!rt1.media.art, 'dernière pochette affichée');
+    const seenArt = rt1.media.art;
+    await quiet('setArt(0)'); await media.refresh(w, p1);
+    await until(() => !rt1.artBusy, 'pochette cherchée');
+    const mid = decodes;
+    await quiet('setArt(11)'); await media.refresh(w, p1);
+    check('délai passé : la dernière pochette annoncée s’affiche ; image déjà cherchée : rendue de mémoire, sans nouveau décodage', mid <= 3 && decodes === mid && rt1.media.art === seenArt && rt1.media.artSrc.endsWith('n=11'), [mid, decodes].join());
+    artLib.ART.every = every0;
+    artLib.hooks.decode = decode0;
+    // Textes et pochette démesurés : coupés dans la page, avant de traverser vers Orbe.
+    await quiet(`(() => { navigator.mediaSession.metadata = new MediaMetadata({ title: 'T'.repeat(3e6), artist: 'A'.repeat(3e6), artwork: [{ src: 'data:image/png;base64,' + 'A'.repeat(1e6), sizes: '300x300', type: 'image/png' }] }); return true; })()`);
+    const big = await quiet(mediaLib.infoCode(mediaLib.keyOf(wcOf(p1))));
+    check('titre, artiste et pochette de plusieurs méga-octets : tronqués par la question posée à la page (320 caractères, pochette écartée)', big.title.length === mediaLib.LIMITS.raw && big.artist.length === mediaLib.LIMITS.raw && big.art === '' && JSON.stringify(big).length < 2000, [big.title.length, big.artist.length, big.art.length].join());
+    await quiet(`setArt(11, ${JSON.stringify(HOSTILE)})`);
+    await media.refresh(w, p1);
 
     // Son coupé depuis le lecteur.
     w.mediaAct({ id: p1, act: 'mute' });

@@ -14,16 +14,20 @@
 // déclarés (`mediaSession.setActionHandler`), retenus par src/preload/media.js
 // dans une fermeture qu'une clé propre au document ouvre (`keyOf`).
 const path = require('path');
-const { nativeImage, ipcMain } = require('electron');
+const { ipcMain } = require('electron');
+const artLib = require('./media-art');
+
+const { artworkKind, loadArtwork, shrink } = artLib;
 
 const PRELOAD = path.join(__dirname, '../preload/media.js');
 const LIMITS = {
   players: 4, // lecteurs affichés à la fois
   text: 160, // titre, artiste (caractères)
-  url: 2048, // adresse d'une pochette
-  dataUrl: 400 * 1024, // pochette donnée en data:image (caractères)
-  bytes: 2 * 1024 * 1024, // pochette téléchargée (octets)
-  art: 96, // côté de la pochette envoyée à la coque (px)
+  raw: 320, // titre, artiste tels que la page les renvoie, avant nettoyage (caractères)
+  url: artLib.ART.url, // adresse d'une pochette
+  dataUrl: artLib.ART.dataUrl, // pochette donnée en data:image (caractères)
+  bytes: artLib.ART.bytes, // pochette téléchargée (octets)
+  art: artLib.ART.out, // côté de la pochette envoyée à la coque (px)
   poll: 1000, // période de la question posée aux pages (ms)
   step: 15, // saut avant / arrière (s)
   drift: 1.5, // écart de position (s) au-delà duquel la coque est recalée
@@ -52,13 +56,14 @@ const infoCode = (key) => `(() => { try {
     const size = (a) => parseInt(String(a.sizes || '').split('x')[0], 10) || 0;
     const best = list.filter((a) => size(a) >= 96).sort((a, b) => size(a) - size(b))[0] || list[list.length - 1];
     if (best) art = String(best.src || '');
+    if (art.length > ${LIMITS.dataUrl}) art = '';
   } catch {}
   let acts = [];
   try { const l = ${/^[0-9a-f]{32}$/.test(key) ? `ms.setActionHandler(${JSON.stringify(key)}, null)` : 'null'}; acts = Array.isArray(l) ? l.slice(0, 16).map((x) => String(x).slice(0, 32)) : []; } catch {}
   const num = (v) => (typeof v === 'number' && isFinite(v) ? v : 0);
   return {
     has: !!m, paused: m ? !!m.paused : true, t: m ? num(m.currentTime) : 0, d: m ? num(m.duration) : 0,
-    title: md ? String(md.title || '') : '', artist: md ? String(md.artist || '') : '', art, acts,
+    title: md ? String(md.title || '').slice(0, ${LIMITS.raw}) : '', artist: md ? String(md.artist || '').slice(0, ${LIMITS.raw}) : '', art, acts,
   };
 } catch { return null; } })()`;
 const TOGGLE = `(() => { ${PICK} if (m) { if (m.paused) m.play().catch(() => {}); else m.pause(); } return !!m && !m.paused; })()`;
@@ -67,53 +72,6 @@ const actCode = (key, name) => (/^[0-9a-f]{32}$/.test(key) ? `(() => { try { ret
 
 const text = (v) => (typeof v === 'string' ? v.replace(/[\u0000-\u001f\u007f‪-‮⁦-⁩]/g, ' ').trim().slice(0, LIMITS.text) : '');
 const num = (v, max = 360000) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.min(v, max) : 0);
-
-// Pochette annoncée par la page : acceptable ?
-function artworkKind(src) {
-  if (typeof src !== 'string' || !src) return '';
-  if (/^data:image\/(png|jpeg|webp|gif);base64,/i.test(src)) return src.length <= LIMITS.dataUrl ? 'data' : '';
-  if (src.length > LIMITS.url) return '';
-  try { return /^https?:$/.test(new URL(src).protocol) ? 'http' : ''; } catch { return ''; }
-}
-
-// Image recodée en petit, ou '' si ce n'en est pas une.
-function shrink(img) {
-  try {
-    if (!img || img.isEmpty()) return '';
-    const { width, height } = img.getSize();
-    if (!width || !height || width > 8192 || height > 8192) return '';
-    const side = LIMITS.art * 2; // écrans à forte densité
-    const small = width > side || height > side ? img.resize(width >= height ? { width: side, quality: 'good' } : { height: side, quality: 'good' }) : img;
-    return 'data:image/png;base64,' + small.toPNG().toString('base64');
-  } catch { return ''; }
-}
-
-// Va chercher la pochette dans la session de la page. Rend une data:image/png, ou ''.
-async function loadArtwork(ses, src) {
-  const kind = artworkKind(src);
-  if (kind === 'data') return shrink(nativeImage.createFromDataURL(src));
-  if (kind !== 'http') return '';
-  try {
-    const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), 8000);
-    try {
-      const res = await ses.fetch(src, { signal: ctl.signal, credentials: 'omit', redirect: 'follow' });
-      if (!res.ok || !/^image\//i.test(res.headers.get('content-type') || '')) return '';
-      if (Number(res.headers.get('content-length') || 0) > LIMITS.bytes) return '';
-      const chunks = [];
-      let total = 0;
-      const reader = res.body.getReader();
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        total += value.length;
-        if (total > LIMITS.bytes) { ctl.abort(); return ''; }
-        chunks.push(Buffer.from(value));
-      }
-      return shrink(nativeImage.createFromBuffer(Buffer.concat(chunks)));
-    } finally { clearTimeout(timer); }
-  } catch { return ''; }
-}
 
 // Réponse de la page, remise au propre. Rien n'en sort qui ne soit borné et typé.
 function clean(raw) {
@@ -155,6 +113,31 @@ function make(env) {
     if (!timer) { timer = setInterval(tick, LIMITS.poll); if (timer.unref) timer.unref(); }
   }
 
+  // Pochette de l'onglet : cherchée si elle manque. Une seule recherche à la fois par
+  // onglet, et pas plus d'une toutes les `ART.every` ms : une page qui change d'image
+  // à chaque seconde n'obtient ni une requête ni un décodage par changement. Rappelée à
+  // chaque passage, la dernière image annoncée finit par être cherchée.
+  function wantArt(rt) {
+    const m = rt.media;
+    if (!m || !m.artSrc || m.art) return;
+    const ses = rt.wc.session;
+    const page = rt.wc.getURL();
+    const src = m.artSrc;
+    const hit = artLib.cached(ses, page, src);
+    if (hit) { if (hit.data) { m.art = hit.data; pushAll(); } return; }
+    const now = Date.now();
+    if (rt.artBusy || now - (rt.artAt || 0) < artLib.ART.every) return;
+    rt.artBusy = true;
+    rt.artAt = now;
+    (env.loadArtwork || loadArtwork)(ses, src, page).catch(() => '').then((data) => {
+      rt.artBusy = false;
+      artLib.remember(ses, page, src, data || '');
+      if (rt.wc.isDestroyed() || !rt.media || rt.media.artSrc !== src || !data) return;
+      rt.media.art = data;
+      pushAll();
+    });
+  }
+
   // Interroge la page de l'onglet ; pousse l'état s'il a changé.
   async function refresh(w, id) {
     const rt = rtOf(id);
@@ -176,14 +159,7 @@ function make(env) {
     const changed = drift || ['has', 'paused', 'track', 'artist', 'prev', 'next'].some((k) => before[k] !== info[k]) || Math.round(before.duration || 0) !== Math.round(info.duration);
     rt.media = changed ? { ...info, art, at: now } : { ...info, art, position: before.position, at: before.at };
     if (info.has) rt.playing = !info.paused;
-    if (info.artSrc && info.artSrc !== before.artSrc) {
-      const src = info.artSrc;
-      loadArtwork(rt.wc.session, src).then((data) => {
-        if (rt.wc.isDestroyed() || !rt.media || rt.media.artSrc !== src) return;
-        rt.media.art = data;
-        if (data) pushAll();
-      });
-    }
+    wantArt(rt);
     if (changed && (info.has || before.has)) pushAll();
     return rt.media;
   }
@@ -295,4 +271,4 @@ function attach(ses) {
   });
 }
 
-module.exports = { make, attach, clean, artworkKind, loadArtwork, shrink, LIMITS, infoCode, keyOf, GESTURE };
+module.exports = { make, attach, clean, artworkKind, loadArtwork, shrink, art: artLib, LIMITS, infoCode, keyOf, GESTURE };
