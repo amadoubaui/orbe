@@ -343,6 +343,22 @@ module.exports = {
       await ctx.principal(({ req }) => { const win = req('panes.js').window; if (win && !win.isDestroyed()) win.close(); });
     });
 
+    // --- Bande au-dessus de la page ------------------------------------------------------------
+    await t.verifier('au-dessus de la page, une bande déplace la fenêtre ; elle s’arrête où la page commence, et la page reçoit toujours les clics', async () => {
+      await ctx.clic(shell, ctx.ligne('Page B'));
+      await jusqua(async () => (await volets()).actif === 'Page B', 'Page B affichée');
+      const e = await ctx.principal(({ w }) => w.contentRect());
+      const sous = (x, y) => shell.evaluate(([px, py]) => { const el = document.elementFromPoint(px, py); const cs = el ? getComputedStyle(el) : null; return el ? { id: el.id, region: cs.getPropertyValue('app-region') || cs.getPropertyValue('-webkit-app-region') } : null; }, [x, y]);
+      assert.deepEqual(await sous(e.x + e.width / 2, 4), { id: 'page-drag', region: 'drag' });
+      const bande = await shell.locator('#page-drag').boundingBox();
+      assert.ok(bande.y + bande.height <= e.y, 'la bande ne recouvre pas la page : ' + JSON.stringify([bande, e]));
+      // Un vrai clic en haut de la page arrive à la page (la vue de l'onglet est au-dessus de la coque).
+      const page = ctx.onglet('/b');
+      await page.evaluate(() => { window.__clics = 0; document.addEventListener('mousedown', () => { window.__clics += 1; }, true); });
+      await page.mouse.click(e.width / 2, 3);
+      assert.equal(await page.evaluate(() => window.__clics), 1);
+    });
+
     // --- Échap en plein écran -------------------------------------------------------------
     const plein = () => ctx.principal(({ w }) => w.win.isFullScreen());
     await ctx.menu('Ctrl+Cmd+F');
@@ -353,6 +369,20 @@ module.exports = {
       t.ignorer('plein écran : un Échap ne fait rien, Échap doublé fait sortir la fenêtre du plein écran', 'la fenêtre n’entre pas en plein écran ici (session verrouillée ou écran absent)');
       await ctx.principal(({ w }) => w.win.setFullScreen(false));
     } else {
+      await t.verifier('fenêtre en plein écran : ⌘N ouvre la nouvelle fenêtre en plein écran elle aussi', async () => {
+        // La demande de plein écran est relevée sans être exécutée : deux fenêtres en plein écran se disputeraient l'écran de la machine d'essai.
+        await ctx.principal(({ win }) => { win.hooks.enterFullScreen0 = win.hooks.enterFullScreen; global.__plein = []; win.hooks.enterFullScreen = (bw) => { global.__plein.push(bw.id); }; });
+        try {
+          await ctx.menu('Cmd+N');
+          await jusqua(async () => (await fenetres()).length === 2, 'seconde fenêtre');
+          const vu = await ctx.principal(({ win }) => ({ demandes: global.__plein, nouvelle: win.OrbeWindow.all[1].win.id }));
+          assert.deepEqual(vu.demandes, [vu.nouvelle]);
+        } finally {
+          await ctx.principal(({ win }) => { win.hooks.enterFullScreen = win.hooks.enterFullScreen0; const w2 = win.OrbeWindow.all[1]; if (w2) w2.win.close(); });
+          await jusqua(async () => (await fenetres()).length === 1, 'seconde fenêtre fermée');
+        }
+      });
+
       await t.verifier('plein écran : un Échap ne fait rien, Échap doublé fait sortir la fenêtre du plein écran', async () => {
         // La touche est envoyée par Electron à la vue de la barre (les frappes du protocole DevTools
         // ne passent pas par le filtre des raccourcis d'Orbe).

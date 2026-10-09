@@ -129,7 +129,7 @@ function routeFor(url) {
 }
 
 function newWindow(opts = {}) {
-  return new OrbeWindow(opts);
+  return OrbeWindow.open(opts);
 }
 
 // Fenêtre des réglages, à volets (src/main/panes.js). `pane` : volet à afficher.

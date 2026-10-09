@@ -384,6 +384,10 @@ body.incognito #incognito, body.blank-window #blank-note { display: flex; }
 /* Mise à jour disponible : une ligne discrète, un cœur qui bat ; au survol, la ligne
    devient le bouton — dégradé aux couleurs de l'Espace — et la croix paraît.
    Fondu et transformations seulement : la ligne ne change pas de taille. */
+/* Bande au-dessus de la page (la marge de 10 px) : on y déplace la fenêtre, comme par le haut d'une page dans Arc. */
+#page-drag { position: absolute; top: 0; left: 10px; right: 10px; height: 10px; -webkit-app-region: drag; }
+body.docked #page-drag { left: var(--sw); }
+body.fullscreen #page-drag, .floating #page-drag { display: none; }
 /* Infobulle maison des boutons de la barre : libellé et raccourci en vigueur. */
 #tip { position: fixed; left: 0; top: 0; z-index: 50; display: flex; align-items: center; gap: 8px; max-width: 260px; padding: 5px 8px; border-radius: 7px; background: rgba(28, 28, 32, 0.94); color: #fff; font-size: 11.5px; line-height: 1.2; white-space: nowrap; pointer-events: none; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25); opacity: 0; transition: opacity 90ms var(--ease-out); -webkit-app-region: no-drag; }
 #tip[hidden] { display: none; }

@@ -557,6 +557,41 @@ module.exports = async function finitions2Tests(ctx) {
     store.state.settings.sleepAfterHours = hours0;
   }
 
+  // --- Nouvelle fenêtre depuis une fenêtre en plein écran (DIV-11) ------------------------------------
+  {
+    const enter0 = win.hooks.enterFullScreen;
+    const entered = [];
+    win.hooks.enterFullScreen = (bw) => { entered.push(bw); };
+    const fake = (full) => ({ win: { isDestroyed: () => false, isFullScreen: () => full } });
+    const a1 = OrbeWindow.open({ blank: true }, fake(true));
+    const a2 = OrbeWindow.open({ blank: true }, fake(false));
+    const a3 = OrbeWindow.open({ blank: true }, null);
+    check('nouvelle fenêtre ouverte depuis une fenêtre en plein écran : elle passe en plein écran ; depuis une fenêtre ordinaire, ou sans fenêtre : non',
+      entered.length === 1 && entered[0] === a1.win && a1.blank === true && !a2.win.isFullScreen() && !a3.win.isFullScreen());
+    win.hooks.enterFullScreen = enter0;
+    await until(() => [a1, a2, a3].every((x) => !x.ui.webContents.isLoading()), 'fenêtres d’essai chargées');
+    await sleep(300);
+    for (const x of [a1, a2, a3]) x.win.close();
+    await until(() => ![a1, a2, a3].some((x) => OrbeWindow.all.includes(x)), 'fenêtres d’essai fermées');
+    await until(() => ui('document.body.classList.contains("fullscreen") === S.fullScreen'), 'barre à jour');
+    check('plein écran : la barre latérale le sait (plus de place réservée aux boutons de la fenêtre)',
+      await ui(`(() => { const s0 = S; render({ ...s0, fullScreen: true }); const pad = getComputedStyle(document.getElementById('top')).paddingLeft; render(s0); return pad; })()`) === '0px');
+  }
+
+  // --- Déplacer la fenêtre par le haut de la page (BL-13) ---------------------------------------------
+  {
+    const band = await ui(`(() => {
+      const el = document.getElementById('page-drag');
+      const r = el.getBoundingClientRect();
+      const cs = getComputedStyle(el);
+      const hit = document.elementFromPoint(S.sidebar.width + 200, 4);
+      return { region: cs.getPropertyValue('app-region') || cs.getPropertyValue('-webkit-app-region'), left: Math.round(r.left), top: r.top, height: r.height, right: Math.round(innerWidth - r.right), sw: S.sidebar.width, hit: hit && hit.id };
+    })()`);
+    const page = w.contentRect();
+    check('bande au-dessus de la page : elle déplace la fenêtre, de la barre latérale au bord droit, sans mordre sur la page',
+      band.region === 'drag' && band.left === band.sw && band.top === 0 && band.height > 0 && band.height <= page.y && band.right === 10 && band.hit === 'page-drag', JSON.stringify([band, page]));
+  }
+
   // --- Remise en état ---------------------------------------------------------------------
   w.switchSpace(space.id);
   for (const id of Object.keys(d.tabs)) if (mine(d.tabs[id])) { OrbeWindow.destroyView(id); delete d.tabs[id]; }

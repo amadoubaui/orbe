@@ -96,6 +96,8 @@ const hooks = {
   updateNote: () => null,
   // Position du pointeur à l'écran (onglet glissé hors de la fenêtre) ; remplacée dans les essais.
   cursor: () => screen.getCursorScreenPoint(),
+  // Met une fenêtre en plein écran (nouvelle fenêtre ouverte depuis une fenêtre en plein écran) ; remplacé dans les essais.
+  enterFullScreen: (win) => { if (!win.isDestroyed()) win.setFullScreen(true); },
   // Choix du fichier où enregistrer (export d'un Espace) ; remplacé dans les essais.
   saveFile: async (parent, options) => { const r = await dialog.showSaveDialog(parent, options); return r.canceled ? null : r.filePath; },
   // Un arrêt d'Orbe demandé puis retenu par une page (« Rester ») : posé par main.js.
@@ -627,6 +629,15 @@ class OrbeWindow {
       this.ui.webContents.once('did-finish-load', () => { loadingUi.delete(this.ui.webContents); if (this.gone) return; this.layout(); this.focusContent(); this.fillSpares(); });
       this.ui.webContents.loadURL(INTERNAL + 'shell.html');
     }, uiRetryDelay(this.uiCrashes.length));
+  }
+
+  // Nouvelle fenêtre demandée par l'utilisateur (⌘N, navigation privée, fenêtre vierge) :
+  // ouverte depuis une fenêtre en plein écran, elle s'ouvre en plein écran elle aussi (comme dans Arc).
+  static open(opts = {}, from = OrbeWindow.focused) {
+    const full = !!from && !!from.win && !from.win.isDestroyed() && from.win.isFullScreen();
+    const w = new OrbeWindow(opts);
+    if (full) hooks.enterFullScreen(w.win);
+    return w;
   }
 
   // La plus ancienne fenêtre normale encore ouverte mémorise son état.
@@ -1413,8 +1424,15 @@ class OrbeWindow {
     OrbeWindow.battery = { level: a.level, charging: a.charging };
     const now = veille.saving(OrbeWindow.battery, on);
     if (now && !before) {
+      // Au lancement, le niveau arrive avant que la fenêtre ait ses vues d'appoint : le message
+      // attend qu'il y en ait une (sinon sa vue naîtrait à part, dans son propre processus).
       const target = w || OrbeWindow.focused || OrbeWindow.primary;
-      if (target) target.toast(t('toast.batterySaver'));
+      const say = (n) => {
+        if (!target || target.win.isDestroyed() || !veille.saving(OrbeWindow.battery, store.state.settings.batterySaver !== false)) return;
+        if (target.toastView || (target.spares || []).some((s) => s.ready) || n >= 20) target.toast(t('toast.batterySaver'));
+        else setTimeout(() => say(n + 1), 150);
+      };
+      say(0);
       OrbeWindow.trimLive({ deep: true });
     }
     return true;
