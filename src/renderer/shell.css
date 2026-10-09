@@ -504,3 +504,50 @@ html.win body:not(.toolbar):not(.fullscreen) #empty { top: 32px; }
 .ext img { width: 16px; height: 16px; }
 .ext.off { opacity: 0.45; }
 .ext .badge { position: absolute; right: 0; bottom: 0; min-width: 12px; padding: 0 3px; border-radius: 6px; font-size: 8.5px; font-weight: 700; line-height: 12px; }
+
+/* ==== Compléments de la barre latérale ======================================
+   Gestes et repères repris d'Arc, regroupés ici. */
+/* Fenêtre passée à l'arrière-plan : le contenu de la barre s'estompe légèrement. */
+#sidebar > * { transition: opacity 160ms; }
+body.blurred #sidebar > * { opacity: 0.7; }
+
+/* « Copier le lien » : bouton posé au bout de la pastille d'adresse, au survol. */
+#url-copy { flex: none; width: 28px; height: 28px; margin: 4px 4px 4px -36px; border-radius: 8px; display: none; place-items: center; color: var(--dim); z-index: 1; transition: transform var(--spring-bouncy); }
+#url-copy svg { width: 14px; height: 14px; }
+#url-row:hover #url-copy:not([hidden]) { display: grid; }
+#url-copy:hover { background: var(--hover); color: var(--fg); }
+#url-copy:active { transform: scale(0.88); transition: transform var(--press); }
+#url-row:hover #url:has(+ #url-copy:not([hidden])) { padding-right: 38px; }
+
+/* En-tête de l'Espace : « … » et chevron de la section épinglée, au survol. */
+#space-head[hidden] { display: none; }
+#space-head .hb { width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center; color: var(--dim); opacity: 0; flex: none; transition: opacity 120ms; }
+#space-head .hb svg { width: 13px; height: 13px; }
+#space-head:hover .hb, #scroll.pinned-collapsed #pinned-toggle { opacity: 1; }
+#space-head .hb:hover { background: var(--hover); color: var(--fg); }
+#pinned-toggle svg { transform: rotate(90deg); transition: transform var(--spring-snappy); }
+#scroll.pinned-collapsed #pinned-toggle svg { transform: none; }
+/* Section épinglée repliée : comme un dossier replié, seul l'onglet affiché reste visible. */
+#scroll.pinned-collapsed #pinned > .row:not(.active) { display: none; }
+#scroll.pinned-collapsed #pinned > .folder:not(:has(.row.active)) { display: none; }
+
+/* Onglet affiché hors de vue dans la liste : repère cliquable, en haut ou en bas. */
+#off-view { position: absolute; left: 50%; margin-left: -15px; width: 30px; height: 20px; border-radius: 10px; display: grid; place-items: center; background: var(--active); box-shadow: var(--active-shadow), 0 2px 8px rgba(0, 0, 0, 0.18); color: var(--fg); z-index: 3; }
+#off-view[hidden], #pager.sliding #off-view { display: none; }
+#off-view.up { top: 4px; }
+#off-view.down { bottom: 4px; }
+#off-view svg { width: 12px; height: 12px; transform: rotate(-90deg); }
+#off-view.down svg { transform: rotate(90deg); }
+
+/* Favoris vides pendant un glisser : l'invitation à y déposer l'onglet. */
+body.dragging #fav:empty { display: grid; place-items: center; }
+body.dragging #fav:empty::before { content: attr(data-hint); grid-column: 1 / -1; text-align: center; font-size: 11.5px; color: var(--dim); padding: 0 8px; }
+
+/* Pastilles des Espaces : glisser pour les réordonner, y déposer un onglet. */
+.sp.dragging-self { opacity: 0.35; }
+.sp.drop-into { color: var(--accent); transform: scale(1.25); }
+.sp.drop-into::before { transform: scale(1.8); }
+
+/* Ligne montrée par « Afficher l'onglet dans la barre latérale ». */
+.row.flash, .tile.flash { animation: row-flash 900ms var(--ease-out); }
+@keyframes row-flash { 0%, 60% { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 70%, transparent); } }

@@ -1,7 +1,7 @@
 // Toutes les actions d'Orbe, au même endroit : le menu, la barre de commande
 // et la barre latérale appellent les mêmes fonctions.
 // `accel` reprend les raccourcis d'Arc ; `keys` est leur affichage.
-const { dialog } = require('electron');
+const { app, clipboard, dialog, shell } = require('electron');
 const { store } = require('./store');
 const platform = require('./platform');
 const easels = require('./easels');
@@ -9,7 +9,7 @@ const easels = require('./easels');
 // Page de soutien de l'auteur d'Orbe.
 const SUPPORT_URL = 'https://buymeacoffee.com/amadouba';
 
-const hooks = { newWindow: () => {}, newLittle: () => {}, openSettings: () => {}, settingsChanged: null, openBoost: () => {}, openPasswords: () => {}, importBookmarks: () => {} };
+const hooks = { newWindow: () => {}, newLittle: () => {}, openSettings: () => {}, settingsChanged: null, openBoost: () => {}, openPasswords: () => {}, importBookmarks: () => {}, menuChanged: () => {} };
 
 const wc = (w) => w.activeWc;
 
@@ -39,9 +39,13 @@ const COMMANDS = [
   { name: 'find', label: 'edit.find', accel: 'Cmd+F', keys: '⌘F', run: (w) => w.openFind() },
   { name: 'findNext', label: 'edit.findNext', accel: 'Cmd+G', keys: '⌘G', palette: false, run: (w) => w.findStep(true) },
   { name: 'findPrev', label: 'edit.findPrev', accel: 'Shift+Cmd+G', keys: '⇧⌘G', palette: false, run: (w) => w.findStep(false) },
+  { name: 'useSelectionFind', label: 'edit.useSelection', palette: false, run: (w) => findSelection(w) },
+  // ⌥⌘V, comme dans Arc : l'adresse du presse-papiers s'ouvre dans un nouvel onglet.
+  { name: 'pasteUrl', label: 'edit.pasteUrl', accel: 'Alt+Cmd+V', keys: '⌥⌘V', run: (w) => w.pasteUrl() },
   // Présentation
   { name: 'toggleSidebar', label: 'view.hideSidebar', accel: 'Cmd+S', keys: '⌘S', run: (w) => w.toggleSidebar() },
   { name: 'toggleToolbar', label: 'view.showToolbar', accel: 'Shift+Cmd+D', keys: '⇧⌘D', run: () => setSetting('showToolbar', !store.state.settings.showToolbar) },
+  { name: 'collapsePinned', label: 'view.collapsePinned', run: (w) => w.togglePinnedCollapsed() },
   { name: 'stop', label: 'view.stop', accel: 'Cmd+.', keys: '⌘.', palette: false, run: (w) => wc(w) && wc(w).stop() },
   { name: 'reload', label: 'view.reload', accel: 'Cmd+R', keys: '⌘R', run: (w) => w.reload(false) },
   { name: 'forceReload', label: 'view.forceReload', accel: 'Shift+Cmd+R', keys: '⇧⌘R', run: (w) => w.reload(true) },
@@ -51,6 +55,7 @@ const COMMANDS = [
   ...[1, 2, 3, 4].map((n) => ({ name: 'pane' + n, label: 'view.pane', accel: `Ctrl+Shift+${n}`, keys: `⌃⇧${n}`, palette: false, run: (w) => w.focusPane(n) })),
   { name: 'splitDirection', label: 'view.splitDirection', run: (w) => w.toggleSplitDirection() },
   { name: 'closeSplit', label: 'view.closeSplit', accel: 'Ctrl+Shift+-', keys: '⌃⇧-', run: (w) => w.closeSplitPane() },
+  { name: 'separateSplit', label: 'view.separateSplit', run: (w) => w.separateSplit() },
   { name: 'actualSize', label: 'view.actualSize', accel: 'Cmd+0', keys: '⌘0', run: (w) => w.zoom(0) },
   { name: 'zoomIn', label: 'view.zoomIn', accel: 'Cmd+Plus', keys: '⌘+', run: (w) => w.zoom(0.5) },
   { name: 'zoomOut', label: 'view.zoomOut', accel: 'Cmd+-', keys: '⌘-', run: (w) => w.zoom(-0.5) },
@@ -78,6 +83,10 @@ const COMMANDS = [
   { name: 'clearToday', label: 'tabs.clearToday', accel: 'Shift+Cmd+K', keys: '⇧⌘K', run: (w) => w.clearToday() },
   { name: 'toggleMute', label: 'tabs.mute', run: (w) => w.toggleMute() },
   { name: 'duplicate', label: 'tabs.duplicate', run: (w) => w.duplicate() },
+  { name: 'revealTab', label: 'tabs.reveal', run: (w) => w.revealTab() },
+  { name: 'resetTabs', label: 'tabs.resetAll', run: (w) => { if (w.resetTabs()) w.toast(store.t('toast.tabsReset')); } },
+  { name: 'expandFolders', label: 'tabs.expandFolders', run: (w) => w.setFoldersOpen(true) },
+  { name: 'collapseFolders', label: 'tabs.collapseFolders', run: (w) => w.setFoldersOpen(false) },
   // Archive
   { name: 'back', label: 'archive.back', accel: 'Cmd+[', keys: '⌘[', palette: false, run: (w) => wc(w) && wc(w).navigationHistory.goBack() },
   { name: 'forward', label: 'archive.forward', accel: 'Cmd+]', keys: '⌘]', palette: false, run: (w) => wc(w) && wc(w).navigationHistory.goForward() },
@@ -88,10 +97,11 @@ const COMMANDS = [
   { name: 'media', label: 'lib.media', run: (w) => w.openInternal('library.html#media') },
   { name: 'history', label: 'archive.history', accel: 'Cmd+Y', keys: '⌘Y', run: (w) => w.openInternal('library.html#history') },
   { name: 'viewArchive', label: 'archive.view', run: (w) => w.openInternal('library.html#archive') },
-  { name: 'clearArchive', label: 'archive.clear', palette: false, run: () => { store.state.archive = []; store.save(); } },
+  { name: 'clearArchive', label: 'archive.clear', palette: false, run: (w) => clearArchive(w) },
   // Fenêtre
   { name: 'library', label: 'window.library', accel: 'Shift+Cmd+L', keys: '⇧⌘L', run: (w) => w.openInternal('library.html#history') },
   { name: 'downloads', label: 'window.downloads', accel: 'Shift+Cmd+J', keys: '⇧⌘J', run: (w) => w.openInternal('library.html#downloads') },
+  { name: 'stayOnTop', label: 'window.onTop', palette: false, run: (w) => { w.win.setAlwaysOnTop(!w.win.isAlwaysOnTop()); hooks.menuChanged(); } },
   // Application
   { name: 'settings', label: 'app.settings', accel: 'Cmd+,', keys: '⌘,', global: true, run: () => hooks.openSettings() },
   { name: 'passwords', label: 'pw.title', global: true, run: () => hooks.openPasswords() },
@@ -110,6 +120,9 @@ const COMMANDS = [
   // Menu de l'application, ouvert depuis la barre latérale (Windows : pas de barre de menus).
   { name: 'appMenu', label: 'side.menu', palette: false, run: (w) => platform.popupAppMenu(w.win) },
   { name: 'github', label: 'help.github', run: (w) => w.newTab('https://github.com/amadoubaui/orbe') },
+  // Aide → Dépannage.
+  { name: 'revealData', label: 'help.revealData', global: true, run: () => shell.showItemInFolder(app.getPath('userData')) },
+  { name: 'copyInfo', label: 'help.copyInfo', global: true, run: (w) => { clipboard.writeText(appInfo()); if (w) w.toast(store.t('toast.infoCopied')); } },
 ];
 platform.adaptCommands(COMMANDS);
 
@@ -117,6 +130,39 @@ const byName = new Map(COMMANDS.map((c) => [c.name, c]));
 
 function makeDefault() {
   return platform.makeDefault();
+}
+
+// « Utiliser la sélection pour rechercher » : le texte sélectionné dans la page
+// devient la recherche de la barre « Rechercher dans la page ».
+async function findSelection(w) {
+  const page = wc(w);
+  if (!page) return;
+  const text = String(await page.executeJavaScript('String(getSelection())').catch(() => '')).trim().slice(0, 200);
+  if (!text) return;
+  w.openFind(text);
+}
+
+// « Vider l'archive » : rien ne la ramène, la question est posée d'abord.
+async function clearArchive(w) {
+  const n = store.state.archive.length;
+  if (!n) return false;
+  const r = await dialog.showMessageBox(w ? w.win : undefined, {
+    type: 'warning',
+    message: store.t('archive.clearConfirm'),
+    detail: store.t('archive.clearDetail', null, { n }),
+    buttons: [store.t('archive.clear'), store.t('edit.undo')],
+    defaultId: 1,
+    cancelId: 1,
+  });
+  if (r.response !== 0) return false;
+  store.state.archive = [];
+  store.save();
+  return true;
+}
+
+// « Copier les infos d'Orbe » : de quoi décrire son installation dans un rapport de bogue.
+function appInfo() {
+  return [`Orbe ${app.getVersion()}`, `Electron ${process.versions.electron}`, `Chromium ${process.versions.chrome}`, `${process.platform} ${process.arch} ${require('os').release()}`].join('\n');
 }
 
 async function undo(w, way = 'undo') {
@@ -192,4 +238,4 @@ function run(win, name, arg) {
   }
 }
 
-module.exports = { COMMANDS, byName, run, hooks, makeDefault, setSetting };
+module.exports = { COMMANDS, byName, run, hooks, makeDefault, setSetting, appInfo };

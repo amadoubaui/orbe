@@ -854,6 +854,9 @@ module.exports = async function selftest(ctx) {
   // Barre latérale : sélection multiple, annulation (tests/barre.js)
   await require('./barre')({ ...ctx, check });
 
+  // Barre latérale et menus : menus contextuels, dossiers, Espaces, barre de menus (tests/laterale.js)
+  await require('./laterale')({ ...ctx, check });
+
   // Tableaux (tests/easels.js)
   await require('./easels')({ ...ctx, check });
 
