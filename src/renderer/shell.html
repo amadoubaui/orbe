@@ -32,6 +32,7 @@
   <symbol id="i-popup" viewBox="0 0 16 16"><rect x="2.4" y="3" width="11.2" height="10" rx="2"/><path d="M2.4 6h11.2M6.2 8.4l3.6 3.2m0-3.2-3.6 3.2"/></symbol>
   <symbol id="i-screen" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="8" rx="1.6"/><path d="M6 13.4h4M8 11v2.4"/></symbol>
   <symbol id="i-camera" viewBox="0 0 16 16"><rect x="1.8" y="4.4" width="8.6" height="7.2" rx="1.6"/><path d="m10.4 7 3.8-2v6l-3.8-2"/></symbol>
+  <symbol id="i-link" viewBox="0 0 16 16"><path d="M6.9 9.1a2.7 2.7 0 0 0 3.8 0l1.9-1.9a2.7 2.7 0 0 0-3.8-3.8l-.7.7"/><path d="M9.1 6.9a2.7 2.7 0 0 0-3.8 0L3.4 8.8a2.7 2.7 0 0 0 3.8 3.8l.7-.7"/></symbol>
   <symbol id="i-microphone" viewBox="0 0 16 16"><rect x="6" y="2.2" width="4" height="7" rx="2"/><path d="M3.8 7.6a4.2 4.2 0 0 0 8.4 0M8 11.8v2"/></symbol>
 </svg>
 
@@ -48,6 +49,7 @@
   <div id="url-row">
     <button id="lock" hidden><svg class="i"><use id="lock-icon" href="#i-lock"/></svg><span id="lock-text"></span></button>
     <button id="url"><span id="url-text"></span></button>
+    <button id="url-copy" data-t-title="side.copyLink" hidden><svg class="i"><use href="#i-link"/></svg></button>
     <button id="popup-note" class="note" hidden><svg class="i"><use href="#i-popup"/></svg></button>
     <button id="capture-note" class="note" hidden><svg class="i"><use id="capture-icon" href="#i-screen"/></svg></button>
     <button id="shield" data-t-title="adblock.title"><svg class="i"><use href="#i-shield"/></svg><span id="shield-n"></span></button>
@@ -59,6 +61,8 @@
     <div id="space-head">
       <span id="space-icon"></span>
       <span id="space-name" class="grow"></span>
+      <button class="hb" id="space-more" data-t-title="side.spaceMore"><svg class="i"><use href="#i-more"/></svg></button>
+      <button class="hb" id="pinned-toggle" data-t-title="side.collapsePinned"><svg class="i"><use href="#i-chevron"/></svg></button>
     </div>
     <div id="pinned" class="list" data-drop="pinned"></div>
     <div id="divider">
@@ -69,6 +73,7 @@
     <div id="today" class="list" data-drop="today"></div>
     <div id="blank"></div>
   </div>
+  <button id="off-view" data-t-title="side.offView" hidden><svg class="i"><use href="#i-chevron"/></svg></button>
   </div>
   <div id="media" hidden>
     <button id="media-open"><span id="media-icon"></span><span id="media-title"></span></button>
@@ -95,10 +100,12 @@
 </div>
 
 <div id="empty"><div class="mark"></div><p data-t="side.empty"></p></div>
+<div id="glow"><i></i></div>
 <div id="dividers"></div>
 <div id="drop-line"></div>
 
 <script src="common.js"></script>
+<script src="theme.js"></script>
 <script src="shell.js"></script>
 </body>
 </html>

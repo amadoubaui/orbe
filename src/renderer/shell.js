@@ -7,6 +7,8 @@ let editing = null; // id en cours de renommage
 let drag = null;
 let animate = false;
 let present = new Set();
+let flashId = null; // ligne mise en évidence par « Afficher l'onglet dans la barre latérale »
+let flashTimer = null;
 // Sélection multiple (⌘clic, ⇧clic) : identifiants d'onglets ; `anchor` est le
 // point de départ d'une plage ⇧clic.
 const sel = new Set();
@@ -53,7 +55,7 @@ function tabRow(el, it) {
   el.className = 'row tab' + (it.active ? ' active' : '') + (it.shown ? ' shown' : '') + (it.live ? ' live' : '')
     + (it.audible ? ' audible' : '') + (it.muted ? ' muted' : '') + (it.changed ? ' changed' : '') + (it.partners ? ' split' : '') + (it.grouped ? ' grouped' : '')
     + (it.capture && it.capture.length ? ' capturing' : '')
-    + (sel.has(it.id) ? ' sel' : '');
+    + (sel.has(it.id) ? ' sel' : '') + (flashId === it.id ? ' flash' : '');
   // Témoin de capture : écran, caméra ou micro (le premier de la liste).
   const cap = (it.capture && it.capture[0]) || '';
   if (el._c !== cap) { el._c = cap; if (cap) { el._cap.setAttribute('href', '#i-' + cap); el._cap.closest('button').title = it.capture.map((k) => t('capture.' + k)).join(' · '); } }
@@ -96,7 +98,7 @@ function tileEl(el, it) {
     el._ic = el.firstChild;
     el.draggable = true;
   }
-  el.className = 'tile' + (it.active ? ' active' : '') + (it.live ? ' live' : '') + (it.audible ? ' audible' : '') + (sel.has(it.id) ? ' sel' : '');
+  el.className = 'tile' + (it.active ? ' active' : '') + (it.live ? ' live' : '') + (it.audible ? ' audible' : '') + (sel.has(it.id) ? ' sel' : '') + (flashId === it.id ? ' flash' : '');
   el.title = it.title;
   setIcon(el, it);
 }
@@ -125,15 +127,101 @@ function reconcile(container, items, tile) {
     if (el !== ref) container.insertBefore(el, ref);
     prev = el;
   }
-  // Disparition : la ligne se replie avant d'être retirée.
+  // Disparition : la ligne s'efface sur place pendant que les suivantes remontent (voir `flip`).
   for (const el of old.values()) {
     // Une ligne seulement déplacée (encore présente ailleurs) part sans délai.
-    if (!animate || !el.dataset.key || tile || present.has(el.dataset.key)) { el.remove(); continue; }
+    if (!flip || !el.dataset.key || tile || present.has(el.dataset.key)) { el.remove(); continue; }
     el.dataset.key = '';
     el.removeAttribute('data-id');
-    el.classList.add('out');
-    setTimeout(() => el.remove(), 150);
+    flip.gone.push(el);
   }
+}
+
+// --- Lignes qui glissent ----------------------------------------------------
+// Quand la liste change (onglet ouvert ou fermé, dossier ouvert ou replié,
+// « Effacer »), les lignes ne sautent pas à leur nouvelle place : elles y
+// glissent. Technique « FLIP » : on relève la position des lignes avant le
+// changement (une lecture), on laisse la mise en page se faire d'un coup, on
+// relève les nouvelles positions (une lecture), puis chaque ligne déplacée part
+// de son ancienne place par une transformation animée par le compositeur. Il
+// n'y a donc qu'une mise en page par changement, jamais une par image ; la ligne
+// retirée, elle, s'efface sur place, sortie du flux.
+let flip = null; // relevé en cours, pendant un rendu
+const SPRING = (() => {
+  const m = /^\s*([\d.]+)ms\s+(.+)$/.exec(getComputedStyle(document.documentElement).getPropertyValue('--spring-snappy'));
+  return m ? { duration: Number(m[1]), easing: m[2].trim() } : { duration: 240, easing: 'ease-out' };
+})();
+const FLIP = { id: 'flip', out: 150, cascade: 22, cascadeMax: 10, margin: 240 };
+const flipRows = () => scroller.querySelectorAll('.row, #divider');
+
+function flipFirst() {
+  const tops = new Map();
+  for (const el of flipRows()) {
+    const r = el.getBoundingClientRect();
+    if (r.height) tops.set(el, r.top);
+  }
+  const boxes = new Map();
+  for (const el of scroller.querySelectorAll('.list > [data-key], .children > [data-key]')) boxes.set(el, el.getBoundingClientRect());
+  for (const el of scroller.querySelectorAll('.list, .children')) boxes.set(el, el.getBoundingClientRect());
+  return { tops, boxes, gone: [] };
+}
+
+function flipPlay(f) {
+  // Les lignes retirées quittent le flux et s'effacent là où elles étaient ; plusieurs
+  // à la fois (« Effacer ») : en cascade.
+  f.gone.forEach((el, i) => {
+    const box = f.boxes.get(el);
+    const home = f.boxes.get(el.parentElement);
+    if (!box || !home || !box.height) { el.remove(); return; }
+    const delay = Math.min(i, FLIP.cascadeMax) * FLIP.cascade;
+    el.style.cssText += `;position:absolute;left:${box.left - home.left}px;top:${box.top - home.top}px;width:${box.width}px;animation-delay:${delay}ms`;
+    el.classList.add('out');
+    setTimeout(() => el.remove(), FLIP.out + delay);
+  });
+  // Un glissement encore en cours s'arrête : sa position du moment a été relevée.
+  for (const a of scroller.getAnimations({ subtree: true })) if (a.id === FLIP.id) a.cancel();
+  const view = scroller.getBoundingClientRect();
+  const moves = [];
+  for (const el of flipRows()) {
+    if (el.closest('.out')) continue;
+    const r = el.getBoundingClientRect();
+    if (!r.height) continue;
+    const was = f.tops.get(el);
+    const seen = (y) => y > view.top - FLIP.margin && y < view.bottom + FLIP.margin;
+    if (was === undefined) {
+      // Ligne qui paraît sans être nouvelle (contenu d'un dossier qu'on ouvre).
+      if (!el.closest('.in') && seen(r.top)) moves.push([el, null]);
+    } else if (Math.abs(was - r.top) >= 0.5 && (seen(was) || seen(r.top))) moves.push([el, was - r.top]);
+  }
+  for (const [el, dy] of moves) {
+    const frames = dy === null
+      ? { opacity: [0, 1], transform: ['translateY(-8px)', 'translateY(0)'] }
+      : { transform: [`translateY(${dy}px)`, 'translateY(0)'] };
+    el.animate(frames, { duration: SPRING.duration, easing: SPRING.easing, id: FLIP.id });
+  }
+  return moves.length;
+}
+
+// --- Thème de l'Espace ------------------------------------------------------
+// Fond (une à trois couleurs en dégradé, texture) et couleurs de texte, calculés
+// par theme.js pour rester lisibles sur n'importe quelle couleur. Posés sur
+// <body> pour l'Espace courant ; sur #tint et sur la liste de l'autre Espace
+// pendant un changement d'Espace (fondu enchaîné).
+function themeVars(space, s) {
+  const p = OrbeTheme.palette(space, s.dark);
+  // Barre translucide : le fond laisse passer un peu du bureau.
+  return { p, vars: OrbeTheme.cssVars(p, FLOATING ? 0.96 : (s.translucent ? 0.8 : 1)) };
+}
+function paintTheme(el, space, s, only) {
+  const sig = JSON.stringify([space.color, space.color2, space.color3, space.plain, space.intensity, space.grain, space.texture, space.mode, s.dark, s.translucent, only ? 1 : 0]);
+  if (el._theme === sig) return;
+  el._theme = sig;
+  const { p, vars } = themeVars(space, s);
+  for (const k of only || Object.keys(vars)) el.style.setProperty(k, vars[k]);
+  if (only) return;
+  el.classList.toggle('grainy', p.grain > 0);
+  el.classList.toggle('gradient', p.stops.length > 1);
+  if (el === document.body) document.documentElement.dataset.family = p.family;
 }
 
 // Pastilles des Espaces, en bas : un point par Espace, l'icône pour l'Espace courant.
@@ -143,7 +231,7 @@ function drawSpaces(list, current) {
   if (spaces._sig === sig) return;
   spaces._sig = sig;
   spaces.innerHTML = list.length > 1
-    ? list.map((x) => `<button class="sp${x.id === current ? ' active' : ''}" data-space="${esc(x.id)}" title="${esc(x.name)}"><span class="em">${esc(x.icon) || '•'}</span></button>`).join('')
+    ? list.map((x) => `<button class="sp${x.id === current ? ' active' : ''}" data-space="${esc(x.id)}" title="${esc(x.name)}" draggable="true"><span class="em">${esc(x.icon) || '•'}</span></button>`).join('')
     : '';
 }
 
@@ -169,10 +257,7 @@ function render(s) {
   // Vue flottante : la barre n'y apparaît qu'au survol du bord, barre masquée.
   const open = FLOATING ? s.sidebar.peek && !s.sidebar.visible : s.sidebar.visible;
   if (FLOATING && !open && prev && !(prev.sidebar.peek && !prev.sidebar.visible)) { S = s; b.classList.remove('open'); return; }
-  b.style.setProperty('--accent', s.space.color);
-  b.style.setProperty('--accent2', s.space.color2 || s.space.color);
-  b.style.setProperty('--grain', String(s.space.grain || 0));
-  b.classList.toggle('gradient', !!s.space.color2);
+  paintTheme(b, s.space, s);
   b.style.setProperty('--sw', s.sidebar.width + 'px');
   b.classList.toggle('open', open);
   b.classList.toggle('docked', s.sidebar.visible);
@@ -181,11 +266,20 @@ function render(s) {
   b.classList.toggle('toolbar', s.toolbar);
   b.classList.toggle('fullscreen', s.fullScreen);
   b.classList.toggle('no-tab', !s.activeId && !FLOATING);
+  // Compléments : fenêtre à l'arrière-plan, en-tête de l'Espace, section épinglée repliée.
+  const side = s.side || {};
+  b.classList.toggle('blurred', side.focused === false && !FLOATING);
+  $('space-head').hidden = (side.noHeader || []).includes(s.space.id);
+  scroller.classList.toggle('pinned-collapsed', (side.collapsed || []).includes(s.space.id));
+  $('fav').dataset.hint = t('side.favHint');
+  $('url-copy').hidden = !s.activeId || s.nav.internal || !s.nav.url;
 
   const label = s.nav.internal ? (s.nav.title || 'Orbe') : host(s.nav.url);
   $('url-text').textContent = label || t('side.search');
   $('url-text').classList.toggle('placeholder', !label);
   $('url').classList.toggle('loading', s.nav.loading);
+  // Lueur de chargement le long du bord haut de la page.
+  b.classList.toggle('loading', !!s.nav.loading && !!s.activeId);
   $('url').title = s.nav.internal ? '' : s.nav.url;
   const shield = $('shield');
   shield.hidden = !s.activeId || s.nav.internal || false;
@@ -217,6 +311,8 @@ function render(s) {
   if (editing !== s.space.id) $('space-name').textContent = s.space.name;
   $('space-icon').textContent = s.space.icon;
 
+  // La forme des listes change : relevé des lignes avant, glissement après (voir `flip`).
+  flip = animate && prev && !reducedMotion.matches && document.body.classList.contains('open') && structSig(prev) !== structSig(s) ? flipFirst() : null;
   reconcile($('fav'), s.favorites, true);
   // Comme dans Arc (relevé sur l'application) : jusqu'à 4 favoris sur une ligne,
   // puis une grille aussi carrée que possible (9 favoris = 3 × 3), 4 colonnes au plus.
@@ -224,6 +320,7 @@ function render(s) {
   $('fav').style.gridTemplateColumns = `repeat(${nf <= 4 ? Math.max(nf, 1) : Math.min(4, Math.ceil(Math.sqrt(nf)))}, 1fr)`;
   reconcile($('pinned'), s.pinned);
   reconcile($('today'), s.today);
+  if (flip) { const f = flip; flip = null; flipPlay(f); }
   $('b-clear').classList.toggle('can', s.today.length > (s.today.some((x) => x.active) ? 1 : 0));
 
   drawSpaces(s.spaces, s.space.id);
@@ -285,7 +382,62 @@ function render(s) {
   // Dépôt en attente : les listes viennent de prendre leur ordre définitif.
   if (drag && drag.settling && drag.settling !== structSig(s)) endDrag();
 
+  // « Afficher l'onglet dans la barre latérale » : une demande nouvelle (jamais
+  // celle déjà là au premier affichage) fait défiler la ligne à l'écran.
+  const reveal = side.reveal || null;
+  if (reveal && prev && reveal.n !== revealed) showRow(reveal.id);
+  revealed = reveal ? reveal.n : 0;
+  offViewSoon();
 }
+
+// --- Ligne de l'onglet affiché : la montrer, signaler qu'elle est hors de vue --
+let revealed = 0;
+function showRow(id) {
+  const el = document.querySelector(`#sidebar [data-id="${CSS.escape(id)}"]`);
+  if (!el) return;
+  el.scrollIntoView({ block: 'center', behavior: reducedMotion.matches ? 'auto' : 'smooth' });
+  // La mise en évidence tient d'un rendu à l'autre (chaque rendu réécrit les
+  // classes de la ligne) ; elle repart de zéro si la ligne vient d'être montrée.
+  flashId = id;
+  el.classList.remove('flash');
+  void el.offsetWidth;
+  el.classList.add('flash');
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => {
+    flashId = null;
+    for (const x of document.querySelectorAll('#sidebar .flash')) x.classList.remove('flash');
+  }, 1200);
+}
+
+// Repère en haut ou en bas de la liste quand la ligne de l'onglet affiché a
+// défilé hors de vue ; un clic y ramène.
+const offEl = $('off-view');
+let offFrame = 0;
+function offView() {
+  offFrame = 0;
+  const row = document.querySelector('#scroll .row.tab.active');
+  let where = '';
+  if (row && row.offsetParent !== null && !slide && !drag) {
+    const r = row.getBoundingClientRect();
+    const sr = scroller.getBoundingClientRect();
+    if (r.bottom < sr.top + 6) where = 'up';
+    else if (r.top > sr.bottom - 6) where = 'down';
+  }
+  if (offEl._where === where) return;
+  offEl._where = where;
+  offEl.className = where;
+  offEl.hidden = !where;
+}
+// Par minuterie, pas par image : une fenêtre masquée ou recouverte ne dessine
+// pas, et le repère resterait en attente.
+function offViewSoon() { if (!offFrame) offFrame = setTimeout(offView, 60); }
+offEl.onclick = () => {
+  const row = document.querySelector('#scroll .row.tab.active');
+  if (row) row.scrollIntoView({ block: 'nearest', behavior: reducedMotion.matches ? 'auto' : 'smooth' });
+};
+addEventListener('resize', offViewSoon);
+// Les lignes qui apparaissent ou se replient déplacent les autres : on revérifie à la fin.
+document.getElementById('scroll').addEventListener('animationend', offViewSoon);
 
 // --- Renommage sur place ----------------------------------------------------
 function startRename(id) {
@@ -380,7 +532,9 @@ sidebar.addEventListener('click', (e) => {
   const act = e.target.closest('[data-act]');
   const row = e.target.closest('[data-id]');
   // ⌘clic (Ctrl hors macOS) ou ⇧clic sur un onglet : sélection, sans l'afficher.
-  if (row && !row.dataset.folder && (modKey(e) || e.shiftKey) && !(act && act.dataset.act !== 'icon')) {
+  // (⌘clic sur l'icône d'un épinglé sorti de son adresse : c'est un retour, plus bas.)
+  const aside = !!act && act.dataset.act === 'icon' && !!row && row.classList.contains('changed') && modKey(e);
+  if (row && !row.dataset.folder && (modKey(e) || e.shiftKey) && !(act && act.dataset.act !== 'icon') && !aside) {
     e.stopPropagation();
     return modKey(e) ? toggleSel(row.dataset.id) : rangeSel(row.dataset.id);
   }
@@ -394,7 +548,8 @@ sidebar.addEventListener('click', (e) => {
     else if (act.dataset.act === 'capture') send('captureMenu', id);
     else if (act.dataset.act === 'reset') send('resetPinned', id);
     // Clic sur l'icône d'un épinglé sorti de son adresse : retour à celle-ci.
-    else if (act.dataset.act === 'icon') send(row.classList.contains('changed') ? 'resetPinned' : (row.dataset.folder ? 'toggleFolder' : 'activate'), id);
+    // ⌘clic : la page qu'il affichait part dans un nouvel onglet.
+    else if (act.dataset.act === 'icon') send(row.classList.contains('changed') ? (aside ? 'resetPinnedAside' : 'resetPinned') : (row.dataset.folder ? 'toggleFolder' : 'activate'), id);
     return undefined;
   }
   if (row) {
@@ -403,8 +558,28 @@ sidebar.addEventListener('click', (e) => {
     return undefined;
   }
   const sp = e.target.closest('[data-space]');
-  if (sp) send('switchSpace', sp.dataset.space);
+  if (sp) return send('switchSpace', sp.dataset.space);
+  // En-tête de l'Espace : « … » ouvre son menu, le chevron replie les épinglés,
+  // un clic sur le nom le renomme (comme dans Arc).
+  if (e.target.closest('#space-more')) return send('spaceMenu', null);
+  if (e.target.closest('#pinned-toggle')) return send('command', 'collapsePinned');
+  if (e.target.closest('#space-name') && !editing && S && overText($('space-name'), e)) return startRename(S.space.id);
   return undefined;
+});
+
+// Le pointeur est-il sur le texte de l'élément (et non dans le vide à sa droite) ?
+function overText(el, e) {
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  const r = range.getBoundingClientRect();
+  return e.clientX >= r.left - 2 && e.clientX <= r.right + 6;
+}
+
+// Boutons 3 et 4 de la souris (précédent / suivant) sur la barre : Espace voisin.
+sidebar.addEventListener('mouseup', (e) => {
+  if (e.button !== 3 && e.button !== 4) return;
+  e.preventDefault();
+  send('stepSpace', e.button === 3 ? -1 : 1);
 });
 
 // Clic molette : archive l'onglet.
@@ -415,9 +590,11 @@ sidebar.addEventListener('auxclick', (e) => {
 
 sidebar.addEventListener('dblclick', (e) => {
   const row = e.target.closest('[data-id]');
-  if (row && row.dataset.folder) return startRename(row.dataset.id);
-  if (row && row.closest('#pinned')) return startRename(row.dataset.id);
-  if (e.target.closest('#space-head')) return startRename(S.space.id);
+  // Double-clic sur une ligne (dossier, épinglé, onglet du jour) : renommer.
+  if (row && !row.closest('#fav')) return e.target.closest('.act') ? undefined : startRename(row.dataset.id);
+  if (e.target.closest('#space-head')) return e.target.closest('button') ? undefined : startRename(S.space.id);
+  // Double-clic dans le vide de la liste : nouvel onglet.
+  if (!row && e.target.closest('#scroll') && !e.target.closest('button, input, #divider')) return send('openCommand', 'new');
   return undefined;
 });
 
@@ -455,11 +632,42 @@ $('tb-url').onclick = () => send('openCommand', 'edit');
 $('b-newtab').onclick = () => send('openCommand', 'new');
 $('b-clear').onclick = () => send('command', 'clearToday');
 $('b-library').onclick = () => send('command', S && S.downloads ? 'downloads' : 'library');
-$('b-plus').onclick = () => send('sidebarMenu');
+$('b-plus').onclick = () => send('sidebarMenu', 'plus');
+$('url-copy').onclick = () => send('command', 'copyUrl');
+const LONG_PRESS = 500; // appui long sur précédent / suivant (ms)
 for (const p of ['b', 'tb']) {
-  $(p + '-back').onclick = () => send('command', 'back');
-  $(p + '-forward').onclick = () => send('command', 'forward');
-  $(p + '-reload').onclick = () => send('command', S && S.nav.loading ? 'stop' : 'reload');
+  // Précédent, suivant : clic = aller ; ⌘clic ou clic molette = dans un nouvel
+  // onglet ; clic droit ou appui long = l'historique de l'onglet.
+  for (const [name, dir] of [['back', -1], ['forward', 1]]) {
+    const el = $(`${p}-${name}`);
+    let held = null;
+    let long = false;
+    el.onclick = (e) => {
+      if (long) { long = false; return; }
+      if (modKey(e)) send('navNew', dir); else send('command', name);
+    };
+    el.addEventListener('auxclick', (e) => { if (e.button === 1) { e.stopPropagation(); send('navNew', dir); } });
+    el.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); clearTimeout(held); send('navMenu', dir); });
+    el.addEventListener('pointerdown', (e) => {
+      long = false;
+      clearTimeout(held);
+      if (e.button === 0) held = setTimeout(() => { long = true; send('navMenu', dir); }, LONG_PRESS);
+    });
+    for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) el.addEventListener(ev, () => clearTimeout(held));
+  }
+  // Actualiser : clic = actualiser (ou arrêter pendant le chargement) ; ⌘clic =
+  // dupliquer l'onglet ; double-clic = arrêter ; clic droit = les variantes.
+  const reload = $(p + '-reload');
+  reload.onclick = (e) => {
+    if (modKey(e)) return send('command', 'duplicate');
+    const stop = S && S.nav.loading;
+    // L'icône fait un tour (animation relancée à chaque clic).
+    const svg = e.currentTarget.querySelector('svg');
+    if (!stop && svg) { svg.classList.remove('spin'); void svg.getBoundingClientRect(); svg.classList.add('spin'); }
+    return send('command', stop ? 'stop' : 'reload');
+  };
+  reload.addEventListener('dblclick', (e) => { e.stopPropagation(); send('command', 'stop'); });
+  reload.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); send('reloadMenu'); });
 }
 
 // --- Changement d'Espace : deux listes côte à côte ---------------------------
@@ -561,10 +769,11 @@ function slideGhost(vm, dir) {
   if (!vm) return;
   slide.ghost = ghostPanel(vm);
   slide.targetId = vm.space.id;
+  slide.targetSpace = vm.space;
   pagerEl.appendChild(slide.ghost);
-  tintEl.style.setProperty('--accent', vm.space.color);
-  tintEl.style.setProperty('--accent2', vm.space.color2 || vm.space.color);
-  tintEl.classList.toggle('gradient', !!vm.space.color2);
+  // La teinte porte le fond de l'autre Espace ; sa liste, ses couleurs de texte.
+  paintTheme(tintEl, vm.space, S);
+  paintTheme(slide.ghost, vm.space, S, OrbeTheme.TEXT_VARS);
 }
 
 function slideBegin() {
@@ -605,6 +814,13 @@ function slideFly(to, done) {
     move(slide.ghost, slide.dir * W - from, slide.dir * W - to);
     slide.anims.push(tintEl.animate({ opacity: [Math.min(1, Math.abs(from) / W), Math.min(1, Math.abs(to) / W)] }, opts));
   }
+  // Changement décidé : à mi-course, quand la teinte de l'autre Espace domine, le
+  // reste de la barre (adresse, favoris, pastilles) prend ses couleurs de texte.
+  clearTimeout(slide.swap);
+  if (to !== 0 && slide.commit && slide.targetSpace) {
+    const space = slide.targetSpace;
+    slide.swap = setTimeout(() => { if (slide && S) paintTheme(document.body, space, S, OrbeTheme.TEXT_VARS); }, timing.duration * 0.4);
+  }
   // La fin est donnée par une minuterie plutôt que par l'animation : celle-ci ne
   // « finit » pas dans une vue qui n'est pas affichée.
   slide.timer = setTimeout(done, timing.duration);
@@ -615,13 +831,16 @@ function slideEnd() {
   if (!slide) return;
   const { pending, other, after, ghost } = slide;
   slideStop();
+  clearTimeout(slide.swap);
   slide = null;
+  document.body._theme = ''; // les couleurs de l'Espace affiché sont reposées par le rendu
   if (ghost) ghost.remove();
   scroller.style.transform = '';
   tintEl.style.opacity = '';
   pagerEl.classList.remove('sliding');
   const next = pending || other;
   if (next) render(next);
+  else if (S) paintTheme(document.body, S.space, S);
   for (const fn of after) fn();
 }
 
@@ -725,15 +944,76 @@ sidebar.addEventListener('wheel', (e) => {
   if (far || brisk) slideCommit();
 }, { passive: false });
 
+// --- Rebond élastique de la liste ---------------------------------------------
+// Au bout de la liste (en haut ou en bas), continuer de faire défiler la tire un
+// peu, de moins en moins, puis elle revient au ressort — comme les listes de
+// macOS. Le moteur ne le fait de lui-même que pour le défilement principal d'une
+// page, pas pour un bloc défilant interne comme celui-ci. Seule la propriété
+// `translate` de la liste change (aucune mise en page) ; elle est distincte de
+// `transform`, que le changement d'Espace utilise.
+const BOUNCE = { max: 72, stiff: 0.45, idle: 70, back: 360 };
+const bounce = { raw: 0, y: 0, timer: null, anim: null };
+
+function bounceReset() {
+  clearTimeout(bounce.timer);
+  if (bounce.anim) { try { bounce.anim.cancel(); } catch {} bounce.anim = null; }
+  if (bounce.raw || bounce.y) scroller.style.translate = '';
+  bounce.raw = 0;
+  bounce.y = 0;
+}
+
+function bounceRelease() {
+  const from = bounce.y;
+  bounceReset();
+  if (Math.abs(from) < 0.5) return;
+  bounce.anim = scroller.animate({ translate: [`0 ${from}px`, '0 0'] }, { duration: BOUNCE.back, easing: SPRING.easing, id: 'bounce' });
+  bounce.anim.onfinish = () => { bounce.anim = null; };
+}
+
+scroller.addEventListener('wheel', (e) => {
+  if (slide || drag || editing || e.ctrlKey || reducedMotion.matches || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+  const top = scroller.scrollTop <= 0;
+  const end = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 1;
+  const pulling = (e.deltaY < 0 && top) || (e.deltaY > 0 && end);
+  if (!bounce.raw) {
+    if (!pulling) return;
+    // Molette à crans (grand saut d'un coup, par crans entiers) : elle ne tire pas la liste.
+    if (e.deltaMode !== 0 || (Math.abs(e.deltaY) >= 50 && Math.abs(e.wheelDeltaY) >= 120 && Math.abs(e.wheelDeltaY) % 120 === 0)) return;
+    if (bounce.anim) { try { bounce.anim.cancel(); } catch {} bounce.anim = null; }
+  } else if (Math.sign(e.deltaY) === Math.sign(bounce.raw)) {
+    // Défilement dans l'autre sens : la liste est rendue aussitôt.
+    return bounceRelease();
+  }
+  // Ce qui a été tiré se relâche peu à peu (l'inertie du pavé s'éteint).
+  bounce.raw = bounce.raw * 0.9 - e.deltaY;
+  bounce.y = Math.sign(bounce.raw) * BOUNCE.max * (1 - 1 / ((Math.abs(bounce.raw) * BOUNCE.stiff) / BOUNCE.max + 1));
+  scroller.style.translate = `0 ${bounce.y.toFixed(1)}px`;
+  clearTimeout(bounce.timer);
+  bounce.timer = setTimeout(bounceRelease, BOUNCE.idle);
+  return undefined;
+}, { passive: true });
+
 // --- Redimensionnement ------------------------------------------------------
+const HIDE_AT = 100; // tirer le bord en deçà (px) masque la barre
 $('resize').addEventListener('pointerdown', (e) => {
   const el = e.currentTarget;
   el.setPointerCapture(e.pointerId);
   document.body.classList.add('no-anim');
   let frame = 0;
   let x = e.clientX;
+  const before = S ? S.sidebar.width : 0;
   const move = (ev) => {
     x = ev.clientX;
+    // Tiré tout à gauche : la barre se masque, le geste s'arrête là ; elle
+    // reviendra à la largeur qu'elle avait avant.
+    if (x < HIDE_AT && S && S.sidebar.visible) {
+      cancelAnimationFrame(frame);
+      up();
+      try { el.releasePointerCapture(e.pointerId); } catch {}
+      if (before) send('sidebarWidth', before);
+      send('toggleSidebar');
+      return;
+    }
     if (!frame) frame = requestAnimationFrame(() => { frame = 0; send('sidebarWidth', x); });
   };
   const up = () => {
@@ -744,6 +1024,9 @@ $('resize').addEventListener('pointerdown', (e) => {
   el.addEventListener('pointermove', move);
   el.addEventListener('pointerup', up);
 });
+
+// Double-clic sur le bord : retour à la largeur par défaut.
+$('resize').addEventListener('dblclick', () => send('sidebarWidthReset'));
 
 // --- Largeur des volets d'une vue scindée -----------------------------------
 let splitDrag = false;
@@ -803,8 +1086,9 @@ function structSig(s) {
 // d'une de ces animations (geste enchaîné, machine chargée), il plaçait les
 // lignes là où elles n'étaient que de passage, et le dépôt tombait à côté.
 function settleRows() {
+  bounceReset(); // le rebond élastique décale toute la liste
   for (const a of scroller.getAnimations({ subtree: true })) {
-    if (a.transitionProperty === 'transform' || a.animationName === 'row-in' || a.animationName === 'row-out') {
+    if (a.transitionProperty === 'transform' || a.animationName === 'row-in' || a.animationName === 'row-out' || a.id === FLIP.id) {
       try { a.finish(); } catch {}
     }
   }
@@ -930,12 +1214,13 @@ scroller.addEventListener('scroll', () => {
   geom.scroll = scroller.scrollTop;
   if (target && target.slot) placeSlot();
 }, { passive: true });
+scroller.addEventListener('scroll', offViewSoon, { passive: true });
 
 function endDrag() {
   if (!drag) return;
   clearTimeout(drag.timer);
   const settled = drag.settling;
-  if (!settled) send('dragZone', false);
+  if (!settled && !drag.space) send('dragZone', false);
   zoneOn = false;
   // Dépôt accepté : les lignes sont déjà à leur place définitive, on retire les
   // décalages sans animation. Abandon : elles reviennent en glissant.
@@ -955,6 +1240,16 @@ function endDrag() {
 }
 
 sidebar.addEventListener('dragstart', (e) => {
+  // Pastille d'un Espace : on la glisse pour réordonner les Espaces.
+  const dot = e.target.closest('#spaces [data-space]');
+  if (dot) {
+    if (editing || drag || !S || S.incognito) return e.preventDefault();
+    drag = { space: dot.dataset.space };
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('application/x-orbe-space', dot.dataset.space);
+    requestAnimationFrame(() => { if (drag && drag.space) dot.classList.add('dragging-self'); });
+    return undefined;
+  }
   const row = e.target.closest('[data-id]');
   if (!row || editing || drag) return e.preventDefault();
   const item = row.dataset.folder ? row.parentElement : row;
@@ -964,7 +1259,8 @@ sidebar.addEventListener('dragstart', (e) => {
   if (sel.size && !many) setSel([]);
   drag = { id: row.dataset.id, folder: !!row.dataset.folder, ids: many && many.length > 1 ? many : null };
   if (drag.ids) dragGhost(e, row, drag.ids.length);
-  e.dataTransfer.effectAllowed = 'move';
+  // « copyMove » : ⌥ pendant le glisser dépose une copie (voir `drop`).
+  e.dataTransfer.effectAllowed = 'copyMove';
   e.dataTransfer.setData('text/plain', row.dataset.id);
   e.dataTransfer.setData('application/x-orbe-item', row.dataset.id);
   // Les zones de dépôt ne s'agrandissent qu'après le départ du glisser :
@@ -1054,8 +1350,27 @@ function listTarget(y) {
   return t;
 }
 
+// Pastilles des Espaces : rang où tomberait l'Espace glissé, et trait vertical.
+function spaceTarget(e) {
+  if (!e.target.closest('#bottom')) return null;
+  const kids = [...$('spaces').children];
+  if (!kids.length) return null;
+  let index = kids.length;
+  let rect = null;
+  for (let i = 0; i < kids.length; i++) {
+    const r = kids[i].getBoundingClientRect();
+    if (e.clientX < r.left + r.width / 2) { index = i; rect = r; break; }
+  }
+  const last = kids[kids.length - 1].getBoundingClientRect();
+  return { space: true, index, pos: { x: rect ? rect.left - 1 : last.right, y: last.top + 3, h: last.height - 6 } };
+}
+
 // Calcule la destination sous le pointeur : liste, position et repère visuel.
 function dropTarget(e) {
+  if (drag.space) return spaceTarget(e);
+  // Onglet au-dessus de la pastille d'un autre Espace : il y sera déplacé.
+  const dot = e.target.closest('#spaces [data-space]');
+  if (dot) return drag.folder || dot.dataset.space === S.space.id ? null : { toSpace: dot.dataset.space, into: dot, g: null };
   const fav = e.target.closest('#fav');
   if (fav) return gridTarget(e, fav);
   if (!e.target.closest('#scroll')) return null;
@@ -1065,7 +1380,7 @@ function dropTarget(e) {
 
 // Au-dessus de la page : lâcher l'onglet crée une vue scindée. Pendant un
 // glisser, c'est la coque qui reçoit les événements, même au-dessus des pages.
-const overPage = (e) => !!drag && !drag.settling && !drag.folder && !!S && S.sidebar.visible && !!S.activeId && e.clientX > S.sidebar.width + 12;
+const overPage = (e) => !!drag && !drag.settling && !drag.folder && !drag.space && !!S && S.sidebar.visible && !!S.activeId && e.clientX > S.sidebar.width + 12;
 let zoneOn = false;
 function setZone(on) {
   if (on === zoneOn) return;
@@ -1107,8 +1422,10 @@ function overSidebar(e) {
   showTarget(t);
   if (!t) return;
   e.preventDefault();
-  e.dataTransfer.dropEffect = 'move';
+  e.dataTransfer.dropEffect = copying(e, t) ? 'copy' : 'move';
 }
+// ⌥glisser un onglet : il est dupliqué à l'endroit du dépôt (ni dossier, ni autre Espace).
+const copying = (e, t) => e.altKey && !drag.folder && !drag.space && !t.toSpace;
 sidebar.addEventListener('dragover', overSidebar);
 sidebar.addEventListener('dragenter', overSidebar);
 
@@ -1125,8 +1442,10 @@ sidebar.addEventListener('drop', (e) => {
   if (drag.settling) return undefined;
   const t = dropTarget(e);
   if (!t) return endDrag();
+  if (drag.space) { send('moveSpace', { id: drag.space, index: t.index }); return endDrag(); }
+  if (t.toSpace) { send('moveToSpace', { ...(drag.ids ? { ids: drag.ids } : { id: drag.id }), spaceId: t.toSpace }); return endDrag(); }
   showTarget(t);
-  send('move', { ...(drag.ids ? { ids: drag.ids } : { id: drag.id }), to: t.to, folderId: t.folderId, index: t.index });
+  send('move', { ...(drag.ids ? { ids: drag.ids } : { id: drag.id }), to: t.to, folderId: t.folderId, index: t.index, ...(copying(e, t) ? { copy: true } : {}) });
   // Lâché à sa propre place, ou rien d'emporté dans les listes (tuile de favori) : fin immédiate.
   if (!geom) measure();
   const still = !!t.slot && t.g !== null && geom.flow.every((f) => !f.off);
@@ -1167,11 +1486,15 @@ O.on('state', onState);
 // Renommer pendant un glissement (nouvel Espace) : après l'arrivée.
 O.on('edit', (id) => (slide && slide.commit ? slide.after.push(() => startRename(id)) : startRename(id)));
 // Sons d'interface (fichiers originaux, src/renderer/sons).
+// Chaque son est chargé à sa première demande, puis rejoué depuis le début.
+// `mute` (pendant les essais) : le fichier est chargé, rien n'est joué.
 const sounds = {};
-O.on('sound', (name) => {
+O.on('sound', (p) => {
+  const { name, volume = 0.5, mute = false } = typeof p === 'string' ? { name: p } : (p || {});
   if (!/^[a-z-]+$/.test(String(name))) return;
   const a = sounds[name] || (sounds[name] = new Audio(`sons/${name}.wav`));
-  a.volume = 0.5;
+  a.volume = Math.max(0, Math.min(1, Number(volume) || 0));
+  if (mute) { a.load(); return; }
   a.currentTime = 0;
   a.play().catch(() => {});
 });

@@ -17,13 +17,32 @@ interface entièrement en français (anglais disponible dans les réglages).
 | --- | --- |
 | ![Vue scindée](docs/captures/vue-scindee.png) | ![Thème clair](docs/captures/theme-clair.png) |
 
+| Éditeur de thème | Dégradé de trois couleurs et grain |
+| --- | --- |
+| ![Éditeur de thème : nuancier, intensité, textures, thèmes prêts](docs/captures/theme-editeur.png) | ![Thème en dégradé avec grain](docs/captures/theme-degrade-grain.png) |
+
+| Thème clair | Thème sombre |
+| --- | --- |
+| ![Thème clair](docs/captures/theme-clair.png) | ![Thème sombre](docs/captures/theme-sombre.png) |
+
 ## Ce qui fonctionne
 
 - **Barre latérale** : favoris en tuiles, onglets épinglés, dossiers, onglets du
   jour, glisser-déposer, renommage sur place, largeur réglable, masquage (⌘S)
   avec réapparition au survol du bord gauche.
-- **Espaces** : couleur et icône par Espace, changement par ⌃1…⌃9, ⌥⌘←/→ ou
+- **Espaces** : icône et thème par Espace, changement par ⌃1…⌃9, ⌥⌘←/→ ou
   balayage à deux doigts sur la barre latérale.
+- **Thèmes** (menu Espaces → Modifier le thème) : une à trois couleurs en
+  dégradé, choisies en déplaçant des points sur un nuancier ; intensité ; quatre
+  textures (grain, sable, tweed, denim) ; apparence claire, sombre ou
+  automatique par Espace ; huit thèmes et trois nuanciers prêts. Le texte reste
+  lisible sur n'importe quelle couleur (contraste calculé, 4,5 au moins).
+- **Mouvements** : les lignes glissent quand la liste change, lueur de
+  chargement, rebond élastique de la liste, balayage à deux doigts sur la page
+  pour revenir en arrière ; « Réduire les animations » du système est respecté.
+- **Sons** : sept sons brefs et originaux, fabriqués par `scripts/make-sounds.js`
+  (capture d'écran ; sur demande, nouvel onglet, fermeture, changement d'Espace,
+  épingle, refus), avec réglage du volume.
 - **Barre de commande** (⌘T / ⌘L) : adresse, recherche, bascule vers un onglet
   ouvert, historique, actions, suggestions du moteur de recherche.
 - **Vue scindée** jusqu'à quatre volets (⌃⇧=).
@@ -94,8 +113,8 @@ Il faut [Node.js](https://nodejs.org) 20 ou plus récent.
 git clone https://github.com/amadoubaui/orbe.git
 cd orbe
 npm start        # lance le navigateur
-npm test         # tests de bout en bout (495 vérifications)
-npm run test:ui  # tests d'interface Playwright, souris et clavier réels (253 vérifications)
+npm test         # tests de bout en bout (529 vérifications)
+npm run test:ui  # tests d'interface Playwright, souris et clavier réels (281 vérifications)
 # tests au clavier réel (prennent le clavier) : voir tests/natif/
 npm run build    # fabrique ~/.orbe-dev/dist/Orbe.app (-- --install pour /Applications)
 ```

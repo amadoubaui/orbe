@@ -11,6 +11,24 @@ const t = (k, v) => store.t(k, null, v);
 let lastSignature = '';
 let timer = null;
 
+// Orbe est-il le navigateur par défaut ? (coche du menu, comme dans Arc.) La
+// réponse du système est relue au plus toutes les dix secondes.
+let defaultAt = 0;
+let defaultIs = false;
+function isDefaultBrowser(fresh) {
+  const now = Date.now();
+  if (fresh || now - defaultAt > 10000) {
+    defaultAt = now;
+    try { defaultIs = app.isDefaultProtocolClient('http'); } catch { defaultIs = false; }
+  }
+  return defaultIs;
+}
+
+// Boutons des extensions de la fenêtre, pour le menu Extensions.
+function extensionActions(w) {
+  try { return require('./ext-host').actionsFor(w) || []; } catch { return []; }
+}
+
 function dispatch(name, arg) {
   const focused = BaseWindow.getFocusedWindow();
   const win = OrbeWindow.focused;
@@ -18,6 +36,7 @@ function dispatch(name, arg) {
   // elle-même la fermeture, le reste s'adresse à la fenêtre principale.
   if (focused && !win) {
     if (name === 'closeTab' || name === 'closeWindow') return focused.close();
+    if (name === 'stayOnTop') { focused.setAlwaysOnTop(!focused.isAlwaysOnTop()); return refresh(true); }
     if (focused.orbeLittle && focused.orbeLittle.run(name)) return undefined;
   }
   return commands.run(win || OrbeWindow.primary, name, arg);
@@ -38,6 +57,7 @@ function build() {
   const setAppearance = (v) => () => commands.setSetting('appearance', v);
 
   const spaces = w ? w.data.spaces : [];
+  const exts = extensionActions(w);
   const template = [
     {
       label: 'Orbe',
@@ -46,7 +66,7 @@ function build() {
         sep,
         item('settings'),
         item('passwords'),
-        item('defaultBrowser'),
+        item('defaultBrowser', { type: 'checkbox', checked: isDefaultBrowser(true), click: () => { dispatch('defaultBrowser'); refresh(true); } }),
         ...(platform.isWin ? [item('undoDefaultBrowser')] : []),
         sep,
         ...(platform.arcSidebarFile() || platform.isMac ? [item('importArc')] : []),
@@ -65,7 +85,7 @@ function build() {
       label: t('menu.file'),
       submenu: [
         item('newTab'), item('newWindow'), item('newIncognito'), item('newLittle'), item('newNote'), item('newEasel'), item('reopen'),
-        sep, item('commandBar'),
+        sep, item('commandBar'), item('newProfile', { enabled: !!w && !w.incognito }),
         sep, item('closeTab'), item('closeWindow'),
         sep, item('capture'), item('captureFull'), item('captureToEasel'), item('savePage'), item('print'),
       ],
@@ -82,9 +102,10 @@ function build() {
         item('copyUrl'), item('copyUrlMarkdown'), item('copyUrlQuote'),
         { label: t('edit.paste'), role: 'paste' },
         { label: t('edit.pasteMatch'), role: 'pasteAndMatchStyle' },
+        item('pasteUrl'),
         { label: t('edit.selectAll'), role: 'selectAll' },
         sep,
-        item('find'), item('findNext'), item('findPrev'),
+        item('find'), item('findNext'), item('findPrev'), item('useSelectionFind'),
       ],
     },
     {
@@ -101,10 +122,12 @@ function build() {
         sep,
         item('toggleSidebar', { labelKey: w && !w.sidebarVisible ? 'view.showSidebar' : 'view.hideSidebar' }),
         item('toggleToolbar', { labelKey: s.showToolbar ? 'view.hideToolbar' : 'view.showToolbar' }),
+        item('collapsePinned', { labelKey: w && w.space.pinnedCollapsed ? 'view.expandPinned' : 'view.collapsePinned' }),
         sep,
         item('stop'), item('reload'), item('forceReload'), item('clearCookies'), item('clearCache'),
         sep,
         item('addSplit'), item('splitDirection'), item('closeSplit'),
+        item('separateSplit', { enabled: !!w && !!w.activeId && !!w.groupOf(w.activeId) }),
         ...[1, 2, 3, 4].map((n) => item('pane' + n, { label: `${t('view.pane')} ${n}`, visible: false, acceleratorWorksWhenHidden: true })),
         sep,
         item('boost'), item('zap'),
@@ -156,8 +179,8 @@ function build() {
         item('expandPeek', { enabled: !!w && !!w.peekState }),
         item('openInSpace', { visible: false, acceleratorWorksWhenHidden: true }),
         item('toggleMute', { labelKey: tab && tab.muted ? 'tabs.unmute' : 'tabs.mute' }),
-        sep, item('nextTab'), item('prevTab'),
-        sep, item('clearToday'),
+        sep, item('nextTab'), item('prevTab'), item('revealTab', { enabled: !!tab }),
+        sep, item('clearToday'), item('resetTabs'),
         // ⌘1…⌘9 : accès direct aux onglets, dans l'ordre de la barre latérale.
         ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => ({
           label: `Onglet ${n}`,
@@ -173,24 +196,49 @@ function build() {
       submenu: [item('back'), item('forward'), sep, item('history'), item('viewArchive'), item('clearArchive')],
     },
     {
+      label: t('menu.extensions'),
+      submenu: [
+        // Une ligne par extension : comme un clic sur son bouton.
+        ...exts.map((x) => ({
+          label: x.title || x.name || x.id,
+          enabled: x.enabled !== false,
+          click: () => { const win = OrbeWindow.focused || OrbeWindow.primary; if (win) require('./ext-host').openPopup(win, x.id); },
+        })),
+        ...(exts.length ? [sep] : []),
+        { label: t('ext.add'), click: () => commands.hooks.openSettings('extensions') },
+        { label: t('ext.manage'), click: () => commands.hooks.openSettings('extensions') },
+      ],
+    },
+    {
       label: t('menu.window'),
       role: 'window',
       submenu: [
-        {
-          label: t('window.onTop'),
-          type: 'checkbox',
-          checked: !!w && w.win.isAlwaysOnTop(),
-          click: () => { const f = BaseWindow.getFocusedWindow(); if (f) { f.setAlwaysOnTop(!f.isAlwaysOnTop()); refresh(true); } },
-        },
+        item('stayOnTop', { type: 'checkbox', checked: !!w && w.win.isAlwaysOnTop() }),
         { label: t('window.minimize'), role: 'minimize' },
         { label: t('window.zoom'), role: 'zoom' },
         sep, item('library'), item('downloads'), item('media'), item('notes'), item('easels'),
         sep, { label: t('window.front'), role: 'front' },
       ],
     },
-    { label: t('menu.help'), role: 'help', submenu: [item('welcome'), item('shortcuts'), item('support'), item('github')] },
+    { label: t('menu.help'), role: 'help', submenu: [item('welcome'), item('shortcuts'), item('support'), item('github'), sep, { label: t('help.troubleshooting'), submenu: [item('revealData'), item('copyInfo')] }] },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(platform.menuTemplate(template)));
+  if (platform.isMac && app.dock) app.dock.setMenu(Menu.buildFromTemplate(dockTemplate()));
+}
+
+// Menu du Dock, comme dans Arc : fenêtre de navigation privée, et toutes les
+// petites fenêtres masquées ou réaffichées d'un coup.
+function dockTemplate() {
+  const littles = () => require('./little').LittleWindow.all.filter((l) => l.win && !l.win.isDestroyed());
+  const shown = littles().some((l) => l.win.isVisible());
+  return [
+    { label: t('file.newIncognito'), click: () => dispatch('newIncognito') },
+    {
+      label: t(shown || !littles().length ? 'dock.hideLittle' : 'dock.showLittle'),
+      enabled: littles().length > 0,
+      click: () => { for (const l of littles()) { if (shown) l.win.hide(); else l.win.show(); } refresh(true); },
+    },
+  ];
 }
 
 // Appelé à chaque changement d'état : ne reconstruit le menu que si ce qu'il
@@ -208,6 +256,8 @@ function refresh(force) {
       w && w.space.profileId, w ? w.data.profiles.length : 0, !!(w && w.peekState),
       w && w.pendingLabel('undo'), w && w.pendingLabel('redo'),
       s.shortcuts, s.devSites, tab && tab.url && require('./prefs').hostOf(tab.url),
+      w && w.space.pinnedCollapsed, !!(w && w.activeId && w.groupOf(w.activeId)), !!(w && w.win.isAlwaysOnTop()),
+      isDefaultBrowser(), extensionActions(w).map((x) => [x.id, x.title, x.enabled]),
     ]);
     if (!force && sig === lastSignature) return;
     lastSignature = sig;
@@ -215,4 +265,6 @@ function refresh(force) {
   }, force ? 0 : 120);
 }
 
-module.exports = { refresh, build };
+commands.hooks.menuChanged = () => refresh(true);
+
+module.exports = { refresh, build, dockTemplate };

@@ -159,6 +159,8 @@ const SETTABLE = {
   externalLinks: prefs.externalLinks,
   autoPip: (v) => typeof v === 'boolean',
   sounds: (v) => typeof v === 'boolean',
+  soundVolume: (v) => Number.isInteger(v) && v >= 0 && v <= 100,
+  soundGestures: (v) => typeof v === 'boolean',
   adblock: (v) => typeof v === 'boolean',
   peekLinks: (v) => typeof v === 'boolean',
   passwordSave: (v) => typeof v === 'boolean',

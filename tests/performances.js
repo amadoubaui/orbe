@@ -70,6 +70,18 @@ module.exports = async function performancesTests(ctx) {
     await sleep(300);
   }
 
+  // Une vue prise dans la réserve a été chargée plus tôt : elle reçoit les couleurs du moment.
+  {
+    await until(() => w.spares.some((s) => s.ready), 'réserve prête');
+    const seen = [];
+    for (const sp of w.spares.filter((x) => x.ready)) { const wc = sp.view.webContents; const send = wc.send.bind(wc); wc.send = (ch, ...a) => { seen.push(ch); return send(ch, ...a); }; }
+    const taken = w.makeUiView('overlay.html#essai');
+    await until(() => taken.webContents.getURL().endsWith('#essai'), 'vue prise dans la réserve');
+    check('une vue prise dans la réserve reçoit les couleurs de l’Espace affiché', seen.includes('theme') && pidOf(taken) === shellPid, seen.join());
+    taken.webContents.close();
+    await sleep(150);
+  }
+
   // La coque n'ouvre rien d'elle-même, et une vue d'appoint ne va nulle part ailleurs.
   const strays = () => webContents.getAllWebContents().filter((wc) => /settings\.html|shell\.html$|exemple\.invalid|about:blank/.test(wc.getURL()) && wc !== w.ui.webContents).length
     + Math.max(0, webContents.getAllWebContents().filter((wc) => wc.getURL().endsWith('#modal')).length - OrbeWindow.all.length);

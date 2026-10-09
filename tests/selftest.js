@@ -646,7 +646,7 @@ module.exports = async function selftest(ctx) {
   const pngs0 = fs.readdirSync(dlDir0).filter((f) => f.endsWith('.png')).length;
   let played = '';
   const sendOrig = w.ui.webContents.send.bind(w.ui.webContents);
-  w.ui.webContents.send = (ch, ...rest) => { if (ch === 'sound') played = rest[0]; return sendOrig(ch, ...rest); };
+  w.ui.webContents.send = (ch, ...rest) => { if (ch === 'sound') played = rest[0] && rest[0].name; return sendOrig(ch, ...rest); };
   // La page vient d'être réaffichée : la capture peut être vide tant qu'elle n'a pas été peinte.
   const zoneSaved = await until(async () => (await w.capture({ area: { x: 10, y: 10, width: 200, height: 120 }, then: 'save' })) === 'save', 'capture d’une zone').catch((e) => e.message);
   // Écran en veille ou session verrouillée : Chromium ne peut rien capturer.
@@ -667,6 +667,137 @@ module.exports = async function selftest(ctx) {
   store.state.settings.sounds = true;
   w.ui.webContents.send = sendOrig;
   check('le fichier du son existe et se charge', await ui('fetch("sons/capture.wav").then((r) => r.ok && r.headers.get("content-type"))').then((x) => !!x).catch(() => false));
+
+  // Sons : fichiers fabriqués par scripts/make-sounds.js, courts, au même niveau, sans claquement
+  {
+    const sounds = require('../src/main/sounds');
+    const gen = require('../scripts/make-sounds');
+    const dir = path.join(__dirname, '..', 'src', 'renderer', 'sons');
+    const files = fs.readdirSync(dir).filter((f) => f.endsWith('.wav')).map((f) => f.replace('.wav', '')).sort();
+    check('sons : un fichier par son connu, rien d’autre', JSON.stringify(files) === JSON.stringify([...sounds.NAMES].sort()) && JSON.stringify(files) === JSON.stringify(Object.keys(gen.SOUNDS).sort()), files.join(','));
+    const facts = files.map((name) => {
+      const buf = fs.readFileSync(path.join(dir, name + '.wav'));
+      const { samples, rate, channels } = gen.read(buf);
+      let peak = 0; let power = 0;
+      for (const v of samples) { peak = Math.max(peak, Math.abs(v)); power += v * v; }
+      return { name, same: buf.equals(gen.wav([...gen.SOUNDS[name]()])), seconds: samples.length / rate, peak, rms: Math.sqrt(power / samples.length), edges: Math.max(Math.abs(samples[0]), Math.abs(samples[samples.length - 1])), mono: channels === 1 && rate === 44100 };
+    });
+    check('sons : chaque fichier est exactement ce que produit le script de synthèse (aucun fichier tiers)', facts.every((x) => x.same), facts.filter((x) => !x.same).map((x) => x.name).join(','));
+    check('sons : brefs (moins d’une demi-seconde), mono 44,1 kHz', facts.every((x) => x.seconds > 0.08 && x.seconds < 0.5 && x.mono), JSON.stringify(facts.map((x) => [x.name, x.seconds])));
+    check('sons : même niveau moyen pour tous, crête à −6 dB au plus, début et fin à zéro', facts.every((x) => x.peak <= gen.PEAK + 0.001 && x.rms > gen.LEVEL * 0.9 && x.rms < gen.LEVEL * 1.05 && x.edges < 0.001), JSON.stringify(facts.map((x) => [x.name, x.peak.toFixed(3), x.rms.toFixed(3)])));
+    check('pendant les essais, aucun son n’est joué (demande transmise « muette »)', sounds.QUIET === (process.env.ORBE_TEST_SOUNDS !== '1'));
+
+    // Sons des gestes : déduits des changements d'état, après un geste seulement
+    const S0 = { sounds: store.state.settings.sounds, soundGestures: store.state.settings.soundGestures, soundVolume: store.state.settings.soundVolume };
+    const sent = [];
+    const send0 = w.ui.webContents.send.bind(w.ui.webContents);
+    w.ui.webContents.send = (ch, ...rest) => { if (ch === 'sound') sent.push(rest[0]); return send0(ch, ...rest); };
+    const heard = async (act) => { sent.length = 0; await act(); await sleep(120); return sent.map((x) => x.name).join(','); };
+    check('sons des gestes : coupés par défaut', S0.soundGestures === false && S0.soundVolume === 50);
+    w.activate(a.id);
+    await sleep(150);
+    check('réglage par défaut : ouvrir un onglet ne demande aucun son', (await heard(() => { sounds.arm(w); w.newTab(base + '/b'); })) === '' && w.activeId !== a.id);
+    const fresh = w.activeId;
+    store.state.settings.soundGestures = true;
+    store.state.settings.soundVolume = 30;
+    check('sons des gestes activés : fermer un onglet (commande) demande « close », au volume réglé', (await heard(() => commands.run(w, 'closeTab'))) === 'close' && sent[0].volume === 0.3 && sent[0].mute === sounds.QUIET && !w.data.tabs[fresh], JSON.stringify(sent));
+    let made = null;
+    check('nouvel onglet (geste) : « tab »', (await heard(() => { sounds.arm(w); made = w.newTab(base + '/b'); })) === 'tab');
+    check('épingler : « pin » ; désépingler : « unpin »', (await heard(() => { sounds.arm(w); w.move({ id: made.id, to: 'pinned', index: 0 }); })) === 'pin' && (await heard(() => { sounds.arm(w); w.move({ id: made.id, to: 'today', index: 0 }); })) === 'unpin', JSON.stringify(sent));
+    check('changer d’Espace : « space »', (await heard(() => { w.handle('switchSpace', w.data.spaces[1].id); })) === 'space');
+    await until(() => ui('!slide'), 'fin du glissement');
+    check('revenir par un raccourci : « space » aussi', (await heard(() => commands.run(w, 'prevSpace'))) === 'space');
+    await until(() => ui('!slide'), 'fin du glissement');
+    check('refus (cinquième volet d’une vue scindée) : « error »', (await heard(() => w.toast('refus', 'error'))) === 'error');
+    check('un changement qui ne suit aucun geste (archivage automatique, page qui ouvre un onglet) reste muet', (await heard(() => { w.soundArmed = 0; w.close(made.id); })) === '' && !w.data.tabs[made.id]);
+    check('un geste, un son : le changement suivant est muet', (await heard(async () => { sounds.arm(w); const x = w.newTab(base + '/b'); await sleep(60); w.soundArmed = 0; w.close(x.id); })) === 'tab');
+    store.state.settings.soundVolume = 0;
+    check('volume à zéro : aucun son', (await heard(() => w.sound('capture'))) === '' && !sounds.wanted('tab'));
+    store.state.settings.soundVolume = 50;
+    store.state.settings.sounds = false;
+    check('réglage « Sons » coupé : ni capture ni gestes', (await heard(() => { w.sound('capture'); sounds.arm(w); const x = w.newTab(base + '/b'); w.close(x.id); })) === '');
+    store.state.settings.sounds = true;
+    check('son inconnu : refusé', sounds.play(w, '../x') === false && sounds.play(w, 'boum') === false);
+    w.sound('tab');
+    check('la coque charge le fichier du son demandé, sans le jouer pendant les essais', await until(() => ui('typeof sounds === "object" && !!sounds.tab && sounds.tab.src.endsWith("sons/tab.wav") && sounds.tab.paused'), 'son chargé').then(() => true).catch(() => false));
+    check('sons : la suite des changements se lit (Espace, épingle, onglet, fermeture)', sounds.diff({ space: 'a', today: new Set(['1']), kept: new Set() }, { space: 'b', today: new Set(), kept: new Set() }) === 'space'
+      && sounds.diff({ space: 'a', today: new Set(['1']), kept: new Set() }, { space: 'a', today: new Set(), kept: new Set(['1']) }) === 'pin'
+      && sounds.diff({ space: 'a', today: new Set(['1']), kept: new Set() }, { space: 'a', today: new Set(['1', '2']), kept: new Set() }) === 'tab'
+      && sounds.diff({ space: 'a', today: new Set(['1']), kept: new Set() }, { space: 'a', today: new Set(), kept: new Set() }) === 'close'
+      && sounds.diff({ space: 'a', today: new Set(['1']), kept: new Set() }, { space: 'a', today: new Set(['1']), kept: new Set() }) === '' && sounds.diff(null, { space: 'a' }) === '');
+    Object.assign(store.state.settings, S0);
+    w.ui.webContents.send = send0;
+    w.activate(a.id);
+  }
+
+  // Thème d'un Espace : validation, thème par défaut, palette lisible, textures
+  {
+    const Theme = require('../src/renderer/theme');
+    const tx = require('../scripts/make-textures');
+    const sp = { color: '#7c6cf0', icon: '🏠' };
+    Theme.apply(sp, { colors: ['#FF0000', '#00ff00', '#0000ff'], intensity: 0.737, grain: 0.256, texture: 'tweed', mode: 'dark', icon: '🚀' });
+    check('thème : trois couleurs, intensité, texture, mode et icône enregistrés (valeurs arrondies, couleurs en minuscules)',
+      JSON.stringify([sp.color, sp.color2, sp.color3, sp.intensity, sp.grain, sp.texture, sp.mode, sp.icon]) === JSON.stringify(['#ff0000', '#00ff00', '#0000ff', 0.74, 0.26, 'tweed', 'dark', '🚀']), JSON.stringify(sp));
+    const before = JSON.stringify(sp);
+    const changed = Theme.apply(sp, { colors: ['#ff0000', 'red'], color: 'javascript:1', color2: '#12', intensity: 3, grain: -1, texture: '../x', mode: 'sepia', icon: 'x'.repeat(40), preset: 'inconnu' });
+    Theme.apply(sp, { colors: ['#111111', '#222222', '#333333', '#444444'] });
+    Theme.apply(sp, null);
+    check('thème : toute valeur invalide est ignorée (couleur, quatrième couleur, bornes, texture, mode)', changed === false && JSON.stringify(sp) === before);
+    Theme.apply(sp, { colors: [] });
+    check('thème : sans aucune couleur, thème par défaut (fond neutre, accent d’origine)', sp.plain === true && sp.color === Theme.DEFAULT_COLOR && sp.color2 === '' && sp.color3 === ''
+      && Theme.palette({ ...sp, mode: 'light' }, true).stops.join() === '#f3f3f5' && Theme.palette({ ...sp, mode: 'auto' }, true).stops.join() === '#16161a');
+    Theme.apply(sp, { color: '#10b981' });
+    check('thème : choisir une couleur quitte le thème par défaut', !sp.plain && Theme.normalize(sp).colors.join() === '#10b981');
+    Theme.apply(sp, { preset: 'lagon' });
+    check('thème prêt : couleurs, intensité et texture appliquées d’un coup', sp.color === '#3b82f6' && sp.color3 === '#9fdcc4' && sp.texture === 'grain' && sp.grain === 0.25 && sp.intensity === 0.62);
+    check('nuanciers : trois familles de neuf teintes, toutes valides et distinctes ; huit thèmes prêts',
+      ['pastel', 'drab', 'grey'].every((f) => Theme.PALETTES[f].length === 9 && Theme.PALETTES[f].every(Theme.isHex)) && new Set(Object.values(Theme.PALETTES).flat()).size === 27
+      && Theme.PRESETS.length === 8 && Theme.PRESETS.every((x) => x.colors.every(Theme.isHex) && x.colors.length <= 3 && Theme.TEXTURES.includes(x.texture)));
+    check('thème d’origine inchangé : 18 % de couleur en clair, 24 % en sombre à l’intensité moyenne',
+      Math.abs(Theme.tintOf(Theme.normalize({ color: '#7c6cf0' }), false) - 0.18) < 1e-9 && Math.abs(Theme.tintOf(Theme.normalize({ color: '#7c6cf0' }), true) - 0.24) < 1e-9
+      && Theme.tintOf(Theme.normalize({ color: '#7c6cf0', intensity: 0 }), false) < 0.05 && Theme.tintOf(Theme.normalize({ color: '#7c6cf0', intensity: 1 }), false) > 0.7);
+    // Lisibilité : thèmes prêts, nuanciers, et 3 000 thèmes au hasard, en clair et en sombre.
+    let seed = 20261009;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    let worst = Infinity;
+    let worstOf = '';
+    const see = (theme, dark) => { const p = Theme.palette(theme, dark); if (p.contrast < worst) { worst = p.contrast; worstOf = JSON.stringify([theme.colors, theme.intensity, theme.mode, dark]); } return p; };
+    for (const preset of Theme.PRESETS) for (const mode of Theme.MODES) for (const dark of [false, true]) see({ colors: preset.colors, accent: preset.colors[0], intensity: preset.intensity, grain: 0, texture: 'grain', mode }, dark);
+    for (const c of Object.values(Theme.PALETTES).flat()) for (const i of [0, 0.5, 1]) for (const dark of [false, true]) see({ colors: [c], accent: c, intensity: i, grain: 0, texture: 'grain', mode: 'auto' }, dark);
+    for (let i = 0; i < 3000; i++) {
+      const colors = Array.from({ length: 1 + Math.floor(rnd() * 3) }, () => Theme.hex([rnd() * 255, rnd() * 255, rnd() * 255]));
+      see({ colors, accent: colors[0], intensity: rnd(), grain: 0, texture: 'grain', mode: Theme.MODES[i % 3] }, i % 2 === 0);
+    }
+    check('thème : le texte de la barre garde un contraste d’au moins 4,5 sur tout fond (thèmes prêts, nuanciers, 3 000 thèmes au hasard)', worst >= 4.5, `${worst.toFixed(3)} pour ${worstOf}`);
+    console.log(`  – contraste le plus faible calculé : ${worst.toFixed(2)}`);
+    const navy = Theme.palette({ colors: ['#0b1d4a'], accent: '#0b1d4a', intensity: 1, grain: 0, texture: 'grain', mode: 'light' }, false);
+    const lemon = Theme.palette({ colors: ['#fff27a'], accent: '#fff27a', intensity: 1, grain: 0, texture: 'grain', mode: 'dark' }, true);
+    check('thème : fond foncé en mode clair = texte clair ; fond pâle en mode sombre = texte sombre ; texte sur l’accent choisi de même', navy.family === 'dark' && navy.fg === '#f3f3f5' && navy.onAccent === '#ffffff' && lemon.family === 'light' && lemon.fg === '#1d1d1f' && lemon.onAccent === '#141416');
+    // Textures : quatre carreaux, exactement ceux que produit le script, gris moyen neutre.
+    const txDir = path.join(__dirname, '..', 'src', 'renderer', 'textures');
+    const tiles = Theme.TEXTURES.map((name) => {
+      const buf = fs.readFileSync(path.join(txDir, name + '.png'));
+      const img = tx.read(buf);
+      let mean = 0;
+      for (const v of img.pixels) mean += v;
+      mean /= img.pixels.length;
+      let sd = 0;
+      for (const v of img.pixels) sd += (v - mean) ** 2;
+      return { name, same: buf.equals(tx.png(tx.TEXTURES[name]())), size: img.size, grey: img.depth === 8 && img.color === 0, mean, sd: Math.sqrt(sd / img.pixels.length), bytes: buf.length };
+    });
+    check('textures : grain, sable, tweed, denim — fichiers identiques à ce que calcule le script, carreaux gris de 192 px', JSON.stringify(fs.readdirSync(txDir).sort()) === JSON.stringify(Theme.TEXTURES.map((x) => x + '.png').sort()) && tiles.every((x) => x.same && x.size === 192 && x.grey && x.bytes < 40000), JSON.stringify(tiles));
+    check('textures : gris moyen neutre (la texture ne change ni la teinte ni la clarté du fond), relief net', tiles.every((x) => Math.abs(x.mean - 128) < 1.5 && x.sd > 25 && x.sd < 45), JSON.stringify(tiles.map((x) => [x.name, x.mean.toFixed(1), x.sd.toFixed(1)])));
+    check('textures : quatre motifs distincts', new Set(tiles.map((x) => x.bytes)).size === 4);
+    // L'état transmis à la barre porte le thème entier, pour l'Espace affiché et ses voisins.
+    w.setTheme({ colors: ['#10b981', '#3b82f6', '#f59e0b'], intensity: 0.7, texture: 'sand', grain: 0.4, mode: 'dark' });
+    await until(() => ui('S.space.color3 === "#f59e0b" && S.space.texture === "sand" && S.space.mode === "dark" && S.space.intensity === 0.7'), 'thème transmis');
+    const body = await ui('({ fam: document.documentElement.dataset.family, grainy: document.body.classList.contains("grainy"), paint: getComputedStyle(document.body).backgroundImage, tx: getComputedStyle(document.body, "::before").backgroundImage, fg: getComputedStyle(document.body).getPropertyValue("--fg").trim() })');
+    const want = Theme.palette(w.space, false);
+    check('thème appliqué à la barre : dégradé à trois arrêts, texture, couleurs de texte calculées', body.fam === want.family && body.grainy && (body.paint.match(/rgba?\(/g) || []).length === 3 && body.tx.includes('textures/sand.png') && body.fg === want.fg, JSON.stringify(body));
+    check('les vues flottantes reçoivent le thème de l’Espace', JSON.stringify(w.handle('themeGet').space) === JSON.stringify(await ui('(({ color, color2, color3, plain, intensity, grain, texture, mode }) => ({ color, color2, color3, plain, intensity, grain, texture, mode }))(S.space)')));
+    w.setTheme({ colors: ['#7c6cf0'], intensity: 0.5, grain: 0, texture: 'grain', mode: 'auto' });
+    await until(() => ui('S.space.color === "#7c6cf0" && !document.body.classList.contains("grainy")'), 'thème d’origine rendu');
+  }
 
   // Capture de la page entière
   const tall = w.newTab(base + '/long');
@@ -854,6 +985,9 @@ module.exports = async function selftest(ctx) {
 
   // Barre latérale : sélection multiple, annulation (tests/barre.js)
   await require('./barre')({ ...ctx, check });
+
+  // Barre latérale et menus : menus contextuels, dossiers, Espaces, barre de menus (tests/laterale.js)
+  await require('./laterale')({ ...ctx, check });
 
   // Tableaux (tests/easels.js)
   await require('./easels')({ ...ctx, check });

@@ -238,8 +238,12 @@ module.exports = {
       await ctx.clic(shell, pastilles.nth(0));
       await jusqua(async () => (await nom()) === 'Personnel', 'Espace Personnel');
       assert.equal(await active(), 0);
+      // Un nouvel Espace se place après celui d'où on le crée : le dernier de la
+      // rangée n'est pas forcément le dernier créé.
+      const dernier = (await ctx.etat()).espaces[8].nom;
       await ctx.clic(shell, pastilles.nth(8));
-      await jusqua(async () => (await nom()) === 'Espace 9', 'Espace 9');
+      await jusqua(async () => (await nom()) === dernier, 'dernier Espace de la rangée');
+      assert.equal(await active(), 8);
     });
   },
 };

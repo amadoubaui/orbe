@@ -33,8 +33,10 @@
   color-scheme: light dark;
 }
 
+/* Apparence sombre : celle du système, ou celle qu'un Espace impose à ses vues
+   (attribut data-scheme posé sur <html> : « light » ou « dark »). */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-scheme="light"]) {
     --fg: #f3f3f5;
     --dim: rgba(255, 255, 255, 0.55);
     --faint: rgba(255, 255, 255, 0.3);
@@ -49,6 +51,22 @@
     --tint: 24%;
   }
 }
+:root[data-scheme="dark"] {
+  --fg: #f3f3f5;
+  --dim: rgba(255, 255, 255, 0.55);
+  --faint: rgba(255, 255, 255, 0.3);
+  --hover: rgba(255, 255, 255, 0.07);
+  --pill: rgba(255, 255, 255, 0.09);
+  --line: rgba(255, 255, 255, 0.12);
+  --active: rgba(255, 255, 255, 0.17);
+  --active-shadow: none;
+  --base: #16161a;
+  --panel: rgba(38, 38, 43, 0.95);
+  --panel-line: rgba(255, 255, 255, 0.14);
+  --tint: 24%;
+  color-scheme: dark;
+}
+:root[data-scheme="light"] { color-scheme: light; }
 
 * { box-sizing: border-box; }
 
@@ -63,6 +81,11 @@ html, body {
   color: var(--fg);
   font: 13px/1.35 -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
   -webkit-font-smoothing: antialiased;
+  /* Dessin de la police adapté au corps (SF Text / Display), crénage ; pas de
+     « optimizeLegibility », coûteux sur les longues listes. */
+  font-optical-sizing: auto;
+  font-kerning: normal;
+  text-rendering: auto;
   user-select: none;
   cursor: default;
 }

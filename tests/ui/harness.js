@@ -52,6 +52,14 @@ function servir() {
       case '/long': return res.end(page('Un titre de page vraiment très long pour vérifier la coupe du texte dans la barre latérale', '<h1>Long</h1>'));
       case '/compteur': return res.end(page('Compteur ' + hits['/compteur'], '<h1>Compteur</h1>'));
       case '/connexion': return res.end(page('Connexion', '<form action="/b" method="get"><input id="u" name="u" autocomplete="username" placeholder="identifiant"><br><br><input id="p" type="password" autocomplete="current-password" placeholder="mot de passe"><br><br><button id="ok">Se connecter</button></form>'));
+      // Page lente à répondre (indicateur de chargement) ; page plus large que la fenêtre, avec un bloc qui défile en largeur.
+      case '/lent': return void setTimeout(() => res.end(page('Page lente', '<h1>Lente</h1><a id="vers-b" href="/b">aller en B</a>')), Number(url.searchParams.get('ms')) || 1500);
+      case '/large': return res.end(page('Page large', '<h1>Large</h1><div id="bande" style="width:320px;height:120px;overflow-x:scroll;border:1px solid #999"><div style="width:2400px;height:80px;background:linear-gradient(90deg,#fde,#def)">bande</div></div><a id="vers-b" href="/b" style="display:block;margin-top:260px">aller en B</a>'));
+      // Première visite normale ; les suivantes (actualisation) ne finissent jamais de se charger.
+      case '/relent':
+        if (hits['/relent'] === 1) return res.end(page('Page Relente', '<h1>Relente</h1>'));
+        res.write(page('Page Relente', '<h1>Relente</h1>'));
+        return undefined;
       case '/saisie': return res.end(page('Page Saisie', '<input id="champ" autofocus><script>document.getElementById("champ").focus()</script>'));
       default:
         res.statusCode = 404;
@@ -70,8 +78,11 @@ async function lancer() {
   const app = await _electron.launch({
     executablePath: electronBin,
     // Trousseau factice : les tests ne touchent jamais au vrai trousseau du système.
-    args: ['-r', path.join(__dirname, 'prelude.js'), '--use-mock-keychain', root],
-    env: { ...process.env, ORBE_USER_DATA: userData, ORBE_NO_WELCOME: '1' },
+    // ORBE_UI_ARGS : options de plus pour le moteur, séparées par des espaces. Session
+    // verrouillée ou fenêtre recouverte (les minuteries de la coque y sont ralenties) :
+    //   ORBE_UI_ARGS="--disable-backgrounding-occluded-windows --disable-renderer-backgrounding --disable-background-timer-throttling"
+    args: ['-r', path.join(__dirname, 'prelude.js'), '--use-mock-keychain', root, ...(process.env.ORBE_UI_ARGS || '').split(/\s+/).filter(Boolean)],
+    env: { ...process.env, ORBE_USER_DATA: userData, ORBE_NO_WELCOME: '1', ORBE_UI_TEST: '1' },
   });
 
   const ctx = { app, hote, hits, userData, root, sleep, jusqua, delai };
@@ -342,8 +353,18 @@ async function lancer() {
   const frein = Number(process.env.ORBE_UI_CPU || 0);
   if (frein > 1) await (await coque()).send('Emulation.setCPUThrottlingRate', { rate: frein });
 
+  // Point d'un élément, une fois celui-ci immobile : les lignes glissent à leur
+  // place quand la liste change, et un point relevé en plein glissement viserait
+  // à côté.
   ctx.centre = async (loc, dx = 0.5, dy = 0.5) => {
-    const b = await jusqua(() => loc.boundingBox(), 'élément visible');
+    let prev = null;
+    const b = await jusqua(async () => {
+      const box = await loc.boundingBox();
+      const stable = box && prev && box.x === prev.x && box.y === prev.y && box.width === prev.width && box.height === prev.height;
+      prev = box;
+      if (box && !stable) await sleep(40);
+      return stable ? box : null;
+    }, 'élément visible et immobile');
     return { x: b.x + b.width * dx, y: b.y + b.height * dy, box: b };
   };
 

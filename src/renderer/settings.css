@@ -55,6 +55,7 @@ html.win #bar { padding-top: 34px; }
   outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset: 1px;
 }
 .pane select { max-width: 280px; }
+.pane input[type=range] { width: 160px; accent-color: var(--accent); }
 .btn:disabled { opacity: 0.45; }
 
 /* --- Profils -------------------------------------------------------------------- */
