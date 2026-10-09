@@ -108,6 +108,31 @@ module.exports = async function sensationsTests(ctx) {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 
+  // === Changement d'onglet : coupe franche (ANI-24) ========================================
+  {
+    const { win } = ctx;
+    const home = w.activeId;
+    const motion0 = win.forceMotion(true); // animations permises : la coupe franche est un choix, pas un repli
+    const a = w.newTab('http://127.0.0.1:9/coupe-a').id;
+    const b = w.newTab('http://127.0.0.1:9/coupe-b').id;
+    await until(() => win.live.has(a) && win.live.has(b) && !win.inFlight(win.live.get(b).view), 'deux onglets vivants');
+    const shown = (id) => w.win.contentView.children.includes(win.live.get(id).view);
+    const same = (x, y) => x.x === y.x && x.y === y.y && x.width === y.width && x.height === y.height;
+    const before = win.motionStats.animated;
+    w.activate(a);
+    // Lu dans le même tour : rien n'a le temps de s'animer.
+    const cut = { a: shown(a), b: shown(b), flight: win.inFlight(win.live.get(a).view), animated: win.motionStats.animated - before, rect: same(win.live.get(a).view.getBounds(), w.contentRect()) };
+    check('changement d’onglet : coupe franche — la page choisie est à sa place entière dans le même tour, l’autre est retirée, aucun trajet animé',
+      cut.a && !cut.b && !cut.flight && cut.animated === 0 && cut.rect, JSON.stringify(cut));
+    const row = await ui(`(async () => { await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))); const el = document.querySelector('#today .row.tab.active'); return el ? el.getAnimations().filter((x) => x.playState === 'running').length : -1; })()`);
+    check('changement d’onglet : la ligne choisie de la barre latérale change d’état sans animation', row === 0, String(row));
+    win.forceMotion(motion0);
+    w.close(a, { ask: false });
+    w.close(b, { ask: false });
+    store.state.archive = store.state.archive.filter((x) => !/\/coupe-[ab]$/.test(x.url || ''));
+    if (home) w.activate(home);
+  }
+
   await sleep(0);
   return failed;
 };
