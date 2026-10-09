@@ -704,7 +704,9 @@ const real = (p) => { try { return fs.realpathSync(p); } catch { return path.res
 
 // `beforeLoad(id, dossier)` : appelé juste avant de charger une extension
 // (src/main/ext-access.js y reporte l'accès aux sites accordé par l'utilisateur).
-const hooks = { beforeLoad: () => {} };
+// `equip(session)` : appelé avant de charger quoi que ce soit dans une session
+// (src/main/ext-api.js y enregistre alors son script de préchargement).
+const hooks = { beforeLoad: () => {}, equip: () => {} };
 
 function liveSessions() {
   const alive = [];
@@ -734,6 +736,7 @@ async function sync(ses) {
   for (const [id, rec] of wanted) {
     if (here.has(id)) continue;
     try {
+      hooks.equip(ses);
       hooks.beforeLoad(id, rec.dir);
       const ext = await api.loadExtension(rec.dir, { allowFileAccess: false });
       if (ext && ext.id !== id) {

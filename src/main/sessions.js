@@ -1,6 +1,7 @@
 // Sessions Chromium : protocole interne orbe://, agent utilisateur,
 // autorisations des sites et téléchargements.
-const { session, protocol, net } = require('electron');
+const { app, session, protocol, net } = require('electron');
+const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
 const adblock = require('./adblock');
@@ -30,12 +31,39 @@ function registerScheme() {
   ]);
 }
 
+// Fichiers de l'interface : lus une fois, puis servis depuis la mémoire. Passer
+// par `net.fetch(file://…)` coûtait une requête réseau interne par fichier, à
+// chaque vue (5 fichiers pour la coque, 4 par vue d'appoint). Seuls les textes
+// (pages, scripts, styles) sont gardés ; le reste (sons) passe par `net.fetch`,
+// qui sait répondre aux demandes partielles des lecteurs.
+const UI_TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
+const uiFiles = new Map(); // chemin -> { body, mtime }
+const uiStats = { hits: 0, reads: 0 };
+
+function readUiFile(file) {
+  const kept = uiFiles.get(file);
+  // Depuis les sources, un fichier modifié est relu (rechargement à la volée) ;
+  // dans l'application fabriquée, l'archive ne change pas.
+  const mtime = app.isPackaged ? 0 : fs.statSync(file).mtimeMs;
+  if (kept && kept.mtime === mtime) { uiStats.hits += 1; return kept.body; }
+  const body = fs.readFileSync(file);
+  uiFiles.set(file, { body, mtime });
+  uiStats.reads += 1;
+  return body;
+}
+
 function serveInternal(request) {
   const url = new URL(request.url);
   if (url.host !== 'app') return new Response('Introuvable', { status: 404 });
   const file = path.normalize(path.join(RENDERER_DIR, decodeURIComponent(url.pathname)));
   if (!file.startsWith(RENDERER_DIR + path.sep)) return new Response('Interdit', { status: 403 });
-  return net.fetch(pathToFileURL(file).toString());
+  const type = UI_TYPES[path.extname(file).toLowerCase()];
+  if (!type) return net.fetch(pathToFileURL(file).toString());
+  try {
+    return new Response(readUiFile(file), { headers: { 'content-type': type } });
+  } catch {
+    return new Response('Introuvable', { status: 404 });
+  }
 }
 
 // Les sites (Google, banques…) refusent parfois les agents « Electron ».
@@ -94,4 +122,4 @@ function setupDefaultSession() {
   session.defaultSession.setPermissionRequestHandler((wc, p, cb) => cb(false));
 }
 
-module.exports = { registerScheme, setupDefaultSession, mainSession, profileSession, incognitoSession, hooks, originOf, profileIdOf: (ses) => profileIds.get(ses) || '' };
+module.exports = { uiStats, registerScheme, setupDefaultSession, mainSession, profileSession, incognitoSession, hooks, originOf, profileIdOf: (ses) => profileIds.get(ses) || '' };

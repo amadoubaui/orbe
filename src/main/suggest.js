@@ -32,11 +32,28 @@ const resolve = (input) => toUrl(input) || searchUrl(input.trim());
 
 const strip = (url) => url.replace(/^https?:\/\/(www\.)?/i, '').replace(/\/$/, '');
 
-const normalized = new WeakMap(); // entrée d'historique -> champs prêts à comparer
+const normalized = new WeakMap(); // entrée (historique, archive, onglet) -> champs prêts à comparer
 
 function norm(s) {
   return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 }
+
+// Normaliser (accents, casse) coûte cher : fait une fois par entrée, pas à chaque frappe.
+function fields(x) {
+  let c = normalized.get(x);
+  if (!c || c.url !== x.url || c.rawTitle !== x.title) {
+    c = { url: x.url, rawTitle: x.title, u: norm(strip(x.url || '')), title: norm(x.title) };
+    normalized.set(x, c);
+  }
+  return c;
+}
+
+// Recherche incrémentale : quand la saisie prolonge la précédente (« nav » puis
+// « navi »), seules les entrées d'historique déjà retenues peuvent encore
+// convenir ; les autres ne sont pas relues. `rev` change à chaque modification
+// de l'historique (store.historyRev), `history` quand il est remplacé.
+let last = null; // { q, history, rev, kept }
+const stats = { scanned: 0, incremental: false }; // dernière recherche, pour les mesures et les tests
 
 // Suggestions locales, synchrones : la liste apparaît sans attendre le réseau.
 function local(query, { tabs, commands, activeId }) {
@@ -51,23 +68,26 @@ function local(query, { tabs, commands, activeId }) {
   const url = toUrl(query);
   const hist = [];
   const now = Date.now();
-  for (const h of Object.values(store.state.history)) {
-    // Normaliser (accents, casse) coûte cher : fait une fois par entrée, pas à chaque frappe.
-    let c = normalized.get(h);
-    if (!c || c.url !== h.url || c.rawTitle !== h.title) {
-      c = { url: h.url, rawTitle: h.title, u: norm(strip(h.url)), title: norm(h.title) };
-      normalized.set(h, c);
-    }
-    const { u, title } = c;
+  const history = store.state.history;
+  const rev = store.historyRev || 0;
+  const incremental = !!last && last.history === history && last.rev === rev && q.startsWith(last.q);
+  const pool = incremental ? last.kept : Object.values(history);
+  const kept = [];
+  for (const h of pool) {
+    const { u, title } = fields(h);
     let score = 0;
     if (u.startsWith(q)) score = 100;
     else if (u.includes(q)) score = 40;
     else if (title.includes(q)) score = 30;
     if (!score) continue;
+    kept.push(h);
     score += Math.min(h.visits, 30) + Math.max(0, 20 - (now - h.last) / 864e5);
     score -= Math.min(u.length, 80) / 8;
     hist.push({ score, h, prefix: u.startsWith(q) });
   }
+  last = { q, history, rev, kept };
+  stats.scanned = pool.length;
+  stats.incremental = incremental;
   hist.sort((a, b) => b.score - a.score);
 
   const best = hist[0];
@@ -81,7 +101,8 @@ function local(query, { tabs, commands, activeId }) {
   const seen = new Set(out.map((o) => o.url));
   for (const t of tabs) {
     if (t.id === activeId) continue;
-    if (norm(t.title).includes(q) || norm(strip(t.url)).includes(q)) {
+    const f = fields(t);
+    if (f.title.includes(q) || f.u.includes(q)) {
       out.push({ kind: 'tab', tabId: t.id, title: t.title || strip(t.url), subtitle: store.t('cmd.switchTo'), favicon: t.favicon });
       seen.add(t.url);
       if (out.length >= 4) break;
@@ -95,7 +116,9 @@ function local(query, { tabs, commands, activeId }) {
   }
   for (const a of store.state.archive) {
     if (out.length >= 7) break;
-    if (seen.has(a.url) || !(norm(a.title).includes(q) || norm(strip(a.url)).includes(q))) continue;
+    if (seen.has(a.url)) continue;
+    const f = fields(a);
+    if (!(f.title.includes(q) || f.u.includes(q))) continue;
     seen.add(a.url);
     out.push({ kind: 'history', url: a.url, title: a.title || strip(a.url), subtitle: store.t('lib.archive'), favicon: a.favicon });
   }
@@ -123,4 +146,4 @@ async function remote(query, signal) {
   }
 }
 
-module.exports = { ENGINES, resolve, toUrl, searchUrl, strip, local, remote, hooks };
+module.exports = { ENGINES, resolve, toUrl, searchUrl, strip, local, remote, hooks, stats, forget: () => { last = null; } };
