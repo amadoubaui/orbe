@@ -14,7 +14,17 @@ const { OrbeWindow } = require('./window');
 
 const t = (k, v) => store.t(k, null, v);
 const ID = /^[a-p]{32}$/;
-const hooks = { openSettings: () => {}, changed: () => {} };
+const hooks = {
+  openSettings: () => {},
+  changed: () => {},
+  // Question posée quand une mise à jour demande de nouvelles autorisations (remplaçable par les essais).
+  confirmUpdate: async (name, list) => {
+    const w = OrbeWindow.primary;
+    const opts = { type: 'warning', message: t('ext.updateAsk', { name }), detail: list.map((x) => '• ' + String(x).slice(0, 120)).slice(0, 20).join('\n'), buttons: [t('ext.update'), t('edit.undo')], defaultId: 1, cancelId: 1 };
+    const r = await (w ? dialog.showMessageBox(w.win, opts) : dialog.showMessageBox(opts));
+    return r.response === 0;
+  },
+};
 
 const hidden = () => (Array.isArray(store.state.settings.extHidden) ? store.state.settings.extHidden : []);
 const isPinned = (id) => !hidden().includes(id);
@@ -34,6 +44,7 @@ function optionsUrl(id) {
   } catch { return ''; }
 }
 
+const listAll = () => list();
 function list() {
   return extensions.list().map((x) => ({
     id: x.id, name: x.name, version: x.version, description: (x.description || '').slice(0, 160),
@@ -62,14 +73,65 @@ function openOptions(w, id) {
   return true;
 }
 
+// Numéros de version de Chrome : un à quatre entiers séparés par des points.
+function compareVersions(a, b) {
+  const x = String(a || '').split('.').map((n) => parseInt(n, 10) || 0);
+  const y = String(b || '').split('.').map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < 4; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0) ? 1 : -1;
+  return 0;
+}
+
+const strings = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string').slice(0, 400) : []);
+const isHost = (p) => /^(<all_urls>|[a-z*]+:\/\/)/.test(p);
+// Ce qu'un manifeste demande : API d'un côté, sites de l'autre (accès déclarés et scripts de contenu).
+function asks(m) {
+  const perms = strings(m && m.permissions);
+  const scripts = Array.isArray(m && m.content_scripts) ? m.content_scripts.slice(0, 200).flatMap((c) => strings(c && c.matches)) : [];
+  return { api: new Set(perms.filter((p) => !isHost(p))), hosts: new Set([...strings(m && m.host_permissions), ...perms.filter(isHost), ...scripts]) };
+}
+const ALL_SITES = ['<all_urls>', '*://*/*'];
+// Autorisations que `next` demande et que `prev` n'avait pas. Qui avait déjà tous les sites n'en gagne aucun.
+function addedPermissions(prev, next) {
+  const a = asks(prev);
+  const b = asks(next);
+  const everywhere = ALL_SITES.some((p) => a.hosts.has(p));
+  return { api: [...b.api].filter((p) => !a.api.has(p)), hosts: everywhere ? [] : [...b.hosts].filter((p) => !a.hosts.has(p)) };
+}
+
+function readManifest(dir) {
+  try { return JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8').replace(/^\uFEFF/, '')); } catch { return {}; }
+}
+
 // Réinstalle depuis le Store : même vérification de signature qu'à l'installation.
+// Avant la bascule : une version plus ancienne que celle installée est refusée, et
+// une version qui demande davantage (API ou sites) n'est installée qu'avec
+// l'accord de l'utilisateur — Chromium, lui, accorderait tout ce que dit le
+// nouveau manifeste sans rien demander.
 async function update(id) {
   const before = extensions.get(id);
   if (!before) return { error: t('ext.failed') };
+  const old = readManifest(before.dir);
+  let added = { api: [], hosts: [] };
   let after;
-  try { after = await extensions.install(id); } catch (err) { return { error: `${t('ext.updateFailed')} (${err.code || err.message})` }; }
+  try {
+    after = await extensions.install(id, {
+      check: async (manifest) => {
+        if (compareVersions(manifest.version, before.version) < 0) throw Object.assign(new Error('downgrade'), { code: 'EXT_DOWNGRADE', version: String(manifest.version).slice(0, 40) });
+        added = addedPermissions(old, manifest);
+        const list = [...added.api, ...added.hosts];
+        if (list.length && !(await hooks.confirmUpdate(before.name, list))) throw Object.assign(new Error('refused'), { code: 'EXT_REFUSED' });
+      },
+    });
+  } catch (err) {
+    if (err.code === 'EXT_DOWNGRADE') return { error: t('ext.downgrade', { from: before.version, to: err.version }) };
+    if (err.code === 'EXT_REFUSED') return { error: t('ext.updateRefused', { version: before.version }) };
+    return { error: `${t('ext.updateFailed')} (${err.code || err.message})` };
+  }
   const changed = after.version !== before.version;
-  return { list: list(), updated: changed, message: changed ? t('ext.updated', { name: after.name, from: before.version, to: after.version }) : t('ext.upToDate', { name: after.name, version: after.version }) };
+  const list = [...added.api, ...added.hosts].map((x) => String(x).slice(0, 80)).slice(0, 12);
+  const message = (changed ? t('ext.updated', { name: after.name, from: before.version, to: after.version }) : t('ext.upToDate', { name: after.name, version: after.version }))
+    + (list.length ? ' ' + t('ext.newPerms', { list: list.join(', ') }) : '');
+  return { list: listAll(), updated: changed, added, message };
 }
 
 async function remove(id) {
@@ -127,4 +189,4 @@ async function action(name, a, sender) {
   }
 }
 
-module.exports = { list, action, remove, update, setPinned, isPinned, optionsUrl, openOptions, menuTemplate, hooks };
+module.exports = { compareVersions, addedPermissions, list, action, remove, update, setPinned, isPinned, optionsUrl, openOptions, menuTemplate, hooks };

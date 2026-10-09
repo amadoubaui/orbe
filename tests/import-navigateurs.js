@@ -20,7 +20,7 @@ module.exports = async function importTests(ctx) {
   const outline = (nodes) => nodes.map((n) => (n.type === 'folder' ? `[${n.name}:${outline(n.children)}]` : n.title)).join(',');
   const pinnedOutline = (nodes) => nodes.map((n) => (n.type === 'folder' ? `[${n.name}:${pinnedOutline(n.children)}]` : w.data.tabs[n.id].title)).join(',');
 
-  check('en test, sans dossier d’essai désigné, aucun navigateur n’est cherché (les vrais profils ne sont pas lus)', real.home === '' && br.detect().length === 0 && br.read('chrome', 'Default').error === 'missing');
+  check('en test, sans dossier d’essai désigné, aucun navigateur n’est cherché (les vrais profils ne sont pas lus)', real.home === '' && br.detect().length === 0 && (await br.read('chrome', 'Default')).error === 'missing');
 
   // --- Profils d'essai, à la manière de macOS ------------------------------------------
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'orbe-nav-'));
@@ -35,31 +35,70 @@ module.exports = async function importTests(ctx) {
     && found.find((b) => b.id === 'firefox').profiles.length === 1 && found.find((b) => b.id === 'firefox').profiles[0].name === 'default-release', JSON.stringify(found));
   check('Edge installé sans signets, profil sans fichier de signets, « System Profile » : non proposés', !ids.includes('edge') && !chrome.profiles.some((p) => /7|System/.test(p.id)));
 
-  const c = br.read('chrome', 'Default');
+  const c = (await br.read('chrome', 'Default'));
   check('Chrome : barre de favoris au premier niveau, dossiers imbriqués, « Autres favoris » en dossier, dossier vide retiré',
     outline(c.nodes) === 'Wikipédia,[Lecture:Le Monde,[Tech:MDN]],Titre piégé gras,[Autres favoris:GitHub]' && c.bookmarks === 5 && c.folders === 3 && c.source === 'bookmarks', outline(c.nodes || []) + JSON.stringify({ ...c, nodes: 0 }));
   check('Chrome : « javascript: » et « chrome: » écartés, titre nettoyé (balises, caractères de contrôle, inversion du sens d’écriture)',
     c.dropped === 2 && !JSON.stringify(c.nodes).includes('javascript') && !/[‮\u0000<]/.test(JSON.stringify(c.nodes)));
   check('second profil de Chrome, Brave et Opera (profil à la racine) lus de même',
-    outline(br.read('chrome', 'Profile 1').nodes) === 'Intranet' && outline(br.read('brave', 'Default').nodes) === 'Brave' && outline(br.read('opera', '.').nodes) === 'Opera');
+    outline((await br.read('chrome', 'Profile 1')).nodes) === 'Intranet' && outline((await br.read('brave', 'Default')).nodes) === 'Brave' && outline((await br.read('opera', '.')).nodes) === 'Opera');
   check('profil demandé hors de la liste trouvée sur le disque : refusé',
-    br.read('chrome', '../../Brave-Browser/Default').error === 'missing' && br.read('chrome', 'System Profile').error === 'missing' && br.read('chrome', 'Profile 7').error === 'missing'
-    && br.read('firefox', '../../../ailleurs').error === 'missing' && br.read('lynx', 'Default').error === 'missing' && br.read('edge', 'Default').error === 'missing');
+    (await br.read('chrome', '../../Brave-Browser/Default')).error === 'missing' && (await br.read('chrome', 'System Profile')).error === 'missing' && (await br.read('chrome', 'Profile 7')).error === 'missing'
+    && (await br.read('firefox', '../../../ailleurs')).error === 'missing' && (await br.read('lynx', 'Default')).error === 'missing' && (await br.read('edge', 'Default')).error === 'missing');
 
   // Firefox : base lue par le sqlite3 du système, sinon dernière sauvegarde.
   br.configure({ sqlite: '' });
-  const fb = br.read('firefox', 'Profiles/abcd1234.default-release');
+  const fb = (await br.read('firefox', 'Profiles/abcd1234.default-release'));
   check('Firefox sans sqlite3 : dernière sauvegarde automatique (mozLz40) décodée, barre personnelle au premier niveau',
     fb.source === 'backup' && fb.date === '2026-10-02' && outline(fb.nodes) === 'Mozilla,[Outils:Can I use],[Menu des signets:Sauvegarde seulement],[Autres signets:Dakar]' && fb.dropped === 1, outline(fb.nodes || []) + JSON.stringify({ ...fb, nodes: 0 }));
   br.configure({ sqlite });
   if (made.hasSqlite) {
-    const fs1 = br.read('firefox', 'Profiles/abcd1234.default-release');
+    const fs1 = (await br.read('firefox', 'Profiles/abcd1234.default-release'));
     const left = fs.readdirSync(made.ffProfile).sort().join();
     check('Firefox avec sqlite3 : base places.sqlite lue sur une copie, étiquettes et requêtes « place: » écartées, profil intact',
       fs1.source === 'sqlite' && outline(fs1.nodes) === 'Mozilla,[Outils:Can I use],[Menu des signets:Base seulement],[Autres signets:Dakar]' && fs1.dropped === 1 && left === 'bookmarkbackups,places.sqlite', outline(fs1.nodes || []) + ' ' + left);
     fs.writeFileSync(path.join(made.ffProfile, 'places.sqlite'), 'ceci n’est pas une base');
-    check('base illisible : retour à la sauvegarde', br.read('firefox', 'Profiles/abcd1234.default-release').source === 'backup');
+    check('base illisible : retour à la sauvegarde', (await br.read('firefox', 'Profiles/abcd1234.default-release')).source === 'backup');
   } else ignorer('Firefox avec sqlite3 : base places.sqlite lue sur une copie', 'pas de sqlite3 sur ce système : la sauvegarde automatique est le chemin lu');
+  // Base hostile (finding 3) : « moz_bookmarks » est une vue qui appelle writefile() et edit().
+  if (sqlite) {
+    const evilDir = path.join(home, 'base-hostile');
+    fs.mkdirSync(evilDir, { recursive: true });
+    const marker = path.join(home, 'ecrit-par-la-base.txt');
+    const edited = path.join(home, 'lance-par-la-base.txt');
+    const view = (fn) => `CREATE TABLE moz_places (id INTEGER PRIMARY KEY, url TEXT); INSERT INTO moz_places VALUES (1, 'https://piege.exemple/');
+      CREATE VIEW moz_bookmarks AS SELECT 3 AS id, 2 AS type, 1 AS parent, 'toolbar_____' AS guid, CAST(${fn} AS TEXT) AS title, NULL AS fk, 0 AS position
+        UNION ALL SELECT 11, 1, 3, 'signet000001', 'Piège', 1, 0;`;
+    const sqlEsc = (x) => x.replace(/'/g, "''");
+    const cp = require('child_process');
+    const make = (fn) => { fs.rmSync(path.join(evilDir, 'places.sqlite'), { force: true }); cp.execFileSync(sqlite, [path.join(evilDir, 'places.sqlite'), view(fn)], { stdio: 'ignore' }); };
+    const query = 'SELECT title FROM moz_bookmarks;';
+    make(`writefile('${sqlEsc(marker)}', 'x')`);
+    // Ce que change le mode sûr, sur ce sqlite3 : sans lui, writefile() écrit ; avec les options d'Orbe, il est refusé.
+    // (Depuis une vue, les sqlite3 récents refusent déjà : le mode sûr ne dépend pas de cette protection-là.)
+    let unsafe = false;
+    let safeWrote = true;
+    try { cp.execFileSync(sqlite, [path.join(evilDir, 'places.sqlite'), `SELECT writefile('${sqlEsc(marker)}', 'x');`], { stdio: 'ignore' }); unsafe = fs.existsSync(marker); } catch {}
+    fs.rmSync(marker, { force: true });
+    try { cp.execFileSync(sqlite, [...br.SQLITE_ARGS, path.join(evilDir, 'places.sqlite'), `SELECT writefile('${sqlEsc(marker)}', 'x');`], { stdio: 'ignore' }); } catch {}
+    safeWrote = fs.existsSync(marker);
+    fs.rmSync(marker, { force: true });
+    void query;
+    const r1 = await br.readFirefoxSqlite(evilDir).then((x) => x, (e) => ({ refused: String(e.message).slice(0, 160) }));
+    const wrote = fs.existsSync(marker);
+    make(`edit('x', 'touch ${sqlEsc(edited)}')`);
+    const r2 = await br.readFirefoxSqlite(evilDir).then((x) => x, (e) => ({ refused: String(e.message).slice(0, 160) }));
+    check('base de Firefox hostile (vue « moz_bookmarks » qui appelle writefile() ou edit()) : sqlite3 en mode sûr refuse, rien n’est écrit ni lancé',
+      unsafe && !safeWrote && !wrote && !fs.existsSync(edited) && !!r1.refused && !!r2.refused && br.SQLITE_ARGS.join(' ') === '-safe -readonly -batch -json', JSON.stringify({ unsafe, safeWrote, wrote, r1, r2 }));
+  } else ignorer('base de Firefox hostile : sqlite3 en mode sûr', 'pas de sqlite3 sur ce système');
+  // Identifiants en double (finding 5) : chaque dossier n'est déroulé qu'une fois.
+  const dupRows = [{ id: 3, type: 2, parent: 1, guid: 'toolbar_____', title: 't' }];
+  for (let level = 0; level < 40; level++) for (let k = 0; k < 2; k++) dupRows.push({ id: 100 + level + 1, type: 2, parent: level ? 100 + level : 3, guid: 'g', title: 'n' + level });
+  dupRows.push({ id: 999, type: 1, parent: 140, guid: 'x', title: 'fond', url: 'https://fond.exemple/' });
+  const t1 = Date.now();
+  const dupTree = br.build(br.firefoxRowsTree(dupRows));
+  check('lignes de Firefox aux identifiants en double (2^40 chemins possibles) : lues en un instant, sans se multiplier', Date.now() - t1 < 1500 && dupTree.bookmarks === 1, `${Date.now() - t1} ms, ${dupTree.bookmarks} signet(s)`);
+
   check('décodeur LZ4 : copie qui se recouvre, et blocs faux refusés (décalage nul ou hors bornes, taille annoncée fausse ou démesurée)',
     br.lz4Block(Buffer.from([0x14, 0x61, 0x01, 0x00, 0x10, 0x62]), 10).toString() === 'aaaaaaaaab'
     && [() => br.lz4Block(Buffer.from([0x14, 0x61, 0x00, 0x00, 0x10, 0x62]), 10), () => br.lz4Block(Buffer.from([0x14, 0x61, 0x09, 0x00, 0x10, 0x62]), 10), () => br.lz4Block(Buffer.from([0x14, 0x61, 0x01, 0x00, 0x10, 0x62]), 11),
@@ -69,13 +108,13 @@ module.exports = async function importTests(ctx) {
   check('compresseur d’essai : la sauvegarde fabriquée contient de vraies répétitions', big.length < 400 && br.lz4Block(big, 35000).toString() === 'signet '.repeat(5000));
 
   // Safari.
-  const s = br.read('safari', '.');
+  const s = (await br.read('safari', '.'));
   check('Safari : liste de propriétés binaire décodée (chaînes ASCII et UTF-16), barre au premier niveau, liste de lecture et « file: » écartés',
     outline(s.nodes) === 'Apple,[Sénégal:Présidence — République du Sénégal,APS],[Menu des signets:iCloud],[Voyages:SNCF]' && s.bookmarks === 5 && s.dropped === 1 && s.source === 'plist', outline(s.nodes || []) + JSON.stringify({ ...s, nodes: 0 }));
   if (process.platform !== 'win32' && process.getuid && process.getuid() !== 0) {
     fs.chmodSync(made.safari, 0o000);
     const blocked = br.detect().find((b) => b.id === 'safari');
-    const refused = br.read('safari', '.');
+    const refused = (await br.read('safari', '.'));
     fs.chmodSync(made.safari, 0o644);
     check('Safari protégé par le système (lecture refusée) : reconnu et dit, sans erreur', !!blocked && blocked.blocked === 'fullDiskAccess' && refused.error === 'fullDiskAccess');
   } else ignorer('Safari protégé par le système (lecture refusée)', 'droits de fichiers non restrictifs sur ce système');
@@ -83,6 +122,35 @@ module.exports = async function importTests(ctx) {
   // Tableau qui se contient lui-même : objet 0 = tableau d'un élément, qui est l'objet 0.
   const loop = Buffer.concat([Buffer.from('bplist00', 'latin1'), Buffer.from([0xa1, 0x00, 0x00]), Buffer.from([0, 0, 0, 8]), (() => { const tr = Buffer.alloc(32); tr[6] = 4; tr[7] = 2; tr.writeBigUInt64BE(1n, 8); tr.writeBigUInt64BE(11n, 24); return tr; })()]);
   const bad = [loop, cut.subarray(0, 200), Buffer.concat([cut.subarray(0, cut.length - 20), Buffer.alloc(20, 0xff)]), Buffer.from('bplist00' + 'x'.repeat(100)), Buffer.alloc(0), Buffer.from('<?xml version="1.0"?><plist></plist>')];
+  // Liste où chaque dossier cite deux fois le suivant (finding 5) : 2^60 chemins, et une grande chaîne partagée.
+  {
+    const objs = []; // objets écrits à la main : [octets]
+    const str = Buffer.concat([Buffer.from([0x5f, 0x12]), (() => { const b = Buffer.alloc(4); b.writeUInt32BE(900000); return b; })(), Buffer.alloc(900000, 0x61)]);
+    const levels = 60;
+    // 0 : chaîne « Children » ; 1 : grande chaîne ; 2..levels+1 : dictionnaires { Children: [suivant, suivant] } ; tableaux ensuite.
+    objs.push(Buffer.concat([Buffer.from([0x58]), Buffer.from('Children', 'latin1')]));
+    objs.push(str);
+    const ref = (n) => Buffer.from([n >> 8, n & 255]);
+    for (let i = 0; i < levels; i++) objs.push(Buffer.concat([Buffer.from([0xd1]), ref(0), ref(2 + levels + i)]));
+    for (let i = 0; i < levels; i++) { const next = i + 1 < levels ? 2 + i + 1 : 1; objs.push(Buffer.concat([Buffer.from([0xa4]), ref(next), ref(next), ref(1), ref(1)])); }
+    const parts = [Buffer.from('bplist00', 'latin1')];
+    const offs = [];
+    let at = 8;
+    for (const o of objs) { offs.push(at); parts.push(o); at += o.length; }
+    const table = Buffer.alloc(offs.length * 4);
+    offs.forEach((o, i) => table.writeUInt32BE(o, i * 4));
+    const tr = Buffer.alloc(32);
+    tr[6] = 4; tr[7] = 2;
+    tr.writeBigUInt64BE(BigInt(objs.length), 8);
+    tr.writeBigUInt64BE(2n, 16);
+    tr.writeBigUInt64BE(BigInt(at), 24);
+    const t2 = Date.now();
+    let dag = null;
+    try { const root = br.bplist(Buffer.concat([...parts, table, tr])); dag = { same: root.Children[0] === root.Children[1], text: root.Children[2].length }; try { br.safariTree(root); } catch {} } catch (err) { dag = { error: err.message }; }
+    const mem = process.memoryUsage().heapUsed;
+    check('liste de propriétés aux références partagées (2^60 chemins, une chaîne de 900 000 caractères citée 120 fois) : chaque objet décodé une seule fois, en un instant',
+      Date.now() - t2 < 2000 && dag && dag.same === true && dag.text === 900000 && mem < 1.5e9, JSON.stringify({ ms: Date.now() - t2, dag }));
+  }
   check('liste de propriétés tronquée, à l’en-tête ou à la table faux : refusée sans plantage', bad.every((b) => { try { br.bplist(b); return false; } catch { return true; } }));
 
   // Fichiers hostiles : bornes.
@@ -103,9 +171,9 @@ module.exports = async function importTests(ctx) {
     JSON.stringify({ many: many.bookmarks, deep: depth(deep.nodes), abyssOk, wide: wide.folders }));
   const junkFile = path.join(made.chrome, 'Profile 1', 'Bookmarks');
   fs.writeFileSync(junkFile, '{"roots": 12');
-  const junk = br.read('chrome', 'Profile 1');
+  const junk = (await br.read('chrome', 'Profile 1'));
   fs.writeFileSync(junkFile, JSON.stringify({ roots: { bookmark_bar: { type: 'folder', children: [{ type: 'url', name: 'x', url: 'data:text/html,x' }] } } }));
-  const empty = br.read('chrome', 'Profile 1');
+  const empty = (await br.read('chrome', 'Profile 1'));
   fs.writeFileSync(junkFile, fx.chromeBookmarks([fx.url('Intranet', 'http://intranet.exemple/')]));
   check('fichier de signets abîmé ou sans adresse web : dit, rien n’est importé', junk.error === 'unreadable' && empty.error === 'empty');
 
@@ -115,14 +183,14 @@ module.exports = async function importTests(ctx) {
   br.configure({ home: homeWin, platform: 'win32', sqlite: '' });
   const win = br.detect();
   check('Windows : Chrome, Brave et Opera sous AppData, Firefox par sa sauvegarde, pas de Safari',
-    win.map((b) => b.id).join() === 'chrome,brave,opera,firefox' && outline(br.read('chrome', 'Default').nodes).startsWith('Wikipédia,') && br.read('firefox', 'Profiles/abcd1234.default-release').source === 'backup' && br.read('safari', '.').error === 'missing', JSON.stringify(win));
+    win.map((b) => b.id).join() === 'chrome,brave,opera,firefox' && outline((await br.read('chrome', 'Default')).nodes).startsWith('Wikipédia,') && (await br.read('firefox', 'Profiles/abcd1234.default-release')).source === 'backup' && (await br.read('safari', '.')).error === 'missing', JSON.stringify(win));
   br.configure({ home, platform: 'darwin', sqlite });
 
   // --- Aperçu, import, annulation ------------------------------------------------------------
   const spaces0 = w.data.spaces.length;
   const tabs0 = Object.keys(w.data.tabs).length;
   const home0 = w.spaceId;
-  const p1 = imports.preview({ browser: 'chrome', profile: 'Default' });
+  const p1 = (await imports.preview({ browser: 'chrome', profile: 'Default' }));
   check('aperçu : les comptes sont donnés avant tout import, rien n’est encore ajouté',
     p1.ok && p1.bookmarks === 5 && p1.folders === 3 && p1.dropped === 2 && typeof p1.token === 'string' && w.data.spaces.length === spaces0 && Object.keys(w.data.tabs).length === tabs0, JSON.stringify(p1));
   const pid = w.data.profiles[w.data.profiles.length - 1].id;
@@ -137,12 +205,44 @@ module.exports = async function importTests(ctx) {
     u1.ok && w.data.spaces.length === spaces0 && Object.keys(w.data.tabs).length === tabs0 && !w.data.spaces.includes(made1) && w.spaceId !== made1.id && imports.undoLast().ok === false);
   w.switchSpace(home0);
 
+  // Nouvel Espace où l'utilisateur a mis autre chose depuis : l'annulation ne retire que l'import (finding 8).
+  const a4 = imports.apply({ token: (await imports.preview({ browser: 'brave', profile: 'Default' })).token, dest: 'new:default' });
+  const sp4 = w.data.spaces.find((x) => x.id === a4.space);
+  const mineTab = { id: 'essai-a-garder', url: 'https://exemple.org/garde', title: 'À garder', favicon: '', createdAt: Date.now(), lastActiveAt: Date.now() };
+  w.data.tabs[mineTab.id] = mineTab;
+  sp4.today.push(mineTab.id);
+  const u4 = imports.undoLast(a4.undoId);
+  check('annuler un import fait dans un nouvel Espace où l’utilisateur a ouvert un onglet depuis : les signets importés partent, l’Espace et cet onglet restent',
+    u4.ok && w.data.spaces.includes(sp4) && sp4.pinned.length === 0 && sp4.today.join() === mineTab.id && !!w.data.tabs[mineTab.id] && Object.keys(w.data.tabs).length === tabs0 + 1, JSON.stringify({ u4, pinned: sp4.pinned.length, today: sp4.today }));
+  sp4.today.length = 0;
+  delete w.data.tabs[mineTab.id];
+  w.removeSpace(sp4.id);
+  w.switchSpace(home0);
+  // L'annulation vise l'import de la ligne cliquée, et s'éteint au bout d'une demi-heure.
+  const a5 = imports.apply({ token: (await imports.preview({ browser: 'brave', profile: 'Default' })).token, dest: 'new:default' });
+  const a6 = imports.apply({ token: (await imports.preview({ browser: 'opera', profile: '.' })).token, dest: 'new:default' });
+  const wrong = imports.undoLast(a5.undoId);
+  const realNow = imports.hooks.now;
+  imports.hooks.now = () => Date.now() + 31 * 60e3;
+  const late = imports.undoLast(a6.undoId);
+  const lateList = imports.list().canUndo;
+  const lateMenu = w.pendingLabel('undo');
+  imports.hooks.now = realNow;
+  check('« Annuler l’import » d’une ligne n’annule pas l’import suivant d’un autre navigateur ; passé trente minutes, il n’annule plus rien (ni par le bouton, ni par Édition → Annuler)',
+    wrong.ok === false && wrong.expired && late.ok === false && late.expired && lateList === false && lateMenu !== 'undo.import' && w.data.spaces.some((x) => x.id === a5.space) && w.data.spaces.some((x) => x.id === a6.space) && Object.keys(w.data.tabs).length === tabs0 + 2,
+    JSON.stringify({ wrong, late, lateList, lateMenu }));
+  w.removeSpace(a5.space);
+  w.removeSpace(a6.space);
+  w.undoStack.length = 0;
+  w.redoStack.length = 0;
+  w.switchSpace(home0);
+
   // Dans un Espace existant qui a déjà des épinglés : un dossier au nom du navigateur.
   const target = w.data.spaces.find((x) => x.id === home0);
   const keep = { type: 'folder', id: 'essai-import', name: 'Déjà là', open: true, children: [] };
   target.pinned.push(keep);
   const pinned0 = target.pinned.length;
-  const p2 = imports.preview({ browser: 'safari', profile: '.' });
+  const p2 = (await imports.preview({ browser: 'safari', profile: '.' }));
   const a2 = imports.apply({ token: p2.token, dest: 'space:' + home0 });
   const node = target.pinned[target.pinned.length - 1];
   check('import dans un Espace existant : rangé dans un dossier au nom du navigateur, sans changer d’Espace',
@@ -163,13 +263,13 @@ module.exports = async function importTests(ctx) {
   // Espace sans rien d'épinglé : les signets arrivent tels quels, et repartent de même.
   const bare = w.data.spaces.find((x) => !x.pinned.length);
   if (bare) {
-    const a3 = imports.apply({ token: imports.preview({ browser: 'opera', profile: '.' }).token, dest: 'space:' + bare.id });
+    const a3 = imports.apply({ token: (await imports.preview({ browser: 'opera', profile: '.' })).token, dest: 'space:' + bare.id });
     const flat = a3.ok && bare.pinned.length === 1 && bare.pinned[0].type === 'tab' && w.data.tabs[bare.pinned[0].id].url === 'https://www.opera.com/';
     imports.undoLast();
     check('Espace sans épinglés : les signets y arrivent tels quels, sans dossier ; l’annulation les retire', flat && bare.pinned.length === 0 && Object.keys(w.data.tabs).length === tabs0);
   }
-  check('destination inconnue : refusée, rien n’est ajouté', imports.apply({ token: imports.preview({ browser: 'brave', profile: 'Default' }).token, dest: 'space:inconnu' }).error === 'dest'
-    && imports.apply({ token: imports.preview({ browser: 'brave', profile: 'Default' }).token, dest: 'new:inconnu' }).error === 'dest' && Object.keys(w.data.tabs).length === tabs0);
+  check('destination inconnue : refusée, rien n’est ajouté', imports.apply({ token: (await imports.preview({ browser: 'brave', profile: 'Default' })).token, dest: 'space:inconnu' }).error === 'dest'
+    && imports.apply({ token: (await imports.preview({ browser: 'brave', profile: 'Default' })).token, dest: 'new:inconnu' }).error === 'dest' && Object.keys(w.data.tabs).length === tabs0);
   w.undoStack.length = 0;
   w.redoStack.length = 0;
 

@@ -322,7 +322,13 @@ async function globalAction(action, a, sender) {
 function setupUpdates() {
   let ses = null;
   const updateSession = () => {
-    if (!ses) { ses = session.fromPartition('orbe-mises-a-jour', { cache: false }); ses.setUserAgent('Orbe', 'en'); }
+    if (!ses) {
+      ses = session.fromPartition('orbe-mises-a-jour', { cache: false });
+      ses.setUserAgent('Orbe', 'en');
+      // Chaque requête de cette session, sauts de redirection compris, est contrôlée :
+      // HTTPS et hôte exact de GitHub, sinon elle est annulée avant de partir.
+      ses.webRequest.onBeforeRequest((details, done) => done({ cancel: !updates.hopAllowed(details.url) }));
+    }
     return ses;
   };
   updates.configure({

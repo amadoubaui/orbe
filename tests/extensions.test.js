@@ -301,6 +301,26 @@ test('unzip : archive corrompue refusée', async () => {
 
 // --- Installation complète (faux Store) -------------------------------------
 
+test('install : un contrôle qui refuse la mise à jour laisse la version installée intacte', async () => {
+  const dir = path.join(tmp(), 'Extensions');
+  const v1 = makeCrx(extensionZip(), KEYS);
+  const v2 = makeCrx(extensionZip({ ...MANIFEST, version: '2.0.0', permissions: ['storage', 'tabs', 'history'] }), KEYS);
+  let served = v1.crx;
+  ext.configure({ dir, lang: 'fr', requireStoreSignature: false, fetch: async () => new Response(served) });
+  const rec = await ext.install(v1.id);
+  served = v2.crx;
+  const seen = [];
+  await assert.rejects(ext.install(v1.id, { check: async (m) => { seen.push(m.version, m.permissions.join()); throw Object.assign(new Error('refus'), { code: 'EXT_REFUSED' }); } }), { code: 'EXT_REFUSED' });
+  assert.deepEqual(seen, ['2.0.0', 'storage,tabs,history']); // le contrôle voit le manifeste vérifié de la nouvelle version
+  assert.equal(ext.get(v1.id).version, '1.2.3');
+  assert.equal(ext.get(v1.id).dir, rec.dir);
+  assert.deepEqual(fs.readdirSync(dir).filter((n) => n.startsWith('.tmp-')), []);
+  assert.deepEqual(fs.readdirSync(path.join(dir, v1.id)).length, 1);
+  // Accepté : la bascule se fait.
+  const ok = await ext.install(v1.id, { check: async () => {} });
+  assert.equal(ok.version, '2.0.0');
+});
+
 test('install : téléchargement, vérification, clé, liste, mise à jour, suppression', async () => {
   const dir = path.join(tmp(), 'Extensions');
   const v1 = makeCrx(extensionZip(), KEYS);

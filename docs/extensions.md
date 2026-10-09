@@ -369,6 +369,13 @@ Avec elle (`tests/ext-reelles.js`) :
   l'origine de l'extension, refusé s'il en sort), « Épinglée », « Mettre à
   jour » (réinstallation depuis le Store, avec la même vérification de
   signature ; la version est comparée et annoncée), interrupteur, suppression.
+  Une version plus ancienne que celle installée est refusée. Une version qui
+  demande davantage (API, sites, scripts de contenu sur de nouveaux sites)
+  n'est installée qu'après une question qui liste ces ajouts : Chromium
+  accorde à une extension dépaquetée tout ce que dit son manifeste, sans rien
+  demander — c'est donc avant la bascule qu'Orbe demande. Une extension à qui
+  l'accès à tous les sites a déjà été donné (manifeste, ou accord `activeTab`
+  d'`ext-access.js`, reporté à chaque mise à jour) n'y gagne aucun site.
 - **Réglages → Raccourcis** : chaque commande déclarée (`commands` du manifeste)
   a sa ligne, avec ou sans raccourci, modifiable comme ceux d'Orbe (réglage
   `extShortcuts`, `{ '<id>/<commande>': accélérateur | '' }`). Un raccourci

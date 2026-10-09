@@ -92,6 +92,9 @@ function setup({ win, sessions, test = false }) {
   hooks.leave = (w, wc) => unload.confirm(w.win, wc);
   hooks.closeAll = (rts, close) => unload.closeAll(rts, close);
   hooks.quitState = unload.state;
+  hooks.shield = (wc) => unload.shield(wc);
+  hooks.unshield = (wc) => unload.unshield(wc);
+  hooks.stayed = (wc) => unload.stayedAgo(wc);
   hooks.input = (rt, input) => popups.gesture(rt, input);
   hooks.popup = (rt, details) => popups.allowed(rt, details);
   hooks.navigated = (rt) => popups.reset(rt);
