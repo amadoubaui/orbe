@@ -167,16 +167,55 @@ module.exports = async function detailsTests(ctx) {
     const realSend = w.ui.webContents.send.bind(w.ui.webContents);
     w.ui.webContents.send = (ch, p) => { if (ch === 'state') sent.push(p.downloadsStarted); return realSend(ch, p); };
     win.OrbeWindow.pushAll();
+    await until(() => sent.length > 0, 'état envoyé à la barre');
     const n0 = sent[sent.length - 1];
+    sent.length = 0;
     win.noteDownload('start', { id: 'essai-1', state: 'progressing' }, null);
     win.noteDownload('progress', { id: 'essai-1', state: 'progressing' }, null);
     win.noteDownload('start', { id: 'essai-2', state: 'progressing' }, null);
     win.OrbeWindow.pushAll();
+    await until(() => sent.length > 0, 'état suivant envoyé');
     check('téléchargements commencés : comptés un par un (même sans page d’origine), et donnés à la barre latérale', typeof n0 === 'number' && sent[sent.length - 1] === n0 + 2, JSON.stringify(sent.slice(-3)));
     w.ui.webContents.send = realSend;
     win.noteDownload('done', { id: 'essai-1' }, null);
     win.noteDownload('done', { id: 'essai-2' }, null);
     check('compteur illisible : la barre n’anime rien et ne casse pas', (await ui('(() => { try { fxDownloads(undefined); fxDownloads("3"); fxDownloads(null); return true; } catch { return false; } })()')) === true);
+  }
+
+  // === Capture en portrait ===============================================================
+  {
+    const { nativeImage } = require('electron');
+    const portrait = require('../src/main/portrait');
+    const commands = require('../src/main/commands');
+    // Image d'essai : 300 × 200 points, vert uni (ordre des octets : bleu, vert, rouge, alpha).
+    const W = 300; const H = 200;
+    const raw = Buffer.alloc(W * H * 4);
+    for (let i = 0; i < W * H; i++) raw.set([20, 200, 40, 255], i * 4);
+    const page = nativeImage.createFromBitmap(raw, { width: W, height: H });
+    const t0 = Date.now();
+    const out = portrait.compose(page, { color: '#7c5cff', dark: false });
+    const ms = Date.now() - t0;
+    const size = out.getSize();
+    const bmp = out.toBitmap();
+    const px = (x, y) => [...bmp.subarray((y * size.width + x) * 4, (y * size.width + x) * 4 + 4)];
+    const m = (size.width - W) / 2;
+    const center = px(m + W / 2, m + H / 2);
+    const corner = px(m, m); // coin de la page : arrondi, c'est le fond qu'on y voit
+    const far = px(2, 2);
+    const under = px(m + W / 2, m + H + 6); // juste sous la page : l'ombre
+    const side = px(size.width - 3, 3);
+    const lum = (p) => p[0] + p[1] + p[2];
+    check('capture en portrait : la page est posée, entière, au centre d’un fond plus grand (marge égale des quatre côtés)', size.width === W + 2 * m && size.height === H + 2 * m && m >= portrait.LOOK.minMargin && center.join() === '20,200,40,255' && px(m + 30, m + 100).join() === '20,200,40,255' && px(m + W - 1, m + 100).join() === '20,200,40,255', JSON.stringify([size, m, center]));
+    check('… coins arrondis (le fond se voit au coin), fond en dégradé (deux coins opposés diffèrent), ombre sous la page, image opaque', corner.join() !== '20,200,40,255' && far.join() !== side.join() && lum(under) < lum(px(m + W / 2, size.height - 2)) && bmp.every((v, i) => i % 4 !== 3 || v === 255), JSON.stringify({ corner, far, side, under }));
+    const darkOut = portrait.compose(page, { color: '#7c5cff', dark: true }).toBitmap();
+    check('thème sombre : fond plus sombre ; couleur d’Espace illisible : fond par défaut ; image vide : rien', darkOut[0] + darkOut[1] + darkOut[2] < lum(far) && !!portrait.compose(page, { color: 'javascript:1' }) && portrait.compose(nativeImage.createEmpty(), {}) === null && portrait.compose(null, {}) === null);
+    console.log(`  – portrait de ${W} × ${H} points composé en ${ms} ms`);
+    // La commande : elle prend l'image de la page affichée.
+    const tab = w.newTab('http://127.0.0.1:9/portrait');
+    await until(() => win.live.get(tab.id) && !win.live.get(tab.id).wc.isLoading(), 'onglet chargé');
+    const made = await w.capturePortrait({ image: page, write: false });
+    check('« Capturer en portrait » : commande de la barre de commande et du menu Fichier, qui rend l’image composée', !!commands.byName.get('capturePortrait') && !!made && made.getSize().width === size.width && store.t('file.capturePortrait', 'en') === 'Capture in Portrait Mode');
+    w.close(tab.id, { silent: true, ask: false });
   }
 
   await sleep(30);

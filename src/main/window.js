@@ -3313,6 +3313,25 @@ class OrbeWindow {
     return 'menu';
   }
 
+  // Capture « en portrait » : la page visible posée sur un fond aux couleurs de
+  // l'Espace (src/main/portrait.js). Copiée et enregistrée, comme une capture entière.
+  // Seule la page est photographiée : jamais une feuille d'Orbe posée dessus.
+  async capturePortrait(opts = {}) {
+    const wc = this.activeWc;
+    if (!wc) return null;
+    const image = opts.image || await wc.capturePage().catch(() => null);
+    const out = require('./portrait').compose(image, { color: this.space.color, dark: nativeTheme.shouldUseDarkColors });
+    if (!out) return null;
+    this.sound('capture');
+    const png = out.toPNG();
+    if (opts.write !== false) {
+      clipboard.write([new ClipboardItem({ 'image/png': new Blob([png], { type: 'image/png' }) })]).catch(() => {});
+      fs.writeFile(path.join(app.getPath('downloads'), `Orbe ${captureStamp()}.png`), png, () => {});
+    }
+    this.toast(t('toast.captured'));
+    return out;
+  }
+
   // Capture de la page entière, au-delà de la zone visible.
   async captureFull() {
     const wc = this.activeWc;

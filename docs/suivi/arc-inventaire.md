@@ -233,7 +233,7 @@ Actions de la barre de commande relevées dans Arc (libellés du binaire et du c
 | CMD-51 | Convert to Horizontal/Vertical Split View | ✅ | self « vue scindée empilée » |
 | CMD-52 | New Window ; New Blank Window ; New Incognito Window ; Open Little Arc | 🟡 | Pas de fenêtre vierge |
 | CMD-53 | View Archive ; Clear Archive ; Open Library ; View Downloads | ✅ | « Vider l'archive » proposé, avec confirmation ; self cmd |
-| CMD-54 | Capture ; Capture Full Page ; Capture in Portrait Mode | 🟡 | Pas de mode portrait |
+| CMD-54 | Capture ; Capture Full Page ; Capture in Portrait Mode | ✅ | « Capturer en portrait » (menu Fichier, barre de commande) : page à coins arrondis et ombre portée sur un dégradé de la couleur de l’Espace, composée sans canevas (src/main/portrait.js, 231 ms pour 2508 × 1988 px) ; self tests/details.js (4 vérif.) |
 | CMD-55 | New Easel ; New Note ; New Note (in Split) | ✅ | « Nouvelle note à côté de la page » ; self cmd |
 | CMD-56 | New Boost ; View Boosts | 🟡 | |
 | CMD-57 | Turn on Developer Mode for this site | ✅ | « Mode développeur » du site (⌃D) ; self cmd (liste des actions) |
@@ -539,7 +539,7 @@ Aucun geste n'a été rejoué sur Arc pendant cet inventaire (ils demandent la m
 | TAB-15 | Après la capture : envoyer, enregistrer, copier, reprendre, ajouter à un tableau | HC 20498417809815 ; binaire | ✅ | copie + fichier d'office | Fait le 8 oct. (zone + choix de l'action, son original, réglage) |
 | TAB-16 | Son à la capture | binaire `capture.wav` | ✅ | | Déjà en place (son d'Arc, réglage « Sons ») ; self « capture : le son de capture est demandé » |
 | TAB-17 | Capture Full Page (PNG dans le dossier de téléchargement) | menu ; HC 25481392111895 | ✅ | self | |
-| TAB-18 | Capture in Portrait Mode (page posée sur un fond) | menu ; HC 20468488031511 | ⬜ | | |
+| TAB-18 | Capture in Portrait Mode (page posée sur un fond) | menu ; HC 20468488031511 | ✅ | | « Capturer en portrait » (menu Fichier, barre de commande) : page à coins arrondis et ombre portée sur un dégradé de la couleur de l’Espace, composée sans canevas (src/main/portrait.js, 231 ms pour 2508 × 1988 px) ; self tests/details.js (4 vérif.) |
 | TAB-19 | Maintenir ⌘⇧ pour lancer une capture (option) | binaire | ⬜ | | |
 
 ## NOT — Notes
