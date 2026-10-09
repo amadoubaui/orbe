@@ -76,6 +76,8 @@ if (SELFTEST) {
   testGuard.install({ app, dialog, limit: Number(process.env.ORBE_TEST_LIMIT) || 480, stall: Number(process.env.ORBE_TEST_STALL) || 150 });
   // Les tests ne touchent jamais au vrai trousseau du système.
   app.commandLine.appendSwitch('use-mock-keychain');
+  // ORBE_NETLOG : journal du réseau de Chromium, pour une page qui ne se charge pas.
+  if (process.env.ORBE_NETLOG) app.commandLine.appendSwitch('log-net-log', process.env.ORBE_NETLOG);
   // Caméra et micro factices : aucun vrai appareil n'est ouvert pendant les tests.
   app.commandLine.appendSwitch('use-fake-device-for-media-stream');
   // Fenêtre d'essai recouverte par une autre (machine partagée) : Chromium ralentirait

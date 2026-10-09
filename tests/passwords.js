@@ -561,7 +561,10 @@ module.exports = async function passwordTests(ctx) {
   const mw = passwords.openManager();
   await until(() => mw.webContents.executeJavaScript('document.querySelectorAll("#list .line").length'), 'liste du gestionnaire');
   const dom = await mw.webContents.executeJavaScript('document.documentElement.outerHTML + JSON.stringify(state)');
-  check('gestionnaire : la liste s’affiche sans aucun mot de passe', dom.includes('alice') && !dom.includes(P1) && !dom.includes(P2) && !dom.includes('pw-'));
+  // En cas d'échec, on dit lequel des quatre constats tombe, avec ce qui entoure le texte trouvé.
+  const around = (needle) => { const i = dom.indexOf(needle); return i < 0 ? null : dom.slice(Math.max(0, i - 60), i + needle.length + 30); };
+  check('gestionnaire : la liste s’affiche sans aucun mot de passe', dom.includes('alice') && !dom.includes(P1) && !dom.includes(P2) && !dom.includes('pw-'),
+    JSON.stringify({ alice: dom.includes('alice'), lignes: (dom.match(/class="line/g) || []).length, P1: around(P1), P2: around(P2), 'pw-': around('pw-') }));
   const aliceId = entries().find((e) => e.username === 'alice').id;
   authAnswer = false;
   const refused = await mw.webContents.executeJavaScript(`O.send('pw:reveal', { profile: 'default', id: ${JSON.stringify(aliceId)} })`);

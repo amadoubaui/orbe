@@ -39,7 +39,13 @@ function serve() {
     return res.end(page('404', 'introuvable'));
   });
   server.hits = hits;
-  return new Promise((resolve) => server.listen(0, () => resolve(server)));
+  // Chaque connexion et chaque demande reçues sont notées : si une page ne se
+  // charge pas, on sait si sa demande est arrivée jusqu'ici.
+  const { note } = require('../src/main/test-guard');
+  let seen = 0;
+  server.on('connection', (socket) => { if ((seen += 1) <= 12) note(`serveur d’essai : connexion n° ${seen} depuis ${socket.remoteAddress}`); });
+  server.on('request', (req) => { if (seen <= 12) note(`serveur d’essai : ${req.method} ${req.url}`); });
+  return new Promise((resolve) => server.listen(0, () => { note(`serveur d’essai à l’écoute : ${JSON.stringify(server.address())}`); resolve(server); }));
 }
 
 module.exports = async function selftest(ctx) {
@@ -531,7 +537,12 @@ module.exports = async function selftest(ctx) {
     }
     await sleep(150);
     await swipe(-30, 6, 16); // franc : au-delà du seuil
-    await until(() => w.space === firstSpace, 'changement d’Espace par balayage');
+    // (en cas d'échec : l'état du geste dans la coque, pour savoir ce qui l'a retenu)
+    await until(() => w.space === firstSpace, 'changement d’Espace par balayage').catch(async (err) => {
+      const etat = await ui('JSON.stringify({ wheelLocked, swipeSum, lastWheel, editing: !!editing, drag: !!drag, reduit: reducedMotion.matches, slide: slide ? slide.phase : null, espace: S && S.space.id, voisins: S && S.near ? [!!S.near.prev, !!S.near.next] : null })').catch((e) => String(e));
+      err.message += ` — coque : ${etat} ; fenêtre : espace ${w.spaceId}, attendu ${firstSpace.id}`;
+      throw err;
+    });
     await until(() => ui(`!slide && S.space.id === ${JSON.stringify(firstSpace.id)}`), 'fin du glissement');
     const done = await look();
     check('balayage franc : l’Espace change une seule fois, la liste est rendue à l’arrivée', w.space === firstSpace && w.activeId === a.id && !done.ghost && done.live === 0 && done.tint === 0);

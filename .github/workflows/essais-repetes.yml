@@ -54,8 +54,11 @@ jobs:
           echecs=0
           for i in 1 2 3 4; do
             journal="$RUNNER_TEMP/captures/passage-${{ matrix.lot }}-$i.log"
+            export ORBE_NETLOG="$RUNNER_TEMP/reseau.json"
             node scripts/dev.js --selftest > "$journal" 2>&1
             code=$?
+            if grep -q "titre de la page A" "$journal"; then cp "$ORBE_NETLOG" "$RUNNER_TEMP/captures/reseau-${{ matrix.lot }}-$i.json"; fi
+            rm -f "$ORBE_NETLOG"
             echo "=== passage $i : code $code"
             grep -E "✗|ÉCHEC|milieu de|animation native|trajet d|clic\(s\) perdu|ignoré :|vérifications réussies" "$journal" | cut -c1-400
             if [ "$code" != "0" ]; then echecs=$((echecs + 1)); echo "--- journal entier"; cat "$journal"; fi
