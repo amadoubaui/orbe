@@ -196,6 +196,17 @@
 
   <!-- ===== Avancé ===== -->
   <section class="pane" id="pane-advanced" role="tabpanel" hidden>
+  <h2 data-t="update.title"></h2>
+  <div class="card" id="update-card">
+    <div class="line"><div class="grow"><div id="update-version"></div><div class="sub wrap" id="update-state"></div></div><button class="btn" id="update-check" data-t="update.check"></button></div>
+    <div id="update-new" hidden>
+      <div class="line"><div class="grow"><div id="update-headline"></div><div class="sub wrap" data-t="update.how"></div></div></div>
+      <pre id="update-notes" tabindex="0"></pre>
+      <div class="line"><span class="grow sub wrap" id="update-dl-state"></span><button class="btn" id="update-reveal" data-t="update.reveal" hidden></button><button class="btn" id="update-download" data-t="update.download"></button><button class="btn primary" id="update-page" data-t="update.page"></button></div>
+    </div>
+    <div class="line"><div class="grow"><div data-t="set.updateCheck"></div><div class="sub wrap" data-t="set.updateCheckHint"></div></div><input type="checkbox" id="updateCheck"></div>
+  </div>
+
   <h2 data-t="set.performance"></h2>
   <div class="card">
     <div class="line"><div class="grow"><div data-t="set.memory"></div><div class="sub" data-t="set.memoryHint"></div></div>

@@ -1080,6 +1080,9 @@ module.exports = async function selftest(ctx) {
   // Réglages à volets, raccourcis modifiables, import de signets (tests/reglages.js)
   await require('./reglages')({ ...ctx, check });
 
+  // Mises à jour : GitHub remplacé par un serveur local (tests/mises-a-jour.js)
+  await require('./mises-a-jour')({ ...ctx, check });
+
   // Vitesse et mémoire : vues d'appoint, veille, recherche… (tests/performances.js)
   await require('./performances')({ ...ctx, check, modalAtStart });
 

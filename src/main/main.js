@@ -1,5 +1,5 @@
 // Point d'entrée d'Orbe.
-const { app, ipcMain, BrowserWindow, nativeTheme, shell, webContents, dialog, net } = require('electron');
+const { app, ipcMain, BrowserWindow, nativeTheme, shell, webContents, dialog, net, session } = require('electron');
 const { pathToFileURL } = require('url');
 const path = require('path');
 const os = require('os');
@@ -26,6 +26,7 @@ const downloads = require('./downloads');
 const prefs = require('./prefs');
 const shortcuts = require('./shortcuts');
 const panes = require('./panes');
+const updates = require('./updates');
 
 platform.adaptLocales(locales);
 
@@ -342,6 +343,38 @@ async function globalAction(action, a, sender) {
   }
 }
 
+// Mises à jour (src/main/updates.js) : la question part d'une session à part, en
+// mémoire, sans cookie ni identifiant. Jamais de vérification automatique en
+// test ni depuis les sources.
+function setupUpdates() {
+  let ses = null;
+  const updateSession = () => {
+    if (!ses) { ses = session.fromPartition('orbe-mises-a-jour', { cache: false }); ses.setUserAgent('Orbe', 'en'); }
+    return ses;
+  };
+  updates.configure({
+    version: app.getVersion(),
+    fetch: (url, init) => updateSession().fetch(url, init),
+    state: () => store.state.updates,
+    save: () => store.save(),
+    enabled: () => store.state.settings.updateCheck !== false,
+    auto: app.isPackaged && !SELFTEST && !process.argv.includes('--orbe-test') && !process.env.ORBE_NO_UPDATE_CHECK,
+    test: SELFTEST || (!app.isPackaged && process.env.ORBE_UI_TEST === '1'),
+    downloadsDir: () => prefs.downloadDirFor('default') || app.getPath('downloads'),
+    reveal: (file) => shell.showItemInFolder(file),
+    show: () => openSettings('advanced'),
+    open: (url) => { const w = OrbeWindow.primary || newWindow(); w.newTab(url); w.win.focus(); },
+    changed: () => {
+      const st = updates.status();
+      for (const wc of webContents.getAllWebContents()) if (trusted.has(wc) && !wc.isDestroyed()) wc.send('update', st);
+      OrbeWindow.pushAll();
+    },
+  });
+  win.hooks.updateNote = () => updates.note();
+  commands.hooks.checkUpdates = () => { openSettings('advanced'); updates.check({ manual: true }); };
+  updates.start();
+}
+
 function setupIpc() {
   const ok = (e) => trusted.has(e.sender) && e.senderFrame && e.senderFrame.url.startsWith(INTERNAL);
   ipcMain.on('i18n', (e) => {
@@ -354,6 +387,7 @@ function setupIpc() {
     if (action.startsWith('easel:')) return easels.action(action, payload, e.sender);
     if (action.startsWith('sheet:')) return essentials.sheets.action(action, payload, e.sender);
     if (action.startsWith('dl:')) return downloads.action(action, payload, e.sender);
+    if (action.startsWith('update:')) return updates.action(action, payload, e.sender);
     if (action === 'welcome:info') return { arc: require('./import-arc').available() };
     if (/^(lib|settings|shortcuts|ext|notes):/.test(action)) return globalAction(action, payload, e.sender);
     const owner = OrbeWindow.ownerOf(e.sender) || little.LittleWindow.ownerOf(e.sender) || OrbeWindow.primary;
@@ -433,6 +467,7 @@ app.whenReady().then(async () => {
     OrbeWindow.pushAll();
   };
   nativeTheme.on('updated', () => OrbeWindow.pushAll());
+  setupUpdates();
 
   app.setAboutPanelOptions({ applicationName: 'Orbe', applicationVersion: app.getVersion(), copyright: 'Logiciel libre — licence MIT', credits: `Chromium ${process.versions.chrome}` });
   menu.build();
@@ -454,7 +489,7 @@ app.whenReady().then(async () => {
     // (Un scénario qui n'avance plus est arrêté par la garde : src/main/test-guard.js.)
     try {
       // ORBE_SCENARIO : autre scénario de test (ex. tests/sites.js, sites réels).
-      await require(process.env.ORBE_SCENARIO ? path.resolve(process.env.ORBE_SCENARIO) : '../../tests/selftest')({ first, OrbeWindow, store, win, little, commands, menu, openSettings, openUrl, extensions, extApi, extHost, passwords, panes, prefs, shortcuts, globalAction, essentials });
+      await require(process.env.ORBE_SCENARIO ? path.resolve(process.env.ORBE_SCENARIO) : '../../tests/selftest')({ first, OrbeWindow, store, win, little, commands, menu, openSettings, openUrl, extensions, extApi, extHost, passwords, panes, prefs, shortcuts, globalAction, essentials, updates });
       store.flush();
       if (uncaught.length) throw new Error(`${uncaught.length} exception(s) non rattrapée(s) dans le processus principal pendant le scénario :\n${uncaught.join('\n')}`);
       const asked = testGuard.state.dialogs;

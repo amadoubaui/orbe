@@ -349,6 +349,11 @@ function render(s) {
     }
   }
 
+  // Mise à jour disponible : une ligne discrète ; le détail est dans les réglages.
+  const upd = $('update-note');
+  upd.hidden = !s.update;
+  if (s.update) $('update-open').textContent = t('update.note', { version: s.update.version });
+
   const media = $('media');
   media.hidden = !s.media;
   if (s.media) {
@@ -624,6 +629,8 @@ sidebar.addEventListener('contextmenu', (e) => {
 $('media-open').onclick = () => S && S.media && send('activate', S.media.id);
 $('media-play').onclick = () => send('mediaToggle');
 $('media-mute').onclick = () => S && S.media && send('toggleMute', S.media.id);
+$('update-open').onclick = () => send('update:show');
+$('update-close').onclick = () => send('update:dismiss');
 $('exts').addEventListener('click', (e) => {
   const b = e.target.closest('[data-ext]');
   if (!b) return;
