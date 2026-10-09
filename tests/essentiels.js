@@ -132,10 +132,17 @@ module.exports = async function essentielsTests(ctx) {
   // Vraie entrée de l'utilisateur dans la page (clic dans un coin vide).
   const click = async (wc, x = 230, y = 90) => {
     const rt = [...win.live.values()].find((r) => r.wc === wc);
-    rt.gesture = 0;
-    wc.sendInputEvent({ type: 'mouseDown', x, y, button: 'left', clickCount: 1 });
-    wc.sendInputEvent({ type: 'mouseUp', x, y, button: 'left', clickCount: 1 });
-    await until(() => rt.gesture > 0, 'entrée reçue par la page');
+    // Sur une machine lente, un clic envoyé trop tôt est vu par Orbe mais pas
+    // encore par la page : on attend qu'elle soit prête, et qu'elle l'ait reçu.
+    await until(() => js(wc, 'document.readyState === "complete"'), 'page entièrement chargée');
+    for (let i = 0; i < 5; i++) {
+      rt.gesture = 0;
+      wc.sendInputEvent({ type: 'mouseDown', x, y, button: 'left', clickCount: 1 });
+      wc.sendInputEvent({ type: 'mouseUp', x, y, button: 'left', clickCount: 1 });
+      await until(() => rt.gesture > 0, 'entrée reçue par Orbe');
+      if (await until(() => js(wc, 'navigator.userActivation.isActive'), 'entrée reçue par la page', 2000).catch(() => false)) return;
+    }
+    throw new Error('Délai dépassé : la page n’a pas reçu le clic');
   };
   // Clic sur un élément de la page, répété tant que la feuille attendue n'est pas
   // là : sur une machine lente, la page peut ne pas être prête à recevoir le clic.
