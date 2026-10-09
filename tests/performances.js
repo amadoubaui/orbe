@@ -57,6 +57,19 @@ module.exports = async function performancesTests(ctx) {
   const uiViews = [w.ui, w.modal, w.toastView, w.findView, ...w.spares.map((s) => s.view)];
   check('toute l’interface de la fenêtre tient dans un seul processus de rendu', new Set(uiViews.map(pidOf)).size === 1, [...new Set(uiViews.map(pidOf))].join(' '));
 
+  // Barre latérale masquée : la barre flottante est préparée par la coque, dans son processus.
+  {
+    const wasVisible = w.sidebarVisible;
+    if (wasVisible) w.toggleSidebar(false);
+    await until(() => w.floatView || w.spares.some((s) => s.ready && s.page === 'shell.html#flottant'), 'barre flottante préparée');
+    w.setPeek(true);
+    await until(() => w.floatView && w.floatView.webContents.executeJavaScript('typeof S === "object" && S !== null && document.documentElement.classList.contains("floating")', true), 'barre flottante affichée');
+    check('barre latérale masquée : la barre flottante naît elle aussi de la coque', pidOf(w.floatView) === shellPid && w.floatView.webContents.getURL() === 'orbe://app/shell.html#flottant', `${pidOf(w.floatView)} / ${shellPid}`);
+    w.setPeek(false);
+    if (wasVisible) w.toggleSidebar(true);
+    await sleep(300);
+  }
+
   // La coque n'ouvre rien d'elle-même, et une vue d'appoint ne va nulle part ailleurs.
   const strays = () => webContents.getAllWebContents().filter((wc) => /settings\.html|shell\.html$|exemple\.invalid|about:blank/.test(wc.getURL()) && wc !== w.ui.webContents).length
     + Math.max(0, webContents.getAllWebContents().filter((wc) => wc.getURL().endsWith('#modal')).length - OrbeWindow.all.length);
