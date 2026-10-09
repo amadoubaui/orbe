@@ -3,6 +3,7 @@
 // barre latérale.
 //   node scripts/test-ui.js            tous les groupes
 //   node scripts/test-ui.js glisser    seulement les groupes dont le nom contient « glisser »
+//   ORBE_UI_CPU=4 node scripts/test-ui.js   coque quatre fois plus lente (machine chargée simulée)
 //
 // Chaque groupe (fichier NN-nom.js) démarre un navigateur neuf sur un profil
 // temporaire. Une vérification précédée de « BOGUE: » décrit un défaut connu de
