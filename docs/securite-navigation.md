@@ -176,7 +176,22 @@ fonctionne toujours » échouerait aussitôt.
   ignoré. « Rester » est le choix par défaut.
 - Chromium n'émet l'événement que si l'utilisateur a agi dans la page : une
   page jamais touchée ne peut retenir ni un onglet ni une fenêtre.
-- Une page qui ne répond pas ne retient rien (délai de 4 s).
+- Une page qui ne répond pas ne retient rien (délai de 4 s). Ce délai est celui
+  d'Orbe : Chromium, lui, ferme d'office une page consultée qui n'a pas répondu
+  en une seconde, puis de nouveau une seconde après la réponse de l'utilisateur
+  si la page tarde à en accuser réception. Sur une machine chargée, la page
+  disparaissait donc juste après « Rester ». Chromium n'applique pas ce délai à
+  une page dont le débogueur est attaché : Orbe attache celui d'Electron, sans
+  rien lui demander, le temps de la consultation (« bouclier », `shield`), et le
+  rend dès que la page a répondu (au plus dix secondes). Une extension ou la
+  capture de page entière qui veut le débogueur à cet instant le reçoit.
+- Si une page disparaît malgré tout dans les quinze secondes qui suivent
+  « Rester » sans qu'Orbe l'ait demandé, son onglet garde sa ligne et se
+  recharge : il n'est pas archivé comme une page qui se ferme d'elle-même, et le
+  journal de la page est écrit dans la console.
+- Veille automatique et fermeture demandée en même temps sur la même page : la
+  réponse de la page vaut pour la demande de l'utilisateur, la question est posée.
+- Limite connue : un aperçu ou une petite fenêtre se ferment sans consulter la page.
 - Pas de boîtes en rafale (elles bloquent toute l'application) : pendant les
   2 secondes qui suivent « Rester », une nouvelle tentative de quitter la même
   page est refusée sans rien demander. « Quitter la page » reste toujours
@@ -292,18 +307,32 @@ dernière version publiée, comparer les numéros, et le dire.
 - **Ce qui est cru** : rien. Hôte et chemin fixes, HTTPS, redirection refusée,
   réponse bornée à 512 Ko. Le numéro de version doit avoir la forme `x.y.z` ;
   brouillons et préversions sont ignorés ; l'adresse de la page est
-  **reconstruite** (`…/releases/tag/vX.Y.Z`), jamais reprise ; l'archive n'est
-  proposée que si son nom est exactement celui de ce système
-  (`Orbe-X.Y.Z-mac-arm64.zip`, `Orbe-X.Y.Z-windows-x64.zip`) et son adresse sous
-  `https://github.com/amadoubaui/orbe/releases/download/`. Les notes de version
-  sont réduites à du texte (6 000 caractères, sans caractères de contrôle ni
+  **reconstruite** (`…/releases/tag/vX.Y.Z`), jamais reprise. L'adresse de
+  l'archive l'est aussi (`…/releases/download/<étiquette>/<nom>`, à partir de
+  l'étiquette validée et du nom exact attendu pour ce système) : ce que la
+  réponse dit de `browser_download_url` est ignoré. Les notes de version sont
+  réduites à du texte (6 000 caractères, sans caractères de contrôle ni
   d'inversion du sens d'écriture) et affichées comme du texte.
-- **Téléchargement** : dans le dossier des téléchargements, sous un nom libre.
-  Après redirection, l'hôte doit être de GitHub ; la taille doit être celle
-  annoncée, et l'empreinte SHA-256 celle que GitHub publie (`digest`) quand elle
-  est donnée. Sinon le fichier est supprimé. L'archive n'est **jamais** ouverte
-  ni exécutée : elle est montrée dans son dossier, et c'est l'utilisateur qui
-  remplace l'application.
+- **Chaque saut est contrôlé** : la session des mises à jour n'a qu'un
+  écouteur `webRequest.onBeforeRequest`, qui annule toute requête — la
+  première comme chaque redirection — qui n'est pas en HTTPS vers
+  `api.github.com`, `github.com`, `objects.githubusercontent.com` ou
+  `release-assets.githubusercontent.com` (nom exact, port par défaut, sans
+  identifiants). Une redirection vers un autre hôte, ou vers du HTTP, échoue
+  avant de partir. (L'adresse finale d'une réponse de `net.fetch` est vide dans
+  Electron 44 : un contrôle après coup ne voyait rien.)
+- **Téléchargement** : proposé seulement si GitHub publie l'empreinte SHA-256
+  du fichier (`digest`) ; sinon seule la page de la version l'est. Taille et
+  empreinte sont vérifiées, puis le fichier est **marqué comme venu
+  d'Internet** avant de prendre son nom : attribut `com.apple.quarantine`
+  (`0081;<date>;Orbe;`) sur macOS, flux `Zone.Identifier` (zone 3) sous
+  Windows. Gatekeeper, XProtect et SmartScreen le contrôlent donc comme un
+  fichier téléchargé par un navigateur ; la carte le dit (« Ouvrir quand
+  même » dans Réglages Système → Confidentialité et sécurité). Si la marque ne
+  peut pas être posée et relue, le fichier est supprimé et la page de la
+  version s'ouvre à la place. L'archive n'est **jamais** ouverte ni exécutée.
+  Un silence de 30 s abandonne le téléchargement ; « Annuler » l'arrête ;
+  l'état ne reste jamais « en cours ».
 - **Échecs** : hors ligne, quota de GitHub (403, 429), réponse inattendue — rien
   n'est affiché pour une vérification automatique, et il n'y a pas de nouvelle
   tentative avant le lendemain ; à la demande, la carte des réglages le dit.
@@ -320,8 +349,18 @@ signature de développeur le ferait.
 - **Lecture seule.** Rien n'est écrit dans le profil d'un navigateur. La base
   `places.sqlite` de Firefox est copiée dans un dossier temporaire avant d'être
   ouverte par le `sqlite3` du système (`/usr/bin/sqlite3`, chemin fixe, jamais
-  cherché dans le `PATH`) ; sans lui (Windows), c'est la dernière sauvegarde
-  automatique (`bookmarkbackups/*.jsonlz4`) qui est décodée.
+  cherché dans le `PATH`), lancé avec `-safe -readonly -batch` : une base est
+  un fichier étranger, dont une vue ou un déclencheur pourrait appeler
+  `writefile()`, `edit()` ou `load_extension()` ; le mode sûr les refuse. Un
+  sqlite3 trop ancien pour `-safe`, ou absent (Windows) : c'est la dernière
+  sauvegarde automatique (`bookmarkbackups/*.jsonlz4`) qui est décodée.
+  L'appel est asynchrone et borné à dix secondes.
+- **Fichiers fabriqués pour coûter cher** : chaque dossier de Firefox n'est
+  déroulé qu'une fois (identifiants en double), chaque objet d'une liste de
+  propriétés n'est décodé qu'une fois (références partagées), un objet qui se
+  contient est refusé, le texte décodé est borné (64 Mo), le nombre de nœuds
+  aussi. Le décodage du JSON et des listes reste dans le processus principal :
+  il est borné par la taille des fichiers (48 Mo), pas déporté.
 - **Fichiers étrangers.** JSON de Chrome, LZ4 de Firefox et liste de propriétés
   binaire de Safari sont décodés ici, avec des bornes partout (taille des
   fichiers, décalages, nombre d'objets, profondeur). Mêmes plafonds que pour un
@@ -336,7 +375,10 @@ signature de développeur le ferait.
   propose d'ouvrir le bon volet des Réglages Système. Il ne tente rien d'autre.
 - **Aperçu, puis accord** : les comptes sont montrés avant tout import, et ce
   qui est importé est exactement ce qui a été montré (jeton d'aperçu à usage
-  unique). L'import s'annule (bouton, ou Édition → Annuler).
+  unique). L'import s'annule (bouton, ou Édition → Annuler) pendant une
+  demi-heure et tant qu'aucun autre import n'a suivi ; l'annulation ne retire
+  que ce que l'import a créé : un Espace créé pour l'occasion reste s'il
+  contient autre chose.
 - **En test**, aucun vrai profil n'est lu : sans dossier d'essai désigné, la
   recherche ne rend rien (`tests/fixtures/navigateurs.js` fabrique les profils).
 

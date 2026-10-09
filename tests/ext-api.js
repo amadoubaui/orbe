@@ -586,10 +586,36 @@ module.exports = async function extApiTest({ first: w, OrbeWindow, win, extApi, 
 
     // Mise à jour : réinstallation depuis le Store (remplacée ici), version comparée.
     const realInstall = extensions.install;
-    extensions.install = async () => ({ ...extensions.get(ext.id), version: '1.0.1' });
+    // Le faux Store rend un manifeste ; le contrôle d'avant bascule (options.check) est appelé comme le fait extensions.install.
+    const installed = JSON.parse(fs.readFileSync(path.join(dirExt, ext.id, '1.0.0_essai', 'manifest.json'), 'utf8'));
+    const store2 = (manifest) => async (id, o) => { await o.check(manifest); return { ...extensions.get(ext.id), version: manifest.version }; };
+    extensions.install = store2({ ...installed, version: '1.0.1' });
     const up1 = await extUi.action('ext:update', ext.id, w.ui.webContents);
-    extensions.install = async () => extensions.get(ext.id);
+    extensions.install = store2(installed);
     const up2 = await extUi.update(ext.id);
+    // Version plus ancienne : refusée. Autorisations en plus : demandées avant d'installer (finding 7).
+    extensions.install = store2({ ...installed, version: '0.9.9' });
+    const down = await extUi.update(ext.id);
+    const realConfirm = extUi.hooks.confirmUpdate;
+    const askedUp = [];
+    let answer = false;
+    extUi.hooks.confirmUpdate = async (name, list) => { askedUp.push(list.join(' | ')); return answer; };
+    const greedy = { ...installed, version: '1.1.0', permissions: [...installed.permissions, 'history'], host_permissions: [...installed.host_permissions, 'https://nouveau.exemple/*'], content_scripts: [...installed.content_scripts, { matches: ['https://banque.exemple/*'], js: ['content.js'] }] };
+    extensions.install = store2(greedy);
+    const refusedUp = await extUi.update(ext.id);
+    answer = true;
+    const acceptedUp = await extUi.update(ext.id);
+    extUi.hooks.confirmUpdate = realConfirm;
+    check('mise à jour vers une version plus ancienne : refusée, rien n’est installé', /plus ancienne \(0\.9\.9\) que celle installée \(1\.0\.0\)/.test(down.error || '') && !down.list, down);
+    check('mise à jour qui demande davantage (API, site, script de contenu sur un nouveau site) : la question les liste ; refusée, l’ancienne version reste ; acceptée, le compte rendu les nomme',
+      askedUp.length === 2 && askedUp[0] === 'history | https://nouveau.exemple/* | https://banque.exemple/*' && /non installée/.test(refusedUp.error || '') && /reste en place/.test(refusedUp.error)
+      && acceptedUp.updated && /Nouvelles autorisations : history, https:\/\/nouveau\.exemple\/\*, https:\/\/banque\.exemple\/\*\./.test(acceptedUp.message), { askedUp, refusedUp, acceptedUp: acceptedUp.message });
+    const ap = extUi.addedPermissions;
+    check('extension qui a déjà tous les sites (manifeste ou accès accordé au clic) : un site de plus n’est pas une autorisation nouvelle ; une API de plus, si',
+      ap({ host_permissions: ['<all_urls>'], permissions: ['tabs'] }, { host_permissions: ['<all_urls>', 'https://x.exemple/*'], permissions: ['tabs', 'cookies'] }).hosts.length === 0
+      && ap({ host_permissions: ['<all_urls>'], permissions: ['tabs'] }, { host_permissions: ['https://x.exemple/*'], permissions: ['tabs', 'cookies'] }).api.join() === 'cookies'
+      && ap({ permissions: ['https://a.exemple/*'] }, { permissions: ['https://a.exemple/*', '*://*/*'] }).hosts.join() === '*://*/*' && ap({}, {}).api.length === 0 && ap(null, { permissions: 'x', content_scripts: [null, { matches: 7 }] }).hosts.length === 0
+      && extUi.compareVersions('1.10.0', '1.9.9') > 0 && extUi.compareVersions('1.0', '1.0.0.0') === 0 && extUi.compareVersions('2', '10') < 0);
     extensions.install = async () => { throw Object.assign(new Error('x'), { code: 'EXT_BAD_SIGNATURE' }); };
     const up3 = await extUi.update(ext.id);
     extensions.install = realInstall;

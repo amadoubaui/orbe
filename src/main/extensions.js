@@ -626,7 +626,9 @@ const rmrf = (p) => fs.promises.rm(p, { recursive: true, force: true }).catch(()
 
 // Installe un CRX déjà en mémoire. `expectedId` est l'identifiant demandé :
 // un fichier signé pour une autre extension est refusé.
-async function installCrx(buffer, expectedId) {
+// `options.check(manifeste)` : appelé une fois l'archive vérifiée et son manifeste lu,
+// avant la bascule ; s'il lève une erreur, rien n'est installé (mise à jour refusée).
+async function installCrx(buffer, expectedId, options = {}) {
   needDir();
   const crx = parseCrx(buffer);
   if (expectedId && crx.id !== expectedId) throw fail('EXT_ID_MISMATCH', `Le fichier reçu est celui d'une autre extension (${crx.id})`);
@@ -647,6 +649,7 @@ async function installCrx(buffer, expectedId) {
     const manifest = JSON.parse(injected);
     if (typeof manifest.name !== 'string' || typeof manifest.version !== 'string') throw fail('EXT_BAD_MANIFEST', 'manifest.json incomplet');
     if (manifest.theme || manifest.app) throw fail('EXT_UNSUPPORTED', 'Les thèmes et les applications Chrome ne sont pas pris en charge');
+    if (typeof options.check === 'function') await options.check(manifest);
     await fs.promises.writeFile(manifestFile, injected);
 
     const base = path.join(dir, id);
@@ -673,12 +676,12 @@ async function installCrx(buffer, expectedId) {
 
 // Télécharge, vérifie et installe une extension du Chrome Web Store.
 // Remplace une version déjà installée (en conservant son état activé ou non).
-function install(idOrUrl) {
+function install(idOrUrl, options = {}) {
   const id = parseStoreInput(String(idOrUrl == null ? '' : idOrUrl));
   if (!id) return Promise.reject(fail('EXT_BAD_ID', 'Adresse ou identifiant d\'extension non reconnu'));
   try { needDir(); } catch (err) { return Promise.reject(err); }
   if (installing.has(id)) return installing.get(id);
-  const job = download(id).then((buffer) => installCrx(buffer, id)).finally(() => installing.delete(id));
+  const job = download(id).then((buffer) => installCrx(buffer, id, options)).finally(() => installing.delete(id));
   installing.set(id, job);
   return job;
 }

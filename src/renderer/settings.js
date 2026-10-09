@@ -523,14 +523,16 @@ function drawUpdate(u) {
   el('update-headline').textContent = t('update.available', { version: u.latest.version }) + (u.latest.name && u.latest.name !== 'v' + u.latest.version && u.latest.name !== u.latest.version ? ' — ' + u.latest.name : '');
   el('update-notes').textContent = u.latest.notes;
   const d = u.download || {};
-  el('update-download').hidden = !u.latest.asset || d.state === 'done';
+  el('update-download').hidden = !u.latest.asset || d.state === 'done' || d.state === 'running';
+  el('update-cancel').hidden = d.state !== 'running';
+  el('update-how').textContent = t('update.how') + ' ' + t(O.platform === 'mac' ? 'update.howMac' : 'update.howWin');
   el('update-download').disabled = d.state === 'running';
   el('update-reveal').hidden = d.state !== 'done';
   el('update-dl-state').textContent = d.state === 'running' ? t('update.downloading', { pct: d.total ? Math.floor((d.received / d.total) * 100) : 0 })
     : d.state === 'done' ? t(d.verified ? 'update.downloaded' : 'update.downloadedPlain', { name: d.name })
       : d.state === 'error' ? t('update.dlErr.' + d.error) : '';
 }
-for (const [id, action] of [['update-check', 'update:check'], ['update-page', 'update:open'], ['update-download', 'update:download'], ['update-reveal', 'update:reveal']]) {
+for (const [id, action] of [['update-check', 'update:check'], ['update-page', 'update:open'], ['update-download', 'update:download'], ['update-cancel', 'update:cancel'], ['update-reveal', 'update:reveal']]) {
   el(id).onclick = async () => drawUpdate(await O.send(action));
 }
 O.on('update', drawUpdate);

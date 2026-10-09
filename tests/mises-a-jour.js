@@ -9,7 +9,7 @@ const os = require('os');
 const path = require('path');
 const { Menu } = require('electron');
 
-const { until } = require('./outils');
+const { until, ignorer } = require('./outils');
 
 module.exports = async function majTests(ctx) {
   const { first: w, store, updates, openSettings, panes } = ctx;
@@ -25,9 +25,20 @@ module.exports = async function majTests(ctx) {
   const seen = [];
   let reply = null; // (req, res) -> void
   let served = zip;
+  let hop = '';
   const server = http.createServer((req, res) => {
     seen.push({ url: req.url, headers: req.headers });
-    if (req.url.startsWith('/archive/')) { res.setHeader('content-type', 'application/zip'); return res.end(served); }
+    if (req.url.startsWith('/releases/download/')) {
+      // `hop` : ce que fait le serveur de l'archive (redirections, silence), pour les essais de refus.
+      if (hop === 'ailleurs') { res.statusCode = 302; res.setHeader('location', `http://localhost:${server.address().port}/vol`); return res.end(); }
+      if (hop === 'http') { res.statusCode = 302; res.setHeader('location', 'http://objects.githubusercontent.com/orbe-essai-jamais-demande'); return res.end(); }
+      if (hop === 'relais') { res.statusCode = 302; res.setHeader('location', `/relais/${path.basename(req.url)}`); return res.end(); }
+      res.setHeader('content-type', 'application/zip');
+      if (hop === 'muet') { res.setHeader('content-length', served.length); res.write(served.subarray(0, 2000)); return undefined; }
+      return res.end(served);
+    }
+    if (req.url.startsWith('/relais/')) { res.setHeader('content-type', 'application/zip'); return res.end(served); }
+    if (req.url === '/vol') return res.end(served);
     return reply(req, res);
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
@@ -36,7 +47,7 @@ module.exports = async function majTests(ctx) {
     tag_name: 'v9.9.9', name: 'Orbe 9.9.9', draft: false, prerelease: false, published_at: '2026-10-01T10:00:00Z',
     html_url: 'https://exemple.invalid/ailleurs',
     body: 'Nouveautés\r\n- import depuis Chrome\n<img src=x onerror="document.title=\'piégé\'"><script>document.title="piégé"</script>‮',
-    assets: mine ? [{ name: mine, size: zip.length, digest: 'sha256:' + sha, browser_download_url: `${base}/archive/${mine}` }] : [],
+    assets: mine ? [{ name: mine, size: zip.length, digest: 'sha256:' + sha, browser_download_url: 'https://pirate.example/ignoree.zip' }] : [],
     ...over,
   });
   const json = (o) => (req, res) => { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(o)); };
@@ -47,21 +58,37 @@ module.exports = async function majTests(ctx) {
     && updates.compare('1.0.0-beta', '0.1.0') === 0 && updates.compare('abc', '0.1.0') === 0 && updates.compare('', '') === 0);
   const gh = (over) => updates.parseRelease({ tag_name: 'v1.2.3', body: 'x', assets: [], ...over }, { platform: 'darwin', arch: 'arm64' });
   const macAsset = { name: 'Orbe-1.2.3-mac-arm64.zip', size: 10, browser_download_url: 'https://github.com/amadoubaui/orbe/releases/download/v1.2.3/Orbe-1.2.3-mac-arm64.zip' };
-  const good = gh({ assets: [{ ...macAsset, digest: 'sha256:' + 'a'.repeat(64) }, { ...macAsset, name: 'Orbe-1.2.3-windows-x64.zip' }], html_url: 'https://pirate.example/' });
+  const dg = 'sha256:' + 'a'.repeat(64);
+  const good = gh({ assets: [{ ...macAsset, digest: dg }, { ...macAsset, name: 'Orbe-1.2.3-windows-x64.zip', digest: dg }], html_url: 'https://pirate.example/' });
   check('version publiée : numéro, page reconstruite dans le dépôt d’Orbe, archive de ce système',
     good.version === '1.2.3' && good.url === 'https://github.com/amadoubaui/orbe/releases/tag/v1.2.3' && good.asset.name === 'Orbe-1.2.3-mac-arm64.zip' && good.asset.digest === 'a'.repeat(64)
-    && updates.parseRelease({ tag_name: '1.2.3', assets: [{ ...macAsset, name: 'Orbe-1.2.3-windows-x64.zip', browser_download_url: macAsset.browser_download_url.replace('mac-arm64', 'windows-x64') }] }, { platform: 'win32', arch: 'x64' }).asset.name === 'Orbe-1.2.3-windows-x64.zip'
-    && updates.parseRelease({ tag_name: '1.2.3', assets: [macAsset] }, { platform: 'linux', arch: 'x64' }).asset === null, JSON.stringify(good));
+    && updates.parseRelease({ tag_name: '1.2.3', assets: [{ ...macAsset, name: 'Orbe-1.2.3-windows-x64.zip', digest: dg }] }, { platform: 'win32', arch: 'x64' }).asset.name === 'Orbe-1.2.3-windows-x64.zip'
+    && updates.parseRelease({ tag_name: '1.2.3', assets: [{ ...macAsset, digest: dg }] }, { platform: 'linux', arch: 'x64' }).asset === null, JSON.stringify(good));
   check('brouillon, préversion, numéro illisible ou réponse qui n’est pas un objet : ignorés',
     gh({ draft: true }) === null && gh({ prerelease: true }) === null && gh({ tag_name: 'v1.2' }) === null && gh({ tag_name: '1.2.3; rm -rf' }) === null && gh({ tag_name: 12 }) === null
     && updates.parseRelease(null) === null && updates.parseRelease([]) === null && updates.parseRelease('v1.2.3') === null);
-  check('archive hors du dépôt d’Orbe, de taille folle ou d’un autre nom : pas de téléchargement proposé',
-    gh({ assets: [{ ...macAsset, browser_download_url: 'https://github.com/pirate/orbe/releases/download/v1.2.3/Orbe-1.2.3-mac-arm64.zip' }] }).asset === null
-    && gh({ assets: [{ ...macAsset, browser_download_url: 'http://github.com/amadoubaui/orbe/releases/download/v1.2.3/x.zip' }] }).asset === null
-    && gh({ assets: [{ ...macAsset, browser_download_url: 'https://github.com.pirate.example/amadoubaui/orbe/releases/download/x.zip' }] }).asset === null
-    && gh({ assets: [{ ...macAsset, size: 5e12 }] }).asset === null && gh({ assets: [{ ...macAsset, size: -1 }] }).asset === null && gh({ assets: [{ ...macAsset, size: '10' }] }).asset === null
-    && gh({ assets: [{ ...macAsset, name: 'Orbe-1.2.3-mac-arm64.zip.exe' }] }).asset === null && gh({ assets: 'x' }).asset === null && gh({ assets: [null, 4, 'a'] }).asset === null
-    && gh({ assets: [{ ...macAsset, digest: 'sha256:xyz' }] }).asset.digest === '');
+  // L'adresse de l'archive n'est jamais reprise de la réponse : elle est reconstruite (finding 4).
+  const real0 = updates.internals();
+  updates.configure({ test: false });
+  const rebuilt = 'https://github.com/amadoubaui/orbe/releases/download/v1.2.3/Orbe-1.2.3-mac-arm64.zip';
+  const urlOf = (u) => { const r = gh({ assets: [{ ...macAsset, digest: dg, browser_download_url: u }] }); return r.asset && r.asset.url; };
+  check('adresse de l’archive reconstruite à partir de l’étiquette et du nom : ce que dit la réponse (autre dépôt, « ../ », HTTP, autre hôte) est ignoré',
+    urlOf('https://github.com/amadoubaui/orbe/releases/download/../../../../pirate/depot/releases/download/v1.2.3/Orbe-1.2.3-mac-arm64.zip') === rebuilt
+    && urlOf('https://github.com/pirate/orbe/releases/download/v1.2.3/Orbe-1.2.3-mac-arm64.zip') === rebuilt && urlOf('http://github.com/amadoubaui/orbe/releases/download/v1.2.3/x.zip') === rebuilt
+    && urlOf('https://github.com.pirate.example/x.zip') === rebuilt && urlOf(42) === rebuilt && updates.parseRelease({ tag_name: '1.2.3', assets: [{ ...macAsset, digest: dg }] }, { platform: 'darwin', arch: 'arm64' }).asset.url === rebuilt.replace('/v1.2.3/', '/1.2.3/')
+    && updates.assetUrl('v1.2.3/../x', 'Orbe-1.2.3-mac-arm64.zip') === '' && updates.assetUrl('v1.2.3', '../x.zip') === '' && updates.assetUrl('v1.2.3', 'a/b.zip') === '');
+  check('archive de taille folle, d’un autre nom, ou sans empreinte publiée : pas de téléchargement proposé (la page de la version reste)',
+    gh({ assets: [{ ...macAsset, digest: dg, size: 5e12 }] }).asset === null && gh({ assets: [{ ...macAsset, digest: dg, size: -1 }] }).asset === null && gh({ assets: [{ ...macAsset, digest: dg, size: '10' }] }).asset === null
+    && gh({ assets: [{ ...macAsset, digest: dg, name: 'Orbe-1.2.3-mac-arm64.zip.exe' }] }).asset === null && gh({ assets: 'x' }).asset === null && gh({ assets: [null, 4, 'a'] }).asset === null
+    && gh({ assets: [macAsset] }).asset === null && gh({ assets: [{ ...macAsset, digest: 'sha256:xyz' }] }).asset === null && gh({ assets: [{ ...macAsset, digest: 'md5:' + 'a'.repeat(32) }] }).asset === null
+    && gh({ assets: [macAsset] }).url === 'https://github.com/amadoubaui/orbe/releases/tag/v1.2.3');
+  // Chaque requête, chaque saut de redirection : HTTPS et hôte exact (finding 1).
+  const hopOk = updates.hopAllowed;
+  check('requêtes permises à la session des mises à jour : HTTPS vers api.github.com et les hôtes de fichiers de GitHub, rien d’autre',
+    hopOk(updates.ENDPOINT) && hopOk(rebuilt) && hopOk('https://objects.githubusercontent.com/x') && hopOk('https://release-assets.githubusercontent.com/x?sig=1')
+    && !hopOk('http://github.com/amadoubaui/orbe/releases/download/v1/x.zip') && !hopOk('http://objects.githubusercontent.com/x') && !hopOk('https://pirate.example/x') && !hopOk('https://github.com.pirate.example/x')
+    && !hopOk('https://sub.objects.githubusercontent.com/x') && !hopOk('https://github.com:8443/x') && !hopOk('https://u:p@github.com/x') && !hopOk('http://127.0.0.1:8080/x') && !hopOk('file:///etc/passwd') && !hopOk('data:text/plain,x') && !hopOk(''));
+  updates.configure(real0);
   const long = gh({ body: 'é'.repeat(50000), name: 'n'.repeat(900) });
   const dirty = gh({ body: 'a\u0000b‮c\u0007d\r\ne', name: 7 });
   check('notes de version : longueur bornée, caractères de contrôle et d’inversion retirés',
@@ -185,6 +212,21 @@ module.exports = async function majTests(ctx) {
   await until(() => seen.length === n + 1 && !updates.status().checking, '« Rechercher » interroge le serveur');
   check('« Rechercher » pose la question tout de suite', seen.length === n + 1);
 
+  if (mine) {
+    reply = json(release({ assets: [{ name: mine, size: zip.length }] }));
+    await updates.check({ manual: true });
+    await until(() => js('document.getElementById("update-download").hidden'), 'pas de bouton « Télécharger » sans empreinte');
+    const refusedDl = await updates.fetchAsset();
+    check('version publiée sans empreinte SHA-256 : Orbe ne télécharge pas lui-même, seule la page de la version est proposée',
+      updates.status().available && updates.status().latest.asset === null && refusedDl.error === 'noAsset' && !(await js('document.getElementById("update-page").hidden')) && fs.readdirSync(tmp).length === 0);
+    reply = json(release());
+    await updates.check({ manual: true });
+    await until(() => js('!document.getElementById("update-download").hidden'), 'bouton « Télécharger » de retour');
+    const how = await js('document.getElementById("update-how").textContent');
+    check('la carte prévient de ce que le système demandera au premier lancement (« Ouvrir quand même » sur macOS, SmartScreen sous Windows)',
+      process.platform === 'darwin' ? /Confidentialité et sécurité, puis « Ouvrir quand même »/.test(how) : /SmartScreen/.test(how), how);
+  }
+
   // --- Téléchargement de l'archive ----------------------------------------------------
   if (mine) {
     await js('document.getElementById("update-download").click()');
@@ -194,7 +236,7 @@ module.exports = async function majTests(ctx) {
     check('archive téléchargée dans le dossier des téléchargements, taille et empreinte SHA-256 vérifiées, montrée dans son dossier',
       d.path === path.join(tmp, mine) && fs.readFileSync(d.path).equals(zip) && d.verified && revealed.length === 1 && revealed[0] === d.path && !fs.existsSync(d.path + '.part')
       && (await js('!document.getElementById("update-reveal").hidden && document.getElementById("update-download").hidden')), JSON.stringify(d));
-    const dlReq = seen.filter((x) => x.url.startsWith('/archive/')).pop();
+    const dlReq = seen.filter((x) => x.url.startsWith('/releases/download/')).pop();
     check('le téléchargement non plus ne porte ni cookie ni référent', !!dlReq && !dlReq.headers.cookie && !dlReq.headers.referer && dlReq.headers['user-agent'] === 'Orbe');
     const again2 = await updates.fetchAsset();
     check('second téléchargement : rangé à côté, sans écraser le premier', again2.ok && again2.path === path.join(tmp, mine.replace('.zip', ' (1).zip')) && fs.existsSync(path.join(tmp, mine)));
@@ -210,6 +252,55 @@ module.exports = async function majTests(ctx) {
     await until(async () => (await js('document.getElementById("update-dl-state").textContent')) === 'Archive refusée : sa taille n’est pas celle annoncée.', 'réglages : refus affiché');
     check('le refus est expliqué dans les réglages', true);
     served = zip;
+
+    // Marque « venu d'Internet » sur l'archive gardée (finding 2).
+    const kept = path.join(tmp, mine);
+    if (process.platform === 'darwin') {
+      const q = require('child_process').execFileSync('/usr/bin/xattr', ['-p', 'com.apple.quarantine', kept], { encoding: 'utf8' }).trim();
+      check('macOS : l’archive porte l’attribut de quarantaine (Gatekeeper et XProtect la contrôleront)', /^0081;[0-9a-f]{8};Orbe;$/.test(q) && q === updates.quarantineValue(now), q);
+    } else if (process.platform === 'win32') {
+      let zone = '';
+      try { zone = fs.readFileSync(kept + ':Zone.Identifier', 'utf8'); } catch (err) { zone = String(err.message); }
+      check('Windows : l’archive porte la marque du Web (Zone.Identifier, zone 3 : SmartScreen l’examinera)', /^\[ZoneTransfer\]\r\nZoneId=3\r\n/.test(zone), zone);
+    } else ignorer('marque « venu d’Internet » sur l’archive', 'ni macOS ni Windows');
+    const openedBefore = opened.length;
+    updates.configure({ mark: () => false });
+    const unmarked = await updates.fetchAsset();
+    const unmarkedState = updates.status().download.error;
+    updates.configure({ mark: null });
+    check('marque impossible à poser : l’archive n’est pas gardée, la page de la version s’ouvre à la place',
+      unmarked.error === 'mark' && fs.readdirSync(tmp).length === 2 && opened.length === openedBefore + 1 && opened[opened.length - 1] === 'https://github.com/amadoubaui/orbe/releases/tag/v9.9.9' && unmarkedState === 'mark', JSON.stringify(unmarked));
+
+    // Redirections : chaque saut est contrôlé par la session (finding 1).
+    const count = (pred) => seen.filter(pred).length;
+    hop = 'relais';
+    const relayed = await updates.fetchAsset();
+    check('redirection vers une adresse permise : suivie, l’archive est vérifiée comme les autres', relayed.ok && count((x) => x.url.startsWith('/relais/')) === 1, JSON.stringify(relayed));
+    fs.rmSync(relayed.path, { force: true });
+    hop = 'ailleurs';
+    const elsewhere = await updates.fetchAsset();
+    check('redirection vers un autre hôte : la requête est annulée avant de partir, rien n’est gardé',
+      elsewhere.error === 'network' && count((x) => x.url === '/vol') === 0 && count((x) => /^localhost/.test(x.headers.host || '')) === 0 && fs.readdirSync(tmp).length === 2, JSON.stringify(elsewhere));
+    hop = 'http';
+    const downgrade = await updates.fetchAsset();
+    check('redirection vers du HTTP, même chez un hôte de GitHub : refusée', downgrade.error === 'network' && fs.readdirSync(tmp).length === 2 && !updates.hopAllowed('http://objects.githubusercontent.com/orbe-essai-jamais-demande'), JSON.stringify(downgrade));
+
+    // Serveur muet, annulation (finding 6).
+    hop = 'muet';
+    updates.configure({ idleMs: 700 });
+    const t0 = Date.now();
+    const mute = await updates.fetchAsset();
+    check('serveur qui se tait en cours de route : abandon après le délai, état « erreur » et non « en cours », aucun « .part »',
+      mute.error === 'network' && Date.now() - t0 < 8000 && updates.status().download.state === 'error' && !fs.readdirSync(tmp).some((f) => f.endsWith('.part')), JSON.stringify({ mute, ms: Date.now() - t0 }));
+    updates.configure({ idleMs: 30e3 });
+    const pendingDl = updates.fetchAsset();
+    await until(async () => updates.status().download.state === 'running' && !(await js('document.getElementById("update-cancel").hidden')), 'bouton « Annuler » pendant le téléchargement');
+    await js('document.getElementById("update-cancel").click()');
+    const cancelled = await pendingDl;
+    await until(async () => (await js('document.getElementById("update-cancel").hidden && !document.getElementById("update-download").hidden')), 'réglages : retour au bouton « Télécharger »');
+    check('« Annuler » pendant le téléchargement : arrêt immédiat, retour à l’état de départ, rien n’est laissé',
+      cancelled.error === 'cancelled' && updates.status().download.state === 'idle' && !fs.readdirSync(tmp).some((f) => f.endsWith('.part')) && fs.readdirSync(tmp).length === 2, JSON.stringify(cancelled));
+    hop = '';
   }
 
   // --- Menu ----------------------------------------------------------------------------

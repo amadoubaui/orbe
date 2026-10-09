@@ -79,8 +79,8 @@ function mountImport(box, opts = {}) {
         const undo = mk('button', 'btn imp-undo', t('impb.undo'));
         undo.onclick = async () => {
           undo.disabled = true;
-          const u = await O.send('import:undo');
-          notes[b.id] = u && u.ok ? t('impb.undone') : notes[b.id];
+          const u = await O.send('import:undo', { id: done.undoId });
+          notes[b.id] = t(u && u.ok ? 'impb.undone' : 'impb.undoExpired');
           say(notes[b.id]);
           start();
           if (opts.onChange) opts.onChange();

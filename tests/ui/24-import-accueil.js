@@ -30,11 +30,11 @@ module.exports = {
     const demandes = [];
     const serveur = http.createServer((req, res) => {
       demandes.push({ url: req.url, agent: req.headers['user-agent'], cookie: req.headers.cookie || '' });
-      if (req.url.startsWith('/archive/')) return res.end(zip);
+      if (req.url.startsWith('/releases/download/v9.1.0/')) return res.end(zip);
       res.setHeader('content-type', 'application/json');
       return res.end(JSON.stringify({
         tag_name: 'v9.1.0', name: 'Orbe 9.1', body: 'Import depuis Chrome, Firefox et Safari\n<b>pas du HTML</b>', draft: false, prerelease: false, published_at: '2026-10-08T09:00:00Z',
-        assets: serveur.archive ? [{ name: serveur.archive, size: zip.length, digest: 'sha256:' + crypto.createHash('sha256').update(zip).digest('hex'), browser_download_url: `http://127.0.0.1:${serveur.address().port}/archive/${serveur.archive}` }] : [],
+        assets: serveur.archive ? [{ name: serveur.archive, size: zip.length, digest: 'sha256:' + crypto.createHash('sha256').update(zip).digest('hex'), browser_download_url: 'https://pirate.example/ignoree.zip' }] : [],
       }));
     });
     await new Promise((r) => serveur.listen(0, '127.0.0.1', r));
@@ -148,7 +148,8 @@ module.exports = {
       const fichier = path.join(dl, serveur.archive);
       assert.ok(fs.readFileSync(fichier).equals(zip));
       assert.deepEqual(await ctx.principal(() => global.__maj.montres), [fichier]);
-      assert.match(await r.textContent('#update-dl-state'), /Empreinte SHA-256 vérifiée/);
+      assert.match(await r.textContent('#update-dl-state'), /Empreinte SHA-256 vérifiée ; l’archive est marquée comme venue d’Internet/);
+      assert.match(await r.textContent('#update-how'), process.platform === 'darwin' ? /Ouvrir quand même/ : /SmartScreen/);
       assert.deepEqual(fs.readdirSync(dl), [serveur.archive]);
     });
 

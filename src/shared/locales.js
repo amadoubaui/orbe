@@ -877,7 +877,7 @@ const fr = {
   'update.download': 'Télécharger',
   'update.reveal': 'Afficher dans le dossier',
   'update.downloading': 'Téléchargement… {pct} %',
-  'update.downloaded': '{name} est dans le dossier des téléchargements. Empreinte SHA-256 vérifiée.',
+  'update.downloaded': '{name} est dans le dossier des téléchargements. Empreinte SHA-256 vérifiée ; l’archive est marquée comme venue d’Internet, le système la contrôlera.',
   'update.downloadedPlain': '{name} est dans le dossier des téléchargements.',
   'update.err.offline': 'Vérification impossible : pas de connexion, ou GitHub ne répond pas.',
   'update.err.rate': 'GitHub limite le nombre de vérifications. Réessaie dans une heure.',
@@ -949,6 +949,14 @@ const fr = {
   'ext.removeAsk': 'Retirer l’extension « {name} » ?',
   'ext.removeDetail': 'Ses données et ses réglages seront effacés.',
   'ext.removeBtn': 'Retirer',
+  'update.howMac': 'Au premier lancement de la nouvelle version, macOS la bloquera : ouvre Réglages Système → Confidentialité et sécurité, puis « Ouvrir quand même ».',
+  'update.howWin': 'Au premier lancement, Windows SmartScreen peut demander confirmation : « Informations complémentaires », puis « Exécuter quand même ».',
+  'update.dlErr.mark': 'Archive non gardée : elle n’a pas pu être marquée comme venue d’Internet. La page de téléchargement s’ouvre à la place.',
+  'ext.downgrade': 'Mise à jour refusée : le Store propose une version plus ancienne ({to}) que celle installée ({from}).',
+  'ext.newPerms': 'Nouvelles autorisations : {list}.',
+  'ext.updateAsk': 'La nouvelle version de « {name} » demande davantage',
+  'ext.updateRefused': 'Mise à jour non installée : les nouvelles autorisations ont été refusées. La version {version} reste en place.',
+  'impb.undoExpired': 'Trop tard pour annuler cet import d’ici : retire les signets à la main.',
 };
 
 const en = {
@@ -1808,7 +1816,7 @@ const en = {
   'update.download': 'Download',
   'update.reveal': 'Show in folder',
   'update.downloading': 'Downloading… {pct}%',
-  'update.downloaded': '{name} is in the downloads folder. SHA-256 checksum verified.',
+  'update.downloaded': '{name} is in the downloads folder. SHA-256 checksum verified; the archive is marked as downloaded from the Internet, so the system will check it.',
   'update.downloadedPlain': '{name} is in the downloads folder.',
   'update.err.offline': 'Could not check: no connection, or GitHub is not responding.',
   'update.err.rate': 'GitHub is rate-limiting checks. Try again in an hour.',
@@ -1880,6 +1888,14 @@ const en = {
   'ext.removeAsk': 'Remove the extension “{name}”?',
   'ext.removeDetail': 'Its data and settings will be erased.',
   'ext.removeBtn': 'Remove',
+  'update.howMac': 'On first launch of the new version, macOS will block it: open System Settings → Privacy & Security, then “Open Anyway”.',
+  'update.howWin': 'On first launch, Windows SmartScreen may ask for confirmation: “More info”, then “Run anyway”.',
+  'update.dlErr.mark': 'Archive not kept: it could not be marked as downloaded from the Internet. The download page opens instead.',
+  'ext.downgrade': 'Update refused: the Store offers an older version ({to}) than the installed one ({from}).',
+  'ext.newPerms': 'New permissions: {list}.',
+  'ext.updateAsk': 'The new version of “{name}” asks for more',
+  'ext.updateRefused': 'Update not installed: the new permissions were declined. Version {version} stays in place.',
+  'impb.undoExpired': 'Too late to undo this import from here: remove the bookmarks by hand.',
 };
 
 module.exports = { fr, en };
