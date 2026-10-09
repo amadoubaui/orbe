@@ -696,9 +696,9 @@ module.exports = async function essentielsTests(ctx) {
   store.state.settings.downloadDir = custom;
   d = await start('/note.txt');
   await until(() => d.state === 'completed', 'note téléchargée');
-  check('dossier des téléchargements choisi dans les réglages', d.path === path.join(custom, 'note.txt') && fs.readFileSync(d.path, 'utf8') === 'bonjour' && downloads.downloadDir() === custom);
+  check('dossier des téléchargements choisi dans les réglages', d.path === path.join(custom, 'note.txt') && fs.readFileSync(d.path, 'utf8') === 'bonjour' && downloads.downloadDir(dl.wc.session) === custom);
   store.state.settings.downloadDir = path.join(custom, 'disparu');
-  check('dossier choisi introuvable : retour au dossier Téléchargements', downloads.downloadDir() === dlDir);
+  check('dossier choisi introuvable : retour au dossier Téléchargements', downloads.downloadDir(dl.wc.session) === dlDir);
   store.state.settings.downloadDir = '';
   store.state.settings.downloadAsk = true;
   const dialogs = [];
@@ -714,8 +714,18 @@ module.exports = async function essentielsTests(ctx) {
   await sleep(400);
   check('enregistrement annulé : aucun téléchargement', store.state.downloads.length === lengthBefore && !fs.existsSync(path.join(dlDir, 'note.txt')));
   store.state.settings.downloadAsk = false;
-  downloads.env.pickFolder = async () => custom;
-  check('choix du dossier depuis les réglages', await downloads.action('dl:pickDir', null, null) === custom && store.state.settings.downloadDir === custom && await downloads.action('dl:defaultDir', null, null) === '' && await downloads.action('dl:dir', null, null) === dlDir);
+  // Un seul réglage de dossier (fenêtre des réglages, prefs.js) : celui du profil prime sur le général.
+  const prefs = require('../src/main/prefs');
+  const own = path.join(custom, 'profil');
+  fs.mkdirSync(own);
+  store.state.settings.downloadDir = custom;
+  prefs.setForProfile('default', 'downloadDir', own);
+  d = await start('/note.txt');
+  await until(() => d.state === 'completed', 'note dans le dossier du profil');
+  check('dossier propre au profil : il prime sur le dossier général, et la navigation privée garde celui du système', d.path === path.join(own, 'note.txt') && downloads.downloadDir(dl.wc.session) === own && downloads.downloadDir(require('electron').session.fromPartition('incognito-essai-dossier')) === dlDir);
+  prefs.setForProfile('default', 'downloadDir', null);
+  store.state.settings.downloadDir = '';
+  check('réglages « demander où enregistrer » et « PDF dans un onglet » : validés comme les autres (prefs.SETTABLE)', prefs.SETTABLE.downloadAsk(true) && !prefs.SETTABLE.downloadAsk('oui') && prefs.SETTABLE.downloadOpenPdf(false) && !prefs.SETTABLE.downloadOpenPdf(1));
   // La Bibliothèque montre l'état et les boutons.
   store.state.downloads.unshift({ id: 'vue-1', name: 'calé.bin', path: path.join(dlDir, 'calé.bin'), url: A + '/gros.bin', total: 1000, received: 400, state: 'interrupted', canResume: true, at: Date.now() });
   const libTab = w.openInternal('library.html#downloads');

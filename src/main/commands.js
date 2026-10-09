@@ -9,7 +9,7 @@ const easels = require('./easels');
 // Page de soutien de l'auteur d'Orbe.
 const SUPPORT_URL = 'https://buymeacoffee.com/amadouba';
 
-const hooks = { newWindow: () => {}, newLittle: () => {}, openSettings: () => {}, settingsChanged: null, openBoost: () => {}, openPasswords: () => {} };
+const hooks = { newWindow: () => {}, newLittle: () => {}, openSettings: () => {}, settingsChanged: null, openBoost: () => {}, openPasswords: () => {}, importBookmarks: () => {} };
 
 const wc = (w) => w.activeWc;
 
@@ -58,6 +58,8 @@ const COMMANDS = [
   { name: 'devtools', label: 'view.devtools', accel: 'Alt+Cmd+I', keys: '⌥⌘I', run: (w) => wc(w) && wc(w).toggleDevTools() },
   { name: 'inspect', label: 'view.inspect', accel: 'Alt+Cmd+C', keys: '⌥⌘C', palette: false, run: (w) => wc(w) && wc(w).openDevTools({ mode: 'right', activate: true }) },
   { name: 'console', label: 'view.console', accel: 'Alt+Cmd+J', keys: '⌥⌘J', palette: false, run: (w) => wc(w) && wc(w).openDevTools({ mode: 'bottom', activate: true }) },
+  // Mode développeur du site affiché (⌃D dans Arc) : barre d'outils et adresse entière.
+  { name: 'toggleDevMode', label: 'view.devMode', accel: 'Ctrl+D', keys: '⌃D', run: (w) => w.toggleDevMode() },
   { name: 'fullscreen', label: 'view.fullscreen', accel: 'Ctrl+Cmd+F', keys: '⌃⌘F', run: (w) => w.win.setFullScreen(!w.win.isFullScreen()) },
   // Espaces
   { name: 'newSpace', label: 'spaces.new', run: (w) => w.newSpace() },
@@ -100,6 +102,7 @@ const COMMANDS = [
   { name: 'boost', label: 'boost.edit', run: (w) => hooks.openBoost(w) },
   { name: 'zap', label: 'boost.zapCmd', run: (w) => { const p = w.activeRt; if (p && !w.incognito) require('./boosts').zap(p.wc); } },
   { name: 'importArc', label: 'app.importArc', run: (w) => importArc(w) },
+  { name: 'importBookmarks', label: 'app.importBookmarks', run: (w) => hooks.importBookmarks(w) },
   { name: 'newProfile', label: 'spaces.newProfile', palette: false, run: (w) => w.newProfile() },
   { name: 'support', label: 'support.menu', run: (w) => w.newTab(SUPPORT_URL) },
   { name: 'welcome', label: 'help.welcome', run: (w) => w.openInternal('welcome.html') },

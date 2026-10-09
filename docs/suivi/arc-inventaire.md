@@ -332,7 +332,7 @@ Actions de la barre de commande relevées dans Arc (libellés du binaire et du c
 | Id | Ce que fait Arc | Preuve Arc | État | Preuve Orbe | Note |
 | --- | --- | --- | --- | --- | --- |
 | APE-1 | Depuis un épinglé ou un favori, un lien vers un autre site s'ouvre en aperçu | HC 19335302900887 ; binaire | ✅ | self (deux vérifications) | |
-| APE-2 | ⇧clic sur n'importe quel lien : aperçu | HC 20498377604887 ; binaire | 🟡 | code présent ; aucun test | |
+| APE-2 | ⇧clic sur n'importe quel lien : aperçu | HC 20498377604887 ; binaire | ✅ | ui 19 « ⇧-clic sur un lien : aperçu… » | Corrigé : le ⇧clic levait une erreur et n’ouvrait rien |
 | APE-3 | Deux réglages distincts pour ces deux déclencheurs | binaire | 🟡 | un seul (`peekLinks`) | |
 | APE-4 | Boutons à côté : fermer, ouvrir en onglet (⌘O), ouvrir en vue scindée | HC 19335302900887 | ✅ | self « ⌘O transforme l'aperçu en onglet sans recharger » | |
 | APE-5 | Fermer : clic à l'extérieur, croix, ⌘W, Échap | HC 20498377604887 | ✅ | self « ⌘W ferme l'aperçu… » | |
@@ -350,11 +350,11 @@ Actions de la barre de commande relevées dans Arc (libellés du binaire et du c
 | --- | --- | --- | --- | --- | --- |
 | PET-1 | ⌥⌘N ouvre une petite fenêtre sans barre latérale | menu ; HC 19235387524503 | ✅ | self | |
 | PET-2 | Les liens venus d'autres applications s'y ouvrent (par défaut) | HC 19235387524503 ; binaire | 🟡 | MA:openUrl selon réglage ; défaut à vérifier | |
-| PET-3 | ⌥⌘clic sur un lien ou un onglet | slashgear ; binaire | ⬜ | menu contextuel seulement | |
+| PET-3 | ⌥⌘clic sur un lien ou un onglet | slashgear ; binaire | 🟡 | lien : ui 19 (réglage `littleAltClick`) | Pas sur un onglet de la barre latérale |
 | PET-4 | Bouton « Open In » ; ⌘O vers l'Espace le plus récent ; ⌥⌘O pour choisir | HC 19235387524503 | ✅ | self « Ouvrir dans Orbe crée un onglet » | |
 | PET-5 | Recherche d'Espace dans le menu « Open In » | binaire « Search Spaces » | ⬜ | | |
 | PET-6 | Plusieurs petites fenêtres ; le même lien externe refocalise celle qui existe | HC 20498377604887 | 🟡 | non vérifié | |
-| PET-7 | Fermées d'office après 6 h ; elles vont dans l'archive, filtre « Little Arc » | HC 19235387524503 ; binaire | ⬜ | | |
+| PET-7 | Fermées d'office après 6 h ; elles vont dans l'archive, filtre « Little Arc » | HC 19235387524503 ; binaire | 🟡 | délai réglable (`littleArchiveHours`), page rangée dans l’archive ; self | « Jamais » par défaut, et non 6 h ; pas de filtre « petite fenêtre » dans l’archive |
 | PET-8 | Flotte au-dessus du plein écran, s'ouvre sur le bureau courant | HC 20498377604887 | 🟡 | non vérifié | |
 | PET-9 | Extensions disponibles ; bouton de copie du lien | binaire (infobulles) | ⬜ | | |
 | PET-10 | Menu du Dock : afficher/masquer toutes les petites fenêtres, nouvelle fenêtre privée | HC 20498377604887 | ⬜ | | `app.dock.setMenu` |
@@ -482,7 +482,7 @@ Aucun geste n'a été rejoué sur Arc pendant cet inventaire (ils demandent la m
 | BIB-16 | Clear Archive avec confirmation « This action is permanent. » | binaire ; menu | 🟡 | sans confirmation | |
 | BIB-17 | État vide de l'archive : « Nothing here yet! » | binaire | ⬜ | | |
 | BIB-18 | View History ⌘Y | menu | ✅ | self | |
-| BIB-19 | Emplacement des téléchargements par profil : dossier, « Other… », « Ask every time » | warren ; binaire `arc.promptForDownload` | 🟡 | réglages « Dossier des téléchargements » et « Toujours demander où enregistrer » ; self « dossier des téléchargements choisi dans les réglages », « Toujours demander où enregistrer… » | Réglage commun à tous les profils |
+| BIB-19 | Emplacement des téléchargements par profil : dossier, « Other… », « Ask every time » | warren ; binaire `arc.promptForDownload` | ✅ | réglage « Dossier des téléchargements », général ou propre à un profil (prefs.js), et « Toujours demander où enregistrer » (downloads.js) ; self « dossier des téléchargements propre à un profil », « dossier propre au profil : il prime sur le dossier général… », « Toujours demander où enregistrer… » | |
 | BIB-20 | Avertissements de sécurité du système sur les fichiers téléchargés | HC 20498377604887 | 🟡 | non vérifié | |
 | BIB-21 | « Downloads in progress » à la fermeture | binaire | ⬜ | | |
 | BIB-22 | Téléchargements renommés automatiquement | HC 19335160678679 | ➖ | | Fonction d'IA, écartée |
@@ -582,50 +582,50 @@ Orbe : une seule page de réglages (`settings.html`), sans volets. Test : self �
 
 | Id | Volet d'Arc → option | Preuve Arc | État | Preuve Orbe | Note |
 | --- | --- | --- | --- | --- | --- |
-| REG-1 | Fenêtre à volets : Account, General, Profiles, Max, Links, Shortcuts, Icon, Advanced | binaire (titres de volets) ; warren | 🟡 | page unique | Découper en volets |
+| REG-1 | Fenêtre à volets : Account, General, Profiles, Max, Links, Shortcuts, Icon, Advanced | binaire (titres de volets) ; warren | ✅ | fenêtre à volets (`panes.js`, `settings.html`) : Général, Profils, Liens, Raccourcis, Apparence, Confidentialité, Extensions, Import, Avancé ; la hauteur suit le volet, le dernier volet est mémorisé ; self « fenêtre des réglages : neuf volets… » ; ui 19 | Pas de volets Account, Max ni Icon (voir REG-2, REG-18, REG-32) |
 | REG-2 | Account → carte de membre, nom, courriel, mot de passe, suppression du compte | HC 19401542261911 | ➖ | | Orbe n'a pas de compte, par choix |
-| REG-3 | Account → Arc Sync (chiffré de bout en bout), carte de récupération | HC 20272860828823 | ⬜ | | Synchronisation : prévue à la feuille de route |
-| REG-4 | General → navigateur par défaut (« … is not your default web browser ») | binaire | 🟡 | bouton, sans état « déjà par défaut » | Afficher l'état |
-| REG-5 | General → Automatically update my Arc | binaire ; HC 21489650267031 | ⬜ | pas de mise à jour | |
-| REG-6 | General → Warn before quitting | binaire | ⬜ | | |
-| REG-7 | General → bloqueur : activer, Advanced Ad Block Settings, Block Cookie Banners | binaire | 🟡 | une case ; self (bloqueur) | |
+| REG-3 | Account → Arc Sync (chiffré de bout en bout), carte de récupération | HC 20272860828823 | ➖ | | Pas de synchronisation dans Orbe (ni compte ni serveur) : rien à régler ; elle reste à la feuille de route |
+| REG-4 | General → navigateur par défaut (« … is not your default web browser ») | binaire | ✅ | état affiché (« est » ou « n’est pas » le navigateur par défaut), bouton seulement s’il reste à faire ; self « navigateur par défaut : l’état est affiché… » | La bascule elle-même n’est pas déclenchée par les tests (elle changerait le réglage de la machine) |
+| REG-5 | General → Automatically update my Arc | binaire ; HC 21489650267031 | ➖ | | Sans objet tant qu’Orbe n’a pas de mise à jour automatique (IMP-10, qui suppose une application signée) |
+| REG-6 | General → Warn before quitting | binaire | ✅ | `warnOnQuit`, boîte de confirmation ; self « quitter : confirmation demandée seulement si le réglage est actif… » | Une boîte de dialogue, pas le « maintenir ⌘Q » d’Arc |
+| REG-7 | General → bloqueur : activer, Advanced Ad Block Settings, Block Cookie Banners | binaire | ✅ | interrupteur, liste des sites en exception (retrait un à un), bandeaux de cookies masqués (`cookieBanners`) ; self « exceptions du bloqueur… », « bandeaux de cookies… » | Bandeaux : une trentaine de plateformes de consentement, masquées par CSS, sans rien accepter |
 | REG-8 | General → Previews Settings (« Show Arc Previews: » dossiers, Google, Outlook, Notion…) | binaire | ➖ | | Aperçus de services tiers, écartés pour l'instant |
-| REG-9 | General → renvoi vers les réglages du profil | binaire | ➖ | | Sans objet avec une page unique |
+| REG-9 | General → renvoi vers les réglages du profil | binaire | ✅ | bouton « Ouvrir Profils » du volet Général ; ui 19 | |
 | REG-10 | Profiles → liste des profils, nombre d'Espaces liés | binaire | ✅ | self | |
-| REG-11 | Profiles → renommer, supprimer (si aucun Espace) | binaire | 🟡 | présent ; non testé | |
-| REG-12 | Profiles → Default Search Engine (Google, Perplexity, Bing, DuckDuckGo, Yahoo, Yandex), Search Settings | warren ; binaire | 🟡 | Google, DuckDuckGo, Bing, Qwant, Ecosia, Brave ; global | Par profil ; moteur personnalisé |
-| REG-13 | Profiles → Include search engine suggestions | binaire | 🟡 | case globale | |
-| REG-14 | Profiles → Archive tabs after (12 h, 24 h, 7 jours, 30 jours), avec la question « tous les profils ou seulement celui-ci ? » | binaire | 🟡 | global, plus « Jamais » | |
+| REG-11 | Profiles → renommer, supprimer (si aucun Espace) | binaire | ✅ | self « profils : renommer ; supprimer seulement si aucun Espace ne l’utilise… » | |
+| REG-12 | Profiles → Default Search Engine (Google, Perplexity, Bing, DuckDuckGo, Yahoo, Yandex), Search Settings | warren ; binaire | ✅ | moteur général et moteur propre à chaque profil (`profileSettings`) ; self « moteur de recherche propre à un profil… » ; ui 19 | Google, DuckDuckGo, Bing, Qwant, Ecosia, Brave ; pas de moteur personnalisé |
+| REG-13 | Profiles → Include search engine suggestions | binaire | ✅ | général et par profil ; self « suggestions coupées pour ce seul profil » | |
+| REG-14 | Profiles → Archive tabs after (12 h, 24 h, 7 jours, 30 jours), avec la question « tous les profils ou seulement celui-ci ? » | binaire | ✅ | délai général, et délai propre à un profil (« Comme le réglage général » sinon) ; self « archivage après 24 h pour un profil, jamais pour les autres », « et l’inverse » ; ui 19 | Plus « Jamais » |
 | REG-15 | Profiles → Default Document App (Notion, Google Docs, Word, Confluence) | binaire ; HC 22557798824855 | ➖ | | Orbe a ses notes |
-| REG-16 | Profiles → Download location | binaire | ⬜ | | |
-| REG-17 | Profiles → Privacy and Security, mots de passe, cartes, Clear Browsing Data | binaire | 🟡 | mots de passe et effacement présents | |
+| REG-16 | Profiles → Download location | binaire | ✅ | dossier général (volet Général) et par profil ; self « un téléchargement arrive dans le dossier choisi », « dossier des téléchargements propre à un profil » | Le choix du dossier passe par la boîte du système, non pilotée par les tests |
+| REG-17 | Profiles → Privacy and Security, mots de passe, cartes, Clear Browsing Data | binaire | 🟡 | volet Confidentialité : mots de passe, effacement des données, autorisations des sites | Pas de cartes bancaires |
 | REG-18 | Max → toutes les fonctions d'IA | binaire | ➖ | | Écarté |
 | REG-19 | Links → Air Traffic Control | binaire | ✅ | self « aiguillage » | |
-| REG-20 | Links → Open a Peek window when clicking on links to other sites (favoris et épinglés) | binaire | 🟡 | `peekLinks` | |
-| REG-21 | Links → Open a Peek window when clicking on links with Shift held | binaire | ⬜ | | |
-| REG-22 | Links → Links from other apps open in Little Arc | binaire | 🟡 | choix fenêtre principale / petite fenêtre | |
-| REG-23 | Links → Open Little Arc when clicking on links with ⌥⌘ held | binaire | ⬜ | | |
-| REG-24 | Links → Open Little Arc when I press (raccourci global) | binaire | ⬜ | aucun raccourci global | `globalShortcut` |
-| REG-25 | Links → Archive Little Arcs after | binaire | ⬜ | | |
-| REG-26 | Shortcuts → recherche (« Type a feature name or shortcut »), raccourcis modifiables, description de chaque action | binaire | ⬜ | table fixe ; page en lecture seule | Gros chantier utile |
-| REG-27 | Shortcuts → Reset All Shortcuts, Reset Shortcut to Default, Remove, Remove Conflicting Shortcut | binaire | ⬜ | | |
-| REG-28 | Shortcuts → priorité par raccourci : Arc gagne, le site gagne, ou une fois le site puis Arc | binaire | ⬜ | | |
-| REG-29 | Shortcuts → Extension Shortcuts | binaire | ⬜ | | |
-| REG-30 | Shortcuts → « Include Favorites in ordering », « Switch to ninth tab » (pour ⌘1…⌘9) | binaire | ⬜ | | |
-| REG-31 | Shortcuts → Learn the Essential Shortcuts | binaire ; menu Help | 🟡 | `shortcuts.html`, générée depuis la table des commandes ; aucun test | |
-| REG-32 | Icon → choix de l'icône | binaire | ⬜ | | |
-| REG-33 | Advanced → Enable Boosts on websites you visit | binaire | ⬜ | | |
-| REG-34 | Advanced → Allow websites to get your theme data | binaire | ⬜ | | |
-| REG-35 | Advanced → Enable Picture in Picture when you leave a video tab | binaire | 🟡 | `autoPip` | |
-| REG-36 | Advanced → Allow window dragging from the top of webpages | binaire | ⬜ | | |
+| REG-20 | Links → Open a Peek window when clicking on links to other sites (favoris et épinglés) | binaire | ✅ | `peekLinks` ; aperçu : ui 16 ; ui 19 « onglet épinglé : un lien vers un autre site s’ouvre en aperçu, ou dans l’onglet si le réglage est coupé » | |
+| REG-21 | Links → Open a Peek window when clicking on links with Shift held | binaire | ✅ | `peekShift` ; ui 19 « ⇧-clic sur un lien : aperçu, sauf si le réglage est coupé » | Le ⇧clic levait une erreur avant ce chantier (Electron ne fournit pas de contenu à adopter sans `window.opener`) : corrigé |
+| REG-22 | Links → Links from other apps open in Little Arc | binaire | ✅ | Espace affiché en dernier, petite fenêtre, ou un Espace précis ; self « lien d’une autre application : ouvert dans l’Espace choisi » ; ui 19 | |
+| REG-23 | Links → Open Little Arc when clicking on links with ⌥⌘ held | binaire | ✅ | `littleAltClick` ; ui 19 « ⌥⌘-clic sur un lien : petite fenêtre… » | Dans l’essai, ⌥ est envoyée par Electron et le clic par Playwright ; ⌥ doit être enfoncée pendant que la page a le clavier |
+| REG-24 | Links → Open Little Arc when I press (raccourci global) | binaire | ✅ | raccourci global (`globalShortcut`), choisi dans le volet Raccourcis ; self « raccourci global de la petite fenêtre : enregistré auprès du système… » | Le déclenchement depuis une autre application n’est pas testé |
+| REG-25 | Links → Archive Little Arcs after | binaire | ✅ | `littleArchiveHours` ; self « petites fenêtres inutilisées : fermées après le délai, leur page dans l’archive » | « Jamais » par défaut |
+| REG-26 | Shortcuts → recherche (« Type a feature name or shortcut »), raccourcis modifiables, description de chaque action | binaire | ✅ | volet Raccourcis : toutes les commandes par menu, recherche par nom ou par raccourci, enregistrement au clavier (`shortcuts.js`) ; self (une vingtaine de vérifications sur les raccourcis) ; ui 19 | Pas de description sous chaque action |
+| REG-27 | Shortcuts → Reset All Shortcuts, Reset Shortcut to Default, Remove, Remove Conflicting Shortcut | binaire | ✅ | Tout rétablir, ↺ par commande, × pour retirer, « Réattribuer » en cas de conflit ; self ; ui 19 | |
+| REG-28 | Shortcuts → priorité par raccourci : Arc gagne, le site gagne, ou une fois le site puis Arc | binaire | ➖ | | Les raccourcis d’Orbe sont des accélérateurs du menu natif : ils passent toujours avant la page, sans priorité réglable par raccourci |
+| REG-29 | Shortcuts → Extension Shortcuts | binaire | 🟡 | liste en lecture seule dans le volet Raccourcis ; self « extensions : un raccourci d’Orbe déplacé est réservé à sa nouvelle place… » | Non modifiables |
+| REG-30 | Shortcuts → « Include Favorites in ordering », « Switch to ninth tab » (pour ⌘1…⌘9) | binaire | ✅ | `tabKeysFavorites`, `tabKeysNinthLast` ; self « ⌘1…⌘9 : favoris comptés ou non, ⌘9 dernier ou neuvième » | |
+| REG-31 | Shortcuts → Learn the Essential Shortcuts | binaire ; menu Help | ✅ | `shortcuts.html`, générée depuis la table des commandes et les raccourcis en vigueur ; self « page des raccourcis essentiels… » | |
+| REG-32 | Icon → choix de l'icône | binaire | ➖ | | Orbe n’a qu’une icône ; il faudrait d’abord en dessiner d’autres |
+| REG-33 | Advanced → Enable Boosts on websites you visit | binaire | ✅ | `boostsEnabled` ; self « Boosts : appliqués ou non selon le réglage, sans recharger la page » | |
+| REG-34 | Advanced → Allow websites to get your theme data | binaire | ✅ | `themeData` (coupé par défaut) ; self « couleurs de l’Espace données aux pages seulement sur demande » | Variables `--orbe-theme-color` et `--orbe-theme-color-2`, pas celles d’Arc |
+| REG-35 | Advanced → Enable Picture in Picture when you leave a video tab | binaire | ✅ | `autoPip` ; self (image dans l’image) et « …rien n’est demandé à la page quand le réglage est coupé » | |
+| REG-36 | Advanced → Allow window dragging from the top of webpages | binaire | ➖ | | La marge au-dessus de la page sert déjà à déplacer la fenêtre ; rendre le haut de la page saisissable demanderait une vue par-dessus chaque page |
 | REG-37 | Advanced → Enable Shared Quotes when highlighting text | binaire | ➖ | | Lié au partage en ligne |
-| REG-38 | Advanced → Show full URL when Toolbar is enabled | binaire | 🟡 | adresse entière toujours | |
-| REG-39 | Advanced → When opening Arc, restore windows from previous session | binaire | 🟡 | toujours restauré | |
-| REG-40 | Advanced → Haptic feedback when reordering tabs | binaire | ⬜ | | |
-| REG-41 | Advanced → Play Arc sound effects | binaire | ⬜ | | |
-| REG-42 | Advanced → Reset Translated-site Prompts | binaire | ⬜ | | |
-| REG-43 | Advanced → More Settings (réglages de Chromium : langues, contenu, sécurité) | binaire ; HC 25628125368087 | ⬜ | | Pas de `chrome://settings` dans Electron |
-| REG-44 | Orbe en plus : langue de l'interface, onglets gardés en mémoire, translucidité | | ✅ | ui 10 (langue) | Arc n'est qu'en anglais |
+| REG-38 | Advanced → Show full URL when Toolbar is enabled | binaire | ✅ | `showFullUrl` ; self « barre d’outils : adresse entière, ou seulement le site » ; ui 19 | |
+| REG-39 | Advanced → When opening Arc, restore windows from previous session | binaire | ✅ | `restoreSession` ; self « reprise à l’ouverture : Espace et onglet actif repris, ou rien si le réglage est coupé » | Coupé : premier Espace, aucun onglet actif ; les onglets restent dans la barre. L’essai porte sur la décision, pas sur un vrai redémarrage |
+| REG-40 | Advanced → Haptic feedback when reordering tabs | binaire | 🟡 | réglage `haptics` enregistré (volet Avancé) | Le retour haptique lui-même reste à faire (SON-6) |
+| REG-41 | Advanced → Play Arc sound effects | binaire | ✅ | `sounds` ; self (son joué, puis coupé) | |
+| REG-42 | Advanced → Reset Translated-site Prompts | binaire | ➖ | | Orbe ne traduit pas les pages : aucune invite à réinitialiser |
+| REG-43 | Advanced → More Settings (réglages de Chromium : langues, contenu, sécurité) | binaire ; HC 25628125368087 | ➖ | | Pas de `chrome://settings` dans Electron ; les réglages utiles sont dans les volets d’Orbe |
+| REG-44 | Orbe en plus : langue de l'interface, onglets gardés en mémoire, translucidité | | ✅ | ui 10 (langue) ; onglets en mémoire : self ; translucidité | Arc n'est qu'en anglais |
 
 ## MEN — Barre de menus, article par article
 
@@ -770,7 +770,7 @@ Arc : `menu` pour ceux de la barre de menus, sinon la source indiquée. Orbe : `
 | RAC-32 | ⌃⇧N / ⌃⌥N | Nouvelle note, note en vue scindée | HC 22557798824855 | 🟡 | ⌃⌘N dans Orbe |
 | RAC-33 | ⇧⌘S / ⌘P | Enregistrer la page, imprimer | menu | 🟡 | Sans test |
 | RAC-34 | ⌥⌘U / ⌥⌘I / ⌥⌘C / ⌥⌘J | Source, outils, inspecteur, console | menu | 🟡 | Sans test |
-| RAC-35 | ⌃D | Mode développeur du site | menu | ⬜ | |
+| RAC-35 | ⌃D | Mode développeur du site | menu | ✅ | `toggleDevMode` : barre d’outils et adresse entière pour le site ; Alt+Shift+D sous Windows ; self |
 | RAC-36 | ⌃⌘F | Plein écran | menu | 🟡 | |
 | RAC-37 | ⌘O / ⌥⌘O | Dans un aperçu ou une petite fenêtre : ouvrir en onglet, choisir l'Espace | HC 19235387524503 | ✅ | ⌥⌘O sans effet dans la fenêtre principale d'Orbe (corps vide) |
 | RAC-38 | ⌥⌘V | Coller l'adresse dans un nouvel onglet | HC 20498377604887 | ⬜ | |
@@ -781,9 +781,9 @@ Arc : `menu` pour ceux de la barre de menus, sinon la source indiquée. Orbe : `
 | RAC-43 | ⌘, / ⌘H / ⌥⌘H / ⌘M / ⌥⌘M / ⌘Q | Réglages et raccourcis du système | menu | ✅ | |
 | RAC-44 | ⇧⌘V | Coller en adaptant le style | menu | ✅ | |
 | RAC-45 | Échap | Préfère le site ; maintenu ou doublé, quitte le plein écran | HC 25619348451223 | 🟡 | Ferme aperçu, recherche, sélecteur |
-| RAC-46 | ⇧clic / ⌥clic / ⌥⌘clic sur un lien | Aperçu, vue scindée, petite fenêtre | HC 20498377604887 | 🟡 | ⇧clic seulement |
-| RAC-47 | Raccourci global pour la petite fenêtre | Réglable | binaire | ⬜ | |
-| RAC-48 | Tous les raccourcis modifiables | Volet Shortcuts | binaire | ⬜ | Voir REG-26 |
+| RAC-46 | ⇧clic / ⌥clic / ⌥⌘clic sur un lien | Aperçu, vue scindée, petite fenêtre | HC 20498377604887 | 🟡 | ⇧clic et ⌥⌘clic : ui 19 ; ⌥clic (vue scindée) absent |
+| RAC-47 | Raccourci global pour la petite fenêtre | Réglable | binaire | ✅ | Volet Raccourcis, « Partout sur l’ordinateur » ; self (voir REG-24) |
+| RAC-48 | Tous les raccourcis modifiables | Volet Shortcuts | binaire | ✅ | self ; ui 19 (voir REG-26) |
 
 ## IMP — Import, accueil, mises à jour
 
@@ -794,12 +794,12 @@ Arc : `menu` pour ceux de la barre de menus, sinon la source indiquée. Orbe : `
 | IMP-3 | Petites vidéos d'apprentissage : épingler, changer d'Espace, nouvel onglet, vue scindée | binaire `pinning.mp4`, `space_swiping.mp4`, `new_tab.mp4`, `split_view.mp4` | ⬜ | six raccourcis listés | Enregistrer quatre vidéos d'Orbe |
 | IMP-4 | Textes d'accueil : « Open your first tab », « Pin tabs to save for later », « Spaces for work and life », « Multitask with Split View » | binaire | 🟡 | textes propres à Orbe | |
 | IMP-5 | Onglets et dossier « Arc Basics » posés au départ | binaire | ⬜ | | |
-| IMP-6 | Import depuis Chrome, Safari, Firefox, Brave, Edge, Opera, Vivaldi : signets vers les épinglés, mots de passe, cookies, plusieurs profils | HC 19335089616791 ; binaire | 🟡 | import depuis Arc (self, trois vérifications) et mots de passe par CSV (self) | Import Chrome et Safari |
-| IMP-7 | Choix du profil de destination ; « Replace existing cookies with imported cookies » | binaire | ⬜ | | |
+| IMP-6 | Import depuis Chrome, Safari, Firefox, Brave, Edge, Opera, Vivaldi : signets vers les épinglés, mots de passe, cookies, plusieurs profils | HC 19335089616791 ; binaire | 🟡 | import depuis Arc (self, trois vérifications) ; signets de tout navigateur par le fichier HTML exporté (`import-bookmarks.js` : self, dix vérifications dont fichiers piégés ; ui 19) ; mots de passe par CSV (self) | Pas de lecture directe des profils de Chrome ou de Safari, ni cookies, ni historique. Les trois fichiers d’essai sont écrits à la main d’après le format, pas de vrais exports |
+| IMP-7 | Choix du profil de destination ; « Replace existing cookies with imported cookies » | binaire | 🟡 | profil de destination pour les signets (volet Import) ; self « import de signets : un nouvel Espace du profil choisi… » | Pas d’import de cookies |
 | IMP-8 | Favoris suggérés d'après l'historique importé | HC 20498377604887 | ⬜ | | |
 | IMP-9 | Invite « Arc works best as your default browser », avec essai d'une semaine | binaire | ⬜ | | |
 | IMP-10 | Mise à jour automatique (Sparkle), bandeau « Restart and Update », notes de version | binaire ; HC 21489650267031 | ⬜ | aucun mécanisme | Demande une application signée et notariée |
-| IMP-11 | Fenêtre « Essential Keyboard Shortcuts » | menu ; binaire | 🟡 | `shortcuts.html` ; aucun test | |
+| IMP-11 | Fenêtre « Essential Keyboard Shortcuts » | menu ; binaire | ✅ | `shortcuts.html` ; self « page des raccourcis essentiels : cinq rubriques, chaque ligne avec son raccourci en vigueur » | Une page dans un onglet, pas une fenêtre |
 | IMP-12 | Interface en anglais seulement | HC 19437072655255 | ✅ | français et anglais ; ui 10 | Orbe fait mieux |
 | IMP-13 | Pilotage par AppleScript (fenêtres, Espaces, onglets, JavaScript) | binaire `Arc.sdef` | ⬜ | | Faible priorité |
 | IMP-14 | Handoff depuis iOS ; Touch ID pour les sites | HC 20498417809815 | ⬜ | | |
@@ -863,7 +863,7 @@ Arc : `menu` pour ceux de la barre de menus, sinon la source indiquée. Orbe : `
 18. **ANI-23, BL-73, ANI-14** — hauteur des dossiers animée ; effacement des onglets du jour en cascade.
 19. **ANI-9, BL-57** — le téléchargement saute dans l'icône de la Bibliothèque ; détail du téléchargement en cours avec annulation.
 20. **BIB-4, BIB-6, BIB-7** — fichiers récents au survol de l'icône, à glisser dehors ; médias en grille.
-21. **REG-26, RAC-48** — raccourcis modifiables.
+21. ✅ **REG-26, RAC-48** — raccourcis modifiables. *(fait : self « réglages », ui 19)*
 22. ~~**EXT-11, EXT-21, DIV-19**~~ — fait (branche `essentiels`) : partage d'écran, erreurs de certificat et authentification HTTP, boîte `beforeunload`, avec les fenêtres surgissantes (DIV-20) et les points DIV-27 à DIV-32. Notes de sécurité : `docs/securite-navigation.md`.
 23. **EXT-8, EXT-9** — vrai panneau de contrôle du site et bulle d'autorisation.
 24. **BL-3, BL-4, BL-14, BL-20, BL-21, BL-22** — petits gestes de la barre : double-clic sur le bord, tirer pour masquer, double-clic dans le vide, historique sur appui long, ⌘clic.
@@ -872,13 +872,13 @@ Arc : `menu` pour ceux de la barre de menus, sinon la source indiquée. Orbe : `
 27. **BIB-13, BIB-14, BIB-16, PET-7** — archive : cause de fermeture, filtres, retour dans l'Espace d'origine, confirmation.
 28. **DIV-7** — copie de l'adresse sans paramètres de pistage.
 29. **IMP-10, MEN-6, BL-56** — mises à jour automatiques (suppose la signature et la notarisation).
-30. **IMP-6, IMP-3, SON-3** — import depuis Chrome et Safari ; accueil avec courtes vidéos et musique.
+30. **IMP-6, IMP-3, SON-3** — import depuis Chrome et Safari (signets par fichier HTML : fait ; lecture directe des profils : à faire) ; accueil avec courtes vidéos et musique.
 
 ## Ce qui n'a pas pu être observé sur Arc, et pourquoi
 
 - **Changement d'Espace, glisser-déposer, gestes du pavé tactile, retour haptique** : ils se jouent dans les Espaces réels du propriétaire ou demandent sa main. Rien n'a été déclenché. Les durées et courbes correspondantes sont donc « non mesurées ».
 - **Aperçu (Peek)** : il fallait cliquer dans la page avec la souris alors que d'autres fenêtres (essais automatiques d'Orbe en cours sur la machine) prenaient le focus par moments. Non tenté.
-- **Fenêtre de réglages** : non ouverte. Les libellés viennent du binaire, leur rangement de la documentation.
+- **Fenêtre de réglages** : non ouverte. Les libellés viennent du binaire, leur rangement de la documentation. Aucun libellé « barre latérale à droite » n’y figure : ce réglage n’existe pas dans Arc 1.166.
 - **Moment où joue `event.m4a`** : inconnu. Le fichier n'a pas été écouté ni relié à un événement.
 - **Rendu exact des textures et teintes des palettes** : les noms sont dans le binaire, les images n'ont pas été extraites.
 - **Menus contextuels** : aucun n'a été ouvert sur Arc ; les articles viennent des libellés du binaire et du centre d'aide. L'ordre et les séparateurs sont inconnus.
@@ -886,30 +886,30 @@ Arc : `menu` pour ceux de la barre de menus, sinon la source indiquée. Orbe : `
 
 ## Bilan chiffré
 
-650 lignes au total : 170 ✅, 198 🟡, 255 ⬜, 27 ➖.
+650 lignes au total : 228 ✅, 173 🟡, 216 ⬜, 33 ➖.
 
 | Domaine | ✅ | 🟡 | ⬜ | ➖ | Total |
 | --- | --- | --- | --- | --- | --- |
-| Barre latérale (BL) | 29 | 34 | 46 | 2 | 111 |
-| Barre de commande (CMD) | 11 | 24 | 15 | 3 | 53 |
-| Espaces et profils (ESP) | 10 | 6 | 8 | 0 | 24 |
-| Vie des onglets (ONG) | 6 | 10 | 11 | 2 | 29 |
+| Barre latérale (BL) | 35 | 32 | 42 | 2 | 111 |
+| Barre de commande (CMD) | 14 | 21 | 15 | 3 | 53 |
+| Espaces et profils (ESP) | 12 | 5 | 7 | 0 | 24 |
+| Vie des onglets (ONG) | 8 | 9 | 10 | 2 | 29 |
 | Vue scindée (SCI) | 7 | 5 | 6 | 0 | 18 |
-| Aperçu (APE) | 3 | 4 | 5 | 0 | 12 |
-| Petite fenêtre (PET) | 3 | 4 | 9 | 0 | 16 |
+| Aperçu (APE) | 6 | 2 | 4 | 0 | 12 |
+| Petite fenêtre (PET) | 3 | 6 | 7 | 0 | 16 |
 | Thèmes (THM) | 4 | 7 | 8 | 1 | 20 |
-| Animations (ANI) | 1 | 11 | 17 | 0 | 29 |
-| Sons et haptique (SON) | 1 | 1 | 9 | 0 | 11 |
-| Gestes (GES) | 1 | 4 | 4 | 0 | 9 |
+| Animations (ANI) | 8 | 6 | 15 | 0 | 29 |
+| Sons et haptique (SON) | 3 | 1 | 7 | 0 | 11 |
+| Gestes (GES) | 1 | 5 | 3 | 0 | 9 |
 | Bibliothèque et médias (BIB) | 3 | 13 | 13 | 2 | 31 |
 | Boosts (BOO) | 3 | 2 | 7 | 1 | 13 |
-| Tableaux et capture (TAB) | 6 | 4 | 8 | 1 | 19 |
+| Tableaux et capture (TAB) | 8 | 2 | 8 | 1 | 19 |
 | Notes (NOT) | 1 | 2 | 2 | 0 | 5 |
 | Extensions et site (EXT) | 3 | 8 | 11 | 0 | 22 |
-| Réglages (REG) | 3 | 14 | 21 | 6 | 44 |
-| Menus (MEN) | 45 | 21 | 27 | 3 | 96 |
-| Raccourcis (RAC) | 26 | 9 | 11 | 2 | 48 |
-| Import et accueil (IMP) | 1 | 4 | 9 | 0 | 14 |
+| Réglages (REG) | 29 | 3 | 0 | 12 | 44 |
+| Menus (MEN) | 46 | 20 | 27 | 3 | 96 |
+| Raccourcis (RAC) | 29 | 9 | 8 | 2 | 48 |
+| Import et accueil (IMP) | 2 | 4 | 8 | 0 | 14 |
 | Divers (DIV) | 3 | 11 | 8 | 4 | 26 |
 
 Lecture : un 🟡 recouvre deux cas, que les colonnes « Preuve Orbe » et « Note » distinguent : du code présent mais sans test (un test suffit à le passer en ✅), ou une fonction réellement incomplète. La part de chacun n'a pas été comptée.

@@ -32,13 +32,31 @@ const DEFAULT_SETTINGS = {
   externalLinks: 'window',
   autoPip: true,
   sounds: true,
+  // Fenêtre des réglages à volets (validation : src/main/prefs.js).
+  showFullUrl: true,
+  warnOnQuit: false,
+  restoreSession: true,
+  haptics: true,
+  peekShift: true,
+  littleAltClick: true,
+  littleShortcut: '',
+  littleArchiveHours: 0,
+  cookieBanners: false,
+  themeData: false,
+  boostsEnabled: true,
+  mediaControls: true,
+  tabKeysFavorites: true,
+  tabKeysNinthLast: true,
+  devSites: [],
+  downloadDir: '',
+  profileSettings: {},
+  shortcuts: {},
   adblock: true,
   adblockAllow: [],
   passwordSave: true,
   passwordFill: true,
-  // Téléchargements : demander où enregistrer, dossier choisi ('' : Téléchargements), PDF ouverts dans un onglet.
+  // Téléchargements : demander où enregistrer, PDF ouverts dans un onglet (le dossier : `downloadDir`, plus haut).
   downloadAsk: false,
-  downloadDir: '',
   downloadOpenPdf: true,
 };
 

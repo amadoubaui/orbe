@@ -25,11 +25,9 @@ const env = {
   ownerWindow: () => null,
   profileSession: () => null, // identifiant de profil -> session
   openInTab: () => false, // (adresse, webContents d'origine) -> ouvre un onglet
-  settingsChanged: () => {},
   // Boîtes de dialogue du système ; remplacées pendant les tests.
   saveDialog: (parent, opts) => (parent ? dialog.showSaveDialogSync(parent, opts) : dialog.showSaveDialogSync(opts)),
   confirm: async (parent, opts) => (await (parent ? dialog.showMessageBox(parent, opts) : dialog.showMessageBox(opts))).response === 0,
-  pickFolder: async (parent, opts) => { const r = await (parent ? dialog.showOpenDialog(parent, opts) : dialog.showOpenDialog(opts)); return r.canceled ? '' : r.filePaths[0] || ''; },
   openPath: (file) => shell.openPath(file),
 };
 const items = new Map(); // identifiant -> DownloadItem en cours (cette exécution d'Orbe)
@@ -41,11 +39,13 @@ const extOf = (name) => path.extname(String(name || '')).slice(1).toLowerCase();
 const isDangerous = (name) => DANGEROUS.has(extOf(name));
 const isPdf = (name, mime) => extOf(name) === 'pdf' || mime === 'application/pdf';
 
-// Dossier de destination : celui des réglages s'il existe encore, sinon Téléchargements.
-function downloadDir() {
-  const custom = store.state.settings.downloadDir;
-  if (custom) { try { if (fs.statSync(custom).isDirectory()) return custom; } catch {} }
-  return app.getPath('downloads');
+// Dossier de destination : celui des réglages (général, ou propre au profil de la
+// session — voir prefs.js, par `sessions.hooks.downloadDir`), sinon Téléchargements.
+let dirOf = () => '';
+function downloadDir(ses) {
+  let custom = '';
+  try { custom = dirOf(ses) || ''; } catch {}
+  return custom || app.getPath('downloads');
 }
 
 // Nom proposé par le site : un simple nom de fichier, sans dossier ni caractère interdit.
@@ -100,6 +100,7 @@ function track(d, item, wc, { persist, hooks }) {
 }
 
 function attach(ses, { persist, hooks }) {
+  dirOf = (s) => hooks.downloadDir(s);
   ses.on('will-download', (event, item, wc) => {
     // Reprise d'un téléchargement interrompu : il garde son enregistrement.
     const again = resuming.get(item.getSavePath());
@@ -113,7 +114,7 @@ function attach(ses, { persist, hooks }) {
       return;
     }
     const name = safeName(item.getFilename());
-    let target = uniquePath(downloadDir(), name);
+    let target = uniquePath(downloadDir(ses), name);
     if (store.state.settings.downloadAsk) {
       const parent = (wc && env.ownerWindow(wc)) || BaseWindow.getFocusedWindow();
       const chosen = env.saveDialog(parent, { defaultPath: target, title: t('dl.saveAs') });
@@ -211,18 +212,6 @@ async function openFile(d, wc, { parent = null, confirmed = false } = {}) {
 // Messages de la Bibliothèque et des réglages.
 async function action(name, a, sender) {
   const parent = (sender && env.ownerWindow(sender)) || BaseWindow.getFocusedWindow();
-  if (name === 'dl:pickDir') {
-    const dir = await env.pickFolder(parent, { properties: ['openDirectory', 'createDirectory'], defaultPath: downloadDir() });
-    if (dir && path.isAbsolute(dir)) { store.state.settings.downloadDir = dir; store.save(); env.settingsChanged(); }
-    return store.state.settings.downloadDir || '';
-  }
-  if (name === 'dl:defaultDir') {
-    store.state.settings.downloadDir = '';
-    store.save();
-    env.settingsChanged();
-    return '';
-  }
-  if (name === 'dl:dir') return downloadDir();
   const d = findRecord(String(a));
   if (!d) return false;
   if (name === 'dl:pause') { const item = items.get(d.id); if (item && !item.isPaused()) { item.pause(); d.paused = true; } return !!item; }

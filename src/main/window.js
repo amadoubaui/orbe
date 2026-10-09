@@ -10,6 +10,7 @@ const suggest = require('./suggest');
 const adblock = require('./adblock');
 const boosts = require('./boosts');
 const platform = require('./platform');
+const prefs = require('./prefs');
 
 // Marge autour de la page : 10 pt, comme mesuré dans Arc.
 const PAD = 10;
@@ -37,6 +38,12 @@ const hooks = {
 };
 
 const t = (key, vars) => store.t(key, null, vars);
+// Ce qu'une première fenêtre reprend de la session précédente : l'Espace affiché
+// et l'onglet actif de chaque Espace. Réglage coupé : premier Espace, aucun onglet actif.
+function resumed(saved, spaces, on) {
+  if (!on) return { spaceId: spaces[0].id, activeBySpace: {} };
+  return { spaceId: spaces.some((s) => s.id === saved.spaceId) ? saved.spaceId : spaces[0].id, activeBySpace: { ...(saved.activeBySpace || {}) } };
+}
 const isInternal = (url) => (url || '').startsWith(INTERNAL);
 const isErrorPage = (url) => (url || '').startsWith(INTERNAL + 'error.html');
 // Pages internes pouvant s'ouvrir dans un onglet, avec accès à l'interface.
@@ -179,8 +186,9 @@ class OrbeWindow {
       : store.state;
     this.session = incognito ? sessions.incognitoSession() : sessions.mainSession();
     const restore = !incognito && first;
-    this.spaceId = (restore && this.data.spaces.some((s) => s.id === saved.spaceId)) ? saved.spaceId : this.data.spaces[0].id;
-    this.activeBySpace = restore ? { ...(saved.activeBySpace || {}) } : {};
+    const resume = resumed(saved, this.data.spaces, restore && store.state.settings.restoreSession !== false);
+    this.spaceId = resume.spaceId;
+    this.activeBySpace = resume.activeBySpace;
     this.closed = [];
     this.undoStack = [];
     this.redoStack = [];
@@ -369,13 +377,31 @@ class OrbeWindow {
     OrbeWindow.pushAll();
   }
 
+  // Barre d'outils affichée : par réglage, ou parce que le site de l'onglet
+  // actif est en mode développeur (⌃D).
+  get toolbarShown() {
+    const tab = this.activeId && this.data.tabs[this.activeId];
+    return !!store.state.settings.showToolbar || (!!tab && prefs.devMode(tab.url));
+  }
+
+  toggleDevMode() {
+    const tab = this.activeId && this.data.tabs[this.activeId];
+    const host = tab ? prefs.hostOf(tab.url) : '';
+    if (!host || this.incognito) return;
+    const list = (store.state.settings.devSites || []).filter((h) => h !== host);
+    const on = list.length === (store.state.settings.devSites || []).length;
+    if (on) list.push(host);
+    require('./commands').setSetting('devSites', list.slice(-200));
+    this.toast(t(on ? 'dev.on' : 'dev.off', { site: host }));
+  }
+
   // --- Mise en page ---------------------------------------------------------
   contentRect() {
     const [W, H] = this.win.getContentSize();
     if (this.htmlFullscreen) return { x: 0, y: 0, width: W, height: H };
     const sw = this.sidebarWidth;
     const docked = this.sidebarVisible && this.p === 1;
-    const top = platform.topInset(this.win, PAD, store.state.settings.showToolbar) + (store.state.settings.showToolbar ? TOOLBAR_H : 0);
+    const top = platform.topInset(this.win, PAD, this.toolbarShown) + (this.toolbarShown ? TOOLBAR_H : 0);
     return {
       x: Math.round(PAD + (sw - PAD) * this.p),
       y: top,
@@ -715,6 +741,10 @@ class OrbeWindow {
     });
     wc.on('context-menu', (e, params) => rt.owner.pageMenu(rt, params));
     wc.on('before-input-event', (e, input) => { if (input.type === 'keyDown' && !rt.internal) hooks.input(rt, input); rt.owner.onInput(e, input); });
+    // ⌥ tenue pendant un clic : les événements de souris ne disent pas les touches
+    // de modification, on suit donc la touche elle-même.
+    wc.on('before-input-event', (e, input) => { rt.alt = !!input.alt; });
+    wc.on('blur', () => { rt.alt = false; });
     wc.on('found-in-page', (e, result) => rt.owner.sendFind(result));
     wc.on('focus', () => rt.owner.paneFocused(rt.id));
     wc.on('enter-html-full-screen', () => { rt.owner.htmlFullscreen = true; rt.fullscreen = true; rt.owner.layout(); });
@@ -739,14 +769,26 @@ class OrbeWindow {
       // Ouverture sans geste de l'utilisateur : bloquée, avec une mention dans la pastille d'adresse (popups.js).
       if (!rt.internal && !hooks.popup(rt, details)) { OrbeWindow.pushAll(); return { action: 'deny' }; }
       if (details.disposition === 'background-tab') {
+        // ⌥⌘clic (Alt+Ctrl+clic ailleurs) : petite fenêtre, comme dans Arc.
+        if (store.state.settings.littleAltClick !== false && rt.alt && /^https?:/i.test(details.url) && !owner.incognito) {
+          hooks.openLittle(details.url);
+          return { action: 'deny' };
+        }
         owner.newTab(details.url, { background: true, after: rt.id });
         return { action: 'deny' };
       }
-      // Aperçu : lien sortant d'un onglet épinglé ou d'un favori, ou ⇧clic.
+      // Aperçu : lien sortant d'un onglet épinglé ou d'un favori.
       const from = data.tabs[rt.id];
       const outside = from && from.homeUrl && !sameHost(details.url, from.url);
-      const shiftClick = details.disposition === 'new-window' && !details.features;
-      if (/^https?:/i.test(details.url) && (outside || shiftClick)) {
+      // ⇧clic : la page ne garde aucun lien avec la nouvelle (pas de window.opener),
+      // et Electron ne fournit alors pas de contenu à adopter : on ouvre nous-mêmes.
+      const shifted = details.disposition === 'new-window' && !details.features;
+      if (shifted && /^https?:/i.test(details.url)) {
+        if (store.state.settings.peekShift !== false) owner.openPeek(details.url, rt.id);
+        else owner.newTab(details.url, { after: rt.id });
+        return { action: 'deny' };
+      }
+      if (/^https?:/i.test(details.url) && outside) {
         return { action: 'allow', createWindow: (options) => owner.openPeek(details.url, rt.id, options).webContents };
       }
       // Conserve window.opener (connexions OAuth, paiements…).
@@ -1027,7 +1069,7 @@ class OrbeWindow {
     this.closeGroup(ids, 'undo.clearToday');
     this.layout();
     this.changed();
-    this.toast(t('toast.cleared'));
+    this.toast(require('./shortcuts').inText(t('toast.cleared'), 'undo'));
   }
 
   duplicate(id = this.activeId) {
@@ -1122,8 +1164,9 @@ class OrbeWindow {
   }
 
   tabAt(n) {
-    const ids = this.orderedIds();
-    const id = n === 9 ? ids[ids.length - 1] : ids[n - 1];
+    const s = store.state.settings;
+    const ids = s.tabKeysFavorites === false ? [...walk(this.space.pinned), ...this.space.today] : this.orderedIds();
+    const id = n === 9 && s.tabKeysNinthLast !== false ? ids[ids.length - 1] : ids[n - 1];
     if (id) this.activate(id);
   }
 
@@ -1989,7 +2032,7 @@ class OrbeWindow {
 
   commandList() {
     const { COMMANDS } = require('./commands');
-    return COMMANDS.filter((c) => c.palette !== false).map((c) => ({ command: c.name, title: t(c.label), shortcut: c.keys || '' }));
+    return COMMANDS.filter((c) => c.palette !== false).map((c) => ({ command: c.name, title: t(c.label), shortcut: require('./shortcuts').keysOf(c.name) }));
   }
 
   suggestLocal(q) {
@@ -2596,6 +2639,10 @@ class OrbeWindow {
   // --- État envoyé à la coque -----------------------------------------------
   sendState() {
     if (this.win.isDestroyed() || this.ui.webContents.isDestroyed()) return;
+    // La barre d'outils peut apparaître avec la page (mode développeur) : la mise en page suit.
+    const toolbar = this.toolbarShown;
+    if (this.toolbarWas !== undefined && this.toolbarWas !== toolbar) { this.toolbarWas = toolbar; this.layout(); }
+    this.toolbarWas = toolbar;
     const d = this.data;
     const space = this.space;
     const activeId = this.activeId;
@@ -2661,7 +2708,9 @@ class OrbeWindow {
       dark: nativeTheme.shouldUseDarkColors,
       incognito: this.incognito,
       sidebar: { visible: this.sidebarVisible, peek: this.peek, width: this.sidebarWidth },
-      toolbar: settings.showToolbar,
+      toolbar,
+      fullUrl: settings.showFullUrl !== false || (!!tab && prefs.devMode(tab.url)),
+      devMode: !!tab && prefs.devMode(tab.url),
       fullScreen: this.win.isFullScreen(),
       spaceDir: dir,
       space: { id: space.id, name: space.name, icon: space.icon, color: space.color, color2: space.color2 || '', grain: space.grain || 0 },
@@ -2696,7 +2745,7 @@ class OrbeWindow {
           ? { v: true, x: p.x, y: p.y + p.height, w: p.width }
           : { x: p.x + p.width, y: rect.y, h: rect.height }));
       })(),
-      media: this.mediaId ? {
+      media: this.mediaId && settings.mediaControls !== false ? {
         id: this.mediaId,
         title: mediaTab.customTitle || mediaTab.title || suggest.strip(mediaTab.url),
         url: mediaTab.url,
@@ -2708,7 +2757,7 @@ class OrbeWindow {
         ? { count: downloads.length, progress: downloads.reduce((a, x) => a + (x.total ? x.received / x.total : 0), 0) / downloads.length }
         : null,
     };
-    platform.syncChrome(this.win, { color: space.color, dark: payload.dark, toolbar: settings.showToolbar, translucent: settings.translucent });
+    platform.syncChrome(this.win, { color: space.color, dark: payload.dark, toolbar, translucent: settings.translucent });
     this.ui.webContents.send('state', payload);
     if (this.floatView && !this.floatView.webContents.isDestroyed()) this.floatView.webContents.send('state', payload);
   }
@@ -2768,9 +2817,6 @@ class OrbeWindow {
 }
 
 function archiveStale() {
-  const hours = store.state.settings.archiveAfterHours;
-  if (!hours) return;
-  const limit = Date.now() - hours * 36e5;
   const any = OrbeWindow.all.find((w) => !w.incognito);
   if (!any) return;
   const activeIds = new Set();
@@ -2781,6 +2827,10 @@ function archiveStale() {
   }
   let count = 0;
   for (const space of store.state.spaces) {
+    // Délai du profil de l'Espace, sinon délai général ; 0 : jamais.
+    const hours = prefs.get('archiveAfterHours', space.profileId);
+    if (!hours) continue;
+    const limit = Date.now() - hours * 36e5;
     for (const id of [...space.today]) {
       const tab = store.state.tabs[id];
       const rt = live.get(id);
@@ -2793,4 +2843,4 @@ function archiveStale() {
   if (count) { store.save(); for (const w of windows.values()) w.layout(); OrbeWindow.pushAll(); }
 }
 
-module.exports = { OrbeWindow, windows, live, trusted, hooks, archiveStale, INTERNAL, UI_PRELOAD, isInternal, MOTION, motion, forceMotion, motionStats: stats };
+module.exports = { OrbeWindow, windows, live, trusted, hooks, archiveStale, INTERNAL, UI_PRELOAD, isInternal, MOTION, motion, forceMotion, motionStats: stats, resumed };

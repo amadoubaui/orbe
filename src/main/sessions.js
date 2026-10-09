@@ -14,7 +14,8 @@ const downloads = require('./downloads');
 
 const RENDERER_DIR = path.join(__dirname, '../renderer');
 const configured = new WeakSet();
-const hooks = { onDownload: () => {}, ownerWindow: () => null };
+const hooks = { onDownload: () => {}, ownerWindow: () => null, downloadDir: () => '' };
+const profileIds = new WeakMap(); // session -> identifiant du profil
 
 // À appeler avant app.ready.
 function registerScheme() {
@@ -74,6 +75,7 @@ function profileSession(id) {
   // Mots de passe : rattachés au profil ; jamais en navigation privée.
   passwords.attach(ses, id || 'default');
   downloads.bindProfile(ses, id || 'default');
+  profileIds.set(ses, id || 'default');
   return ses;
 }
 
@@ -90,4 +92,4 @@ function setupDefaultSession() {
   session.defaultSession.setPermissionRequestHandler((wc, p, cb) => cb(false));
 }
 
-module.exports = { registerScheme, setupDefaultSession, mainSession, profileSession, incognitoSession, hooks, originOf };
+module.exports = { registerScheme, setupDefaultSession, mainSession, profileSession, incognitoSession, hooks, originOf, profileIdOf: (ses) => profileIds.get(ses) || '' };

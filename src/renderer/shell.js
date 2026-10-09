@@ -205,7 +205,8 @@ function render(s) {
   const caps = s.activeId ? (s.nav.capture || []) : [];
   $('capture-note').hidden = !caps.length;
   if (caps.length) { $('capture-icon').setAttribute('href', '#i-' + caps[0]); $('capture-note').title = caps.map((k) => t('capture.' + k)).join(' · '); }
-  $('tb-url-text').textContent = s.nav.internal ? label : (s.nav.url || t('side.search'));
+  // Adresse entière, ou seulement le site (réglage « Afficher l'adresse entière »).
+  $('tb-url-text').textContent = s.nav.internal ? label : ((s.fullUrl === false ? label : s.nav.url) || t('side.search'));
   for (const p of ['b', 'tb']) {
     $(p + '-back').disabled = !s.nav.canBack;
     $(p + '-forward').disabled = !s.nav.canForward;

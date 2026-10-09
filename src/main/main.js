@@ -23,6 +23,9 @@ const easels = require('./easels');
 const platform = require('./platform');
 const essentials = require('./essentials');
 const downloads = require('./downloads');
+const prefs = require('./prefs');
+const shortcuts = require('./shortcuts');
+const panes = require('./panes');
 
 platform.adaptLocales(locales);
 
@@ -38,7 +41,6 @@ function testModeAllowed() {
   return asked !== real && !asked.startsWith(real + path.sep);
 }
 const pendingUrls = [];
-let settingsWindow = null;
 
 app.setName('Orbe');
 const SELFTEST = process.argv.includes('--selftest') && testModeAllowed();
@@ -72,7 +74,9 @@ function openUrl(url) {
   let target = null;
   if (!openUrl.direct) {
     const rule = (store.state.settings.routes || []).find((r) => r.match && url.toLowerCase().includes(r.match.toLowerCase()));
-    target = rule ? rule.to : (store.state.settings.externalLinks === 'little' ? 'little' : null);
+    const ext = store.state.settings.externalLinks;
+    // Sans règle : petite fenêtre, Espace précis (« space:<id> »), ou l'Espace affiché.
+    target = rule ? rule.to : (ext === 'little' ? 'little' : (String(ext).startsWith('space:') ? ext.slice(6) : null));
   }
   if (target === 'little') return new little.LittleWindow(url);
   let w = OrbeWindow.primary;
@@ -88,25 +92,9 @@ function newWindow(opts = {}) {
   return new OrbeWindow(opts);
 }
 
-function openSettings() {
-  if (settingsWindow && !settingsWindow.isDestroyed()) return settingsWindow.focus();
-  settingsWindow = new BrowserWindow({
-    width: 620,
-    height: 640,
-    resizable: false,
-    minimizable: false,
-    maximizable: false,
-    fullscreenable: false,
-    ...platform.windowChrome({ inset: true, dark: nativeTheme.shouldUseDarkColors }),
-    show: false,
-    webPreferences: { preload: UI_PRELOAD, sandbox: true, contextIsolation: true },
-  });
-  trusted.add(settingsWindow.webContents);
-  settingsWindow.webContents.on('will-navigate', (e) => e.preventDefault());
-  settingsWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  settingsWindow.loadURL(INTERNAL + 'settings.html');
-  settingsWindow.once('ready-to-show', () => settingsWindow.show());
-  return settingsWindow;
+// Fenêtre des réglages, à volets (src/main/panes.js). `pane` : volet à afficher.
+function openSettings(pane) {
+  return panes.open(pane);
 }
 
 // Éditeur de Boost : petite fenêtre liée à l'onglet actif au moment de l'ouverture.
@@ -148,12 +136,14 @@ function broadcastSettings() {
   for (const wc of webContents.getAllWebContents()) {
     if (trusted.has(wc) && !wc.isDestroyed()) wc.send('settings', store.state.settings);
   }
+  panes.settingsChanged();
   for (const w of OrbeWindow.all) w.layout();
   OrbeWindow.pushAll();
   menu.refresh(true);
 }
 
 const SETTABLE = {
+  ...prefs.SETTABLE,
   lang: (v) => v === 'fr' || v === 'en',
   searchEngine: (v) => Object.prototype.hasOwnProperty.call(suggest.ENGINES, v),
   suggestions: (v) => typeof v === 'boolean',
@@ -161,16 +151,13 @@ const SETTABLE = {
   appearance: (v) => ['auto', 'light', 'dark'].includes(v),
   translucent: (v) => typeof v === 'boolean',
   maxLiveTabs: (v) => Number.isInteger(v) && v >= 4 && v <= 60,
-  externalLinks: (v) => v === 'window' || v === 'little',
+  externalLinks: prefs.externalLinks,
   autoPip: (v) => typeof v === 'boolean',
   sounds: (v) => typeof v === 'boolean',
   adblock: (v) => typeof v === 'boolean',
   peekLinks: (v) => typeof v === 'boolean',
   passwordSave: (v) => typeof v === 'boolean',
   passwordFill: (v) => typeof v === 'boolean',
-  downloadAsk: (v) => typeof v === 'boolean',
-  downloadOpenPdf: (v) => typeof v === 'boolean',
-  downloadDir: (v) => typeof v === 'string' && v.length <= 1024 && (v === '' || path.isAbsolute(v)),
   routes: (v) => Array.isArray(v) && v.length <= 100 && v.every((r) => r && typeof r.match === 'string' && r.match.length <= 200 && typeof r.to === 'string' && r.to.length <= 40),
 };
 
@@ -190,7 +177,7 @@ function shortcutGroups() {
   const t = (k) => store.t(k);
   const group = (title, names, extra = []) => ({
     title,
-    items: [...names.map((n) => commands.byName.get(n)).filter((c) => c && c.keys).map((c) => ({ label: t(c.label), keys: c.keys })), ...extra],
+    items: [...names.map((n) => commands.byName.get(n)).filter((c) => c && shortcuts.keysOf(c.name)).map((c) => ({ label: t(c.label), keys: shortcuts.keysOf(c.name) })), ...extra],
   });
   const fr = store.state.settings.lang === 'fr';
   return [
@@ -277,7 +264,7 @@ async function globalAction(action, a, sender) {
     case 'shortcuts:get':
       return shortcutGroups();
     case 'settings:get':
-      return { settings: s.settings, spaces: s.spaces.map((sp) => ({ id: sp.id, name: `${sp.icon} ${sp.name}` })), profiles: profileList(), engines: Object.entries(suggest.ENGINES).map(([id, e]) => ({ id, name: e.name })), version: app.getVersion(), chrome: process.versions.chrome };
+      return { settings: s.settings, spaces: s.spaces.map((sp) => ({ id: sp.id, name: `${sp.icon} ${sp.name}` })), profiles: profileList(), engines: Object.entries(suggest.ENGINES).map(([id, e]) => ({ id, name: e.name })), version: app.getVersion(), chrome: process.versions.chrome, ...panes.info() };
     case 'settings:set':
       for (const [k, v] of Object.entries(a || {})) if (Object.hasOwn(SETTABLE, k) && SETTABLE[k](v)) s.settings[k] = v;
       store.save();
@@ -290,7 +277,7 @@ async function globalAction(action, a, sender) {
       return profileList();
     }
     case 'settings:deleteProfile':
-      if (OrbeWindow.deleteProfile(String(a))) { passwords.forgetProfile(String(a)); menu.refresh(true); }
+      if (OrbeWindow.deleteProfile(String(a))) { passwords.forgetProfile(String(a)); prefs.forgetProfile(String(a)); menu.refresh(true); }
       return profileList();
     case 'settings:makeDefault':
       commands.makeDefault();
@@ -322,14 +309,14 @@ async function globalAction(action, a, sender) {
       return true;
     }
     default:
-      return undefined;
+      return panes.handle(action, a, sender);
   }
 }
 
 function setupIpc() {
   const ok = (e) => trusted.has(e.sender) && e.senderFrame && e.senderFrame.url.startsWith(INTERNAL);
   ipcMain.on('i18n', (e) => {
-    e.returnValue = ok(e) ? { locales, lang: store.state.settings.lang, settings: store.state.settings, platform: platform.name, keys: Object.fromEntries(commands.COMMANDS.filter((c) => c.keys).map((c) => [c.name, c.keys])) } : null;
+    e.returnValue = ok(e) ? { locales, lang: store.state.settings.lang, settings: store.state.settings, platform: platform.name, keys: shortcuts.keysMap(), defaultKeys: shortcuts.defaultKeysMap() } : null;
   });
   ipcMain.handle('orbe', async (e, action, payload) => {
     if (!ok(e) || typeof action !== 'string') return undefined;
@@ -366,7 +353,6 @@ app.whenReady().then(async () => {
   extHost.setup();
   // Feuilles d'onglet, autorisations, certificats, authentification, « quitter la page ? »… (après extHost : mise en page chaînée).
   essentials.setup({ win, sessions, test: SELFTEST });
-  downloads.env.settingsChanged = broadcastSettings;
   adblock.configure({
     enabled: store.state.settings.adblock,
     allowlist: store.state.settings.adblockAllow,
@@ -389,6 +375,10 @@ app.whenReady().then(async () => {
   commands.hooks.openPasswords = () => passwords.openManager();
   passwords.configure({ trusted, uiPreload: UI_PRELOAD, internal: INTERNAL, toast: (wc, text) => { const o = OrbeWindow.ownerOf(wc); if (o) o.toast(text); } });
   commands.hooks.settingsChanged = broadcastSettings;
+  commands.hooks.importBookmarks = (w) => panes.importBookmarks(w && w.win, { profileId: w && !w.incognito ? w.space.profileId : 'default' });
+  panes.configure({ broadcast: broadcastSettings, profileList, refreshMenu: () => menu.refresh(true) });
+  // Moteur de recherche et suggestions : ceux du profil de l'Espace affiché.
+  suggest.hooks.profileId = () => { const w = OrbeWindow.focused || OrbeWindow.primary; return w && !w.incognito ? w.space.profileId : 'default'; };
   win.hooks.openLittle = (url) => new little.LittleWindow(url);
   win.hooks.changed = () => { menu.refresh(); extHost.sync(); passwords.sync(); };
   win.hooks.extensionMenu = (wc, params) => [...extApi.contextMenuItems(wc, params), ...passwords.contextMenuItems(wc, params)];
@@ -421,6 +411,7 @@ app.whenReady().then(async () => {
 
   setTimeout(win.archiveStale, 30e3);
   setInterval(win.archiveStale, 10 * 60e3);
+  setInterval(() => little.LittleWindow.archiveStale(), 10 * 60e3).unref();
 
   if (SELFTEST) {
     // Garde-fou : un scénario qui n'avance plus s'arrête de lui-même, avec un message.
@@ -428,7 +419,7 @@ app.whenReady().then(async () => {
     setTimeout(() => { console.error(`\nÉCHEC : scénario bloqué depuis ${limit} s`); app.exit(3); }, limit * 1000).unref();
     try {
       // ORBE_SCENARIO : autre scénario de test (ex. tests/sites.js, sites réels).
-      await require(process.env.ORBE_SCENARIO ? path.resolve(process.env.ORBE_SCENARIO) : '../../tests/selftest')({ first, OrbeWindow, store, win, little, commands, menu, openSettings, openUrl, extensions, extApi, extHost, passwords, essentials });
+      await require(process.env.ORBE_SCENARIO ? path.resolve(process.env.ORBE_SCENARIO) : '../../tests/selftest')({ first, OrbeWindow, store, win, little, commands, menu, openSettings, openUrl, extensions, extApi, extHost, passwords, panes, prefs, shortcuts, globalAction, essentials });
       store.flush();
       app.exit(0);
     } catch (err) {

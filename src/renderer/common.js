@@ -8,8 +8,17 @@ document.documentElement.classList.add(O.platform || 'mac');
 // Touche « principale » d'un événement clavier ou souris : ⌘ sur macOS, Ctrl ailleurs.
 const modKey = (e) => (O.platform === 'mac' || !O.platform ? e.metaKey : e.ctrlKey);
 
+// Raccourcis en vigueur, par nom de commande : suivent les changements faits
+// dans les réglages (événement « keys »).
+let KEYS = O.keys || {};
+// Textes qui citent le raccourci d'une commande.
+const KEY_IN_TEXT = { 'side.empty': 'newTab', 'side.toggle': 'toggleSidebar' };
+
 function t(key, vars) {
   let s = (O.locales[lang] && O.locales[lang][key]) || O.locales.fr[key] || key;
+  const cmd = KEY_IN_TEXT[key];
+  const before = cmd && O.defaultKeys && O.defaultKeys[cmd];
+  if (before && KEYS[cmd] !== before) s = KEYS[cmd] ? s.replace(before, KEYS[cmd]) : s.replace(` (${before})`, '').replace(before, '…');
   if (vars) for (const k of Object.keys(vars)) s = s.replace(`{${k}}`, vars[k]);
   return s;
 }
@@ -19,7 +28,7 @@ function applyI18n(root = document) {
   for (const el of root.querySelectorAll('[data-t-title]')) el.title = t(el.dataset.tTitle);
   for (const el of root.querySelectorAll('[data-t-ph]')) el.placeholder = t(el.dataset.tPh);
   // Raccourci d'une commande, dans la notation du système.
-  for (const el of root.querySelectorAll('[data-key]')) if (O.keys && O.keys[el.dataset.key]) el.textContent = O.keys[el.dataset.key];
+  for (const el of root.querySelectorAll('[data-key]')) if (KEYS[el.dataset.key]) el.textContent = KEYS[el.dataset.key];
 }
 
 // Renvoie true si la langue a changé (la page doit alors se redessiner).
@@ -78,3 +87,4 @@ function faviconEl(url, fallbackText) {
 
 document.documentElement.lang = lang;
 document.addEventListener('DOMContentLoaded', () => applyI18n());
+O.on('keys', (k) => { KEYS = k || {}; applyI18n(); });

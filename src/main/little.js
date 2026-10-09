@@ -14,6 +14,22 @@ const hooks = { openInOrbe: () => {}, profileId: () => 'default', spaces: () => 
 
 class LittleWindow {
   static ownerOf(wc) { return littles.get(wc.id) || null; }
+  static get all() { return [...littles.values()]; }
+
+  // Réglage « Archiver les petites fenêtres après » : celles qui n'ont pas servi
+  // depuis ce délai sont fermées, leur page rangée dans l'archive.
+  static archiveStale(now = Date.now()) {
+    const hours = store.state.settings.littleArchiveHours;
+    if (!hours) return 0;
+    let n = 0;
+    for (const l of LittleWindow.all) {
+      if (l.win.isDestroyed() || l.win.isFocused() || now - l.usedAt < hours * 36e5) continue;
+      if (l.url) store.archive({ url: l.url, title: l.title || l.url });
+      l.win.close();
+      n += 1;
+    }
+    return n;
+  }
 
   constructor(input) {
     // Même profil (cookies, connexions) que l'Espace affiché à l'ouverture.
@@ -21,6 +37,7 @@ class LittleWindow {
     this.url = input ? suggest.resolve(input) : '';
     this.title = '';
     this.loading = false;
+    this.usedAt = Date.now();
     this.win = new BaseWindow({
       width: 860,
       height: 640,
@@ -38,6 +55,8 @@ class LittleWindow {
     this.ui.webContents.loadURL(INTERNAL + 'little.html');
     this.ui.webContents.once('did-finish-load', () => { this.send(); if (!this.url) this.ui.webContents.focus(); });
     this.win.on('resize', () => this.layout());
+    this.win.on('focus', () => { this.usedAt = Date.now(); });
+    this.win.on('blur', () => { this.usedAt = Date.now(); });
     this.win.on('closed', () => {
       littles.delete(this.uiId);
       for (const v of [this.ui, this.view]) if (v && !v.webContents.isDestroyed()) v.webContents.close();
