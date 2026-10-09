@@ -172,6 +172,10 @@ body.loading #glow i { animation-play-state: running; }
 /* Le rebond au bout de la liste est fait par shell.js (BOUNCE) : pas deux fois. */
 #scroll { overscroll-behavior: none; }
 .ghost { position: absolute; inset: 0; pointer-events: none; }
+/* Bout de la rangée des Espaces : le « + » qui sort du bord quand on tire au-delà du dernier. */
+.pager-plus { position: absolute; right: 10px; top: 50%; width: 36px; height: 36px; margin-top: -18px; border-radius: 50%; display: grid; place-items: center; background: var(--pill); color: var(--fg); opacity: 0; pointer-events: none; }
+.pager-plus svg.i { width: 16px; height: 16px; stroke-width: 2; }
+.pager-plus.go { background: var(--accent); color: #fff; transition: transform var(--spring-bouncy), background 120ms var(--ease-out); transform: scale(1.18) !important; }
 #pager.sliding > * { will-change: transform; pointer-events: none; }
 /* Teinte de l'autre Espace, fondue par-dessus celle de l'Espace courant au même pas que le glissement. */
 #tint {

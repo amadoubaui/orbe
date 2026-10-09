@@ -749,6 +749,7 @@ const PAGER = {
   idle: 90, // sans événement pendant ce temps (ms), les doigts sont considérés levés
   response: 0.2, // ressort du glissement : réponse (s), amortissement critique (≈ 240 ms)
   elastic: 0.55, // raideur de l'élastique au bout de la rangée
+  create: 260, // tiré d'autant (px, relâchement déduit) au-delà du dernier Espace : un nouvel Espace est créé
 };
 const pagerEl = $('pager');
 const scroller = $('scroll');
@@ -820,6 +821,23 @@ function slideSet(x) {
   tintEl.style.opacity = slide.ghost ? String(Math.min(1, Math.abs(x) / W)) : '0';
 }
 
+// Pastille « + » du bout de la rangée : `p` de 0 (absente) à 1 (nouvel Espace).
+// Opacité et transformation seulement.
+function slidePlus(p) {
+  if (!slide) return;
+  if (!p) { if (slide.plus) { slide.plus.remove(); slide.plus = null; } return; }
+  if (!slide.plus) {
+    const el = (slide.plus = document.createElement('div'));
+    el.className = 'pager-plus';
+    el.innerHTML = '<svg class="i"><use href="#i-plus"/></svg>'; // icône fixe, écrite ici
+    el.title = t('spaces.new');
+    pagerEl.appendChild(el);
+  }
+  slide.plus.dataset.p = p.toFixed(2);
+  slide.plus.style.opacity = String(Math.min(1, p * 1.6));
+  slide.plus.style.transform = `translateX(${Math.round((1 - p) * 26)}px) scale(${(0.6 + 0.4 * p).toFixed(3)})`;
+}
+
 // Prépare l'image fixe et la teinte de l'Espace `vm`, du côté `dir` (+1 : à droite).
 function slideGhost(vm, dir) {
   if (slide.ghost) slide.ghost.remove();
@@ -888,7 +906,8 @@ function slideFly(to, done) {
 // Fin du glissement : tout revient à sa place, puis l'état gardé de côté est rendu.
 function slideEnd() {
   if (!slide) return;
-  const { pending, other, after, ghost } = slide;
+  const { pending, other, after, ghost, plus } = slide;
+  if (plus) plus.remove();
   slideStop();
   clearTimeout(slide.swap);
   slide = null;
@@ -995,9 +1014,23 @@ sidebar.addEventListener('wheel', (e) => {
     // Bout de la rangée : la liste résiste, et ce qui a été tiré se relâche peu à peu.
     slide.raw = (slide.raw || 0) * 0.92 + e.deltaX;
     slideSet(elastic(slide.raw, W));
+    // Au-delà du dernier Espace : un « + » sort du bord et grandit avec le geste ;
+    // tiré franchement jusqu'au bout, il crée un nouvel Espace (comme dans Arc).
+    // Un balayage ordinaire n'y arrive pas : ce qui est tiré se relâche à mesure.
+    if (dir > 0 && slide.raw > 0 && !S.incognito) {
+      const p = Math.min(1, slide.raw / PAGER.create);
+      slidePlus(p);
+      if (p >= 1) {
+        wheelLocked = true;
+        slide.plus.classList.add('go');
+        send('command', 'newSpace');
+        slideFly(0, slideEnd);
+      }
+    } else slidePlus(0);
     return;
   }
   slide.raw = 0;
+  slidePlus(0);
   slideSet(Math.max(-W, Math.min(W, x)));
   const far = Math.abs(slide.x) >= Math.min(W * PAGER.commit, PAGER.commitMax);
   const brisk = Math.abs(slide.v) >= PAGER.flick && Math.abs(slide.x) >= PAGER.flickMin && Math.sign(slide.v) === dir;

@@ -556,6 +556,8 @@ module.exports = async function selftest(ctx) {
       check('doigts levés avant le seuil : la liste revient, l’Espace ne change pas', w.space === s2 && !back.ghost && back.live === 0 && back.tint === 0);
       await swipe(14, 5, 30); // vers la droite alors qu'il n'y a plus d'Espace : élastique
       const edge = await look();
+      const plus = await ui('(() => { const el = document.querySelector("#pager .pager-plus"); return el ? Number(el.dataset.p) : -1; })()');
+      check('au bout de la rangée, vers la droite : un « + » paraît et grandit avec le geste ; un balayage ordinaire ne crée pas d’Espace', plus > 0 && plus < 0.5 && w.data.spaces.length === 2, String(plus));
       check('au bout de la rangée : la liste résiste, sans autre liste à côté', !edge.ghost && edge.live < 0 && edge.live > -70 && edge.tint === 0, JSON.stringify(edge));
       await until(() => ui('!slide'), 'retour de l’élastique');
       check('au bout de la rangée : rien ne change', w.space === s2 && (await look()).live === 0);
