@@ -334,7 +334,53 @@ function openPopup(w, id, anchor, options = {}) {
   return pop;
 }
 
+// ⌘E : passe d'une extension à la suivante (EXT-4). Chaque appui ouvre l'extension
+// suivante parmi celles dont le bouton est actif pour l'onglet (sa fenêtre, ou son
+// action) ; après la dernière, la fenêtre ouverte se referme et le tour recommence.
+// Renvoie l'identifiant ouvert, '' en fin de tour, null s'il n'y a aucune extension.
+const CYCLE_HOLD = 4000; // une extension sans fenêtre : le tour continue pendant ce délai
+function cycle(w, open = openPopup, now = Date.now(), actions = actionsFor(w)) {
+  if (!w || w.win.isDestroyed()) return null;
+  const list = actions.filter((x) => x.enabled !== false);
+  if (!list.length) return null;
+  let current = '';
+  for (const p of popups.values()) if (p.owner === w && !p.win.isDestroyed()) current = p.id;
+  if (!current && w.extCycle && now - w.extCycle.at < CYCLE_HOLD) current = w.extCycle.id;
+  const at = list.findIndex((x) => x.id === current);
+  const next = list[at + 1];
+  if (!next) { closePopup(w); w.extCycle = null; return ''; }
+  w.extCycle = { id: next.id, at: now };
+  // Fenêtre de la même extension restée ouverte : `openPopup` la refermerait.
+  if (current !== next.id) open(w, next.id);
+  return next.id;
+}
+
+// Extension qui plante (EXT-6). La page d'arrière-plan d'une extension (manifeste 2)
+// dont le processus disparaît ne revient pas d'elle-même : l'extension est
+// désactivée, avec un message qui mène aux réglages (la réactiver la relance).
+// Un service worker (manifeste 3), lui, est relancé par Chromium au prochain
+// événement, et Electron ne dit pas s'il s'est arrêté ou s'il a planté : rien à faire.
+const CRASHED = new Set(['crashed', 'oom', 'abnormal-exit', 'launch-failed', 'integrity-failure']);
+function backgroundGone(wc, details, deps = {}) {
+  const ext = deps.extensions || require('./extensions');
+  let id = '';
+  try {
+    if (!wc || wc.getType() !== 'backgroundPage') return false;
+    const u = new URL(wc.getURL());
+    if (u.protocol === 'chrome-extension:') id = u.hostname;
+  } catch { return false; }
+  if (!id || !details || !CRASHED.has(details.reason) || !ext.isEnabled(id)) return false;
+  const rec = ext.list().find((x) => x.id === id);
+  if (!ext.setEnabled(id, false)) return false;
+  console.error(`[orbe] extension ${id} : page d'arrière-plan perdue (${details.reason}), extension désactivée`);
+  const w = lastWindow();
+  if (w && !w.win.isDestroyed()) w.toast(store.t('ext.crashed', null, { name: String((rec && rec.name) || id).slice(0, 60) }), null, () => require('./commands').hooks.openSettings('extensions'));
+  try { require('./menu').refresh(true); } catch {}
+  return true;
+}
+
 function setup() {
+  require('electron').app.on('render-process-gone', (e, wc, details) => { try { backgroundGone(wc, details); } catch (err) { console.error('[orbe] extension', err); } });
   Object.assign(api.host, {
     tabs, windows, currentWindowId, createTab, removeTab, activateTab, focusWindow, confirmPermissions,
     openPopup: (ses, id) => { const w = lastWindow(); return !!(w && openPopup(w, id)); },
@@ -348,4 +394,4 @@ function setup() {
   more.setup({ openAction: (w, id) => openPopup(w, id), ownerOf: (wc) => panel.ownerOf(wc) });
 }
 
-module.exports = { setup, sync, openPopup, closePopup, actionsFor, tabs, popups, panel, debug, more, access };
+module.exports = { setup, sync, openPopup, closePopup, cycle, backgroundGone, CYCLE_HOLD, actionsFor, tabs, popups, panel, debug, more, access };

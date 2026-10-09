@@ -253,6 +253,9 @@ async function globalAction(action, a, sender) {
     }
     case 'shortcuts:get':
       return shortcutGroups();
+    // Gestionnaire de tâches (src/main/tasks.js).
+    case 'tasks:list': case 'tasks:end':
+      return require('./tasks').handle(action, a);
     case 'settings:get':
       return { settings: s.settings, spaces: s.spaces.map((sp) => ({ id: sp.id, name: `${sp.icon} ${sp.name}` })), profiles: profileList(), engines: Object.entries(suggest.ENGINES).map(([id, e]) => ({ id, name: e.name })), version: app.getVersion(), chrome: process.versions.chrome, ...panes.info() };
     case 'settings:set':
@@ -380,7 +383,7 @@ function setupIpc() {
     if (action.startsWith('import:')) return imports.action(action, payload, e.sender);
     if (action.startsWith('welcome:')) return welcomeAction(action, e.sender);
     if (action.startsWith('lib:')) return library.action(action, payload, e.sender);
-    if (/^(settings|shortcuts|ext|notes):/.test(action)) return globalAction(action, payload, e.sender);
+    if (/^(settings|shortcuts|ext|notes|tasks):/.test(action)) return globalAction(action, payload, e.sender);
     const owner = OrbeWindow.ownerOf(e.sender) || little.LittleWindow.ownerOf(e.sender) || OrbeWindow.primary;
     return owner ? owner.handle(action, payload) : undefined;
   });
@@ -388,6 +391,21 @@ function setupIpc() {
 
 app.on('open-url', (e, url) => { e.preventDefault(); openUrl(url); });
 app.on('open-file', (e, file) => { e.preventDefault(); openUrl(pathToFileURL(file).href); });
+// Handoff (macOS) : une page ouverte dans le navigateur d'un autre appareil de l'utilisateur
+// (iPhone, iPad, autre Mac) et reprise ici. Seule une adresse web est acceptée ; Orbe
+// n'annonce lui-même aucune page aux autres appareils.
+function handoffUrl(type, details) {
+  if (type !== 'NSUserActivityTypeBrowsingWeb') return '';
+  const raw = details && typeof details.webpageURL === 'string' ? details.webpageURL : '';
+  if (!raw || raw.length > 4096) return '';
+  try { const u = new URL(raw); return /^https?:$/.test(u.protocol) && u.hostname ? u.href : ''; } catch { return ''; }
+}
+app.on('continue-activity', (e, type, userInfo, details) => {
+  const url = handoffUrl(type, details);
+  if (!url) return;
+  e.preventDefault();
+  openUrl(url);
+});
 app.on('second-instance', (e, argv) => {
   const url = argv.find((x) => /^https?:\/\//i.test(x));
   if (url) openUrl(url);
@@ -476,6 +494,9 @@ app.whenReady().then(async () => {
   // Import depuis un navigateur installé. En test, aucun vrai profil n'est lu :
   // les essais désignent eux-mêmes un dossier d'essai (import-browsers.configure).
   if (SELFTEST || process.env.ORBE_UI_TEST === '1') require('./import-browsers').configure({ home: '', local: '', roaming: '' });
+  // Les essais servent leurs pages depuis 127.0.0.1 : le mode développeur automatique des sites locaux
+  // y afficherait partout la barre d'outils. Coupé au départ ; les essais qui le vérifient l'activent.
+  if (SELFTEST || process.env.ORBE_UI_TEST === '1') store.state.settings.devLocalhost = false;
   imports.hooks.refreshMenu = () => menu.refresh(true);
   extUi.hooks.openSettings = openSettings;
   extUi.hooks.changed = () => { for (const wc of webContents.getAllWebContents()) if (trusted.has(wc) && !wc.isDestroyed()) wc.send('settings', store.state.settings); menu.refresh(true); };
@@ -493,7 +514,7 @@ app.whenReady().then(async () => {
   setInterval(win.archiveStale, 10 * 60e3);
   // Veille des onglets selon l'ancienneté et la mémoire, toutes les minutes.
   // (Pas pendant les tests : ils déclenchent ce passage eux-mêmes.)
-  if (!SELFTEST) setInterval(() => OrbeWindow.trimLive({ deep: true }), 60e3).unref();
+  if (!SELFTEST) setInterval(() => { OrbeWindow.sweep().catch((err) => console.error('[orbe] veille', err)); }, 60e3).unref();
   setInterval(() => little.LittleWindow.archiveStale(), 10 * 60e3).unref();
 
   if (SELFTEST) {

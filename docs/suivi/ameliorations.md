@@ -330,7 +330,7 @@ Résultat mesuré pour six vues (modale, toast, recherche, statut, dépôt, aper
   borner à 8 (la bascule n'en montre pas plus) évite tout de même de garder des chaînes pour
   30 onglets. *Effort* : S. *Gain* : faible.
 
-- ⬜ **MEM-6 — Processus par site : à mesurer avant d'y toucher.**
+- ➖ **MEM-6 — Processus par site : mesuré, écarté.** *(écarté le 9 oct. après mesure, écran déverrouillé : −211 Mo d'empreinte pour dix onglets d'un même site, mais l'onglet affiché se fige 143 ms chaque fois qu'un voisin calcule ; détail en section 8 bis)*
   *Constat* : dix onglets du même site occupent dix processus (10 × 32–34 Mo). Chrome fait de
   même sauf sous pression mémoire. `app.commandLine.appendSwitch('renderer-process-limit', N)`
   force le partage au-delà de N processus. *À mesurer* : mémoire et fluidité avec une limite de
@@ -341,6 +341,20 @@ Résultat mesuré pour six vues (modale, toast, recherche, statut, dépôt, aper
   3 processus et 383–464 Mo. Le gain ne vaut que pour des onglets d'un même site (deux sites
   différents ne partagent jamais un processus). La fluidité entre voisins n'a pas pu être
   mesurée (écran verrouillé pendant la séance) : **à refaire avant de livrer**.
+  *Mesuré de nouveau le 9 oct., écran déverrouillé* (`node scripts/mesures.js voisins --arbre .
+  --avec "--renderer-process-limit=4"`, 4 tours alternés, charge 5 à 14) : dix onglets d'un même
+  site dont trois calculent 150 ms par seconde en arrière-plan. Sans limite : 10 processus,
+  853 Mo résidents, **522 Mo d'empreinte**, aucun trou de plus de 50 ms dans l'onglet affiché
+  (pire : 10 ms), message aller-retour au 95e centile en 1,1 ms. Avec la limite : 3 processus,
+  439 Mo résidents, **311 Mo d'empreinte**, mais l'onglet affiché partage son processus avec
+  quatre voisins : **dix trous de plus de 50 ms en dix secondes, le pire de 143 ms**, message
+  au 95e centile en 85 ms (pire : 151 à 291 ms). *Décision* : non livré. Le gain (211 Mo pour
+  dix onglets lourds d'un même site) est déjà obtenu sans rien coûter par la veille (MEM-3,
+  MEM-9), alors que la limite rend l'onglet qu'on regarde tributaire de ceux qu'on ne regarde
+  pas. *Sécurité* : la limite ne fait partager un processus qu'entre pages d'un **même site**
+  (vérifié dans la même mesure : deux onglets d'un autre site, aucun processus commun) ;
+  l'isolation entre sites, qui protège des attaques de type Spectre, n'aurait pas été entamée.
+  Un partage entre sites différents, lui, ne serait pas acceptable et n'a pas été essayé.
 
 - ➖ **MEM-7 — `backgroundThrottling: false`.** Écarté : le réglage par défaut (ralentissement
   des vues cachées) est le bon pour un navigateur ; le couper augmenterait la consommation des
@@ -717,6 +731,45 @@ DEM-5 : `extensions.loadInto` sans extension coûte **0,15 ms** (dossier 0,10, l
 70–140 ms de la section 3 étaient le délai avant que la promesse soit servie, c'est-à-dire la
 création de la fenêtre.
 
+### Démarrage de l'application fabriquée, écran déverrouillé (refait le 9 oct., 12 h 40)
+
+Ce que la séance précédente n'avait pas pu mesurer (écran verrouillé : aucune image présentée).
+Deux applications fabriquées par `scripts/build-mac.js` dans des dossiers à part
+(`ORBE_RUNTIME`), l'une depuis l'étiquette `v0.11.1`, l'autre depuis cette branche ; même
+moteur (Electron 44.7.0), profil d'un onglet, 14 lancements alternés, charge 5,6 à 12,2 ;
+médiane (min–max), en ms depuis la création du processus :
+
+| | 0.11.1 | 0.13.0 | Cette branche |
+| --- | --- | --- | --- |
+| Fenêtre créée | 267 (244–478) | 291 (255–519) | 279 (256–664) |
+| Coque chargée (`did-finish-load`) | 373 (341–632) | 389 (345–673) | 379 (348–836) |
+| Coque peinte (première image) | 386 (356–641) | 395 (351–663) | **384** (350–838) |
+| Barre latérale rendue (utilisable) | 412 (375–667) | **457** (408–734) | **418** (375–924) |
+| Première page peinte | 376 (331–616) | 382 (338–653) | 370 (338–813) |
+| Vue modale prête (barre de commande) | 413 (375–668) | 457 (409–749) | 447 (416–940) |
+| Barre de commande, une fois la vue prête | 28 (21–56) | 17 (10–30) | 19 (11–23) |
+| Processus | 6 | 5 | 5 |
+| Mémoire résidente | 617 Mo | 550 Mo | 549 Mo |
+
+- **Régression trouvée et corrigée.** La barre latérale était rendue 45 ms plus tard en 0.13
+  qu'en 0.11.1 (457 contre 412 ; au mieux 408 contre 375). Cause : à la fin du chargement de
+  la coque, le processus principal lui faisait ouvrir trois vues de réserve (`window.open`,
+  MEM-1) au moment même où elle recevait son premier état ; les deux se disputaient son seul
+  fil. La réserve n'est plus demandée qu'une fois l'état reçu et deux images présentées
+  (`afterFirstRender` dans `window.js`), au plus tard après 400 ms si aucune image n'est
+  présentée (fenêtre masquée). Résultat : 418 ms (au mieux 375, comme la 0.11.1), et la vue
+  modale n'en est pas retardée (447 contre 457). Vérifié par « réserve de vues : demandée après
+  le premier rendu… » (`tests/performances.js`).
+- Première image de la coque et première page : pas d'écart mesurable entre les trois (bruit
+  de ±15 ms à cette charge).
+- « Fenêtre créée » : une douzaine de millisecondes de plus qu'en 0.11.1 (279 contre 267, au
+  mieux 256 contre 244) : davantage de modules chargés avant la fenêtre. Non traité : l'écart
+  ne se retrouve pas sur la première image.
+- Barre de commande demandée dans la demi-seconde qui suit le lancement, avant que la vue
+  modale soit prête : elle naît à part, dans son propre processus (une centaine de
+  millisecondes, et un sixième processus pour la séance). Le relevé « commande » de la
+  mesure attend désormais la vue modale, ce qui est le cas d'une personne.
+
 ### Coût par navigation (PERF-10, PERF-11, PERF-12)
 
 Variantes dans un même processus, 40 tours alternés, deux séries, charge 4,5–6,6 ; page à
@@ -818,13 +871,28 @@ par site toutes les dix secondes, jamais en navigation privée, en https seuleme
   **1 (117 Mo) à +33 s, 0 à +73 s**. Ce sont les service workers de Reddit, YouTube, Amazon et
   Spotify ; Chromium les arrête de lui-même.
 
-- ⬜ **MEM-8 — Budget mémoire : relever l'empreinte réelle plutôt que la mémoire résidente.**
+- ✅ **MEM-8 — Budget mémoire : relever l'empreinte réelle plutôt que la mémoire résidente.** *(fait le 9 oct. : empreinte lue dans la colonne MEM de `top`, hors du fil principal — `src/main/empreinte.js` ; dix onglets lourds : 853 Mo résidents pour 522 Mo d'empreinte ; self « empreinte : … » (6 vérifications))*
   *Constat* : `app.getAppMetrics()` ne donne sur macOS que la mémoire résidente (un onglet
   léger : 80 Mo résidents pour 20 Mo d'empreinte ; Wikipédia : 105 pour 168). *Piste* : `footprint`
   ou `top -stats mem` une fois par minute, hors du fil principal. *Effort* : S.
+  *Ce qu'Electron 44 expose* (relevé dans `electron.d.ts`) : `app.getAppMetrics()[].memory` ne
+  porte que `workingSetSize` sur macOS (`privateBytes` est réservé à Windows, où il était déjà
+  utilisé) ; `process.getProcessMemoryInfo()` donne la mémoire propre, mais du seul processus
+  qui l'appelle ; rien par `webContents`. *Fait* : `top -l 1 -stats pid,mem -pid …` (un `-pid` par
+  processus d'onglet), lancé par `execFile`. Coût mesuré : **1,1 s de processeur par appel**,
+  quel que soit le nombre de processus (`footprint` : 6,5 s pour quarante). Il n'est donc
+  appelé qu'au plus toutes les cinq minutes, toutes les minutes seulement quand le dernier
+  relevé dépasse 60 % du budget, jamais si le budget est coupé ou s'il reste quatre onglets
+  vivants ou moins. Relevé absent, trop ancien (6 min) ou processus né depuis : la mémoire
+  résidente sert, comme avant. Le gestionnaire de tâches (EXT-22) affiche la même valeur.
 
-- ⬜ **MEM-9 — Veille automatique : réglages dans la fenêtre des réglages.** `sleepAfterHours` et
-  `memoryBudget` existent et sont validés, mais n'ont pas d'interface. *Effort* : S.
+- ✅ **MEM-9 — Veille automatique : réglages dans la fenêtre des réglages.** *(fait le 9 oct. : volet « Onglets » — délai de veille, part de mémoire donnée en Go, onglets gardés en mémoire, liste « Sites qui restent éveillés » ; self « sites gardés éveillés… », « veille automatique : le site de la liste… », ui « volet Onglets… », « sites qui restent éveillés… »)*
+  Le volet Avancé était à la hauteur de l'écran (932 px pour 975) : un dixième volet « Onglets »
+  reçoit ces réglages et « Onglets gardés en mémoire », qui quitte Avancé (841 px). La liste
+  s'écrit et se lit comme les règles d'aiguillage (site, sous-domaines, port, début de chemin) ;
+  ses sites sont épargnés par l'ancienneté et par la mémoire, et pris en dernier par la limite
+  en nombre. Dans la barre latérale, un onglet en veille se reconnaît à son titre plus pâle
+  (déjà le cas ; Arc ne le signale pas autrement), désormais vérifié.
 
 ### Essais : fenêtre recouverte ou écran verrouillé
 

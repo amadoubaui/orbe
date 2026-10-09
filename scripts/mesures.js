@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Mesures de vitesse et de mémoire d'Orbe (voir docs/suivi/ameliorations.md).
-//   node scripts/mesures.js <mesure> [--tours 8] [--arbre <dossier>]… [--app <Orbe.app>] [--historique 8500] [--onglets 300] [--pause 0]
-// Mesures : demarrage, memoire, navigation, commande, etat (tests/mesures.js).
+//   node scripts/mesures.js <mesure> [--tours 8] [--arbre <dossier>]… [--app <Orbe.app>] [--avec "--drapeau=…"] [--historique 8500] [--onglets 300] [--pause 0]
+// Mesures : demarrage, memoire, navigation, commande, etat, voisins (tests/mesures.js).
 // Plusieurs --arbre (ou --app) : les lancements alternent (A, B, A, B…) pour annuler
 // la dérive d'une machine chargée ; la médiane de chaque valeur est affichée avec
 // la charge moyenne relevée. Les profils sont temporaires, jamais le vrai.
@@ -24,6 +24,10 @@ const targets = [
   ...opt('app', []).map((p) => ({ name: path.basename(p), app: path.resolve(p) })),
 ];
 if (!targets.length) targets.push({ name: 'sources', dir: root });
+// --avec "<drapeaux de Chromium>" : chaque cible est doublée d'une jumelle lancée avec ces drapeaux.
+for (const flags of opt('avec', [])) {
+  for (const t of targets.filter((x) => !x.extra)) targets.push({ ...t, name: t.name + ' ' + flags.replace(/^--/, ''), extra: flags.split(/\s+/).filter(Boolean) });
+}
 
 function serve() {
   const page = (title, body) => `<!doctype html><meta charset="utf-8"><title>${title}</title><body style="font:16px sans-serif">${body}</body>`;
@@ -36,6 +40,18 @@ function serve() {
     if (url.pathname === '/cadre') return res.end(page('Cadre', form));
     if (url.pathname === '/cadres') return res.end(page('Cadres', Array.from({ length: 12 }, (_, i) => `<iframe src="/cadre?i=${i}" width="200" height="90"></iframe>`).join('')));
     if (url.pathname === '/ressources') return res.end(page('Ressources', Array.from({ length: 150 }, (_, i) => `<img src="/px?i=${i}&n=${url.searchParams.get('n')}" width="4" height="4">`).join('')));
+    // Onglet lourd : 800 cartes et 200 000 objets ; « travail=N » : N ms de calcul toutes les secondes
+    // (une application qui traite ce qui lui arrive du réseau). Témoin : page légère, même site.
+    if (url.pathname === '/lourd') {
+      const work = Number(url.searchParams.get('travail')) || 0;
+      return res.end(page('Lourd ' + url.searchParams.get('i'), `<div id="c"></div><script>
+        const c = document.getElementById('c');
+        for (let i = 0; i < 800; i++) { const d = document.createElement('div'); d.style.cssText = 'display:inline-block;width:120px;height:60px;margin:4px;border:1px solid #ccc'; d.textContent = 'Carte ' + i; c.append(d); }
+        window.objets = Array.from({ length: 200000 }, (_, i) => ({ i, nom: 'objet ' + i, t: [i, i + 1] }));
+        if (${work}) setInterval(() => { const fin = performance.now() + ${work}; let x = 0; while (performance.now() < fin) x += Math.sqrt(x + 1); window.x = x; }, 1000);
+      </script>`));
+    }
+    if (url.pathname === '/temoin') return res.end(page('Témoin', '<h1>Témoin</h1><p id="p">0</p><script>let n = 0; const p = document.getElementById("p"); const f = () => { p.textContent = String(n += 1); requestAnimationFrame(f); }; requestAnimationFrame(f);</script>'));
     if (url.pathname === '/px') { res.setHeader('content-type', 'image/gif'); return res.end(px); }
     res.statusCode = 404;
     return res.end(page('404', ''));
@@ -50,8 +66,8 @@ function launch(target, env) {
   const scenario = path.join(root, 'tests', 'mesures.js');
   const base = { ...process.env, ORBE_SCENARIO: scenario, ...env };
   const child = target.app
-    ? spawn(path.join(target.app, 'Contents', 'MacOS', 'Orbe'), ['--selftest', '--orbe-test', ...SWITCHES], { env: base })
-    : spawn(process.execPath, [ensure(), target.dir, '--selftest', ...SWITCHES], { env: base });
+    ? spawn(path.join(target.app, 'Contents', 'MacOS', 'Orbe'), ['--selftest', '--orbe-test', ...SWITCHES, ...(target.extra || [])], { env: base })
+    : spawn(process.execPath, [ensure(), target.dir, '--selftest', ...SWITCHES, ...(target.extra || [])], { env: base });
   let text = '';
   child.stdout.on('data', (d) => { text += d; });
   child.stderr.on('data', (d) => { text += d; });

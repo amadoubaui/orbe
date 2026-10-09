@@ -51,6 +51,116 @@ function siteInfo(w) {
   });
 }
 
+// --- Centre de contrôle du site -------------------------------------------------
+// Le panneau qu'ouvre le bouclier : bloqueur, autorisations, cookies et données,
+// Boost, mode développeur, extensions, lien. C'est une feuille d'onglet (sheets.js) :
+// une vue d'Orbe que la page ne peut ni lire, ni recouvrir, ni actionner.
+//
+// Ce qu'il affiche vient du processus principal (origine de l'adresse engagée par
+// l'onglet, compteurs, réglages) ; les textes choisis par d'autres (nom du site, nom
+// d'une extension) partent comme du texte. Chaque action est revérifiée ICI, au
+// moment où elle arrive (`fresh`) : l'onglet est toujours celui du panneau, toujours
+// affiché et actif, et son origine est toujours celle pour laquelle le panneau a été
+// dressé — pas celle du moment où il s'est ouvert. Sinon rien n'est fait et le
+// panneau se ferme. Les actions qui changent quelque chose attendent en plus la
+// demi-seconde de garde des feuilles (clic préparé par la page).
+const CONTROL_MUTATING = new Set(['shield', 'shieldAll', 'reset', 'cookies', 'cache', 'boost', 'dev']);
+function siteControl(w, deps = {}) {
+  const { adblock, boosts, prefs, extActions, openExtPopup, live } = { ...controlDeps, ...deps };
+  const rt = w.activeRt;
+  const tab = w.activeId && w.data.tabs[w.activeId];
+  if (!rt || !tab || rt.internal || rt.wc.isDestroyed()) return null;
+  const wc = rt.wc;
+  const ses = wc.session;
+  // Adresse engagée par l'onglet (rapportée par le moteur) ; page d'erreur : celle qu'il a tenté de charger.
+  const urlNow = () => (rt.failed ? tab.url : (wc.getURL() || tab.url));
+  const url = urlNow();
+  if (!/^https?:/i.test(url)) return null;
+  const origin = permissions.originOf(url);
+  if (!origin || origin === 'null') return null;
+  let cookies = null;
+  const payload = () => {
+    const u = urlNow();
+    const perms = permissions.list(ses, origin);
+    if (certs.hasException(ses, u)) perms.unshift({ key: 'cert-exception', label: t('site.certException'), value: true });
+    const host = boosts.hostOf(u);
+    const has = !w.incognito && boosts.has(host);
+    return {
+      site: permissions.siteName(origin),
+      security: certs.state(wc, u) || 'other',
+      blocked: adblock.stats().blockedByTab.get(wc.id) || 0,
+      adblock: { on: !!store.state.settings.adblock, site: !adblock.isSiteAllowed(u) },
+      perms,
+      capture: capture.of(wc).map((k) => t('capture.' + k)),
+      cookies,
+      boost: { can: !w.incognito, has, enabled: has && !!boosts.get(host).enabled, all: store.state.settings.boostsEnabled !== false },
+      dev: { can: !w.incognito && !!prefs.hostOf(u), on: prefs.devMode(u), auto: prefs.devAuto(u), keys: require('./shortcuts').keysOf('toggleDevMode') || '' },
+      extensions: (extActions(w) || []).slice(0, 40).map((x) => ({ id: String(x.id), title: String(x.title || '').slice(0, 80), badge: String(x.badgeText || '').slice(0, 8), enabled: x.enabled !== false })),
+      share: process.platform === 'darwin',
+    };
+  };
+  const count = () => ses.cookies.get({ url: urlNow() }).then((list) => { cookies = list.length; }, () => { cookies = null; });
+  // L'onglet du panneau est-il toujours le même site, affiché et actif ?
+  const fresh = () => !wc.isDestroyed() && live.get(rt.id) === rt && w.activeRt === rt && !w.win.isDestroyed() && permissions.originOf(urlNow()) === origin;
+  const sheet = sheets.open(wc, 'control', payload(), {
+    onAction: async (name, arg, self) => {
+      if (!fresh()) { self.close(null); return null; }
+      if (CONTROL_MUTATING.has(name) && !(self.armedAt && Date.now() - self.armedAt >= sheets.GUARD)) return null;
+      const again = () => ({ kind: 'control', cover: false, ...payload() });
+      switch (name) {
+        // Bloqueur pour ce site : la page est rechargée (le panneau se ferme avec elle).
+        case 'shield': if (store.state.settings.adblock) w.toggleSiteBlocking(); return null;
+        case 'shieldAll': require('./commands').setSetting('adblock', !store.state.settings.adblock); return again();
+        case 'reset': {
+          let reload = false;
+          if (arg === 'cert-exception' || arg === '*') reload = certs.revoke(ses, urlNow());
+          if (arg !== 'cert-exception') permissions.reset(ses, origin, String(arg));
+          w.changed();
+          if (reload) { ses.closeAllConnections().catch(() => {}).then(() => { if (!wc.isDestroyed()) wc.reload(); }); return null; }
+          return again();
+        }
+        // Cookies et données enregistrées par CE site (son origine), puis rechargement.
+        case 'cookies':
+          await ses.clearStorageData({ origin, storages: ['cookies', 'localstorage', 'indexdb', 'serviceworkers', 'cachestorage'] }).catch(() => {});
+          if (fresh()) wc.reloadIgnoringCache();
+          return null;
+        // Le cache HTTP n'est pas rangé par site : c'est celui du profil entier qui est vidé.
+        case 'cache':
+          await ses.clearCache().catch(() => {});
+          if (fresh()) wc.reloadIgnoringCache();
+          return null;
+        case 'boost': w.toggleBoost(); return again();
+        case 'dev': w.toggleDevMode(); return again();
+        case 'copy': w.copyUrl(false); return null;
+        case 'refresh': await count(); return fresh() ? again() : null;
+        // Les suivantes ferment le panneau puis passent la main.
+        case 'boostEdit': self.close(null); w.run('boost'); return null;
+        case 'zap': self.close(null); w.run('zap'); return null;
+        case 'share': self.close(null); w.share(); return null;
+        case 'capture': self.close(null); w.capture(); return null;
+        case 'details': self.close(null); siteInfo(w); return null;
+        case 'ext': {
+          const x = (extActions(w) || []).find((e) => String(e.id) === String(arg) && e.enabled !== false);
+          self.close(null);
+          if (x) openExtPopup(w, x.id);
+          return null;
+        }
+        default: return null;
+      }
+    },
+  });
+  if (sheet) { sheet.origin = origin; count().then(() => { if (!sheet.closed && fresh()) sheet.update(payload()); }); }
+  return sheet;
+}
+const controlDeps = {
+  get adblock() { return require('./adblock'); },
+  get boosts() { return require('./boosts'); },
+  get prefs() { return require('./prefs'); },
+  extActions: (w) => { try { return require('./ext-host').actionsFor(w) || []; } catch { return []; } },
+  openExtPopup: (w, id) => require('./ext-host').openPopup(w, id, { x: 12, y: 86 }),
+  live: new Map(),
+};
+
 // Menu du témoin de capture (caméra, micro, écran) d'un onglet.
 function captureMenu(w, rt) {
   if (!rt || rt.wc.isDestroyed()) return;
@@ -71,6 +181,7 @@ function setup({ win, sessions, test = false }) {
   const toast = (wc, text) => { const o = ownerOf(wc); if (o) o.toast(text); };
 
   sheets.configure({ trusted, uiPreload: UI_PRELOAD, internal: INTERNAL, locate });
+  controlDeps.live = live;
   // Geste récent de l'utilisateur dans un onglet (relevé par popups.gesture) : sert au partage d'écran et aux liens externes.
   const gesture = (wc) => { const where = locate(wc); if (!where) return null; return where.rt.gesture ? Date.now() - where.rt.gesture : Infinity; };
   permissions.setup({ test, toast, ownerWindow, gesture });
@@ -82,6 +193,7 @@ function setup({ win, sessions, test = false }) {
   Object.assign(downloads.env, {
     ownerWindow,
     profileSession: (id) => sessions.profileSession(id),
+    gate: (ses, wc, item) => permissions.downloadGate(ses, wc, { gesture: item.hasUserGesture(), url: item.getURL() }),
     openInTab: (url, wc) => { const o = ownerOf(wc) || OrbeWindow.primary; if (!o) return false; o.newTab(url); return true; },
   });
 
@@ -139,6 +251,7 @@ function setup({ win, sessions, test = false }) {
   };
   hooks.action = (w, action, a) => {
     if (action === 'siteInfo') { siteInfo(w); return true; }
+    if (action === 'siteControl') return !!siteControl(w);
     // Autorisations du site affiché, dans la mémoire de SA session (profil, navigation privée).
     if (action === 'resetSitePerms') {
       const rt = w.activeRt;
@@ -152,4 +265,4 @@ function setup({ win, sessions, test = false }) {
   hooks.siteMenu = (w) => [{ label: t('site.info'), enabled: !!(w.activeRt && !w.activeRt.internal), click: () => siteInfo(w) }];
 }
 
-module.exports = { setup, siteInfo, sheets, permissions, displayMedia, capture, certs, auth, unload, popups, downloads };
+module.exports = { setup, siteInfo, siteControl, sheets, permissions, displayMedia, capture, certs, auth, unload, popups, downloads };

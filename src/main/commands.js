@@ -160,6 +160,8 @@ const COMMANDS = [
   { name: 'linkSettings', label: 'app.linkSettings', global: true, run: () => hooks.openSettings('links') },
   { name: 'editShortcuts', label: 'app.editShortcuts', global: true, run: () => hooks.openSettings('shortcuts') },
   { name: 'manageExtensions', label: 'ext.manage', global: true, run: () => hooks.openSettings('extensions') },
+  // ⌘E : ouvre l'extension suivante (sa fenêtre, ou son action) ; après la dernière, referme.
+  { name: 'cycleExtensions', label: 'ext.cycle', accel: 'Cmd+E', keys: '⌘E', run: (w) => { if (require('./ext-host').cycle(w) === null) w.toast(store.t('ext.none')); } },
   { name: 'defaultBrowser', label: 'app.defaultBrowser', global: true, run: (w) => { makeDefault(); if (w) w.toast(store.t(platform.isWin ? 'toast.defaultBrowserWin' : 'toast.defaultBrowser')); } },
   // Windows : retire l'inscription d'Orbe comme navigateur (registre de l'utilisateur).
   ...(platform.isWin ? [{ name: 'undoDefaultBrowser', label: 'app.undoDefaultBrowser', global: true, run: async (w) => { const ok = await platform.undoDefault(); if (w && ok) w.toast(store.t('toast.undoDefaultBrowser')); } }] : []),
@@ -175,6 +177,8 @@ const COMMANDS = [
   { name: 'support', label: 'support.menu', run: (w) => w.newTab(SUPPORT_URL) },
   { name: 'welcome', label: 'help.welcome', run: (w) => w.openInternal('welcome.html') },
   { name: 'shortcuts', label: 'help.shortcuts', run: (w) => w.openInternal('shortcuts.html') },
+  // Comme Help → Troubleshooting → Task Manager d'Arc.
+  { name: 'taskManager', label: 'help.taskManager', run: (w) => w.openInternal('tasks.html') },
   // Menu de l'application, ouvert depuis la barre latérale (Windows : pas de barre de menus).
   { name: 'appMenu', label: 'side.menu', palette: false, run: (w) => platform.popupAppMenu(w.win) },
   { name: 'github', label: 'help.github', run: (w) => w.newTab(REPO_URL) },

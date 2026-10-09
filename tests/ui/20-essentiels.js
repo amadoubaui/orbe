@@ -242,8 +242,11 @@ module.exports = {
     });
 
     await t.verifier('menu du site → « Connexion et autorisations » : l’autorisation y figure et se réinitialise', async () => {
-      await menuDe('#shield');
-      await choisir(await ctx.texte('site.info'));
+      // Le bouclier ouvre le centre de contrôle du site ; « Connexion et certificat… » mène aux informations du site.
+      await ctx.clic(shell, '#shield');
+      const c = await feuille('control');
+      assert.ok((await c.locator('#perms .item').evaluateAll((rows) => rows.map((r) => r.dataset.key))).includes('notifications'));
+      await c.click('#c-details');
       const f = await feuille('site');
       assert.equal(await f.textContent('#title'), await ctx.texte('site.sec.local'));
       const cles = await f.locator('#perms .item').evaluateAll((rows) => rows.map((r) => r.dataset.key + ':' + r.querySelector('.state').textContent));
@@ -254,6 +257,47 @@ module.exports = {
       await ctx.capture('19-site', f);
       await touche(f, 'Escape');
       await plusDeFeuille();
+    });
+
+    await t.verifier('bouclier → centre de contrôle : bulle ancrée du côté de l’adresse, nom du site, bloqueur, données, outils ; un clic trop rapide est ignoré', async () => {
+      await ctx.clic(shell, '#shield');
+      const c = await feuille('control');
+      const vu = await c.evaluate(() => { const r = document.getElementById('card').getBoundingClientRect(); return { haut: r.top, gauche: r.left, titre: document.getElementById('title').textContent, sections: [...document.querySelectorAll('#body h2')].map((h) => h.textContent), dev: document.getElementById('c-dev').checked }; });
+      assert.ok(vu.haut < 40 && vu.gauche < 40, JSON.stringify(vu));
+      assert.equal(vu.titre, new URL(A).host === vu.titre ? vu.titre : A);
+      assert.deepEqual(vu.sections, [await ctx.texte('ctl.blocking'), await ctx.texte('site.perms'), await ctx.texte('ctl.data'), await ctx.texte('ctl.tools')]);
+      assert.equal(vu.dev, false);
+      // Clic tombé dans la demi-seconde qui suit l'apparition : rien ne change.
+      await c.click('#c-dev');
+      await sleep(150);
+      assert.equal((await ctx.principal(({ store }) => store.state.settings.devSites.length)), 0);
+      await sleep(GARDE);
+      await c.click('#c-dev');
+      await jusqua(() => ctx.principal(({ store }, h) => store.state.settings.devSites.includes(h), new URL(A).host), 'mode développeur activé pour le site');
+      await jusqua(() => c.evaluate(() => document.getElementById('c-dev').checked), 'case cochée par l’état rendu');
+      await jusqua(() => shell.evaluate(() => document.body.classList.contains('toolbar') && document.body.classList.contains('dev-site') && getComputedStyle(document.getElementById('tb-url'), '::after').backgroundImage.includes('repeating-linear-gradient')), 'barre d’outils et liseré jaune et noir');
+      await ctx.capture('19-centre-de-controle', c);
+      await c.click('#c-dev');
+      await jusqua(() => ctx.principal(({ store }) => store.state.settings.devSites.length === 0), 'mode développeur coupé');
+      await jusqua(() => shell.evaluate(() => !document.body.classList.contains('dev-site')), 'liseré retiré');
+      // Un clic à côté de la carte ferme le panneau.
+      const taille = await c.evaluate(() => ({ w: innerWidth, h: innerHeight }));
+      await c.mouse.click(taille.w - 20, taille.h - 20).catch(() => {});
+      await plusDeFeuille();
+    });
+
+    await t.verifier('centre de contrôle : Échap le ferme ; « Copier l’URL » copie l’adresse ; le clic droit sur le bouclier garde le menu', async () => {
+      await ctx.clic(shell, '#shield');
+      const c = await feuille('control');
+      await ctx.principal(({ electron }) => electron.clipboard.writeText(''));
+      await c.click('#c-copy');
+      await jusqua(async () => (await ctx.principal(({ electron }) => electron.clipboard.readText())).startsWith(A), 'adresse copiée');
+      await touche(c, 'Escape');
+      await plusDeFeuille();
+      await ctx.principal(({ w }) => { w.menuVu = null; });
+      await shell.click('#shield', { button: 'right' });
+      const menu = await jusqua(() => ctx.principal(({ w }) => w.menuVu && w.menuVu.filter((x) => x.label).map((x) => x.label)), 'menu du bouclier');
+      assert.ok(menu.includes(await ctx.texte('site.info')), menu.join(' | '));
     });
 
     // ------------------------------------------------------------- Partage d'écran

@@ -154,7 +154,7 @@ function build() {
         sep,
         item('actualSize'), item('zoomIn'), item('zoomOut'),
         sep,
-        { label: t('view.developer'), submenu: [item('source'), item('devtools'), item('inspect'), item('console'), item('network'), sep, item('toggleDevMode', { type: 'checkbox', checked: !!tab && require('./prefs').devMode(tab.url), enabled: !!tab && !!require('./prefs').hostOf(tab.url) && !w.incognito })] },
+        { label: t('view.developer'), submenu: [item('source'), item('devtools'), item('inspect'), item('console'), item('network'), sep, item('toggleDevMode', { type: 'checkbox', checked: !!tab && require('./prefs').devMode(tab.url), enabled: !!tab && !!require('./prefs').hostOf(tab.url) && !w.incognito }), sep, item('taskManager')] },
         sep,
         item('fullscreen'),
       ],
@@ -226,7 +226,8 @@ function build() {
           enabled: x.enabled !== false,
           click: () => { const win = OrbeWindow.focused || OrbeWindow.primary; if (win) require('./ext-host').openPopup(win, x.id); },
         })),
-        ...(exts.length ? [sep] : []),
+        // ⌘E : d'une extension à la suivante, comme dans Arc.
+        ...(exts.length ? [sep, item('cycleExtensions'), sep] : []),
         { label: t('ext.add'), click: () => commands.hooks.openSettings('extensions') },
         { label: t('ext.manage'), click: () => commands.hooks.openSettings('extensions') },
       ],
@@ -286,7 +287,7 @@ function refresh(force) {
       loc && loc.list, tab && tab.muted, w ? w.data.spaces.map((x) => x.icon + x.name) : 0,
       w && w.space.profileId, w ? w.data.profiles.length : 0, !!(w && w.peekState),
       w && w.pendingLabel('undo'), w && w.pendingLabel('redo'),
-      s.shortcuts, s.devSites, tab && tab.url && require('./prefs').hostOf(tab.url),
+      s.shortcuts, s.devSites, s.devOff, s.devLocalhost, tab && tab.url && require('./prefs').hostOf(tab.url),
       w && w.space.pinnedCollapsed, !!(w && w.activeId && w.groupOf(w.activeId)), !!(w && w.win.isAlwaysOnTop()),
       commands.tracing(), !!(w && w.shared), isDefaultBrowser(), extensionActions(w).map((x) => [x.id, x.title, x.enabled]),
     ]);

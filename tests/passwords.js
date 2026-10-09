@@ -54,7 +54,7 @@ function serve() {
     return res.end(page('404', 'introuvable'));
   });
   server.pages = {}; // pages hostiles, ajoutées par les tests
-  return new Promise((resolve) => server.listen(0, () => resolve(server)));
+  return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server)));
 }
 
 module.exports = async function passwordTests(ctx) {

@@ -17,6 +17,8 @@ function isDir(p) {
 const downloadDir = (v) => typeof v === 'string' && (v === '' || (v.length < 1024 && path.isAbsolute(v) && isDir(v)));
 const searchEngine = (v) => typeof v === 'string' && Object.hasOwn(require('./suggest').ENGINES, v);
 
+const hostList = (v) => Array.isArray(v) && v.length <= 200 && v.every((h) => typeof h === 'string' && HOST.test(h)) && new Set(v).size === v.length;
+
 // Réglages qu'un profil peut redéfinir.
 const PROFILE_KEYS = {
   searchEngine,
@@ -113,6 +115,7 @@ const SETTABLE = {
   showFullUrl: bool,
   warnOnQuit: bool,
   restoreSession: bool,
+  // « haptics » : enregistré, sans effet ni case dans les réglages — Electron n'expose pas le retour haptique du pavé tactile (REG-40).
   haptics: bool,
   peekShift: bool,
   littleAltClick: bool,
@@ -126,7 +129,12 @@ const SETTABLE = {
   pipOffSites: (v) => Array.isArray(v) && v.length <= 200 && v.every((h) => typeof h === 'string' && HOST.test(h)) && new Set(v).size === v.length,
   tabKeysFavorites: bool,
   tabKeysNinthLast: bool,
-  devSites: (v) => Array.isArray(v) && v.length <= 200 && v.every((h) => typeof h === 'string' && HOST.test(h)) && new Set(v).size === v.length,
+  // Veille automatique : sites que l'utilisateur garde éveillés, écrits comme une règle d'aiguillage.
+  neverSleep: (v) => Array.isArray(v) && v.length <= 100 && v.every((r) => typeof r === 'string' && r.length <= 200 && routeText(r) === r) && new Set(v).size === v.length,
+  devSites: hostList,
+  // Mode développeur automatique sur les sites locaux, et sites locaux où il a été coupé (⌃D).
+  devLocalhost: bool,
+  devOff: hostList,
   downloadDir,
   // Téléchargements (downloads.js) : demander où enregistrer, PDF ouverts dans un onglet.
   downloadAsk: bool,
@@ -173,6 +181,17 @@ function downloadDirFor(profileId) {
 function hostOf(url) {
   try { const u = new URL(url); return /^https?:$/.test(u.protocol) ? u.host.toLowerCase() : ''; } catch { return ''; }
 }
-const devMode = (url) => { const h = hostOf(url); return !!h && (store.state.settings.devSites || []).includes(h); };
+// Site servi par cette machine (localhost, *.localhost, 127.0.0.1, ::1) : c'est là qu'on développe.
+function isLocal(url) {
+  try {
+    const u = new URL(url);
+    if (!/^https?:$/.test(u.protocol)) return false;
+    const h = u.hostname.toLowerCase();
+    return h === 'localhost' || h.endsWith('.localhost') || h === '127.0.0.1' || h === '[::1]';
+  } catch { return false; }
+}
+// Mode développeur automatique : un site local (réglage « devLocalhost »), sauf ceux où l'utilisateur l'a coupé (« devOff »).
+const devAuto = (url) => store.state.settings.devLocalhost !== false && isLocal(url) && !(store.state.settings.devOff || []).includes(hostOf(url));
+const devMode = (url) => { const h = hostOf(url); return !!h && ((store.state.settings.devSites || []).includes(h) || devAuto(url)); };
 
-module.exports = { routeRule, routeText, routeMatches, routeFor, migrateRoutes, routes, SETTABLE, PROFILE_KEYS, ARCHIVE_HOURS, externalLinks, get, setForProfile, forgetProfile, downloadDirFor, hostOf, devMode };
+module.exports = { routeRule, routeText, routeMatches, routeFor, migrateRoutes, routes, SETTABLE, PROFILE_KEYS, ARCHIVE_HOURS, externalLinks, get, setForProfile, forgetProfile, downloadDirFor, hostOf, devMode, devAuto, isLocal };

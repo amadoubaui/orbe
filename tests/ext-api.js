@@ -645,6 +645,64 @@ module.exports = async function extApiTest({ first: w, OrbeWindow, win, extApi, 
       up1.updated === true && /1\.0\.0 → 1\.0\.1/.test(up1.message) && up1.list.length === 1 && up2.updated === false && /à jour \(1\.0\.0\)/.test(up2.message) && /EXT_BAD_SIGNATURE/.test(up3.error), { up1: up1.message, up2: up2.message, up3 });
     check('ces actions n’existent que pour l’interface : identifiant mal formé ignoré', (await extUi.action('ext:pin', { id: '../x', pinned: false }, w.ui.webContents)) === undefined && (await extUi.action('ext:menu', { id: 'x' }, w.ui.webContents)) === undefined);
 
+    // ⌘E : d'une extension à la suivante (EXT-4).
+    {
+      const commands = require('../src/main/commands');
+      const realActions = extHost.actionsFor;
+      const opened = [];
+      const open = (ow, id) => { opened.push(id); };
+      const cmd = commands.byName.get('cycleExtensions');
+      // Trois extensions, dont une au bouton inactif : elle est sautée ; après la dernière, le tour se referme.
+      const three = [{ id: 'a', title: 'A' }, { id: 'b', title: 'B', enabled: false }, { id: 'c', title: 'C' }];
+      const fake = { win: w.win, incognito: false, extCycle: null };
+      const tour = [0, 300, 600, 900].map((dt) => extHost.cycle(fake, open, 1e6 + dt, three));
+      check('⌘E : une extension après l’autre, les boutons inactifs sautés, puis le tour se referme et recommence', tour.join('|') === 'a|c||a' && opened.join() === 'a,c,a', tour.join('|'));
+      opened.length = 0;
+      // La vraie liste (une extension d'essai) : premier appui l'ouvre, second referme le tour.
+      const t0 = Date.now();
+      w.extCycle = null;
+      extHost.closePopup(w);
+      const ids = extHost.actionsFor(w).filter((x) => x.enabled !== false).map((x) => x.id);
+      const seen = ids.map((_, k) => extHost.cycle(w, open, t0 + k * 300));
+      const end = extHost.cycle(w, open, t0 + ids.length * 300);
+      const restart = extHost.cycle(w, open, t0 + ids.length * 300 + 300);
+      const late = (() => { w.extCycle = { id: ids[0], at: t0 }; return extHost.cycle(w, open, t0 + extHost.CYCLE_HOLD + 10); })();
+      w.extCycle = null;
+      check('⌘E avec les extensions installées : chacune à son tour, puis le tour se referme et recommence ; passé quelques secondes il repart du début',
+        ids.includes(ext.id) && seen.join() === ids.join() && end === '' && restart === ids[0] && late === ids[0] && opened.join() === [...ids, ids[0], ids[0]].join(), JSON.stringify({ ids, seen, end, restart, late, opened }));
+      check('⌘E est une commande d’Orbe : au menu Extensions, modifiable dans Réglages → Raccourcis, libre de tout conflit',
+        !!cmd && cmd.accel === require('../src/main/platform').accel('Cmd+E') && require('../src/main/shortcuts').keysOf('cycleExtensions') !== ''
+        && [...commands.byName.values()].filter((c) => c.accel === cmd.accel).length === 1);
+      const priv = { win: w.win, incognito: true };
+      check('⌘E en navigation privée (aucune extension) : rien à ouvrir', extHost.cycle(priv, open) === null && realActions(priv).length === 0);
+    }
+
+    // Extension qui plante (EXT-6) : page d'arrière-plan perdue -> extension désactivée, avec un message.
+    {
+      const toasts = [];
+      const realToast = w.toast;
+      w.toast = (text, sound, action) => { toasts.push({ text, action }); };
+      const bg = (url, type = 'backgroundPage') => ({ getType: () => type, getURL: () => url });
+      const home = `chrome-extension://${ext.id}/_generated_background_page.html`;
+      const ignored = [
+        extHost.backgroundGone(bg(home), { reason: 'clean-exit' }),
+        extHost.backgroundGone(bg(home), { reason: 'killed' }),
+        extHost.backgroundGone(bg(home, 'window'), { reason: 'crashed' }),
+        extHost.backgroundGone(bg('https://exemple.invalid/'), { reason: 'crashed' }),
+        extHost.backgroundGone(null, { reason: 'crashed' }),
+      ];
+      const stillOn = extensions.isEnabled(ext.id);
+      const done = extHost.backgroundGone(bg(home), { reason: 'crashed' });
+      const again = extHost.backgroundGone(bg(home), { reason: 'oom' });
+      check('extension qui plante : seule la perte de sa page d’arrière-plan compte (pas un arrêt normal, pas une autre page)', ignored.every((x) => x === false) && stillOn && toasts.length === 1);
+      check('… elle est désactivée, un message la nomme et mène aux réglages ; une seule fois',
+        done === true && again === false && !extensions.isEnabled(ext.id) && toasts[0].text.includes('Orbe — extension d\'essai') && typeof toasts[0].action === 'function');
+      w.toast = realToast;
+      extensions.setEnabled(ext.id, true);
+      await extensions.syncAll();
+      await until(() => extensions.isEnabled(ext.id), 'extension réactivée');
+    }
+
     // « Retirer d'Orbe… » : question, puis désinstallation.
     const realBox = dialog.showMessageBox;
     const boxes = [];

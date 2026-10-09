@@ -109,7 +109,7 @@ module.exports = async function reglagesTests(ctx) {
   const info = await globalAction('settings:get', null, null);
   check('« settings:get » garde ses champs et décrit les volets',
     info.settings === s() && Array.isArray(info.spaces) && Array.isArray(info.profiles) && Array.isArray(info.engines) && typeof info.version === 'string'
-    && info.panes.length === 9 && info.panes.includes('shortcuts') && typeof info.isDefault === 'boolean' && typeof info.downloads === 'string', JSON.stringify(Object.keys(info)));
+    && info.panes.length === 10 && info.panes.includes('shortcuts') && info.panes.includes('tabs') && info.memoryGb > 0 && typeof info.isDefault === 'boolean' && typeof info.downloads === 'string', JSON.stringify(Object.keys(info)));
 
   // Profils : renommer, supprimer
   store.state.profiles.push({ id: 'p-tmp', name: 'Temporaire' });
@@ -253,6 +253,32 @@ module.exports = async function reglagesTests(ctx) {
   commands.run(w, 'toggleDevMode');
   await sleep(60);
   check('mode développeur d’un site : barre d’outils et adresse entière pour lui seul', devOn && !s().devSites.length && !w.toolbarShown && w.contentRect().y === yBefore);
+  // Automatique sur les sites locaux (localhost, 127.0.0.1), avec son liseré jaune et noir.
+  {
+    const prefs2 = require('../src/main/prefs');
+    check('site local : localhost, ses sous-domaines, 127.0.0.1 et ::1 — pas un nom qui y ressemble',
+      prefs2.isLocal('http://localhost:3000/') && prefs2.isLocal('https://app.localhost/x') && prefs2.isLocal('http://127.0.0.1:8080/') && prefs2.isLocal('http://[::1]:5173/')
+      && !prefs2.isLocal('https://localhost.pirate.invalid/') && !prefs2.isLocal('https://exemple.fr/?localhost') && !prefs2.isLocal('file:///localhost') && !prefs2.isLocal('http://127.0.0.2/'));
+    check('pendant les essais, le mode développeur automatique est coupé au départ (les pages d’essai sont locales)', s().devLocalhost === false && !w.toolbarShown);
+    const stripe = () => ui('(() => { const b = document.body.classList.contains("dev-site"); const g = getComputedStyle(document.getElementById("tb-url"), "::after"); return b + "|" + (g.content !== "none" && g.backgroundImage.includes("repeating-linear-gradient")); })()');
+    const noStripe = await stripe();
+    await set({ devLocalhost: true });
+    await until(async () => (await stripe()) === 'true|true', 'liseré du mode développeur');
+    check('site local : mode développeur automatique — barre d’outils, adresse entière et liseré jaune et noir, sans que le site soit noté',
+      noStripe === 'false|false' && prefs2.devMode(base + '/') && prefs2.devAuto(base + '/') && w.toolbarShown && !s().devSites.length && w.contentRect().y > yBefore);
+    commands.run(w, 'toggleDevMode');
+    await until(async () => (await stripe()) === 'false|false', 'liseré retiré');
+    const offLocal = s().devOff.join() === hostDev && !s().devSites.length && !w.toolbarShown;
+    commands.run(w, 'toggleDevMode');
+    await sleep(60);
+    check('⌃D sur un site local : coupé pour ce site seulement (noté à part), puis rétabli', offLocal && !s().devOff.length && !s().devSites.length && w.toolbarShown);
+    await set({ devOff: ['pas un hôte !'] });
+    await set({ devLocalhost: 'oui' });
+    check('réglages « devOff » et « devLocalhost » validés', s().devOff.length === 0 && s().devLocalhost === true);
+    await set({ devLocalhost: false });
+    await until(async () => (await stripe()) === 'false|false', 'liseré retiré');
+    check('réglage coupé : plus de mode développeur automatique', !prefs2.devMode(base + '/') && !w.toolbarShown && w.contentRect().y === yBefore);
+  }
   await set({ showFullUrl: true });
   check('mode développeur : ⌃D sur macOS, hors du raccourci d’épinglage sous Windows',
     commands.byName.get('toggleDevMode').accel === (platform.isMac ? 'Ctrl+D' : 'Alt+Shift+D') && commands.byName.get('togglePin').accel === platform.accel('Cmd+D'));
@@ -532,8 +558,8 @@ module.exports = async function reglagesTests(ctx) {
     defaut: [document.getElementById('defaultState').textContent, document.getElementById('makeDefault').hidden],
     scroll: document.getElementById('panes').scrollHeight - document.getElementById('panes').clientHeight,
   })`).then(JSON.parse);
-  check('fenêtre des réglages : neuf volets, un seul affiché, tous les réglages présents',
-    struct.tabs.length === 9 && struct.tabs[0] === 'general:Général' && struct.tabs[3] === 'shortcuts:Raccourcis' && struct.shown.join() === 'pane-general' && struct.selected === 'general'
+  check('fenêtre des réglages : dix volets, un seul affiché, tous les réglages présents',
+    struct.tabs.length === 10 && struct.tabs[0] === 'general:Général' && struct.tabs[2] === 'tabs:Onglets' && struct.tabs[4] === 'shortcuts:Raccourcis' && struct.shown.join() === 'pane-general' && struct.selected === 'general'
     && !struct.missing.length && !struct.ghosts.length && !struct.overflow, JSON.stringify(struct));
   const isDefault = panes.isDefaultBrowser();
   check('navigateur par défaut : l’état est affiché, le bouton n’apparaît que s’il reste à faire',

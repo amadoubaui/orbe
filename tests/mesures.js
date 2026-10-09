@@ -81,7 +81,12 @@ const BENCHES = {
     const sidebar = await ui.executeJavaScript(`new Promise((r) => { const go = () => (typeof S === 'object' && S ? requestAnimationFrame(() => requestAnimationFrame(() => r(performance.timeOrigin + performance.now()))) : setTimeout(go, 2)); go(); })`);
     const rt = await until(() => w.activeRt);
     const page = await paintOf(rt.wc);
-    // Barre de commande prête à répondre (vue modale chargée).
+    // Vue modale prête (depuis la 0.12 elle naît de la coque, après son affichage), puis
+    // barre de commande prête à répondre. Ouverte avant, la barre naîtrait à part, dans son
+    // propre processus (une centaine de millisecondes, et un processus de plus) : ce cas-là
+    // n'est pas celui d'une personne, qui n'appuie pas sur ⌘T dans la demi-seconde du lancement.
+    await until(() => w.modal && !w.modal.webContents.isLoading(), 3000).catch(() => {});
+    const modal = Date.now();
     const t1 = Date.now();
     w.openCommand();
     await until(() => w.modal && !w.modal.webContents.isLoading() && w.modal.webContents.executeJavaScript('!document.getElementById("command").hidden && document.activeElement === document.getElementById("cmd-input")'));
@@ -89,7 +94,7 @@ const BENCHES = {
     await sleep(1500);
     out({
       bench: 'demarrage', fenetre: round(shown - t0, 0), coqueChargee: round(shellLoaded - t0, 0), coquePeinte: round(shellPaint - t0, 0),
-      barreRendue: round(sidebar - t0, 0), pagePeinte: round(page - t0, 0), commande: command, ...processes(), vivants: win.live.size,
+      barreRendue: round(sidebar - t0, 0), pagePeinte: round(page - t0, 0), modalePrete: round(modal - t0, 0), commande: command, ...processes(), vivants: win.live.size,
     });
   },
 
@@ -247,6 +252,51 @@ const BENCHES = {
     const coqueTitre = await work((i) => { tab.title = 'Travail ' + i; });
     dbg.detach();
     out({ bench: 'etat', onglets: tabs, identique, titre, allerRetour: round(median(lat), 2), coqueIdentique, coqueTitre });
+  },
+
+  // Voisins (MEM-6) : dix onglets d'un même site, dont trois qui calculent 150 ms par seconde
+  // en arrière-plan. Mémoire et processus, puis fluidité de l'onglet affiché pendant dix secondes
+  // (images présentées, plus long trou entre deux images, aller-retour d'un message). Avec
+  // `--renderer-process-limit`, les onglets du site partagent des processus : c'est ce qu'on mesure.
+  async voisins({ first: w, win, base }) {
+    const pidsOf = (id) => { const rt = win.live.get(id); const set = new Set(); try { for (const f of rt.wc.mainFrame.framesInSubtree) set.add(f.osProcessId); } catch {} return set; };
+    const temoin = w.newTab(base + '/temoin');
+    const lourds = [];
+    for (let i = 0; i < 9; i++) lourds.push(w.newTab(`${base}/lourd?i=${i}${i < 3 ? '&travail=150' : ''}`, { background: true }));
+    // Deux onglets d'un AUTRE site (même serveur, autre nom) : ils ne doivent jamais partager un processus avec les premiers.
+    const autre = base.replace('127.0.0.1', 'localhost');
+    const ailleurs = [w.newTab(autre + '/lourd?i=a', { background: true }), w.newTab(autre + '/lourd?i=b', { background: true })];
+    await until(() => [...lourds, ...ailleurs].every((x) => /^Lourd/.test(w.data.tabs[x.id].title)) && w.data.tabs[temoin.id].title === 'Témoin', 30000);
+    await sleep(4000);
+    const site = new Set([temoin, ...lourds].flatMap((x) => [...pidsOf(x.id)]));
+    const other = new Set(ailleurs.flatMap((x) => [...pidsOf(x.id)]));
+    const mine = pidsOf(temoin.id);
+    const voisins = lourds.filter((x) => [...pidsOf(x.id)].some((pid) => mine.has(pid))).length;
+    const metrics = app.getAppMetrics().filter((m) => site.has(m.pid));
+    const resident = round(metrics.reduce((a, m) => a + m.memory.workingSetSize, 0) / 1024, 0);
+    let empreinte = 0;
+    try {
+      const e = require('../src/main/empreinte');
+      if (await e.refresh(metrics.map((m) => ({ pid: m.pid, creationTime: m.creationTime })))) empreinte = round(e.state.total, 0);
+    } catch {}
+    // Fluidité de l'onglet affiché.
+    const wc = win.live.get(temoin.id).wc;
+    await wc.executeJavaScript(`window.trous = []; (() => { let last = performance.now(); const f = (t) => { window.trous.push(t - last); last = t; requestAnimationFrame(f); }; requestAnimationFrame(f); })()`, true);
+    const lat = [];
+    const fin = Date.now() + 10000;
+    while (Date.now() < fin) {
+      const t0 = performance.now();
+      await wc.executeJavaScript('1', true);
+      lat.push(performance.now() - t0);
+      await sleep(100);
+    }
+    const trous = await wc.executeJavaScript('window.trous', true);
+    const sorted = [...lat].sort((a, b) => a - b);
+    out({
+      bench: 'voisins', processusDuSite: site.size, voisinsDuTemoin: voisins, partagesEntreSites: [...site].filter((pid) => other.has(pid)).length,
+      resident, empreinte, images: trous.length, pireTrou: round(Math.max(...trous), 0), trousDePlusDe50ms: trous.filter((x) => x > 50).length,
+      messageMedian: round(median(lat), 1), messageP95: round(sorted[Math.floor(sorted.length * 0.95)], 1), messagePire: round(sorted[sorted.length - 1], 0),
+    });
   },
 };
 

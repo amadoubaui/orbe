@@ -760,8 +760,8 @@ module.exports = async function lateraleTests(ctx) {
   menu.build();
   const extMenu = Menu.getApplicationMenu().items.find((x) => x.label === T('menu.extensions'));
   const extLabels = extMenu ? extMenu.submenu.items.filter((x) => x.type !== 'separator').map((x) => x.label) : [];
-  check('menu Extensions : une ligne par extension, puis « Ajouter une extension… » et « Gérer les extensions… »',
-    extLabels.join('|') === ['Première extension', 'Seconde', T('ext.add'), T('ext.manage')].join('|') && extMenu.submenu.items[1].enabled === false, extLabels.join('|'));
+  check('menu Extensions : une ligne par extension, « Extension suivante » (⌘E), puis « Ajouter une extension… » et « Gérer les extensions… »',
+    extLabels.join('|') === ['Première extension', 'Seconde', T('ext.cycle'), T('ext.add'), T('ext.manage')].join('|') && extMenu.submenu.items[1].enabled === false, extLabels.join('|'));
   extMenu.submenu.items[0].click();
   extMenu.submenu.items.find((x) => x.label === T('ext.manage')).click();
   extMenu.submenu.items.find((x) => x.label === T('ext.add')).click();

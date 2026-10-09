@@ -45,7 +45,9 @@ function serve() {
   let seen = 0;
   server.on('connection', (socket) => { if ((seen += 1) <= 12) note(`serveur d’essai : connexion n° ${seen} depuis ${socket.remoteAddress}`); });
   server.on('request', (req) => { if (seen <= 12) note(`serveur d’essai : ${req.method} ${req.url}`); });
-  return new Promise((resolve) => server.listen(0, () => { note(`serveur d’essai à l’écoute : ${JSON.stringify(server.address())}`); resolve(server); }));
+  // 127.0.0.1 seulement : à l'écoute partout (« :: »), le système peut donner le même numéro de port qu'au
+  // serveur 127.0.0.1 d'une autre suite lancée en même temps, qui reçoit alors nos demandes (page jamais servie).
+  return new Promise((resolve) => server.listen(0, '127.0.0.1', () => { note(`serveur d’essai à l’écoute : ${JSON.stringify(server.address())}`); resolve(server); }));
 }
 
 module.exports = async function selftest(ctx) {
@@ -619,6 +621,26 @@ module.exports = async function selftest(ctx) {
   w.close(w.activeId);
   store.state.settings.routes = [];
   w.spaceAt(1);
+
+  // Handoff (macOS) : page reprise d'un autre appareil. L'événement d'Electron est rejoué tel quel.
+  {
+    const { app } = require('electron');
+    const before = Object.keys(tabs()).length;
+    const emit = (type, details) => { let prevented = false; app.emit('continue-activity', { preventDefault: () => { prevented = true; } }, type, {}, details); return prevented; };
+    const refused = [
+      emit('NSUserActivityTypeBrowsingWeb', { webpageURL: 'file:///etc/passwd' }),
+      emit('NSUserActivityTypeBrowsingWeb', { webpageURL: 'javascript:alert(1)' }),
+      emit('NSUserActivityTypeBrowsingWeb', { webpageURL: 'orbe://app/settings.html' }),
+      emit('NSUserActivityTypeBrowsingWeb', { webpageURL: 'https://' + 'a'.repeat(5000) + '.exemple/' }),
+      emit('NSUserActivityTypeBrowsingWeb', {}),
+      emit('com.exemple.autre', { webpageURL: base + '/a' }),
+    ];
+    const none = Object.keys(tabs()).length === before;
+    const taken = emit('NSUserActivityTypeBrowsingWeb', { webpageURL: base + '/b?handoff' });
+    check('Handoff : une page web reprise d’un autre appareil s’ouvre dans un onglet ; toute autre adresse ou activité est ignorée',
+      refused.every((x) => x === false) && none && taken === true && tabs()[w.activeId].url === base + '/b?handoff', JSON.stringify(refused));
+    w.close(w.activeId);
+  }
 
   // Langue
   await until(() => ui('document.querySelector("#b-newtab .title").textContent === "Nouvel onglet"'), 'libellé français');

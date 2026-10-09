@@ -40,6 +40,7 @@ const env = {
   ownerWindow: () => null,
   profileSession: () => null, // identifiant de profil -> session
   openInTab: () => false, // (adresse, webContents d'origine) -> ouvre un onglet
+  gate: () => true, // (session, webContents, item) -> ce téléchargement peut-il partir ? (téléchargements multiples)
   // Boîtes de dialogue du système ; remplacées pendant les tests.
   saveDialog: (parent, opts) => (parent ? dialog.showSaveDialogSync(parent, opts) : dialog.showSaveDialogSync(opts)),
   confirm: async (parent, opts) => (await (parent ? dialog.showMessageBox(parent, opts) : dialog.showMessageBox(opts))).response === 0,
@@ -83,6 +84,17 @@ function isPdfFile(file) {
 }
 // Exécutable ? Jugé sur le fichier tel qu'il est sur disque, au moment de l'ouvrir.
 const dangerNow = (d) => !!d.danger || isDangerous(d.path) || isDangerous(d.name);
+// Téléchargements lancés par Orbe à la demande de l'utilisateur : id webContents -> adresses attendues.
+const expected = new Map();
+function saveFrom(wc, url) {
+  if (!wc || wc.isDestroyed() || typeof url !== 'string' || !url) return;
+  const id = wc.id;
+  if (!expected.has(id)) { expected.set(id, new Set()); wc.once('destroyed', () => expected.delete(id)); }
+  const set = expected.get(id);
+  set.add(url);
+  setTimeout(() => set.delete(url), 30000).unref();
+  wc.downloadURL(url);
+}
 const asked = new Map(); // id webContents (0 : aucun) -> instant de la dernière fenêtre « enregistrer sous »
 const ASK_GAP = 10000;
 
@@ -291,6 +303,11 @@ function attach(ses, { persist, hooks }) {
       hooks.onDownload('progress', again, wc, item);
       return;
     }
+    // Demandé par Orbe pour l'utilisateur (« Enregistrer l'image ») : hors de la règle qui suit.
+    const wanted = wc && !wc.isDestroyed() ? expected.get(wc.id) : null;
+    const mine = !!wanted && wanted.delete(item.getURL());
+    // Téléchargements multiples lancés par la page sans rien demander (permissions.downloadGate).
+    if (!mine && !env.gate(ses, wc, item)) { event.preventDefault(); return; }
     const name = safeName(item.getFilename());
     let target = uniquePath(downloadDir(ses), name);
     if (store.state.settings.downloadAsk) {
@@ -536,4 +553,4 @@ async function action(name, a, sender) {
   return undefined;
 }
 
-module.exports = { mark, markTree, rename, cleared, dragAllowed, unmarked, decodable, imageSize, findRecord, confirmQuit, quarantine, beforeQuit, attach, bindProfile, action, resume, cancel, openFile, copyFile, trash, forget, menuTemplate, downloadDir, isDangerous, isPdfFile, safeName, env, internals: { items, resuming, DANGEROUS, asked, extOf, track, accepted, volatileRecords } };
+module.exports = { saveFrom, mark, markTree, rename, cleared, dragAllowed, unmarked, decodable, imageSize, findRecord, confirmQuit, quarantine, beforeQuit, attach, bindProfile, action, resume, cancel, openFile, copyFile, trash, forget, menuTemplate, downloadDir, isDangerous, isPdfFile, safeName, env, internals: { items, resuming, DANGEROUS, asked, extOf, track, accepted, volatileRecords } };

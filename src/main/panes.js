@@ -13,7 +13,7 @@ const sessions = require('./sessions');
 const win = require('./window');
 const { OrbeWindow, trusted, INTERNAL, UI_PRELOAD } = win;
 
-const PANES = ['general', 'profiles', 'links', 'shortcuts', 'appearance', 'privacy', 'extensions', 'import', 'advanced'];
+const PANES = ['general', 'profiles', 'tabs', 'links', 'shortcuts', 'appearance', 'privacy', 'extensions', 'import', 'advanced'];
 const WIDTH = 720;
 const MIN_H = 260;
 
@@ -264,6 +264,7 @@ function info() {
     arc: require('./import-arc').available(),
     littleKeys: shortcuts.display(s.littleShortcut || ''),
     archiveHours: prefs.ARCHIVE_HOURS,
+    memoryGb: Math.round(require('os').totalmem() / 1073741824 * 10) / 10,
   };
 }
 

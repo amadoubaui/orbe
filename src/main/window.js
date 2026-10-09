@@ -7,6 +7,7 @@ const fs = require('fs');
 const os = require('os');
 const { store, uid, SPACE_COLORS, DEFAULT_SETTINGS } = require('./store');
 const veille = require('./veille');
+const empreinte = require('./empreinte');
 const icons = require('./icons');
 const keepalive = require('./keepalive');
 const Theme = require('../renderer/theme');
@@ -49,6 +50,7 @@ const uiRetryDelay = (n) => (n <= 3 ? 150 : Math.min(60000, 5000 * 2 ** (n - 4))
 const RESERVE = 'overlay.html#reserve';
 const FLOAT = 'shell.html#flottant';
 const SPARES = 3;
+const FIRST_RENDER_WAIT = 400;
 const AUX = ['modal', 'findView', 'toastView', 'peekChrome', 'floatView', 'statusView', 'dropView', 'swipeView'];
 const UNDO_MAX = 50; // actions de la barre latérale que ⌘Z peut défaire, par fenêtre
 const FAVORITES_MAX = 12; // favoris par profil, comme dans Arc
@@ -98,7 +100,7 @@ function resumed(saved, spaces, on) {
 const isInternal = (url) => (url || '').startsWith(INTERNAL);
 const isErrorPage = (url) => (url || '').startsWith(INTERNAL + 'error.html');
 // Pages internes pouvant s'ouvrir dans un onglet, avec accès à l'interface.
-const INTERNAL_PAGES = new Set(['library.html', 'shortcuts.html', 'welcome.html', 'notes.html', 'easel.html']);
+const INTERNAL_PAGES = new Set(['library.html', 'shortcuts.html', 'welcome.html', 'notes.html', 'easel.html', 'tasks.html']);
 // Adresse fournie par une page web (lien, image, glisser-déposer) : seuls
 // http et https sont acceptés, jamais file:, orbe: ou chrome:.
 const webUrl = (u) => (/^https?:\/\//i.test(u || '') ? u : null);
@@ -211,8 +213,31 @@ function isMeetingUrl(input) {
 // que ce qui est propre à l'onglet. Sous Windows la mémoire privée est connue ;
 // ailleurs c'est la mémoire résidente, qui compte aussi les pages partagées
 // (relevé sur macOS : 60 Mo de trop par processus léger, voir docs/suivi/ameliorations.md).
+// Mémoire d'un processus, en Mo : son empreinte réelle quand elle est connue (Windows :
+// `privateBytes` ; macOS : relevé récent d'empreinte.js), sinon sa mémoire résidente.
+function processMb(m) {
+  const real = m.memory.privateBytes ? m.memory.privateBytes / 1024 : empreinte.of(m.pid, m.creationTime);
+  return real !== undefined ? real : (m.memory.workingSetSize || 0) / 1024;
+}
+
+// Processus de rendu des onglets : [{ pid, creationTime }] (pour le relevé d'empreinte).
+function tabProcesses() {
+  const pids = new Set();
+  for (const rt of live.values()) {
+    if (rt.wc.isDestroyed()) continue;
+    try { for (const f of rt.wc.mainFrame.framesInSubtree) pids.add(f.osProcessId); } catch {}
+  }
+  return app.getAppMetrics().filter((m) => pids.has(m.pid)).map((m) => ({ pid: m.pid, creationTime: m.creationTime }));
+}
+
+// Adresse de la page d'un onglet vivant, telle que le moteur la rapporte.
+function liveUrl(rt) {
+  try { return rt.wc.getURL() || ''; } catch { return ''; }
+}
+let lastSweep = null; // dernier passage de veille : { at, totalMb, budgetMb, real }
+
 function tabMemory() {
-  const byPid = new Map(app.getAppMetrics().map((m) => [m.pid, (m.memory.privateBytes || m.memory.workingSetSize || 0) / 1024]));
+  const byPid = new Map(app.getAppMetrics().map((m) => [m.pid, processMb(m)]));
   const users = new Map(); // pid -> nombre d'onglets qui s'en servent
   const pidsOf = new Map(); // id d'onglet -> pids
   for (const rt of live.values()) {
@@ -225,7 +250,10 @@ function tabMemory() {
   let total = 0;
   for (const pid of users.keys()) total += byPid.get(pid) || 0;
   const of = (id) => { let mb = 0; for (const pid of pidsOf.get(id) || []) if (users.get(pid) === 1) mb += byPid.get(pid) || 0; return mb; };
-  return { total, of };
+  // `real` : le total vient d'empreintes réelles, pas de mémoire résidente.
+  const metrics = new Map(app.getAppMetrics().map((m) => [m.pid, m]));
+  const real = users.size > 0 && [...users.keys()].every((pid) => { const m = metrics.get(pid); return !!m && (!!m.memory.privateBytes || empreinte.of(m.pid, m.creationTime) !== undefined); });
+  return { total, of, real };
 }
 
 // Vignettes de la bascule ⌃Tab : elle ne montre que huit onglets, seules les
@@ -346,7 +374,9 @@ class OrbeWindow {
     this.ui = this.makeUiView('shell.html');
     this.win.contentView.addChildView(this.ui);
     this.ui.webContents.setWindowOpenHandler((details) => this.adoptSpare(details));
-    this.ui.webContents.on('did-finish-load', () => this.fillSpares());
+    // La réserve attend que la barre latérale soit rendue : `window.open` occupe le fil de la coque
+    // (trois vues : 28 ms de plus avant la première barre rendue, mesuré sur l'application fabriquée).
+    this.ui.webContents.on('did-finish-load', () => this.afterFirstRender(() => this.fillSpares()));
     this.ui.webContents.on('render-process-gone', (e, details) => this.uiGone(details));
     // La vue modale (barre de commande) ne naît qu'une fois la coque affichée : `spareReady`.
     this.modal = null;
@@ -510,6 +540,16 @@ class OrbeWindow {
         if (i >= 0) this.wanted.splice(i, 1);
       });
     }
+  }
+
+  // Appelle `fn` une fois l'état reçu par la coque et deux images présentées ; au plus tard
+  // après `FIRST_RENDER_WAIT` (fenêtre masquée ou recouverte : aucune image n'est présentée).
+  afterFirstRender(fn) {
+    const ui = this.ui.webContents;
+    let done = false;
+    const go = () => { if (done) return; done = true; clearTimeout(timer); if (!this.win.isDestroyed() && !ui.isDestroyed()) fn(); };
+    const timer = setTimeout(go, FIRST_RENDER_WAIT);
+    ui.executeJavaScript(`new Promise((r) => { const go = () => (typeof S === 'object' && S ? requestAnimationFrame(() => requestAnimationFrame(() => r())) : setTimeout(go, 4)); go(); })`, true).then(go, go);
   }
 
   spareReady() {
@@ -686,14 +726,22 @@ class OrbeWindow {
     return !!store.state.settings.showToolbar || (!!tab && prefs.devMode(tab.url));
   }
 
+  // ⌃D : mode développeur du site affiché. Sur un site local où il est automatique, le couper
+  // note le site dans « devOff » ; ailleurs, l'activer le note dans « devSites ».
   toggleDevMode() {
     const tab = this.activeId && this.data.tabs[this.activeId];
     const host = tab ? prefs.hostOf(tab.url) : '';
     if (!host || this.incognito) return;
-    const list = (store.state.settings.devSites || []).filter((h) => h !== host);
-    const on = list.length === (store.state.settings.devSites || []).length;
-    if (on) list.push(host);
-    require('./commands').setSetting('devSites', list.slice(-200));
+    const s = store.state.settings;
+    const { setSetting } = require('./commands');
+    const on = !prefs.devMode(tab.url);
+    if (on) {
+      if ((s.devOff || []).includes(host)) setSetting('devOff', s.devOff.filter((h) => h !== host));
+      if (!prefs.devMode(tab.url)) setSetting('devSites', [...(s.devSites || []).filter((h) => h !== host), host].slice(-200));
+    } else {
+      if ((s.devSites || []).includes(host)) setSetting('devSites', s.devSites.filter((h) => h !== host));
+      if (prefs.devMode(tab.url)) setSetting('devOff', [...(s.devOff || []).filter((h) => h !== host), host].slice(-200));
+    }
     this.toast(t(on ? 'dev.on' : 'dev.off', { site: host }));
   }
 
@@ -1336,8 +1384,8 @@ class OrbeWindow {
       lastUsed: rt.lastUsed,
       mb: mem ? mem.of(rt.id) : 0,
       // Épargné par les règles automatiques : l'utilisateur y a agi, la page charge, ou elle a refusé une veille.
-      // … ou c'est un site qui reste vivant (messagerie, courrier, musique : keepalive.js).
-      typed: !!rt.typed || !!rt.loading || !!rt.objected || keepalive.matches(rt.wc.getURL()),
+      // … ou c'est un site qui reste vivant (keepalive.js : messagerie, courrier, musique, et la liste de l'utilisateur).
+      typed: !!rt.typed || !!rt.loading || !!rt.objected || keepalive.matches(liveUrl(rt), s),
       kept: visible.has(rt.id) || rt.wc.isCurrentlyAudible() || rt.wc.isDevToolsOpened() || hooks.busy(rt)
         // Image dans l'image, page filmée par une autre, téléchargement en cours, veille demandée à
         // l'instant (une page qui n'y a toujours pas répondu redevient candidate, limite en nombre comprise).
@@ -1349,10 +1397,20 @@ class OrbeWindow {
       budgetMb: deep && Number(s.memoryBudget) ? veille.budget(os.totalmem(), Number(s.memoryBudget)) : 0,
       totalMb: mem ? mem.total : 0,
     });
+    lastSweep = { at: now, totalMb: mem ? Math.round(mem.total) : 0, budgetMb: deep && Number(s.memoryBudget) ? veille.budget(os.totalmem(), Number(s.memoryBudget)) : 0, real: !!mem && mem.real };
     // La limite en nombre s'applique tout de suite ; ancienneté et mémoire consultent la page.
     for (const p of picked) { if (p.why === 'count') OrbeWindow.destroyView(p.id); else OrbeWindow.sleepView(p.id); }
     if (deep && picked.length) OrbeWindow.pushAll();
     return picked;
+  }
+
+  // Passage de fond (toutes les minutes) : relève d'abord l'empreinte réelle des processus
+  // d'onglets quand c'est utile (empreinte.js), puis applique les règles de veille.
+  static async sweep() {
+    const s = store.state.settings;
+    const budgetMb = Number(s.memoryBudget) ? veille.budget(os.totalmem(), Number(s.memoryBudget)) : 0;
+    if (empreinte.due({ budgetMb, tabs: live.size, minTabs: veille.MIN_LIVE })) await empreinte.refresh(tabProcesses());
+    return OrbeWindow.trimLive({ deep: true });
   }
 
   // --- Onglets --------------------------------------------------------------
@@ -4148,7 +4206,7 @@ class OrbeWindow {
         { label: t('ctx.openImage'), visible: !!src, click: () => this.newTab(src, { after: rt.id }) },
         { label: t('ctx.copyImage'), click: () => wc.copyImageAt(p.x, p.y) },
         { label: t('ctx.copyImageUrl'), click: () => clipboard.writeText(p.srcURL) },
-        { label: t('ctx.saveImage'), visible: !!src, click: () => wc.downloadURL(src) },
+        { label: t('ctx.saveImage'), visible: !!src, click: () => require('./downloads').saveFrom(wc, src) },
       );
     }
     if (p.isEditable) {
@@ -4390,6 +4448,8 @@ class OrbeWindow {
         if (!a || typeof a !== 'object') return undefined;
         return Array.isArray(a.ids) ? this.moveManyToSpace(a.ids, String(a.spaceId)) : this.moveToSpace(String(a.id), String(a.spaceId));
       }
+      // Clic sur le bouclier : le centre de contrôle du site (feuille d'Orbe) ; à défaut (page interne, pas d'onglet), le menu.
+      case 'siteControl': return hooks.action(this, 'siteControl') ? undefined : this.shieldMenu();
       case 'shieldMenu': return this.shieldMenu();
       case 'toolbarMenu': return this.popup(this.toolbarMenuTemplate());
       case 'toastClick': return this.toastClick();
@@ -4511,4 +4571,4 @@ function archiveStale() {
   if (count) { store.save(); for (const w of windows.values()) w.layout(); OrbeWindow.pushAll(); }
 }
 
-module.exports = { OrbeWindow, windows, live, media, STATUS, trusted, hooks, lostAfterStay: () => lastLost, applyBoosts, cleanUrl, mdLink, isMeetingUrl, SPLIT_BAR, archiveStale, tabMemory, noteDownload, uiRetryDelay, UI_PREFS, STATUS_MAX, ICON_MAX, thumbs: { keep: keepThumb, MAX: THUMBS }, INTERNAL, UI_PRELOAD, isInternal, MOTION, motion, place, forceMotion, motionStats: stats, boundsOf, inFlight, resumed };
+module.exports = { OrbeWindow, windows, live, media, STATUS, trusted, hooks, lostAfterStay: () => lastLost, applyBoosts, cleanUrl, mdLink, isMeetingUrl, SPLIT_BAR, archiveStale, tabMemory, tabProcesses, processMb, lastSweep: () => lastSweep, noteDownload, uiRetryDelay, UI_PREFS, STATUS_MAX, ICON_MAX, thumbs: { keep: keepThumb, MAX: THUMBS }, INTERNAL, UI_PRELOAD, isInternal, MOTION, motion, place, forceMotion, motionStats: stats, boundsOf, inFlight, resumed };

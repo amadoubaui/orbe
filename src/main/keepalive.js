@@ -36,7 +36,8 @@ const RULES = [
   { host: 'deezer.com', sub: true },
 ];
 
-function matches(url) {
+// Site de la liste d'Orbe (ci-dessus).
+function builtin(url) {
   let u;
   try { u = new URL(String(url)); } catch { return false; }
   if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
@@ -44,4 +45,20 @@ function matches(url) {
   return RULES.some((r) => (host === r.host || (r.sub && host.endsWith('.' + r.host))) && (!r.path || u.pathname.startsWith(r.path)));
 }
 
-module.exports = { matches, RULES };
+// Site de la liste de l'utilisateur (réglage « neverSleep », volet Onglets des réglages) : écrite et
+// lue comme les règles d'aiguillage des liens (prefs.routeMatches) — un site, ses sous-domaines, au
+// besoin un port et un début de chemin.
+function user(url, settings) {
+  const list = settings && settings.neverSleep;
+  if (!url || !Array.isArray(list) || !list.length) return false;
+  const { routeMatches } = require('./prefs');
+  return list.some((rule) => routeMatches(rule, url));
+}
+
+// Le site reste-t-il éveillé ? Un seul point d'entrée pour la veille (window.js, `trimLive`) :
+// la liste d'Orbe, puis celle de l'utilisateur quand les réglages sont fournis.
+function matches(url, settings) {
+  return builtin(url) || user(url, settings);
+}
+
+module.exports = { matches, builtin, user, RULES };

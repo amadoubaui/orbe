@@ -1,9 +1,9 @@
 // Réglages : chaque changement est appliqué immédiatement.
 // Tout champ listé ici (case à cocher ou liste dont l'id est la clé du réglage)
 // est rempli et enregistré automatiquement, quel que soit son volet.
-const FIELDS = ['lang', 'searchEngine', 'suggestions', 'archiveAfterHours', 'maxLiveTabs', 'appearance', 'translucent', 'externalLinks', 'autoPip', 'adblock', 'peekLinks', 'passwordSave', 'passwordFill', 'sounds', 'soundGestures', 'soundVolume',
-  'restoreSession', 'warnOnQuit', 'peekShift', 'littleAltClick', 'littleArchiveHours', 'tabKeysFavorites', 'tabKeysNinthLast', 'showToolbar', 'showFullUrl', 'cookieBanners', 'themeData', 'mediaControls', 'haptics', 'boostsEnabled', 'boostsJs', 'downloadAsk', 'downloadOpenPdf', 'updateCheck'];
-const NUMERIC = new Set(['archiveAfterHours', 'maxLiveTabs', 'littleArchiveHours', 'soundVolume']);
+const FIELDS = ['lang', 'searchEngine', 'suggestions', 'archiveAfterHours', 'maxLiveTabs', 'sleepAfterHours', 'memoryBudget', 'appearance', 'translucent', 'externalLinks', 'autoPip', 'adblock', 'peekLinks', 'passwordSave', 'passwordFill', 'sounds', 'soundGestures', 'soundVolume',
+  'restoreSession', 'warnOnQuit', 'peekShift', 'littleAltClick', 'littleArchiveHours', 'tabKeysFavorites', 'tabKeysNinthLast', 'showToolbar', 'showFullUrl', 'cookieBanners', 'themeData', 'mediaControls', 'devLocalhost', 'boostsEnabled', 'boostsJs', 'downloadAsk', 'downloadOpenPdf', 'updateCheck'];
+const NUMERIC = new Set(['archiveAfterHours', 'maxLiveTabs', 'sleepAfterHours', 'memoryBudget', 'littleArchiveHours', 'soundVolume']);
 const el = (id) => document.getElementById(id);
 const make = (tag, className, text) => { const n = document.createElement(tag); if (className) n.className = className; if (text != null) n.textContent = text; return n; };
 
@@ -24,6 +24,7 @@ function fill(s) {
   el('soundVolume').disabled = !s.sounds;
   drawDownloadDir();
   drawDev();
+  drawSleep();
 }
 
 // --- Volets -------------------------------------------------------------------
@@ -582,6 +583,31 @@ el('dev-add').onclick = () => {
   el('dev-host').value = '';
 };
 el('dev-host').addEventListener('keydown', (e) => { if (e.key === 'Enter') el('dev-add').click(); });
+
+// --- Onglets : veille automatique ---------------------------------------------------------------
+// Part de la mémoire de la machine laissée aux onglets ; la valeur en Go est donnée en clair.
+const BUDGETS = [10, 15, 25, 35, 50];
+function drawSleep() {
+  const sel = el('memoryBudget');
+  const gb = DATA && DATA.memoryGb ? DATA.memoryGb : 0;
+  const values = BUDGETS.includes(Number(S.memoryBudget)) || !Number(S.memoryBudget) ? BUDGETS : [...BUDGETS, Number(S.memoryBudget)].sort((a, b) => a - b);
+  sel.textContent = '';
+  for (const p of values) sel.append(new Option(gb ? t('set.budgetOf', { p, gb: (Math.round(gb * p) / 100).toLocaleString(lang, { maximumFractionDigits: 1 }) }) : p + ' %', String(p)));
+  sel.append(new Option(t('set.noLimit'), '0'));
+  sel.value = String(S.memoryBudget);
+  listWithRemove(el('never-sleep-list'), S.neverSleep || [], 'set.neverSleepEmpty', (site) => O.send('settings:set', { neverSleep: (S.neverSleep || []).filter((x) => x !== site) }));
+}
+el('never-sleep-add').onclick = async () => {
+  const raw = el('never-sleep-site').value.trim();
+  if (!raw) return;
+  // Le texte nomme un site (« github.com », « exemple.fr/outil ») : mis sous sa forme normale, ou refusé.
+  const site = await O.send('settings:routeText', raw);
+  el('never-sleep-msg').hidden = !!site;
+  if (!site) return;
+  if (!(S.neverSleep || []).includes(site)) O.send('settings:set', { neverSleep: [...(S.neverSleep || []), site] });
+  el('never-sleep-site').value = '';
+};
+el('never-sleep-site').addEventListener('keydown', (e) => { if (e.key === 'Enter') el('never-sleep-add').click(); });
 
 // --- Chargement ---------------------------------------------------------------------------------
 function draw(data) {

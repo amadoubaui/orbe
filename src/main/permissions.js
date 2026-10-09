@@ -15,7 +15,8 @@ const capture = require('./capture-state');
 // d'écran passe par le sélecteur d'Orbe, qui vaut consentement à chaque fois —
 // voir `displayGate` pour la demande « media » qui le précède).
 const AUTO_ALLOW = new Set(['fullscreen', 'pointerLock', 'clipboard-sanitized-write', 'keyboardLock', 'window-management', 'speaker-selection', 'display-capture']);
-const ASKABLE = new Set(['media', 'geolocation', 'notifications', 'midi', 'midiSysex', 'clipboard-read']);
+// Détection d'inactivité, stockage durable, accès aux cookies depuis un cadre intégré (Storage Access API) : demandés aussi.
+const ASKABLE = new Set(['media', 'geolocation', 'notifications', 'midi', 'midiSysex', 'clipboard-read', 'idle-detection', 'persistent-storage', 'storage-access', 'top-level-storage-access']);
 // Appareils : la vérification passe (la page peut demander), mais aucun appareil
 // n'est jamais accordé : la demande est annulée proprement, avec un message.
 const DEVICES = new Set(['hid', 'serial', 'usb']);
@@ -111,7 +112,9 @@ function forget(entry, origin, key) {
 // vaut que pour ce couple (site intégré, site qui l'intègre). Un site hostile ne
 // peut donc pas hériter, en l'intégrant, de l'accord donné ailleurs à un service.
 const EMBED = '|';
-const keyFor = (key, embedder) => (embedder && (key === 'camera' || key === 'microphone') ? key + EMBED + embedder : key);
+// De même pour l'accès aux cookies d'un cadre intégré : il se donne site par site.
+const EMBEDDED_KEYS = new Set(['camera', 'microphone', 'storage-access']);
+const keyFor = (key, embedder) => (embedder && EMBEDDED_KEYS.has(key) ? key + EMBED + embedder : key);
 
 // La page (ou le cadre) qui a posé la question est-elle toujours là ? Sinon la
 // réponse ne sert à rien ni à personne : rien n'est retenu, rien n'est ouvert.
@@ -187,7 +190,7 @@ function pageState(wc) {
   const id = wc.id;
   st = { refused: new Set(), asked: false, at: 0 };
   pages.set(id, st);
-  wc.on('did-navigate', () => { st.refused.clear(); st.asked = false; });
+  wc.on('did-navigate', () => { st.refused.clear(); st.asked = false; st.downloads = 0; st.dlAsked = false; });
   wc.once('destroyed', () => pages.delete(id));
   return st;
 }
@@ -237,6 +240,38 @@ async function external(entry, wc, origin, details) {
   lastExternal.set(wc.id, Date.now());
   if (lastExternal.size > 500) lastExternal.clear();
   env.openExternal(url);
+  return false;
+}
+
+// Téléchargements multiples. Un téléchargement que l'utilisateur n'a pas demandé
+// (ni clic rapporté par le moteur, ni geste récent dans l'onglet, ni action d'Orbe)
+// est « automatique ». Une page a droit à un téléchargement automatique ; pour le
+// suivant, Orbe demande (autorisation « downloads », retenue par site comme les
+// autres). Décision synchrone, comme l'exige « will-download » : le téléchargement
+// qui déclenche la question est refusé, puis relancé si la réponse est oui.
+// Renvoie true si le téléchargement peut partir.
+function downloadGate(ses, wc, { gesture = false, url = '' } = {}) {
+  if (gesture || !wc || wc.isDestroyed()) return true;
+  const since = env.gesture(wc);
+  if (since === null) return true; // pas un onglet (page d'extension, vue d'Orbe) : hors sujet
+  const entry = memories.get(ses);
+  if (!entry) return true;
+  const st = pageState(wc);
+  const now = Date.now();
+  // Un geste récent dans l'onglet couvre UN téléchargement (lancé par script après le clic).
+  if (since < GESTURE && now - since > (st.dlGesture || 0)) { st.dlGesture = now - since; return true; }
+  st.downloads = (st.downloads || 0) + 1;
+  if (st.downloads <= 1) return true;
+  const origin = originOf(wc.getURL());
+  const known = origin && origin !== 'null' ? lookup(entry.memory(), origin, 'downloads') : undefined;
+  if (known === true) return true;
+  if (known === false || st.dlAsked) return false;
+  st.dlAsked = true; // une seule question par page
+  ask(wc, origin || 'null', ['downloads'], '').then((ok) => {
+    if (ok === null || !stillThere(wc, origin, true)) return;
+    remember(entry, origin, 'downloads', ok);
+    if (ok && /^https?:/i.test(url)) { try { wc.downloadURL(url); } catch {} }
+  });
   return false;
 }
 
@@ -325,6 +360,10 @@ function check(entry, permission, requestingOrigin, details) {
     if (type === 'video') return has('camera');
     if (type === 'audio') return has('microphone');
     return has('camera') || has('microphone');
+  }
+  if (permission === 'storage-access') {
+    const top = originOf((details && details.embeddingOrigin) || '');
+    return lookup(memory, origin, keyFor(permission, top && top !== origin ? top : '')) === true;
   }
   return lookup(memory, origin, permission) === true;
 }
@@ -417,4 +456,4 @@ function forgetProfile(id) {
   if (all && all[id]) { delete all[id]; store.save(); }
 }
 
-module.exports = { attach, setup, list, reset, set, get, resetAll, forgetProfile, noteDisplay, originOf, siteName, labelOf, os, env, internals: { request, check, external, osAccess, memories, BLOCKED_SCHEMES, lastExternal, pages, display, stillThere, keyFor } };
+module.exports = { attach, setup, list, reset, set, get, downloadGate, resetAll, forgetProfile, noteDisplay, originOf, siteName, labelOf, os, env, internals: { request, check, external, osAccess, memories, BLOCKED_SCHEMES, lastExternal, pages, display, stillThere, keyFor } };
