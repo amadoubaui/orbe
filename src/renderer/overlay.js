@@ -404,6 +404,8 @@ O.on('overlay', (p) => {
   else if (p.mode === 'find') {
     show('find');
     $('find-count').textContent = '';
+    // « Utiliser la sélection pour rechercher » : le texte vient de la page.
+    if (typeof p.text === 'string') findInput.value = p.text;
     findInput.focus();
     findInput.select();
     if (findInput.value) send('find', { text: findInput.value });

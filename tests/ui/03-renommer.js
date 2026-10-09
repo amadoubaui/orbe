@@ -71,10 +71,14 @@ module.exports = {
       await jusqua(async () => (await ctx.titres('#pinned')).join() === 'Page A', 'titre de la page');
     });
 
-    await t.verifier('double-clic sur un onglet d’Aujourd’hui : pas de renommage', async () => {
+    await t.verifier('double-clic sur un onglet d’Aujourd’hui : il se renomme aussi (comme dans Arc), Échap annule', async () => {
+      const titre = await shell.locator('#today .row.tab .title').first().textContent();
       await shell.locator('#today .row.tab .title').first().dblclick();
-      await ctx.sleep(250);
-      assert.equal(await champ.count(), 0);
+      await jusqua(() => shell.locator('#today input.rename').count(), 'champ de renommage');
+      assert.equal(await shell.locator('#today input.rename').inputValue(), titre);
+      await shell.keyboard.press('Escape');
+      await jusqua(async () => (await shell.locator('input.rename').count()) === 0, 'champ refermé');
+      assert.equal(await shell.locator('#today .row.tab .title').first().textContent(), titre);
     });
 
     await t.verifier('double-clic sur le nom de l’Espace : champ de saisie, Entrée valide', async () => {

@@ -7,6 +7,8 @@ let editing = null; // id en cours de renommage
 let drag = null;
 let animate = false;
 let present = new Set();
+let flashId = null; // ligne mise en évidence par « Afficher l'onglet dans la barre latérale »
+let flashTimer = null;
 // Sélection multiple (⌘clic, ⇧clic) : identifiants d'onglets ; `anchor` est le
 // point de départ d'une plage ⇧clic.
 const sel = new Set();
@@ -53,7 +55,7 @@ function tabRow(el, it) {
   el.className = 'row tab' + (it.active ? ' active' : '') + (it.shown ? ' shown' : '') + (it.live ? ' live' : '')
     + (it.audible ? ' audible' : '') + (it.muted ? ' muted' : '') + (it.changed ? ' changed' : '') + (it.partners ? ' split' : '') + (it.grouped ? ' grouped' : '')
     + (it.capture && it.capture.length ? ' capturing' : '')
-    + (sel.has(it.id) ? ' sel' : '');
+    + (sel.has(it.id) ? ' sel' : '') + (flashId === it.id ? ' flash' : '');
   // Témoin de capture : écran, caméra ou micro (le premier de la liste).
   const cap = (it.capture && it.capture[0]) || '';
   if (el._c !== cap) { el._c = cap; if (cap) { el._cap.setAttribute('href', '#i-' + cap); el._cap.closest('button').title = it.capture.map((k) => t('capture.' + k)).join(' · '); } }
@@ -96,7 +98,7 @@ function tileEl(el, it) {
     el._ic = el.firstChild;
     el.draggable = true;
   }
-  el.className = 'tile' + (it.active ? ' active' : '') + (it.live ? ' live' : '') + (it.audible ? ' audible' : '') + (sel.has(it.id) ? ' sel' : '');
+  el.className = 'tile' + (it.active ? ' active' : '') + (it.live ? ' live' : '') + (it.audible ? ' audible' : '') + (sel.has(it.id) ? ' sel' : '') + (flashId === it.id ? ' flash' : '');
   el.title = it.title;
   setIcon(el, it);
 }
@@ -229,7 +231,7 @@ function drawSpaces(list, current) {
   if (spaces._sig === sig) return;
   spaces._sig = sig;
   spaces.innerHTML = list.length > 1
-    ? list.map((x) => `<button class="sp${x.id === current ? ' active' : ''}" data-space="${esc(x.id)}" title="${esc(x.name)}"><span class="em">${esc(x.icon) || '•'}</span></button>`).join('')
+    ? list.map((x) => `<button class="sp${x.id === current ? ' active' : ''}" data-space="${esc(x.id)}" title="${esc(x.name)}" draggable="true"><span class="em">${esc(x.icon) || '•'}</span></button>`).join('')
     : '';
 }
 
@@ -264,6 +266,13 @@ function render(s) {
   b.classList.toggle('toolbar', s.toolbar);
   b.classList.toggle('fullscreen', s.fullScreen);
   b.classList.toggle('no-tab', !s.activeId && !FLOATING);
+  // Compléments : fenêtre à l'arrière-plan, en-tête de l'Espace, section épinglée repliée.
+  const side = s.side || {};
+  b.classList.toggle('blurred', side.focused === false && !FLOATING);
+  $('space-head').hidden = (side.noHeader || []).includes(s.space.id);
+  scroller.classList.toggle('pinned-collapsed', (side.collapsed || []).includes(s.space.id));
+  $('fav').dataset.hint = t('side.favHint');
+  $('url-copy').hidden = !s.activeId || s.nav.internal || !s.nav.url;
 
   const label = s.nav.internal ? (s.nav.title || 'Orbe') : host(s.nav.url);
   $('url-text').textContent = label || t('side.search');
@@ -373,7 +382,62 @@ function render(s) {
   // Dépôt en attente : les listes viennent de prendre leur ordre définitif.
   if (drag && drag.settling && drag.settling !== structSig(s)) endDrag();
 
+  // « Afficher l'onglet dans la barre latérale » : une demande nouvelle (jamais
+  // celle déjà là au premier affichage) fait défiler la ligne à l'écran.
+  const reveal = side.reveal || null;
+  if (reveal && prev && reveal.n !== revealed) showRow(reveal.id);
+  revealed = reveal ? reveal.n : 0;
+  offViewSoon();
 }
+
+// --- Ligne de l'onglet affiché : la montrer, signaler qu'elle est hors de vue --
+let revealed = 0;
+function showRow(id) {
+  const el = document.querySelector(`#sidebar [data-id="${CSS.escape(id)}"]`);
+  if (!el) return;
+  el.scrollIntoView({ block: 'center', behavior: reducedMotion.matches ? 'auto' : 'smooth' });
+  // La mise en évidence tient d'un rendu à l'autre (chaque rendu réécrit les
+  // classes de la ligne) ; elle repart de zéro si la ligne vient d'être montrée.
+  flashId = id;
+  el.classList.remove('flash');
+  void el.offsetWidth;
+  el.classList.add('flash');
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => {
+    flashId = null;
+    for (const x of document.querySelectorAll('#sidebar .flash')) x.classList.remove('flash');
+  }, 1200);
+}
+
+// Repère en haut ou en bas de la liste quand la ligne de l'onglet affiché a
+// défilé hors de vue ; un clic y ramène.
+const offEl = $('off-view');
+let offFrame = 0;
+function offView() {
+  offFrame = 0;
+  const row = document.querySelector('#scroll .row.tab.active');
+  let where = '';
+  if (row && row.offsetParent !== null && !slide && !drag) {
+    const r = row.getBoundingClientRect();
+    const sr = scroller.getBoundingClientRect();
+    if (r.bottom < sr.top + 6) where = 'up';
+    else if (r.top > sr.bottom - 6) where = 'down';
+  }
+  if (offEl._where === where) return;
+  offEl._where = where;
+  offEl.className = where;
+  offEl.hidden = !where;
+}
+// Par minuterie, pas par image : une fenêtre masquée ou recouverte ne dessine
+// pas, et le repère resterait en attente.
+function offViewSoon() { if (!offFrame) offFrame = setTimeout(offView, 60); }
+offEl.onclick = () => {
+  const row = document.querySelector('#scroll .row.tab.active');
+  if (row) row.scrollIntoView({ block: 'nearest', behavior: reducedMotion.matches ? 'auto' : 'smooth' });
+};
+addEventListener('resize', offViewSoon);
+// Les lignes qui apparaissent ou se replient déplacent les autres : on revérifie à la fin.
+document.getElementById('scroll').addEventListener('animationend', offViewSoon);
 
 // --- Renommage sur place ----------------------------------------------------
 function startRename(id) {
@@ -468,7 +532,9 @@ sidebar.addEventListener('click', (e) => {
   const act = e.target.closest('[data-act]');
   const row = e.target.closest('[data-id]');
   // ⌘clic (Ctrl hors macOS) ou ⇧clic sur un onglet : sélection, sans l'afficher.
-  if (row && !row.dataset.folder && (modKey(e) || e.shiftKey) && !(act && act.dataset.act !== 'icon')) {
+  // (⌘clic sur l'icône d'un épinglé sorti de son adresse : c'est un retour, plus bas.)
+  const aside = !!act && act.dataset.act === 'icon' && !!row && row.classList.contains('changed') && modKey(e);
+  if (row && !row.dataset.folder && (modKey(e) || e.shiftKey) && !(act && act.dataset.act !== 'icon') && !aside) {
     e.stopPropagation();
     return modKey(e) ? toggleSel(row.dataset.id) : rangeSel(row.dataset.id);
   }
@@ -482,7 +548,8 @@ sidebar.addEventListener('click', (e) => {
     else if (act.dataset.act === 'capture') send('captureMenu', id);
     else if (act.dataset.act === 'reset') send('resetPinned', id);
     // Clic sur l'icône d'un épinglé sorti de son adresse : retour à celle-ci.
-    else if (act.dataset.act === 'icon') send(row.classList.contains('changed') ? 'resetPinned' : (row.dataset.folder ? 'toggleFolder' : 'activate'), id);
+    // ⌘clic : la page qu'il affichait part dans un nouvel onglet.
+    else if (act.dataset.act === 'icon') send(row.classList.contains('changed') ? (aside ? 'resetPinnedAside' : 'resetPinned') : (row.dataset.folder ? 'toggleFolder' : 'activate'), id);
     return undefined;
   }
   if (row) {
@@ -491,8 +558,28 @@ sidebar.addEventListener('click', (e) => {
     return undefined;
   }
   const sp = e.target.closest('[data-space]');
-  if (sp) send('switchSpace', sp.dataset.space);
+  if (sp) return send('switchSpace', sp.dataset.space);
+  // En-tête de l'Espace : « … » ouvre son menu, le chevron replie les épinglés,
+  // un clic sur le nom le renomme (comme dans Arc).
+  if (e.target.closest('#space-more')) return send('spaceMenu', null);
+  if (e.target.closest('#pinned-toggle')) return send('command', 'collapsePinned');
+  if (e.target.closest('#space-name') && !editing && S && overText($('space-name'), e)) return startRename(S.space.id);
   return undefined;
+});
+
+// Le pointeur est-il sur le texte de l'élément (et non dans le vide à sa droite) ?
+function overText(el, e) {
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  const r = range.getBoundingClientRect();
+  return e.clientX >= r.left - 2 && e.clientX <= r.right + 6;
+}
+
+// Boutons 3 et 4 de la souris (précédent / suivant) sur la barre : Espace voisin.
+sidebar.addEventListener('mouseup', (e) => {
+  if (e.button !== 3 && e.button !== 4) return;
+  e.preventDefault();
+  send('stepSpace', e.button === 3 ? -1 : 1);
 });
 
 // Clic molette : archive l'onglet.
@@ -503,9 +590,11 @@ sidebar.addEventListener('auxclick', (e) => {
 
 sidebar.addEventListener('dblclick', (e) => {
   const row = e.target.closest('[data-id]');
-  if (row && row.dataset.folder) return startRename(row.dataset.id);
-  if (row && row.closest('#pinned')) return startRename(row.dataset.id);
-  if (e.target.closest('#space-head')) return startRename(S.space.id);
+  // Double-clic sur une ligne (dossier, épinglé, onglet du jour) : renommer.
+  if (row && !row.closest('#fav')) return e.target.closest('.act') ? undefined : startRename(row.dataset.id);
+  if (e.target.closest('#space-head')) return e.target.closest('button') ? undefined : startRename(S.space.id);
+  // Double-clic dans le vide de la liste : nouvel onglet.
+  if (!row && e.target.closest('#scroll') && !e.target.closest('button, input, #divider')) return send('openCommand', 'new');
   return undefined;
 });
 
@@ -543,17 +632,42 @@ $('tb-url').onclick = () => send('openCommand', 'edit');
 $('b-newtab').onclick = () => send('openCommand', 'new');
 $('b-clear').onclick = () => send('command', 'clearToday');
 $('b-library').onclick = () => send('command', S && S.downloads ? 'downloads' : 'library');
-$('b-plus').onclick = () => send('sidebarMenu');
+$('b-plus').onclick = () => send('sidebarMenu', 'plus');
+$('url-copy').onclick = () => send('command', 'copyUrl');
+const LONG_PRESS = 500; // appui long sur précédent / suivant (ms)
 for (const p of ['b', 'tb']) {
-  $(p + '-back').onclick = () => send('command', 'back');
-  $(p + '-forward').onclick = () => send('command', 'forward');
-  $(p + '-reload').onclick = (e) => {
+  // Précédent, suivant : clic = aller ; ⌘clic ou clic molette = dans un nouvel
+  // onglet ; clic droit ou appui long = l'historique de l'onglet.
+  for (const [name, dir] of [['back', -1], ['forward', 1]]) {
+    const el = $(`${p}-${name}`);
+    let held = null;
+    let long = false;
+    el.onclick = (e) => {
+      if (long) { long = false; return; }
+      if (modKey(e)) send('navNew', dir); else send('command', name);
+    };
+    el.addEventListener('auxclick', (e) => { if (e.button === 1) { e.stopPropagation(); send('navNew', dir); } });
+    el.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); clearTimeout(held); send('navMenu', dir); });
+    el.addEventListener('pointerdown', (e) => {
+      long = false;
+      clearTimeout(held);
+      if (e.button === 0) held = setTimeout(() => { long = true; send('navMenu', dir); }, LONG_PRESS);
+    });
+    for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) el.addEventListener(ev, () => clearTimeout(held));
+  }
+  // Actualiser : clic = actualiser (ou arrêter pendant le chargement) ; ⌘clic =
+  // dupliquer l'onglet ; double-clic = arrêter ; clic droit = les variantes.
+  const reload = $(p + '-reload');
+  reload.onclick = (e) => {
+    if (modKey(e)) return send('command', 'duplicate');
     const stop = S && S.nav.loading;
     // L'icône fait un tour (animation relancée à chaque clic).
     const svg = e.currentTarget.querySelector('svg');
     if (!stop && svg) { svg.classList.remove('spin'); void svg.getBoundingClientRect(); svg.classList.add('spin'); }
-    send('command', stop ? 'stop' : 'reload');
+    return send('command', stop ? 'stop' : 'reload');
   };
+  reload.addEventListener('dblclick', (e) => { e.stopPropagation(); send('command', 'stop'); });
+  reload.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); send('reloadMenu'); });
 }
 
 // --- Changement d'Espace : deux listes côte à côte ---------------------------
@@ -880,14 +994,26 @@ scroller.addEventListener('wheel', (e) => {
 }, { passive: true });
 
 // --- Redimensionnement ------------------------------------------------------
+const HIDE_AT = 100; // tirer le bord en deçà (px) masque la barre
 $('resize').addEventListener('pointerdown', (e) => {
   const el = e.currentTarget;
   el.setPointerCapture(e.pointerId);
   document.body.classList.add('no-anim');
   let frame = 0;
   let x = e.clientX;
+  const before = S ? S.sidebar.width : 0;
   const move = (ev) => {
     x = ev.clientX;
+    // Tiré tout à gauche : la barre se masque, le geste s'arrête là ; elle
+    // reviendra à la largeur qu'elle avait avant.
+    if (x < HIDE_AT && S && S.sidebar.visible) {
+      cancelAnimationFrame(frame);
+      up();
+      try { el.releasePointerCapture(e.pointerId); } catch {}
+      if (before) send('sidebarWidth', before);
+      send('toggleSidebar');
+      return;
+    }
     if (!frame) frame = requestAnimationFrame(() => { frame = 0; send('sidebarWidth', x); });
   };
   const up = () => {
@@ -898,6 +1024,9 @@ $('resize').addEventListener('pointerdown', (e) => {
   el.addEventListener('pointermove', move);
   el.addEventListener('pointerup', up);
 });
+
+// Double-clic sur le bord : retour à la largeur par défaut.
+$('resize').addEventListener('dblclick', () => send('sidebarWidthReset'));
 
 // --- Largeur des volets d'une vue scindée -----------------------------------
 let splitDrag = false;
@@ -1085,12 +1214,13 @@ scroller.addEventListener('scroll', () => {
   geom.scroll = scroller.scrollTop;
   if (target && target.slot) placeSlot();
 }, { passive: true });
+scroller.addEventListener('scroll', offViewSoon, { passive: true });
 
 function endDrag() {
   if (!drag) return;
   clearTimeout(drag.timer);
   const settled = drag.settling;
-  if (!settled) send('dragZone', false);
+  if (!settled && !drag.space) send('dragZone', false);
   zoneOn = false;
   // Dépôt accepté : les lignes sont déjà à leur place définitive, on retire les
   // décalages sans animation. Abandon : elles reviennent en glissant.
@@ -1110,6 +1240,16 @@ function endDrag() {
 }
 
 sidebar.addEventListener('dragstart', (e) => {
+  // Pastille d'un Espace : on la glisse pour réordonner les Espaces.
+  const dot = e.target.closest('#spaces [data-space]');
+  if (dot) {
+    if (editing || drag || !S || S.incognito) return e.preventDefault();
+    drag = { space: dot.dataset.space };
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('application/x-orbe-space', dot.dataset.space);
+    requestAnimationFrame(() => { if (drag && drag.space) dot.classList.add('dragging-self'); });
+    return undefined;
+  }
   const row = e.target.closest('[data-id]');
   if (!row || editing || drag) return e.preventDefault();
   const item = row.dataset.folder ? row.parentElement : row;
@@ -1119,7 +1259,8 @@ sidebar.addEventListener('dragstart', (e) => {
   if (sel.size && !many) setSel([]);
   drag = { id: row.dataset.id, folder: !!row.dataset.folder, ids: many && many.length > 1 ? many : null };
   if (drag.ids) dragGhost(e, row, drag.ids.length);
-  e.dataTransfer.effectAllowed = 'move';
+  // « copyMove » : ⌥ pendant le glisser dépose une copie (voir `drop`).
+  e.dataTransfer.effectAllowed = 'copyMove';
   e.dataTransfer.setData('text/plain', row.dataset.id);
   e.dataTransfer.setData('application/x-orbe-item', row.dataset.id);
   // Les zones de dépôt ne s'agrandissent qu'après le départ du glisser :
@@ -1209,8 +1350,27 @@ function listTarget(y) {
   return t;
 }
 
+// Pastilles des Espaces : rang où tomberait l'Espace glissé, et trait vertical.
+function spaceTarget(e) {
+  if (!e.target.closest('#bottom')) return null;
+  const kids = [...$('spaces').children];
+  if (!kids.length) return null;
+  let index = kids.length;
+  let rect = null;
+  for (let i = 0; i < kids.length; i++) {
+    const r = kids[i].getBoundingClientRect();
+    if (e.clientX < r.left + r.width / 2) { index = i; rect = r; break; }
+  }
+  const last = kids[kids.length - 1].getBoundingClientRect();
+  return { space: true, index, pos: { x: rect ? rect.left - 1 : last.right, y: last.top + 3, h: last.height - 6 } };
+}
+
 // Calcule la destination sous le pointeur : liste, position et repère visuel.
 function dropTarget(e) {
+  if (drag.space) return spaceTarget(e);
+  // Onglet au-dessus de la pastille d'un autre Espace : il y sera déplacé.
+  const dot = e.target.closest('#spaces [data-space]');
+  if (dot) return drag.folder || dot.dataset.space === S.space.id ? null : { toSpace: dot.dataset.space, into: dot, g: null };
   const fav = e.target.closest('#fav');
   if (fav) return gridTarget(e, fav);
   if (!e.target.closest('#scroll')) return null;
@@ -1220,7 +1380,7 @@ function dropTarget(e) {
 
 // Au-dessus de la page : lâcher l'onglet crée une vue scindée. Pendant un
 // glisser, c'est la coque qui reçoit les événements, même au-dessus des pages.
-const overPage = (e) => !!drag && !drag.settling && !drag.folder && !!S && S.sidebar.visible && !!S.activeId && e.clientX > S.sidebar.width + 12;
+const overPage = (e) => !!drag && !drag.settling && !drag.folder && !drag.space && !!S && S.sidebar.visible && !!S.activeId && e.clientX > S.sidebar.width + 12;
 let zoneOn = false;
 function setZone(on) {
   if (on === zoneOn) return;
@@ -1262,8 +1422,10 @@ function overSidebar(e) {
   showTarget(t);
   if (!t) return;
   e.preventDefault();
-  e.dataTransfer.dropEffect = 'move';
+  e.dataTransfer.dropEffect = copying(e, t) ? 'copy' : 'move';
 }
+// ⌥glisser un onglet : il est dupliqué à l'endroit du dépôt (ni dossier, ni autre Espace).
+const copying = (e, t) => e.altKey && !drag.folder && !drag.space && !t.toSpace;
 sidebar.addEventListener('dragover', overSidebar);
 sidebar.addEventListener('dragenter', overSidebar);
 
@@ -1280,8 +1442,10 @@ sidebar.addEventListener('drop', (e) => {
   if (drag.settling) return undefined;
   const t = dropTarget(e);
   if (!t) return endDrag();
+  if (drag.space) { send('moveSpace', { id: drag.space, index: t.index }); return endDrag(); }
+  if (t.toSpace) { send('moveToSpace', { ...(drag.ids ? { ids: drag.ids } : { id: drag.id }), spaceId: t.toSpace }); return endDrag(); }
   showTarget(t);
-  send('move', { ...(drag.ids ? { ids: drag.ids } : { id: drag.id }), to: t.to, folderId: t.folderId, index: t.index });
+  send('move', { ...(drag.ids ? { ids: drag.ids } : { id: drag.id }), to: t.to, folderId: t.folderId, index: t.index, ...(copying(e, t) ? { copy: true } : {}) });
   // Lâché à sa propre place, ou rien d'emporté dans les listes (tuile de favori) : fin immédiate.
   if (!geom) measure();
   const still = !!t.slot && t.g !== null && geom.flow.every((f) => !f.off);
