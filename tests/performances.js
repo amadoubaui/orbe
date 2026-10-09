@@ -1,0 +1,262 @@
+// Vitesse et mémoire : ce que les améliorations de docs/suivi/ameliorations.md
+// garantissent, vérifié par des faits (processus, écouteurs, requêtes), jamais
+// par des durées, qui varient avec la charge de la machine.
+// Appelé par tests/selftest.js, ou seul :
+//   ORBE_SCENARIO=tests/performances.js node scripts/dev.js --selftest
+const { app, webContents } = require('electron');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function until(fn, label, timeout = 8000) {
+  const t0 = Date.now();
+  for (;;) {
+    let v;
+    try { v = await fn(); } catch { v = false; }
+    if (v) return v;
+    if (Date.now() - t0 > timeout) throw new Error('Délai dépassé : ' + label);
+    await sleep(40);
+  }
+}
+
+module.exports = async function performancesTests(ctx) {
+  const { first: w, OrbeWindow, store, win } = ctx;
+  let failed = 0;
+  const check = ctx.check || ((name, ok, detail = '') => { if (!ok) failed += 1; console.log(`${ok ? '  ✓' : '  ✗'} ${name}${ok || !detail ? '' : ' — ' + detail}`); });
+  const sessions = require('../src/main/sessions');
+  const suggest = require('../src/main/suggest');
+  const veille = require('../src/main/veille');
+  const ui = (js) => w.ui.webContents.executeJavaScript(js, true);
+  const pidOf = (view) => view.webContents.getOSProcessId();
+  const page = (title) => 'data:text/html;charset=utf-8,' + encodeURIComponent(`<title>${title}</title><input id="champ"><p>${title}</p>`);
+
+  await until(() => ui('typeof S === "object" && S !== null'), 'coque chargée');
+
+  // --- Vues d'appoint : nées de la coque, dans son processus -----------------------
+  if (ctx.modalAtStart !== undefined) check('la vue modale n’est pas créée avec la fenêtre : elle attend l’affichage de la coque', ctx.modalAtStart === null);
+  await until(() => w.modal && !w.modal.webContents.isLoading() && w.spares.some((s) => s.ready), 'vue modale et réserve prêtes');
+  const shellPid = pidOf(w.ui);
+  check('la vue modale naît de la coque : même processus de rendu, adresse à son nom',
+    pidOf(w.modal) === shellPid && w.modal.webContents.getURL() === 'orbe://app/overlay.html#modal', `${pidOf(w.modal)} / ${shellPid} ${w.modal.webContents.getURL()}`);
+  const prefs = w.modal.webContents.getLastWebPreferences();
+  check('elle garde le bac à sable, l’isolation du contexte et le pont de l’interface',
+    prefs.sandbox === true && prefs.contextIsolation === true && prefs.nodeIntegration === false && win.trusted.has(w.modal.webContents)
+    && await w.modal.webContents.executeJavaScript('typeof window.orbe === "object" && typeof window.orbe.send === "function" && typeof require === "undefined"'));
+  w.toast('Essai');
+  await until(() => w.toastView && w.win.contentView.children.includes(w.toastView), 'notification affichée');
+  const hadTab = !!w.activeId;
+  const tmp = hadTab ? null : w.newTab(page('Appoint'));
+  if (tmp) await until(() => w.data.tabs[tmp.id].title === 'Appoint', 'onglet d’essai');
+  w.openFind();
+  await until(() => w.findView && w.findView.webContents.executeJavaScript('!document.getElementById("find").hidden'), 'recherche affichée');
+  check('notification et recherche dans la page : aucune ne démarre de processus',
+    pidOf(w.toastView) === shellPid && pidOf(w.findView) === shellPid && w.findView.webContents.getURL().endsWith('#find') && w.toastView.webContents.getURL().endsWith('#toast'),
+    `${pidOf(w.toastView)} ${pidOf(w.findView)} / ${shellPid}`);
+  w.closeFind();
+  const uiViews = [w.ui, w.modal, w.toastView, w.findView, ...w.spares.map((s) => s.view)];
+  check('toute l’interface de la fenêtre tient dans un seul processus de rendu', new Set(uiViews.map(pidOf)).size === 1, [...new Set(uiViews.map(pidOf))].join(' '));
+
+  // La coque n'ouvre rien d'elle-même, et une vue d'appoint ne va nulle part ailleurs.
+  const strays = () => webContents.getAllWebContents().filter((wc) => /settings\.html|shell\.html$|exemple\.invalid|about:blank/.test(wc.getURL()) && wc !== w.ui.webContents).length
+    + Math.max(0, webContents.getAllWebContents().filter((wc) => wc.getURL().endsWith('#modal')).length - OrbeWindow.all.length);
+  const before = strays();
+  const opened = await ui('[window.open("orbe://app/overlay.html#modal"), window.open("orbe://app/settings.html"), window.open("https://exemple.invalid/"), window.open("about:blank")].map(String).join()');
+  await sleep(150);
+  check('la coque ne peut ouvrir aucune fenêtre de son propre chef', opened === 'null,null,null,null' && strays() === before, `${opened} ${strays()}/${before}`);
+  const spare = w.spares.find((s) => s.ready);
+  const spareUrl = spare.view.webContents.getURL();
+  await spare.view.webContents.executeJavaScript('location.href = "https://exemple.invalid/"; window.open("orbe://app/shell.html"); 1', true).catch(() => {});
+  await w.modal.webContents.executeJavaScript('location.href = "orbe://app/settings.html"; 1', true).catch(() => {});
+  await sleep(200);
+  check('une vue d’appoint ne peut ni changer de page ni ouvrir de fenêtre',
+    spare.view.webContents.getURL() === spareUrl && w.modal.webContents.getURL() === 'orbe://app/overlay.html#modal' && strays() === before);
+
+  // Barre de commande demandée avant la fin du chargement de sa vue : le message attend.
+  {
+    const w2 = new OrbeWindow();
+    w2.openCommand(); // la coque de cette fenêtre n'a pas encore chargé : la vue naît à part
+    const own = w2.modal;
+    await until(() => own.webContents.executeJavaScript('!document.getElementById("command").hidden'), 'barre de commande affichée dès le chargement');
+    check('barre de commande demandée dès l’ouverture de la fenêtre : elle s’affiche quand même', w2.modalMode === 'command' && w2.modal === own);
+    w2.hideModal();
+
+    // Processus de la coque perdu : l'interface revient d'elle-même.
+    await until(() => w2.ui.webContents.executeJavaScript('typeof S === "object" && S !== null', true), 'coque de la seconde fenêtre');
+    await until(() => w2.spares.some((s) => s.ready), 'réserve de la seconde fenêtre');
+    w2.toast('Avant');
+    await until(() => w2.toastView, 'notification de la seconde fenêtre');
+    const lost = pidOf(w2.ui);
+    const born = w2.toastView;
+    const bornWc = born.webContents;
+    w2.ui.webContents.forcefullyCrashRenderer();
+    await until(() => pidOf(w2.ui) && pidOf(w2.ui) !== lost && w2.ui.webContents.executeJavaScript('typeof S === "object" && S !== null && S.space.id', true), 'coque rechargée', 15000);
+    await until(() => w2.spares.some((s) => s.ready), 'réserve reconstituée', 15000);
+    w2.toast('Après');
+    await until(() => w2.toastView && w2.toastView !== born && w2.win.contentView.children.includes(w2.toastView), 'notification après la reprise');
+    check('processus de la coque perdu : la coque se recharge, ses vues d’appoint renaissent avec elle',
+      bornWc.isDestroyed() && pidOf(w2.toastView) === pidOf(w2.ui) && await w2.ui.webContents.executeJavaScript('S.space.id', true) === w2.spaceId);
+    w2.win.close();
+    await until(() => !OrbeWindow.all.includes(w2), 'seconde fenêtre fermée');
+  }
+
+  // --- Fichiers de l'interface servis depuis la mémoire ----------------------------
+  const stats = { ...sessions.uiStats };
+  const codes = await ui(`Promise.all(['overlay.html', 'absent.html', '%2e%2e/main/main.js', '..%2fpreload/ui.js'].map((p) => fetch('orbe://app/' + p).then((r) => r.status + ':' + (r.headers.get('content-type') || '').split(';')[0], () => 'refus'))).then((a) => a.join(' '))`);
+  check('fichiers de l’interface : servis depuis la mémoire, rien hors du dossier de l’interface',
+    codes.startsWith('200:text/html ') && !/200.*200/.test(codes) && sessions.uiStats.hits > stats.hits && sessions.uiStats.reads === stats.reads, `${codes} ${JSON.stringify(sessions.uiStats)}`);
+
+  // --- Extensions : rien dans les pages web tant qu'aucune n'est chargée -------------
+  {
+    const ses = w.session;
+    const ids = () => ses.getPreloadScripts().map((s) => s.id).filter((id) => id.startsWith('orbe-ext')).sort().join();
+    const none = !ses.extensions.getAllExtensions().length;
+    if (none) check('sans extension : le script des extensions n’est enregistré sur aucune page web', ids() === '', ids());
+    const ext = await ses.extensions.loadExtension(path.join(__dirname, 'ext-fixture-sans'));
+    check('dès qu’une extension est chargée, son script de complément est en place (pages et service workers)', ids() === 'orbe-ext-frame,orbe-ext-worker', ids());
+    if (none) ses.extensions.removeExtension(ext.id);
+  }
+
+  // --- Barre de commande : recherche incrémentale ---------------------------------
+  {
+    const kept = store.state.history;
+    const h = {};
+    for (let i = 0; i < 400; i++) { const url = `https://${i % 2 ? 'pagaie' : 'montagne'}${i}.exemple.fr/`; h[url] = { url, visits: 1 + (i % 5), last: Date.now() - i * 1000, title: i % 7 ? 'Titre ' + i : 'Pagination ' + i }; }
+    store.state.history = h;
+    const opts = { tabs: [], commands: [], activeId: null };
+    suggest.forget();
+    suggest.local('pa', opts);
+    const full = suggest.stats.scanned;
+    const next = suggest.local('pagai', opts);
+    const narrowed = { ...suggest.stats };
+    suggest.forget();
+    const fresh = suggest.local('pagai', opts);
+    check('saisie prolongée : seules les entrées déjà retenues sont relues, avec le même résultat',
+      full === 400 && narrowed.incremental && narrowed.scanned < 300 && JSON.stringify(next) === JSON.stringify(fresh), `${full} → ${narrowed.scanned}`);
+    suggest.local('pagai', opts);
+    store.visit('https://pagaie-nouvelle.exemple.fr/', 'Pagaie neuve');
+    const after = suggest.local('pagaie-nouv', opts);
+    check('l’historique change entre deux frappes : la recherche repart de tout l’historique',
+      !suggest.stats.incremental && after.some((x) => x.url === 'https://pagaie-nouvelle.exemple.fr/'));
+    suggest.local('montagne', opts);
+    check('saisie différente (pas un prolongement) : recherche complète', !suggest.stats.incremental);
+    store.state.history = kept;
+    suggest.forget();
+  }
+
+  // --- Icônes devinées : une seule demande par site ---------------------------------
+  {
+    const r = await ui(`(() => {
+      const page = 'https://sans-icone.invalid/page';
+      const first = guessIcon(page);
+      const img = faviconEl(first, 'S');
+      img.dispatchEvent(new Event('error'));
+      const real = faviconEl('https://autre.invalid/icone.png', 'A');
+      real.dispatchEvent(new Event('error'));
+      return [first, guessIcon(page), guessIcon('https://sans-icone.invalid/autre'), guessIcon('https://autre.invalid/x'), guessIcon('http://clair.invalid/')].join(' | ');
+    })()`);
+    check('/favicon.ico d’un site qui n’en a pas n’est demandé qu’une fois', r === 'https://sans-icone.invalid/favicon.ico |  |  | https://autre.invalid/favicon.ico | ', r);
+  }
+
+  // --- Veille des onglets -----------------------------------------------------------
+  {
+    const t = (id, age, extra = {}) => ({ id, lastUsed: 1e6 - age, mb: 100, ...extra });
+    const ids = (list) => list.map((p) => p.id + ':' + p.why).join(' ');
+    const now = 1e6;
+    check('veille, nombre : les plus anciens d’abord, jamais un onglet affiché ou qui joue',
+      ids(veille.pick([t('a', 50), t('b', 40, { kept: true }), t('c', 30), t('d', 20), t('e', 10)], { max: 3, now })) === 'a:count c:count');
+    check('veille, ancienneté : un onglet resté trop longtemps sans être vu s’endort, sauf si l’on y a saisi du texte',
+      ids(veille.pick([t('a', 500), t('b', 400, { typed: true }), t('c', 300, { kept: true }), t('d', 20)], { max: 30, idleMs: 100, now })) === 'a:idle');
+    const six = [t('a', 60), t('b', 50, { typed: true }), t('c', 40), t('d', 30), t('e', 20), t('f', 10)];
+    check('veille, mémoire : au-delà du budget, les plus anciens s’endorment jusqu’à y revenir',
+      ids(veille.pick(six, { max: 30, budgetMb: 350, totalMb: 600, now })) === 'a:memory c:memory');
+    check('veille, mémoire : jamais moins de quatre onglets vivants, et rien sous le budget',
+      veille.pick(six, { max: 30, budgetMb: 10, totalMb: 600, now }).length === 2 && veille.pick(six, { max: 30, budgetMb: 600, totalMb: 600, now }).length === 0);
+    check('budget mémoire : une part de la mémoire de la machine', veille.budget(8 * 1024 ** 3, 25) === 2048);
+
+    const s = store.state.settings;
+    const saved = { sleepAfterHours: s.sleepAfterHours, memoryBudget: s.memoryBudget, maxLiveTabs: s.maxLiveTabs };
+    Object.assign(s, { sleepAfterHours: 3, memoryBudget: 0, maxLiveTabs: 60 });
+    const tabs = ['Veille A', 'Veille B', 'Veille C'].map((title) => w.newTab(page(title), { background: true }));
+    await until(() => tabs.every((x) => w.data.tabs[x.id].title.startsWith('Veille')), 'onglets d’essai chargés');
+    const rendu = () => app.getAppMetrics().filter((m) => m.type === 'Tab').length;
+    const mem = win.tabMemory();
+    check('mémoire relevée par onglet et au total (processus comptés une fois)', mem.total > 0 && tabs.every((x) => mem.of(x.id) > 0) && mem.total >= tabs.reduce((a, x) => a + mem.of(x.id), 0) - 1);
+    const count0 = rendu();
+    const old = Date.now() - 4 * 36e5;
+    for (const x of tabs) win.live.get(x.id).lastUsed = old;
+    // Une vraie frappe dans la page B : elle ne s'endormira pas toute seule.
+    const typedWc = win.live.get(tabs[1].id).wc;
+    await typedWc.executeJavaScript('document.getElementById("champ").focus()', true);
+    typedWc.sendInputEvent({ type: 'keyDown', keyCode: 'a' });
+    typedWc.sendInputEvent({ type: 'char', keyCode: 'a' });
+    typedWc.sendInputEvent({ type: 'keyUp', keyCode: 'a' });
+    await until(() => win.live.get(tabs[1].id).typed, 'frappe vue dans la page');
+    check('aucune mise en veille par ancienneté à l’activation d’un onglet (seulement au passage de fond)', OrbeWindow.trimLive().length === 0 && tabs.every((x) => win.live.has(x.id)));
+    const slept = OrbeWindow.trimLive({ deep: true });
+    check('passage de fond : les onglets non vus depuis 3 h s’endorment ; celui où l’on a écrit reste',
+      slept.filter((p) => p.why === 'idle').map((p) => p.id).sort().join() === [tabs[0].id, tabs[2].id].sort().join() && !win.live.has(tabs[0].id) && !win.live.has(tabs[2].id) && win.live.has(tabs[1].id) && !!w.data.tabs[tabs[0].id],
+      JSON.stringify(slept));
+    await until(() => rendu() <= count0 - 2, 'processus des onglets endormis rendus', 15000).catch(() => {});
+    check('deux onglets endormis : deux processus de rendu en moins', rendu() <= count0 - 2, `${count0} → ${rendu()}`);
+
+    // Onglet en veille survolé : la connexion est préparée, la page n'est pas chargée.
+    const calls = [];
+    const real = w.session.preconnect;
+    w.session.preconnect = (o) => { calls.push(o.url); };
+    const asleep = w.createTab('https://reveil.exemple.invalid/page');
+    asleep.title = 'Réveil';
+    const plain = w.createTab('http://clair.exemple.invalid/');
+    OrbeWindow.pushAll();
+    check('survol d’un onglet en veille : pré-connexion à son site, une seule fois, sans charger la page',
+      w.prewake(asleep.id) === true && w.prewake(asleep.id) === false && calls.join() === 'https://reveil.exemple.invalid' && !win.live.has(asleep.id) && !store.state.history['https://reveil.exemple.invalid/page']);
+    check('pas de pré-connexion pour un onglet vivant, une adresse en clair ou un identifiant inconnu',
+      w.prewake(tabs[1].id) === false && w.prewake(plain.id) === false && w.prewake('inconnu') === false && w.prewake({}) === false && calls.length === 1);
+    const priv = new OrbeWindow({ incognito: true });
+    const privTab = priv.createTab('https://prive.exemple.invalid/');
+    check('jamais de pré-connexion en navigation privée', priv.prewake(privTab.id) === false && calls.length === 1);
+    priv.win.close();
+    // La barre latérale signale le survol après 150 ms.
+    const other = w.createTab('https://survol.exemple.invalid/');
+    other.title = 'Survol';
+    OrbeWindow.pushAll();
+    await until(() => ui(`!!document.querySelector('#today .row.tab[data-id="${other.id}"]')`), 'ligne de l’onglet en veille');
+    await ui(`document.querySelector('#today .row.tab[data-id="${other.id}"]').dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))`);
+    await until(() => calls.includes('https://survol.exemple.invalid'), 'pré-connexion au survol');
+    check('la barre latérale signale le survol d’un onglet en veille', calls.length === 2);
+    w.session.preconnect = real;
+    for (const x of [asleep, plain, other, ...tabs]) w.close(x.id, { silent: true, ask: false });
+    Object.assign(s, saved);
+
+    // Vignettes de la bascule ⌃Tab : huit au plus.
+    const many = Array.from({ length: win.thumbs.MAX + 3 }, (_, i) => w.newTab(page('Vignette ' + i), { background: true }));
+    for (const x of many) win.thumbs.keep(win.live.get(x.id), 'image');
+    win.thumbs.keep(win.live.get(many[3].id), 'image'); // reprise : elle redevient la plus récente
+    const withThumb = many.filter((x) => win.live.get(x.id).thumb).map((x) => many.indexOf(x)).join();
+    check('vignettes de la bascule d’onglets : seules les huit dernières sont gardées', withThumb === '3,4,5,6,7,8,9,10', withThumb);
+    for (const x of many) w.close(x.id, { silent: true, ask: false });
+  }
+  if (tmp) w.close(tmp.id, { silent: true, ask: false });
+
+  // --- Historique : lu au premier accès, pas avant la fenêtre -------------------------
+  {
+    const Store = store.constructor;
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orbe-historique-'));
+    fs.writeFileSync(path.join(dir, 'orbe.json'), JSON.stringify({ tabs: {} }));
+    fs.writeFileSync(path.join(dir, 'history.json'), JSON.stringify({ 'https://ancien.exemple.fr/': { url: 'https://ancien.exemple.fr/', visits: 4, last: 1, title: 'Ancien' } }));
+    const st = new Store();
+    st.load(dir);
+    const pending = st.historyPending === true && st.hadHistory === true;
+    st.visit('https://neuf.exemple.fr/', 'Neuf');
+    st.flush();
+    const disk = JSON.parse(fs.readFileSync(path.join(dir, 'history.json'), 'utf8'));
+    check('historique : le fichier n’est lu qu’au premier accès, et rien ne se perd à l’écriture suivante',
+      pending && st.historyPending === false && disk['https://ancien.exemple.fr/'].visits === 4 && disk['https://neuf.exemple.fr/'].visits === 1, JSON.stringify(Object.keys(disk)));
+    const empty = new Store();
+    const dir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'orbe-historique-'));
+    empty.load(dir2);
+    check('profil neuf : pas d’historique, premier lancement reconnu sans le lire', empty.hadHistory === false && empty.historyPending === true && Object.keys(empty.state.history).length === 0);
+  }
+
+  if (!ctx.check && failed) throw new Error(`${failed} vérification(s) en échec`);
+};

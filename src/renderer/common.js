@@ -63,11 +63,20 @@ function letterIcon(text) {
 }
 
 // Icône probable d'un site dont la page n'a pas encore été chargée :
-// demandée au site lui-même, jamais à un service tiers.
+// demandée au site lui-même, jamais à un service tiers, et une seule fois par
+// site : un échec est retenu tant que la vue vit. Sans cela, chaque nouveau
+// rendu des lignes (changement d'Espace) redemandait /favicon.ico à tous les
+// sites qui n'en ont pas.
+const guessedIcons = new Set();
+const missingIcons = new Set();
 function guessIcon(pageUrl) {
   try {
     const u = new URL(pageUrl);
-    return u.protocol === 'https:' ? u.origin + '/favicon.ico' : '';
+    if (u.protocol !== 'https:') return '';
+    const url = u.origin + '/favicon.ico';
+    if (missingIcons.has(url)) return '';
+    guessedIcons.add(url);
+    return url;
   } catch {
     return '';
   }
@@ -80,7 +89,7 @@ function faviconEl(url, fallbackText) {
   img.draggable = false;
   img.decoding = 'async';
   img.loading = 'lazy';
-  img.onerror = () => img.replaceWith(letterIcon(fallbackText));
+  img.onerror = () => { if (guessedIcons.has(url)) missingIcons.add(url); img.replaceWith(letterIcon(fallbackText)); };
   img.src = url;
   return img;
 }

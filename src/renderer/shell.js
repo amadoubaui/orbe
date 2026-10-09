@@ -1149,6 +1149,20 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+// Pointeur posé 150 ms sur un onglet en veille : le processus principal prépare
+// la connexion à son site, pour un réveil plus rapide au clic.
+let hoverId = null;
+let hoverTimer = null;
+sidebar.addEventListener('mouseover', (e) => {
+  const row = e.target.closest ? e.target.closest('.row.tab, .tile') : null;
+  const id = row && !row.classList.contains('live') && !drag ? row.dataset.id : null;
+  if (id === hoverId) return;
+  hoverId = id || null;
+  clearTimeout(hoverTimer);
+  if (id) hoverTimer = setTimeout(() => { if (hoverId === id) send('hoverTab', id); }, 150);
+});
+sidebar.addEventListener('mouseleave', () => { hoverId = null; clearTimeout(hoverTimer); });
+
 O.on('state', onState);
 // Renommer pendant un glissement (nouvel Espace) : après l'arrivée.
 O.on('edit', (id) => (slide && slide.commit ? slide.after.push(() => startRename(id)) : startRename(id)));

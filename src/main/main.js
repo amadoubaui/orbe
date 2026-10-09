@@ -57,6 +57,9 @@ if (SELFTEST) {
   app.commandLine.appendSwitch('use-mock-keychain');
   // Caméra et micro factices : aucun vrai appareil n'est ouvert pendant les tests.
   app.commandLine.appendSwitch('use-fake-device-for-media-stream');
+  // Fenêtre d'essai recouverte par une autre (machine partagée) : Chromium ralentirait
+  // ses minuteries à une par seconde et suspendrait ses vidéos, ce qui fausse les essais.
+  app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
   const dl = path.join(app.getPath('userData'), 'Telechargements');
   fs.mkdirSync(dl, { recursive: true });
   app.setPath('downloads', dl);
@@ -151,6 +154,8 @@ const SETTABLE = {
   appearance: (v) => ['auto', 'light', 'dark'].includes(v),
   translucent: (v) => typeof v === 'boolean',
   maxLiveTabs: (v) => Number.isInteger(v) && v >= 4 && v <= 60,
+  sleepAfterHours: (v) => [0, 1, 2, 3, 6, 12].includes(v),
+  memoryBudget: (v) => v === 0 || (Number.isInteger(v) && v >= 10 && v <= 80),
   externalLinks: prefs.externalLinks,
   autoPip: (v) => typeof v === 'boolean',
   sounds: (v) => typeof v === 'boolean',
@@ -341,7 +346,8 @@ app.on('second-instance', (e, argv) => {
 
 app.whenReady().then(async () => {
   store.load(app.getPath('userData'));
-  const firstRun = !Object.keys(store.state.tabs).length && !Object.keys(store.state.history).length;
+  // (Sans lire l'historique : il n'est chargé qu'après l'affichage de la fenêtre.)
+  const firstRun = !Object.keys(store.state.tabs).length && !store.hadHistory && !store.historyDirty;
   // Moteur avec Widevine (ORBE_DRM) : prépare le module de lecture protégée, sans
   // retarder l'ouverture (premier lancement : téléchargement en arrière-plan).
   const { components } = require('electron');
@@ -349,6 +355,7 @@ app.whenReady().then(async () => {
   applyAppearance();
   extensions.configure({ dir: path.join(app.getPath('userData'), 'Extensions'), fetch: (u, o) => net.fetch(u, o), lang: store.state.settings.lang });
   extApi.configure({ dir: path.join(app.getPath('userData'), 'Extensions') });
+  extensions.hooks.equip = (ses) => extApi.equip(ses);
   extHost.setup();
   // Feuilles d'onglet, autorisations, certificats, authentification, « quitter la page ? »… (après extHost : mise en page chaînée).
   essentials.setup({ win, sessions, test: SELFTEST });
@@ -408,8 +415,13 @@ app.whenReady().then(async () => {
   if (firstRun && !SELFTEST && !process.env.ORBE_NO_WELCOME) first.openInternal('welcome.html');
   for (const url of pendingUrls.splice(0)) openUrl(url);
 
+  // L'historique se charge une fois la fenêtre affichée et la coque peinte.
+  setTimeout(() => store.warmHistory(), 400);
   setTimeout(win.archiveStale, 30e3);
   setInterval(win.archiveStale, 10 * 60e3);
+  // Veille des onglets selon l'ancienneté et la mémoire, toutes les minutes.
+  // (Pas pendant les tests : ils déclenchent ce passage eux-mêmes.)
+  if (!SELFTEST) setInterval(() => OrbeWindow.trimLive({ deep: true }), 60e3).unref();
   setInterval(() => little.LittleWindow.archiveStale(), 10 * 60e3).unref();
 
   if (SELFTEST) {

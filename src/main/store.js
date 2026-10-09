@@ -27,6 +27,10 @@ const DEFAULT_SETTINGS = {
   showToolbar: false,
   sidebarWidth: 250,
   maxLiveTabs: 30,
+  // Veille automatique (src/main/veille.js) : après tant d'heures sans être affiché
+  // (0 : jamais), et au-delà de cette part de la mémoire de la machine, en % (0 : sans limite).
+  sleepAfterHours: 3,
+  memoryBudget: 25,
   peekLinks: true,
   routes: [],
   externalLinks: 'window',
@@ -81,13 +85,15 @@ class Store {
     // L'historique vit dans son propre fichier : il est gros et change à chaque
     // page, alors que l'état (onglets, Espaces) est petit et s'écrit souvent.
     this.historyFile = path.join(dir, 'history.json');
+    this.historyPending = false;
     if (raw && raw.history && Object.keys(raw.history).length) this.historyDirty = true; // ancien format : à déplacer
     else {
-      let h = null;
-      try { h = JSON.parse(fs.readFileSync(this.historyFile, 'utf8')); } catch {
-        try { h = JSON.parse(fs.readFileSync(this.historyFile + '.bak', 'utf8')); } catch {}
-      }
-      if (h && typeof h === 'object') { raw = raw || {}; raw.history = h; try { fs.copyFileSync(this.historyFile, this.historyFile + '.bak'); } catch {} }
+      // Le fichier de l'historique n'est pas lu ici : au plafond (8 000 visites, 4 Mo)
+      // sa lecture retenait la première fenêtre de 13 à 17 ms. Il est lu au premier
+      // accès à `state.history` (voir `normalize`), ou peu après le démarrage (`warmHistory`).
+      if (raw) delete raw.history;
+      this.historyPending = true;
+      this.hadHistory = fs.existsSync(this.historyFile) || fs.existsSync(this.historyFile + '.bak');
     }
     this.state = this.normalize(raw || {});
     if (this.historyDirty) this.saveHistory();
@@ -110,9 +116,19 @@ class Store {
     for (const id of profileIds) s.favs[id] = (s.favs[id] || []).filter((tid) => s.tabs[tid] && !favSeen.has(tid) && favSeen.add(tid));
     s.archive = s.archive || [];
     // Non énumérable : JSON.stringify(état) ne l'emporte pas dans orbe.json.
-    const history = s.history && typeof s.history === 'object' ? s.history : {};
+    // Lu à la demande (`historyPending`) : le premier accès charge le fichier en entier,
+    // d'un coup ; personne ne voit donc jamais un historique partiel.
+    let history = s.history && typeof s.history === 'object' ? s.history : {};
     delete s.history;
-    Object.defineProperty(s, 'history', { value: history, writable: true, enumerable: false, configurable: true });
+    Object.defineProperty(s, 'history', {
+      get: () => {
+        if (this.historyPending && s === this.state) { this.historyPending = false; history = this.readHistory(); }
+        return history;
+      },
+      set: (v) => { if (s === this.state) this.historyPending = false; history = v; },
+      enumerable: false,
+      configurable: true,
+    });
     s.downloads = s.downloads || [];
     // Un téléchargement interrompu par la fermeture ne reprendra pas.
     for (const d of s.downloads) if (d.state === 'progressing') { d.state = 'interrupted'; d.paused = false; d.stalled = false; d.canResume = !!d.resume; }
@@ -182,9 +198,27 @@ class Store {
     if (this.dirty) { this.dirty = false; this.save(); }
   }
 
+  readHistory() {
+    let h = null;
+    try { h = JSON.parse(fs.readFileSync(this.historyFile, 'utf8')); } catch {
+      try { h = JSON.parse(fs.readFileSync(this.historyFile + '.bak', 'utf8')); } catch {}
+    }
+    if (!h || typeof h !== 'object') return {};
+    // Copie de secours : une fois par lancement, à partir d'un fichier lisible.
+    fs.copyFile(this.historyFile, this.historyFile + '.bak', () => {});
+    return h;
+  }
+
+  // Charge l'historique s'il ne l'est pas encore (appelé peu après le démarrage,
+  // pour que la première frappe dans la barre de commande ne l'attende pas).
+  warmHistory() {
+    return this.state ? Object.keys(this.state.history).length : 0;
+  }
+
   // Historique : écrit à part, rarement (20 s après la dernière visite, ou tout
   // de suite avec `now`), sans jamais bloquer une écriture de l'état.
   saveHistory(now = false) {
+    this.historyRev = (this.historyRev || 0) + 1; // l'historique a changé (recherche incrémentale)
     if (!this.historyFile) return;
     this.historyDirty = true;
     if (this.historyTimer) { if (!now) return; clearTimeout(this.historyTimer); }

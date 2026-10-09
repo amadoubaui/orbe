@@ -1033,13 +1033,29 @@ function setupIpc() {
   });
 }
 
+// Enregistre src/preload/ext.js sur la session. Un script de préchargement de
+// session s'exécute dans chaque cadre de chaque page et dans chaque service
+// worker, y compris ceux des sites web : tant qu'aucune extension n'est chargée,
+// il n'y a donc rien d'enregistré, et les pages web ne chargent pas ce fichier.
+// Appelé par extensions.js juste avant le chargement de la première extension,
+// pour que ses pages et son service worker le trouvent dès leur démarrage.
+const equipped = new WeakSet();
+function equip(ses) {
+  if (!ses || !attached.has(ses) || equipped.has(ses)) return;
+  equipped.add(ses);
+  ses.registerPreloadScript({ type: 'frame', filePath: PRELOAD, id: 'orbe-ext-frame' });
+  ses.registerPreloadScript({ type: 'service-worker', filePath: PRELOAD, id: 'orbe-ext-worker' });
+}
+
 // Équipe une session de profil. Sans effet la seconde fois.
 function attach(ses) {
   if (!ses || attached.has(ses)) return;
   attached.add(ses);
   setupIpc();
-  ses.registerPreloadScript({ type: 'frame', filePath: PRELOAD, id: 'orbe-ext-frame' });
-  ses.registerPreloadScript({ type: 'service-worker', filePath: PRELOAD, id: 'orbe-ext-worker' });
+  // Le script de complément n'est posé que sur une session qui porte une extension
+  // (voir `equip`). Filet : une extension chargée sans passer par extensions.js.
+  if (ses.extensions.getAllExtensions().length) equip(ses);
+  ses.extensions.on('extension-loaded', () => equip(ses));
   const workers = ses.serviceWorkers;
   workers.on('running-status-changed', (d) => {
     if (d.runningStatus !== 'starting' && d.runningStatus !== 'running') return;
@@ -1084,7 +1100,7 @@ module.exports = {
   extend, internals,
   // Appel direct d'une méthode au nom d'une extension (tests) : { value } ou { error }.
   call: (ses, id, name, args) => invoke(ses, id, null, null, name, args),
-  configure, attach, forget, host, hooks, notify, actions, actionInfo, clickAction, popupUrl: (ses, id, tabId) => { const ctx = context(ses, id); return ctx ? popupUrl(ctx, tabId) : ''; },
+  configure, attach, equip, forget, host, hooks, notify, actions, actionInfo, clickAction, popupUrl: (ses, id, tabId) => { const ctx = context(ses, id); return ctx ? popupUrl(ctx, tabId) : ''; },
   contextMenuItems, matchPattern, parseColor, grantActiveTab: (ses, id, tabId) => { const ctx = context(ses, id); if (ctx) ctx.st.activeTabs.add(tabId); },
   isAttached: (ses) => attached.has(ses), CHANNEL, EVENT,
 };
