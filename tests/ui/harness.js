@@ -11,6 +11,8 @@ const root = path.join(__dirname, '..', '..');
 const runtime = process.env.ORBE_RUNTIME || path.join(os.homedir(), '.orbe-dev');
 const electronBin = path.join(runtime, 'node_modules', 'electron', 'dist', 'Electron.app', 'Contents', 'MacOS', 'Electron');
 
+const { PROBE, juger } = require('../outils');
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function delai(promise, ms, label) {
@@ -86,6 +88,32 @@ async function lancer() {
   });
 
   const ctx = { app, hote, hits, userData, root, sleep, jusqua, delai };
+
+  // --- Journal du processus principal ---------------------------------------------
+  // Tout ce qu'il écrit est gardé, avec le code ou le signal de sa fin : si
+  // l'application s'arrête au milieu d'un groupe, on sait comment et après quoi.
+  // (tests/ui/prelude.js y écrit qui ferme une fenêtre ou demande à quitter.)
+  const proc = app.process();
+  ctx.journal = [];
+  ctx.sortie = null; // { code, signal, at } une fois le processus terminé
+  ctx.fermeture = false; // vrai dès que c'est le test qui ferme l'application
+  const noter = (flux) => (buf) => {
+    for (const l of String(buf).split('\n')) {
+      if (!l.trim()) continue;
+      ctx.journal.push(`${new Date().toISOString().slice(11, 23)} ${flux} ${l}`);
+      if (ctx.journal.length > 2000) ctx.journal.shift();
+    }
+  };
+  if (proc.stdout) proc.stdout.on('data', noter('sortie'));
+  if (proc.stderr) proc.stderr.on('data', noter('erreur'));
+  proc.on('exit', (code, signal) => { ctx.sortie = { code, signal, at: Date.now(), voulue: ctx.fermeture }; });
+  ctx.arretInattendu = () => (ctx.sortie && !ctx.sortie.voulue ? ctx.sortie : null);
+  ctx.constat = () => {
+    const s = ctx.sortie;
+    if (!s) return 'application toujours en marche';
+    const comment = s.signal ? `tuée par le signal ${s.signal} (arrêt venu de l’extérieur ou plantage natif)` : `terminée d’elle-même, code ${s.code}`;
+    return `application arrêtée il y a ${((Date.now() - s.at) / 1000).toFixed(1)} s : ${comment}`;
+  };
   ctx.url = (chemin) => `http://${hote}${chemin}`;
 
   // Chaque webContents (coque, vues flottantes, onglets, réglages) est une
@@ -104,6 +132,11 @@ async function lancer() {
   await jusqua(() => ctx.shell.evaluate(() => typeof S === 'object' && S !== null), 'coque prête', 15000);
   // La barre latérale glisse en place au premier affichage : on attend la fin.
   await jusqua(async () => { const b = await ctx.shell.locator('#sidebar').boundingBox(); return b && b.x === 0; }, 'barre latérale en place', 15000);
+
+  // --- Écran vivant ? -----------------------------------------------------------
+  // Mesuré une fois par groupe, dans la coque (voir tests/outils.js) : sans image
+  // présentée, une cadence ou une animation ne prouve rien.
+  ctx.milieu = juger(await delai(ctx.shell.evaluate(PROBE), 8000, 'mesure de l’écran').catch(() => null));
 
   // --- Processus principal ----------------------------------------------------
   // `require` n'existe pas dans le contexte d'évaluation de Playwright ; on
@@ -378,6 +411,7 @@ async function lancer() {
   };
 
   ctx.fermer = async () => {
+    ctx.fermeture = true;
     try { await delai(app.close(), 6000, 'fermeture'); } catch { try { app.process().kill('SIGKILL'); } catch {} }
     if (server.closeAllConnections) server.closeAllConnections();
     await new Promise((r) => server.close(r));

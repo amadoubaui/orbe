@@ -50,6 +50,7 @@ jobs:
       - name: Tests de bout en bout, quatre passages
         shell: bash
         run: |
+          set +e
           echecs=0
           for i in 1 2 3 4; do
             journal="$RUNNER_TEMP/captures/passage-${{ matrix.lot }}-$i.log"

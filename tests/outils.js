@@ -54,19 +54,24 @@ const PROBE = `(async () => {
   stop = true;
   return { frames, ticks, ms: Math.round(performance.now() - t0), visible: document.visibilityState };
 })()`;
+// Lit la mesure : 25 tics de 20 ms font une demi-seconde ; écran vivant, au moins
+// dix images sont présentées dans ce temps.
+function juger(m) {
+  if (!m) m = { frames: 0, ticks: 0, ms: 6000, visible: 'sans réponse' };
+  const vivant = m.frames >= 10 && m.ticks >= 25 && m.ms < 1200;
+  return {
+    ...m,
+    vivant,
+    raison: vivant ? '' : `écran inactif : ${m.frames} image(s) présentée(s), minuteries ${m.ticks >= 25 && m.ms < 1200 ? 'normales' : 'ralenties'}`,
+    resume: `${m.frames} image(s) présentée(s), ${m.ticks}/25 tics de 20 ms en ${m.ms} ms, page « ${m.visible} » → ${vivant ? 'écran vivant' : 'ÉCRAN INACTIF : les vérifications qui en dépendent seront ignorées'}`,
+  };
+}
 async function milieu(w) {
   if (measured) return measured;
   let m = null;
   try { m = await Promise.race([w.ui.webContents.executeJavaScript(PROBE), sleep(6000).then(() => null)]); } catch {}
-  if (!m) m = { frames: 0, ticks: 0, ms: 6000, visible: 'sans réponse' };
-  // 25 tics de 20 ms : une demi-seconde. Écran vivant : au moins dix images dans ce temps.
-  const vivant = m.frames >= 10 && m.ticks >= 25 && m.ms < 1200;
-  measured = {
-    ...m,
-    vivant,
-    raison: vivant ? '' : `écran inactif : ${m.frames} image(s) présentée(s), minuteries ${m.ticks >= 25 && m.ms < 1200 ? 'normales' : 'ralenties'}`,
-  };
-  console.log(`  – milieu de l’essai : ${m.frames} image(s) présentée(s), ${m.ticks}/25 tics de 20 ms en ${m.ms} ms, page « ${m.visible} » → ${vivant ? 'écran vivant' : 'ÉCRAN INACTIF : les vérifications qui en dépendent seront ignorées'}`);
+  measured = juger(m);
+  console.log(`  – milieu de l’essai : ${measured.resume}`);
   return measured;
 }
 
@@ -76,4 +81,4 @@ function ignorer(nom, raison) {
   console.log(`  – ignoré : ${nom} (${raison})`);
 }
 
-module.exports = { sleep, until, milieu, ignorer, ignores: garde.state.skipped };
+module.exports = { sleep, until, milieu, ignorer, ignores: garde.state.skipped, PROBE, juger };

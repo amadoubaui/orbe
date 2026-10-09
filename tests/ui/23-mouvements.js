@@ -13,7 +13,9 @@ module.exports = {
     const { shell, jusqua, sleep } = ctx;
     const today = () => ctx.titres('#today');
     const reduit = await shell.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches);
-    const animer = (titre, fn) => (reduit ? t.ignorer(titre, '« Réduire les animations » est actif') : t.verifier(titre, fn));
+    // Un mouvement ne se vérifie que s'il est joué : animations actives, et images
+    // réellement présentées (écran verrouillé ou en veille : ignoré, avec la raison).
+    const animer = (titre, fn) => (reduit ? t.ignorer(titre, '« Réduire les animations » est actif') : t.avecEcran('verifier', titre, fn));
     // Animations en cours sur les lignes : glissements (`flip`), apparition, retrait.
     const enCours = () => shell.evaluate(() => document.getElementById('scroll').getAnimations({ subtree: true }).filter((a) => a.playState === 'running').map((a) => {
       const el = a.effect.target;
@@ -157,7 +159,7 @@ module.exports = {
       assert.equal(await shell.locator('#today .out').count(), 0);
     });
 
-    await t.verifier('chargement : une lueur aux couleurs de l’Espace court le long du bord haut de la page, par transformation', async () => {
+    await t.avecEcran('verifier', 'chargement : une lueur aux couleurs de l’Espace court le long du bord haut de la page, par transformation', async () => {
       await ctx.nouvelOnglet();
       await ctx.taper(ctx.hote + '/lent?ms=1800');
       await ctx.modal.keyboard.press('Enter');

@@ -63,7 +63,9 @@ function guardDialogs(dialog) {
     const sync = /Sync$|showErrorBox/.test(name);
     const guarded = (...args) => {
       const opts = args.find((a) => a && typeof a === 'object' && !(typeof a.isDestroyed === 'function')) || {};
-      const what = name === 'showErrorBox' ? String(args[0]) : String(opts.message || opts.title || '');
+      // showErrorBox(titre, contenu) : c'est aussi la boîte qu'Electron ouvre de lui-même
+      // pour une exception non rattrapée du processus principal — bloquante sous Windows.
+      const what = name === 'showErrorBox' ? `${args[0]} — ${String(args[1]).split('\n').slice(0, 14).join(' | ')}` : String(opts.message || opts.title || '');
       const where = String(new Error().stack).split('\n').slice(2, 6).map((l) => l.trim()).join(' < ');
       state.dialogs.push({ name, what, where });
       console.error(`\n[orbe-test] boîte de dialogue native demandée sans réponse préparée : ${name} « ${what} »\n    ${where}`);
@@ -159,12 +161,19 @@ function install({ app, dialog, limit, stall }) {
     };
   }
 
-  app.on('browser-window-created', (e, w) => {
-    const id = w.id;
-    note(`fenêtre n° ${id} créée`);
-    w.on('close', () => note(`fenêtre n° ${id} : fermeture demandée (close)`));
-    w.on('closed', () => note(`fenêtre n° ${id} : fermée (closed)`));
-  });
+  // Qui ferme une fenêtre, et quand elle l'est vraiment.
+  const { BaseWindow } = require('electron');
+  const caller = () => String(new Error().stack).split('\n').slice(3, 6).map((l) => l.trim().replace(/^at /, '')).join(' < ');
+  for (const m of ['close', 'destroy']) {
+    const real = BaseWindow.prototype[m];
+    BaseWindow.prototype[m] = function guarded(...args) {
+      let id = '?';
+      try { id = this.id; } catch {}
+      note(`fenêtre n° ${id} : ${m}() demandé par ${caller()}`);
+      if (m === 'close' && !this.orbeNoted) { this.orbeNoted = true; try { this.once('closed', () => note(`fenêtre n° ${id} : fermée (closed)`)); } catch {} }
+      return real.apply(this, args);
+    };
+  }
   app.on('render-process-gone', (e, wc, details) => note(`processus de rendu perdu (page ${wc.id}) : ${details.reason}, code ${details.exitCode}`));
   app.on('child-process-gone', (e, details) => note(`processus auxiliaire perdu : ${details.type} ${details.reason}, code ${details.exitCode}`));
   process.on('unhandledRejection', (err) => note(`promesse rejetée sans suite : ${String((err && err.stack) || err).split('\n').slice(0, 3).join(' | ')}`));

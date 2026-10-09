@@ -195,7 +195,7 @@ module.exports = {
       await jusqua(async () => !(await rendu()).grainy, 'texture retirée');
     });
 
-    await t.verifier('apparence de l’Espace (automatique, claire, sombre) : l’icône s’anime, la barre et les panneaux suivent', async () => {
+    await t.avecEcran('verifier', 'apparence de l’Espace (automatique, claire, sombre) : l’icône s’anime, la barre et les panneaux suivent', async () => {
       for (const [mode, anim] of [['dark', 'moon-rock'], ['light', 'rays-turn'], ['auto', 'star-twinkle']]) {
         await ctx.clic(modal, `#theme-modes .mode[data-mode=${mode}]`);
         const joue = await modal.evaluate((m) => [...document.querySelector(`.mode[data-mode=${m}]`).getAnimations({ subtree: true })].map((a) => a.animationName), mode);
@@ -286,7 +286,7 @@ module.exports = {
       assert.ok(Theme.contrast([255, 255, 255], fond) >= 4.5, 'texte du message lisible');
     });
 
-    await t.verifier('d’un Espace à l’autre : le fond de l’autre Espace se fond par-dessus pendant le glissement, sa liste a déjà ses couleurs', async () => {
+    await t.avecEcran('verifier', 'd’un Espace à l’autre : le fond de l’autre Espace se fond par-dessus pendant le glissement, sa liste a déjà ses couleurs', async () => {
       await regler({ colors: ['#f5d98b'], intensity: 0.8, mode: 'light', grain: 0.3, texture: 'sand' });
       await ctx.menu('spaces.new');
       await jusqua(() => shell.locator('#space-name input.rename').count(), 'champ de nom');
