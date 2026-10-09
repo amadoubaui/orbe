@@ -120,7 +120,6 @@ module.exports = async function essentielsTests(ctx) {
   permissions.env.openExternal = (url) => { launched.push(url); };
   const asks = [];
   let leave = false;
-  if (process.env.ORBE_SANS_BOUCLIER) unload.env.shield = false; // PROVISOIRE (essai répété)
   let onAsk = null; // appelé pendant que la question est « à l'écran »
   unload.env.ask = (parent, opts) => { asks.push(opts); if (onAsk) onAsk(); return leave ? 0 : 1; };
 
