@@ -15,17 +15,10 @@ const path = require('path');
 const { app } = require('electron');
 const { selfSigned } = require('./certificat');
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-async function until(fn, label, timeout = 12000) {
-  const t0 = Date.now();
-  for (;;) {
-    let v;
-    try { v = await fn(); } catch { v = false; }
-    if (v) return v;
-    if (Date.now() - t0 > timeout) throw new Error('Délai dépassé : ' + label);
-    await sleep(40);
-  }
-}
+const outils = require('./outils');
+
+const { sleep } = outils;
+const until = (fn, label, timeout = 12000) => outils.until(fn, label, timeout);
 
 const PDF = Buffer.from('%PDF-1.1\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n');
 const BIG = Buffer.alloc(320 * 1024);
@@ -342,15 +335,15 @@ module.exports = async function essentielsTests(ctx) {
   // ne jamais livrer le flux de l'onglet : l'essai est alors sauté, pas bloqué.
   const stream = await Promise.race([pending, sleep(20000).then(() => 'délai')]);
   if (stream === 'délai') {
-    console.log('  – ignoré : « Cet onglet » : la page reçoit un flux vidéo (Chromium n’a pas livré le flux en 20 s : pas d’affichage sur cette machine)');
-    console.log('  – ignoré : partage de l’onglet arrêté par la page : le témoin s’éteint');
+    outils.ignorer('« Cet onglet » : la page reçoit un flux vidéo', 'Chromium n’a pas livré le flux en 20 s : pas d’affichage sur cette machine');
+    outils.ignorer('partage de l’onglet arrêté par la page : le témoin s’éteint', 'le flux n’a pas été livré');
     check('« Arrêter » coupe un partage qui n’aboutit pas', capture.stop(share.wc) === true);
     await until(() => !capture.of(share.wc).length && !share.wc.isLoading(), 'page rechargée');
   } else {
     check('« Cet onglet » : la page reçoit un flux vidéo', stream === 'flux:1', stream);
     await js(share.wc, 'window.flux.getTracks().forEach((x) => x.stop()); 1');
     if (noisy) {
-      console.log('  – ignoré : partage de l’onglet arrêté par la page : le témoin s’éteint (une capture d’Orbe est restée en attente, écran en veille)');
+      outils.ignorer('partage de l’onglet arrêté par la page : le témoin s’éteint', 'une capture d’Orbe est restée en attente, écran en veille');
       capture.clearAll(share.wc);
     } else {
       await until(() => !capture.of(share.wc).includes('screen'), 'fin du partage observée', 20000);

@@ -7,17 +7,7 @@ const http = require('http');
 const fs = require('fs');
 const { clipboard } = require('electron');
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-async function until(fn, label, timeout = 8000) {
-  const t0 = Date.now();
-  for (;;) {
-    let v;
-    try { v = await fn(); } catch { v = false; }
-    if (v) return v;
-    if (Date.now() - t0 > timeout) throw new Error('Délai dépassé : ' + label);
-    await sleep(40);
-  }
-}
+const { sleep, until } = require('./outils');
 
 // Page hostile : avant tout chargement, elle altère les prototypes et écoute
 // tout ce qu'elle peut, pour tenter d'apprendre quelque chose du gestionnaire.
@@ -502,12 +492,25 @@ module.exports = async function passwordTests(ctx) {
   await sleep(600);
   check('hostile : focus fabriqué ou focus() sans geste de l’utilisateur, champ visible ou non : la liste ne s’ouvre pas', noGesture && !ov().pick && !focusSeen(wcH));
   await go(wcH, page('r5', '<input id="u" name="username" autocomplete="username" style="opacity:0.01;width:260px;height:40px"><input id="p" type="password" style="opacity:0.01;width:260px;height:40px">' + GOT));
-  await click(wcH, '#u');
-  await sleep(600);
-  const transparent = !ov().pick && !focusSeen(wcH) && (await js(wcH, 'document.activeElement.id')) === 'u';
+  // Le clic doit réellement atteindre le champ, sinon la vérification ne prouve
+  // rien. Or Chromium écarte les entrées reçues entre la fin d'une navigation et
+  // la première image de la nouvelle page : un clic envoyé trop tôt est perdu
+  // (vu sur les machines d'intégration macOS). On clique donc jusqu'à ce que le
+  // champ ait le clavier, et l'on surveille la liste pendant tout ce temps.
+  const seen = { clics: 0, liste: false, focus: false };
+  const watch = () => { if (ov().pick) seen.liste = true; if (focusSeen(wcH)) seen.focus = true; };
+  await until(async () => {
+    watch();
+    if ((await js(wcH, 'document.activeElement.id')) === 'u') return true;
+    if (seen.clics === 0 || Date.now() - seen.dernier > 700) { seen.clics += 1; seen.dernier = Date.now(); await click(wcH, '#u'); }
+    return false;
+  }, 'champ transparent réellement cliqué');
+  for (let i = 0; i < 15; i++) { await sleep(40); watch(); }
+  if (seen.clics > 1) console.log(`  – champ transparent : ${seen.clics - 1} clic(s) perdu(s) avant que la page n’en reçoive un (entrées écartées juste après la navigation)`);
+  const transparent = !seen.liste && !seen.focus && (await js(wcH, 'document.activeElement.id')) === 'u';
   await go(wcH, page('r5', '<input id="u" name="username" autocomplete="username"><input id="p" type="password">' + GOT));
   await clickUntil(wcH, '#u', () => pickShown(wcH, '.acc.exact'), 'liste sur un vrai clic');
-  check('hostile : un champ transparent, même réellement cliqué, n’ouvre pas la liste ; un champ visible cliqué l’ouvre', transparent);
+  check('hostile : un champ transparent, même réellement cliqué, n’ouvre pas la liste ; un champ visible cliqué l’ouvre', transparent, JSON.stringify(seen));
   await js(wcH, 'document.activeElement.blur(); 1');
   await until(() => !ov().pick, 'liste refermée');
 

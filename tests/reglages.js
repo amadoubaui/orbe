@@ -10,17 +10,7 @@ const path = require('path');
 const { Menu, dialog, globalShortcut } = require('electron');
 const platform = require('../src/main/platform');
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-async function until(fn, label, timeout = 8000) {
-  const t0 = Date.now();
-  for (;;) {
-    let v;
-    try { v = await fn(); } catch { v = false; }
-    if (v) return v;
-    if (Date.now() - t0 > timeout) throw new Error('Délai dépassé : ' + label);
-    await sleep(40);
-  }
-}
+const { sleep, until } = require('./outils');
 
 function serve() {
   const server = http.createServer((req, res) => {

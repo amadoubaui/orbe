@@ -8,18 +8,7 @@ const { Menu, clipboard } = require('electron');
 
 const platform = require('../src/main/platform');
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-async function until(fn, label, timeout = 8000) {
-  const t0 = Date.now();
-  for (;;) {
-    let v;
-    try { v = await fn(); } catch { v = false; }
-    if (v) return v;
-    if (Date.now() - t0 > timeout) throw new Error('Délai dépassé : ' + label);
-    await sleep(40);
-  }
-}
+const { sleep, until, milieu, ignorer, ignores } = require('./outils');
 
 function serve() {
   const page = (title, body) => `<!doctype html><meta charset="utf-8"><title>${title}</title><body style="font:16px sans-serif;padding:40px">${body}</body>`;
@@ -76,6 +65,10 @@ module.exports = async function selftest(ctx) {
   const server = await serve();
   const base = `http://127.0.0.1:${server.address().port}`;
   console.log('\nOrbe — tests de bout en bout\n');
+
+  // Écran vivant ? (mesuré une fois : voir tests/outils.js)
+  await until(() => ui('typeof S === "object" && S !== null'), 'coque chargée', 20000);
+  const env = await milieu(w);
 
   // Coque
   await until(() => ui('!!window.S || typeof S === "object" && S !== null'), 'coque chargée');
@@ -249,6 +242,11 @@ module.exports = async function selftest(ctx) {
     await sleep(120);
     const hidden = pane();
     check('barre masquée : la page prend la largeur d’un coup', same(view().getBounds(), hidden) && hidden.x === 10);
+    // Arrivée des pages : attendue, jamais supposée. Le trajet demandé dure 50 ms,
+    // mais il ne commence qu'à la première image composée : sur une machine lente
+    // il finit bien plus tard (plus de 320 ms relevés sur les machines macOS).
+    const flying = () => w.visibleIds().some((x) => win.inFlight(win.live.get(x).view));
+    const settled = async () => { const t = Date.now(); await until(() => !flying(), 'arrivée des pages', 6000); return Date.now() - t; };
     const before = { ...win.motionStats };
     const t0 = Date.now();
     let landed = 0;
@@ -257,9 +255,11 @@ module.exports = async function selftest(ctx) {
     const during = view().getBounds();
     check('retour de la barre : un seul appel par page, animé par le système, aucun minuteur',
       win.motionStats.animated - before.animated === (moving ? 1 : 0) && win.motionStats.direct - before.direct === (moving ? 0 : 1) && !w.anim);
-    await sleep(320);
-    check('retour de la barre : la page finit à sa place exacte', same(view().getBounds(), docked) && same(docked, { ...hidden, x: docked.x, width: hidden.width - (docked.x - hidden.x) }));
-    console.log(`  – animation native des vues (${process.platform}, « Réduire les animations » ${system ? 'inactif' : 'actif, ignoré pour l’essai'}) : ${win.MOTION.sidebarIn} ms demandées ; position lue aussitôt après l’appel : x=${during.x} (départ ${hidden.x}, arrivée ${docked.x}) ; arrivée signalée à ${landed} ms`);
+    check('retour de la barre : pendant le trajet, la place annoncée à ce qui s’ancre à la page est déjà l’arrivée', same(win.boundsOf(view()), docked) && win.inFlight(view()) === moving, JSON.stringify([win.boundsOf(view()), docked, win.inFlight(view())]));
+    await settled();
+    const arrival = Date.now() - t0;
+    check('retour de la barre : la page finit à sa place exacte', same(view().getBounds(), docked) && same(docked, { ...hidden, x: docked.x, width: hidden.width - (docked.x - hidden.x) }), JSON.stringify([view().getBounds(), docked, hidden]));
+    console.log(`  – animation native des vues (${process.platform}, « Réduire les animations » ${system ? 'inactif' : 'actif, ignoré pour l’essai'}) : ${win.MOTION.sidebarIn} ms demandées ; position lue aussitôt après l’appel : x=${during.x} (départ ${hidden.x}, arrivée ${docked.x}) ; arrivée signalée à ${landed} ms, constatée à ${arrival} ms`);
     // Trajet plus long, pour voir si le système anime vraiment : cote lue à mi-course.
     {
       const probe = { ...docked, x: docked.x + 120 };
@@ -269,12 +269,14 @@ module.exports = async function selftest(ctx) {
       view().setBounds(probe, { animate: { duration: 400, easing: 'linear' } });
       await sleep(200);
       const mid = view().getBounds().x;
-      await sleep(400);
+      await until(() => end > 0, 'fin du trajet d’essai', 6000).catch(() => {});
       const fin = view().getBounds().x;
-      console.log(`  – trajet d’essai de 400 ms : cote à 200 ms x=${mid}, à 600 ms x=${fin} (départ ${docked.x}, cible ${probe.x}) ; fin signalée à ${end} ms`);
+      console.log(`  – trajet d’essai de 400 ms : cote à 200 ms x=${mid}, à l’arrivée x=${fin} (départ ${docked.x}, cible ${probe.x}) ; fin signalée à ${end} ms`);
       check('trajet animé : la vue arrive à sa cible', fin === probe.x);
+      let back = 0;
+      view().once('bounds-changed', () => { back = 1; });
       view().setBounds(docked, { animate: { duration: 1 } });
-      await sleep(150);
+      await until(() => back > 0, 'retour du trajet d’essai', 6000).catch(() => {});
       check('retour par un appel animé de 1 ms : cote exacte', same(view().getBounds(), docked));
     }
     // Interruptions : la dernière demande l'emporte, les cotes lues sont les bonnes
@@ -283,13 +285,34 @@ module.exports = async function selftest(ctx) {
     w.toggleSidebar(true);
     await sleep(15);
     w.toggleSidebar(false);
-    await sleep(350);
-    check('barre masquée pendant son retour : la page revient à la pleine largeur', same(view().getBounds(), hidden));
+    await settled();
+    await sleep(150);
+    check('barre masquée pendant son retour : la page revient à la pleine largeur', same(view().getBounds(), hidden), JSON.stringify([view().getBounds(), hidden]));
     w.toggleSidebar(true);
     w.toggleSidebar(false);
     w.toggleSidebar(true);
-    await sleep(350);
-    check('bascules coup sur coup : la page finit à la place de la dernière demande', same(view().getBounds(), docked));
+    await settled();
+    await sleep(150);
+    check('bascules coup sur coup : la page finit à la place de la dernière demande', same(view().getBounds(), docked), JSON.stringify([view().getBounds(), docked]));
+    // Machine lente : le trajet n'est pas fini alors que l'horloge le dit fini
+    // depuis longtemps. Une pose directe à ce moment-là était défaite à la fin du
+    // trajet interrompu, et la page restait à son ancienne place, barre masquée.
+    if (moving) {
+      w.toggleSidebar(false);
+      await settled();
+      await sleep(100);
+      const realNow = Date.now;
+      w.toggleSidebar(true);
+      const late = view().getBounds();
+      Date.now = () => realNow() + 60e3;
+      try { w.toggleSidebar(false); } finally { Date.now = realNow; }
+      await settled();
+      await sleep(400);
+      check('trajet plus long que prévu (machine lente) : masquer la barre en plein vol laisse la page à la pleine largeur', same(late, hidden) && same(view().getBounds(), hidden) && !flying(), JSON.stringify({ lue: view().getBounds(), attendue: hidden, enVol: late }));
+      w.toggleSidebar(true);
+      await settled();
+      await sleep(100);
+    }
     // Fenêtre redimensionnée pendant le mouvement
     const [cw, ch] = w.win.getContentSize();
     w.toggleSidebar(false);
@@ -297,12 +320,14 @@ module.exports = async function selftest(ctx) {
     w.toggleSidebar(true);
     w.win.setContentSize(cw - 60, ch);
     await until(() => w.win.getContentSize()[0] !== cw, 'fenêtre rétrécie');
-    await sleep(350);
+    await settled();
+    await sleep(200);
     const narrow = w.win.getContentSize()[0];
-    check('fenêtre redimensionnée pendant le retour de la barre : la page suit', narrow < cw && same(view().getBounds(), pane()) && pane().width === docked.width - (cw - narrow));
+    check('fenêtre redimensionnée pendant le retour de la barre : la page suit', narrow < cw && same(view().getBounds(), pane()) && pane().width === docked.width - (cw - narrow), JSON.stringify([narrow, cw, view().getBounds(), pane()]));
     w.win.setContentSize(cw, ch);
     await until(() => w.win.getContentSize()[0] === cw, 'fenêtre rétablie');
-    await sleep(350);
+    await settled();
+    await sleep(200);
     // Vue scindée : les deux volets glissent ensemble
     const solo = w.activeId;
     const mate = w.orderedIds().find((x) => x !== solo);
@@ -310,7 +335,8 @@ module.exports = async function selftest(ctx) {
     w.toggleSidebar(false);
     await sleep(100);
     w.toggleSidebar(true);
-    await sleep(350);
+    await settled();
+    await sleep(150);
     const ids = w.visibleIds();
     check('vue scindée : chaque volet à sa place après le retour de la barre', ids.length === 2 && ids.every((x, i) => same(win.live.get(x).view.getBounds(), pane(i))));
     // Place réservée à droite (panneau latéral d'une extension)
@@ -319,13 +345,15 @@ module.exports = async function selftest(ctx) {
     w.toggleSidebar(false);
     await sleep(100);
     w.toggleSidebar(true);
-    await sleep(350);
+    await settled();
+    await sleep(150);
     const last = pane(1);
     check('place réservée à droite respectée après le retour de la barre', same(win.live.get(ids[1]).view.getBounds(), last) && last.x + last.width === cw - 10 - 140);
     win.hooks.rightInset = inset;
     w.closeSplitPane();
     w.activate(solo);
-    await sleep(350);
+    await settled();
+    await sleep(150);
     check('retour à une seule page, à sa place', w.visibleIds().length === 1 && same(view().getBounds(), docked));
   }
 
@@ -394,7 +422,7 @@ module.exports = async function selftest(ctx) {
     if (lwc.getURL() === base + '/liens' && !w.win.isFocused()) { skippedClick = true; w.openPeek(base.replace('127.0.0.1', 'localhost') + '/b', pinL.id); return until(() => w.peekState && w.peekState.title === 'Page B', 'aperçu'); }
     throw err;
   });
-  if (skippedClick) console.log('  – ignoré : clic sur un lien sortant d’un onglet épinglé (fenêtre de test en arrière-plan)');
+  if (skippedClick) ignorer('clic sur un lien sortant d’un onglet épinglé', 'fenêtre de test en arrière-plan');
   else check('clic sur un lien sortant d’un onglet épinglé : aperçu, la page épinglée reste', lwc.getURL() === base + '/liens' && w.activeId === pinL.id);
   w.closePeek();
   w.togglePin(pinL.id);
@@ -478,8 +506,13 @@ module.exports = async function selftest(ctx) {
     // Balayage simulé : une suite d'événements de molette horizontaux sur la barre.
     const swipe = (dx, n, gap) => ui(`(async () => { for (let i = 0; i < ${n}; i++) { document.getElementById('scroll').dispatchEvent(new WheelEvent('wheel', { deltaX: ${dx}, bubbles: true, cancelable: true })); await new Promise((r) => setTimeout(r, ${gap})); } })()`);
     const look = () => ui(`(() => { const g = document.querySelector('#pager .ghost'); const W = document.getElementById('pager').clientWidth; const x = (el) => new DOMMatrix(getComputedStyle(el).transform).m41; return { ghost: g ? g.dataset.space : null, rows: g ? g.querySelectorAll('.row.tab').length : 0, live: x(document.getElementById('scroll')), ghostX: g ? x(g) : null, W, tint: Number(getComputedStyle(document.getElementById('tint')).opacity), phase: slide ? slide.phase : null }; })()`);
+    const SLOW = ['balayage lent : les deux listes suivent les doigts, côte à côte, la teinte se fond au même pas', 'doigts levés avant le seuil : la liste revient, l’Espace ne change pas', 'au bout de la rangée : la liste résiste, sans autre liste à côté', 'au bout de la rangée : rien ne change'];
     if (reduced) {
-      console.log('  – ignoré : glissement entre Espaces (« Réduire les animations » actif)');
+      for (const n of SLOW) ignorer(n, '« Réduire les animations » actif');
+    } else if (!env.vivant) {
+      // Le geste simulé est une suite d'événements espacés de 30 ms : minuteries
+      // ralenties, la coque le croit fini entre deux événements.
+      for (const n of SLOW) ignorer(n, env.raison);
     } else {
       await swipe(-12, 4, 30); // lent et court : en dessous du seuil
       const mid = await look();
@@ -503,7 +536,8 @@ module.exports = async function selftest(ctx) {
     check('balayage franc : l’Espace change une seule fois, la liste est rendue à l’arrivée', w.space === firstSpace && w.activeId === a.id && !done.ghost && done.live === 0 && done.tint === 0);
     await sleep(200);
     w.spaceAt(2);
-    if (!reduced) {
+    if (reduced || !env.vivant) ignorer('changement par raccourci : même glissement, dans le bon sens', reduced ? '« Réduire les animations » actif' : env.raison);
+    else {
       await until(() => ui('!!slide'), 'glissement lancé par le raccourci');
       const fly = await look();
       check('changement par raccourci : même glissement, dans le bon sens', fly.ghost === s2.id && fly.ghostX >= 0 && fly.live <= 0, JSON.stringify(fly));
@@ -650,7 +684,8 @@ module.exports = async function selftest(ctx) {
   const zoneSaved = await until(async () => (await w.capture({ area: { x: 10, y: 10, width: 200, height: 120 }, then: 'save' })) === 'save', 'capture d’une zone').catch((e) => e.message);
   // Écran en veille ou session verrouillée : Chromium ne peut rien capturer.
   const canCapture = zoneSaved === true;
-  if (!canCapture) console.log('  – ignoré : captures d’une zone (écran en veille : rien à capturer)');
+  if (!canCapture && env.vivant) check('capture d’une zone : enregistrée', false, String(zoneSaved));
+  else if (!canCapture) for (const n of ['capture d’une zone : enregistrée', 'capture d’une zone : l’image a les proportions de la zone', 'capture : le son de capture est demandé', 'réglage « Sons » coupé : aucun son']) ignorer(n, env.raison);
   else {
   check('capture d’une zone : enregistrée', true);
   await until(() => fs.readdirSync(dlDir0).filter((f) => f.endsWith('.png')).length >= pngs0 + 1, 'zone enregistrée');
@@ -817,13 +852,19 @@ module.exports = async function selftest(ctx) {
   await until(() => titleOf(vid.id) === 'Page vidéo', 'page vidéo chargée');
   const vwc = win.live.get(vid.id).wc;
   await vwc.executeJavaScript('start()', true);
-  await until(() => vwc.isCurrentlyAudible(), 'vidéo audible');
-  w.activate(a.id);
-  await until(() => vwc.executeJavaScript('!!document.pictureInPictureElement'), 'vidéo passée en image dans l’image');
-  check('la vidéo en cours passe en image dans l’image en quittant l’onglet', w.mediaId === vid.id);
-  w.activate(vid.id);
-  await until(async () => !(await vwc.executeJavaScript('!!document.pictureInPictureElement')), 'retour de la vidéo dans la page');
-  check('elle revient dans la page au retour sur l’onglet', w.mediaId === null);
+  // Session verrouillée : le système ne joue aucun son, l'onglet n'est jamais « audible ».
+  const audible = await until(() => vwc.isCurrentlyAudible(), 'vidéo audible', 8000).then(() => true, () => false);
+  if (!audible && env.vivant) throw new Error('Délai dépassé : vidéo audible');
+  if (!audible) {
+    for (const n of ['la vidéo en cours passe en image dans l’image en quittant l’onglet', 'elle revient dans la page au retour sur l’onglet']) ignorer(n, 'aucun son n’est joué — ' + env.raison);
+  } else {
+    w.activate(a.id);
+    await until(() => vwc.executeJavaScript('!!document.pictureInPictureElement'), 'vidéo passée en image dans l’image');
+    check('la vidéo en cours passe en image dans l’image en quittant l’onglet', w.mediaId === vid.id);
+    w.activate(vid.id);
+    await until(async () => !(await vwc.executeJavaScript('!!document.pictureInPictureElement')), 'retour de la vidéo dans la page');
+    check('elle revient dans la page au retour sur l’onglet', w.mediaId === null);
+  }
   w.close(vid.id);
   w.activate(a.id);
 
@@ -1019,6 +1060,7 @@ module.exports = async function selftest(ctx) {
   check('état enregistré sur disque', saved.spaces.length === 2 && Object.keys(saved.tabs).length === Object.keys(tabs()).length && saved.window.spaceId === w.spaceId);
 
   server.close();
-  console.log(`\n${results.length - failed}/${results.length} vérifications réussies\n`);
+  console.log(`\n${results.length - failed}/${results.length} vérifications réussies${ignores.length ? `, ${ignores.length} ignorée(s)` : ''}\n`);
+  if (ignores.length) console.log('Ignorées :\n' + ignores.map((x) => `  – ${x.nom} (${x.raison})`).join('\n') + '\n');
   if (failed) throw new Error(`${failed} vérification(s) en échec`);
 };

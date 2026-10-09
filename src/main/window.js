@@ -1,7 +1,7 @@
 // Une fenêtre Orbe : une vue « coque » (barre latérale) qui occupe toute la
 // fenêtre, les vues web des onglets posées par-dessus dans la zone de contenu,
 // et des vues flottantes (barre de commande, recherche, notifications).
-const { app, BaseWindow, WebContentsView, Menu, clipboard, ClipboardItem, screen, dialog, nativeTheme, systemPreferences } = require('electron');
+const { app, BaseWindow, WebContentsView, Menu, clipboard, ClipboardItem, screen, dialog, nativeTheme } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { store, uid, SPACE_COLORS, DEFAULT_SETTINGS } = require('./store');
@@ -62,56 +62,8 @@ const QUIET_ACTIONS = new Set(['ready', 'themeGet', 'suggest', 'select', 'dragZo
 const themeFields = (s) => ({ color: s.color, color2: s.color2 || '', color3: s.color3 || '', plain: !!s.plain, intensity: typeof s.intensity === 'number' ? s.intensity : 0.5, grain: s.grain || 0, texture: s.texture || 'grain', mode: s.mode || 'auto' });
 
 // --- Mouvements des vues ------------------------------------------------------
-// Durées en millisecondes. Barre latérale : cotes relevées dans Arc (elle revient
-// en 50 ms et disparaît d'un coup). Aperçu : ouverture 200 ms, fermeture 150 ms.
-const MOTION = { sidebarIn: 50, peekIn: 200, peekOut: 150, peekExpand: 220 };
-// Marge après la fin théorique d'une animation pendant laquelle on la croit encore en cours.
-const ANIM_GUARD = 250;
-const flights = new WeakMap(); // vue -> instant de fin de son animation en cours
-const stats = { animated: 0, direct: 0 }; // appels à setBounds, pour les mesures
-let nativeAnim = true;
-
-// « Réduire les animations » (réglage du système) : toutes les durées passent à 0.
-// Les essais peuvent imposer l'un ou l'autre (`forceMotion`), le réglage des
-// machines d'intégration n'étant pas le même d'un système à l'autre.
-let motionForced = null;
-function forceMotion(on) { motionForced = on; }
-function motion(ms) {
-  if (motionForced !== null) return motionForced ? ms : 0;
-  try { if (systemPreferences.getAnimationSettings().prefersReducedMotion) return 0; } catch {}
-  return ms;
-}
-
-// Pose une vue dans son rectangle. Avec `ms`, le trajet est animé par le système
-// (`View.setBounds(rect, { animate })`, Core Animation sur macOS) : un seul appel,
-// au rythme de l'écran, sans un seul tic du fil principal.
-// Relevé sur Electron 44 (macOS) :
-//  - durée libre, quatre courbes seulement (linear, ease-in, ease-out, ease-in-out) ;
-//  - pendant le trajet, getBounds() rend encore l'ancien rectangle ;
-//  - un nouvel appel animé repart de la position affichée (interruption propre) ;
-//  - un appel NON animé pendant le trajet déplace bien la vue, mais getBounds()
-//    reste ensuite sur la cible de l'animation interrompue ;
-//  - la page n'est remise en page qu'une fois : au départ si elle grandit, à
-//    l'arrivée si elle rétrécit ; entre-temps son image est seulement rognée.
-// D'où la règle : tant qu'une vue est en vol, toute nouvelle cible lui est donnée
-// par un appel animé, sur le temps qu'il lui reste (1 ms au moins).
-// Là où l'option n'existe pas, la vue est posée directement.
-function place(view, rect, ms = 0, easing = 'ease-out') {
-  const now = Date.now();
-  const end = flights.get(view) || 0;
-  if (nativeAnim && (ms > 0 || now < end + ANIM_GUARD)) {
-    const duration = Math.max(1, Math.round(ms > 0 ? ms : end - now));
-    try {
-      view.setBounds(rect, { animate: { duration, easing } });
-      flights.set(view, ms > 0 ? now + duration : Math.min(end, now + duration));
-      stats.animated += 1;
-      return;
-    } catch { nativeAnim = false; }
-  }
-  flights.delete(view);
-  view.setBounds(rect);
-  stats.direct += 1;
-}
+// Durées, pose animée des vues et suivi de leur vol : src/main/motion.js.
+const { MOTION, motion, forceMotion, place, boundsOf, inFlight, stats } = require('./motion');
 // Nom horodaté d'une capture ; deux captures dans la même seconde ne s'écrasent pas.
 let lastStamp = '';
 let stampCount = 0;
@@ -2137,7 +2089,7 @@ class OrbeWindow {
     const wc = view.webContents;
     const src = live.get(fromId);
     if (!point && src && src.click && Date.now() - src.click.at < 1500 && src.owner === this) {
-      const b = src.view.getBounds();
+      const b = boundsOf(src.view);
       point = { x: b.x + src.click.x, y: b.y + src.click.y };
     }
     const state = (this.peekState = { view, from: fromId, url, title: '', handlers: [], point: point || null });
@@ -2503,7 +2455,7 @@ class OrbeWindow {
     if (!url) { this.statusTimer = setTimeout(hide, 120); return; }
     const show = () => {
       if (this.win.isDestroyed() || this.statusView.webContents.isDestroyed()) return;
-      const b = rt.view.getBounds();
+      const b = boundsOf(rt.view);
       const width = Math.min(b.width - 16, Math.max(120, 14 + url.length * 6.6));
       this.statusView.setBounds({ x: b.x + 6, y: b.y + b.height - 30, width: Math.round(width), height: 26 });
       this.win.contentView.addChildView(this.statusView);
@@ -2607,7 +2559,7 @@ class OrbeWindow {
     };
     if (opts.then) return done(opts.then);
     // Zone choisie : petit menu à l'endroit de la sélection.
-    const b = this.activeRt && this.activeRt.wc === wc ? this.activeRt.view.getBounds() : { x: 0, y: 0 };
+    const b = this.activeRt && this.activeRt.wc === wc ? boundsOf(this.activeRt.view) : { x: 0, y: 0 };
     this.menuOpen = true;
     Menu.buildFromTemplate([
       { label: t('capture.copy'), click: () => done('copy') },
@@ -2952,7 +2904,7 @@ class OrbeWindow {
       tpl.push(
         { label: t('ctx.openNewTab'), click: () => this.newTab(link, { background: true, after: rt.id }) },
         { label: t('ctx.openSplit'), click: () => { this.activate(rt.id); this.newTab(link, { split: true }); } },
-        { label: t('ctx.openPeek'), click: () => { const b = rt.view ? rt.view.getBounds() : null; this.openPeek(link, rt.id, undefined, b ? { x: b.x + p.x, y: b.y + p.y } : undefined); } },
+        { label: t('ctx.openPeek'), click: () => { const b = rt.view ? boundsOf(rt.view) : null; this.openPeek(link, rt.id, undefined, b ? { x: b.x + p.x, y: b.y + p.y } : undefined); } },
         // Une petite fenêtre utilise le profil principal : pas depuis la navigation privée.
         { label: t('ctx.openLittle'), visible: !this.incognito, click: () => hooks.openLittle(link) },
       );
@@ -3238,4 +3190,4 @@ function archiveStale() {
   if (count) { store.save(); for (const w of windows.values()) w.layout(); OrbeWindow.pushAll(); }
 }
 
-module.exports = { OrbeWindow, windows, live, trusted, hooks, archiveStale, INTERNAL, UI_PRELOAD, isInternal, MOTION, motion, forceMotion, motionStats: stats, resumed };
+module.exports = { OrbeWindow, windows, live, trusted, hooks, archiveStale, INTERNAL, UI_PRELOAD, isInternal, MOTION, motion, forceMotion, motionStats: stats, boundsOf, inFlight, resumed };

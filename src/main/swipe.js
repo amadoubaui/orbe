@@ -10,6 +10,7 @@
 // lèvent, et l'inertie du pavé continue d'envoyer des événements après.
 const { ipcMain } = require('electron');
 const path = require('path');
+const { boundsOf } = require('./motion');
 
 const CHANNEL = 'orbe-swipe';
 const PRELOAD = path.join(__dirname, '../preload/swipe.js');
@@ -97,7 +98,7 @@ function onMessage(e, msg) {
     return;
   }
   const rt = [...require('./window').live.values()].find((r) => r.wc === wc);
-  const rect = rt ? rt.view.getBounds() : (w.peekState ? w.peekState.view.getBounds() : null);
+  const rect = rt ? boundsOf(rt.view) : (w.peekState ? boundsOf(w.peekState.view) : null);
   if (!rect) return;
   const far = Math.abs(x) >= SWIPE.commit;
   const brisk = Math.abs(v) >= SWIPE.flick && Math.abs(x) >= SWIPE.flickMin && Math.sign(v) === Math.sign(x);

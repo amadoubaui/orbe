@@ -52,7 +52,12 @@ if (process.argv.includes('--selftest') && !SELFTEST) {
 if (process.env.ORBE_USER_DATA) app.setPath('userData', path.resolve(process.env.ORBE_USER_DATA));
 else if (SELFTEST) app.setPath('userData', fs.mkdtempSync(path.join(os.tmpdir(), 'orbe-test-')));
 // En test, rien n'est écrit dans le vrai dossier Téléchargements.
+let testGuard = null;
 if (SELFTEST) {
+  // Garde des essais : aucune boîte de dialogue native sans réponse préparée,
+  // et un scénario qui n'avance plus s'arrête en disant ce qu'il attendait.
+  testGuard = require('./test-guard');
+  testGuard.install({ app, dialog, limit: Number(process.env.ORBE_TEST_LIMIT) || 480, stall: Number(process.env.ORBE_TEST_STALL) || 150 });
   // Les tests ne touchent jamais au vrai trousseau du système.
   app.commandLine.appendSwitch('use-mock-keychain');
   // Caméra et micro factices : aucun vrai appareil n'est ouvert pendant les tests.
@@ -415,13 +420,13 @@ app.whenReady().then(async () => {
   setInterval(() => little.LittleWindow.archiveStale(), 10 * 60e3).unref();
 
   if (SELFTEST) {
-    // Garde-fou : un scénario qui n'avance plus s'arrête de lui-même, avec un message.
-    const limit = Number(process.env.ORBE_TEST_LIMIT) || 480;
-    setTimeout(() => { console.error(`\nÉCHEC : scénario bloqué depuis ${limit} s`); app.exit(3); }, limit * 1000).unref();
+    // (Un scénario qui n'avance plus est arrêté par la garde : src/main/test-guard.js.)
     try {
       // ORBE_SCENARIO : autre scénario de test (ex. tests/sites.js, sites réels).
       await require(process.env.ORBE_SCENARIO ? path.resolve(process.env.ORBE_SCENARIO) : '../../tests/selftest')({ first, OrbeWindow, store, win, little, commands, menu, openSettings, openUrl, extensions, extApi, extHost, passwords, panes, prefs, shortcuts, globalAction, essentials });
       store.flush();
+      const asked = testGuard.state.dialogs;
+      if (asked.length) throw new Error(`${asked.length} boîte(s) de dialogue native(s) demandée(s) sans réponse préparée : ${asked.map((d) => `${d.name} « ${d.what} »`).join(' ; ')}`);
       app.exit(0);
     } catch (err) {
       console.error('\nÉCHEC', err);

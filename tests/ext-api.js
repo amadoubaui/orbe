@@ -6,18 +6,7 @@ const http = require('http');
 const path = require('path');
 const { BrowserWindow } = require('electron');
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-async function until(fn, label, timeout = 8000) {
-  const t0 = Date.now();
-  for (;;) {
-    let v;
-    try { v = await fn(); } catch { v = false; }
-    if (v) return v;
-    if (Date.now() - t0 > timeout) throw new Error('Délai dépassé : ' + label);
-    await sleep(40);
-  }
-}
+const { sleep, until } = require('./outils');
 
 function serve() {
   const server = http.createServer((req, res) => {
@@ -248,9 +237,9 @@ module.exports = async function extApiTest({ first: w, OrbeWindow, win, extApi, 
   check('sidePanel.open ouvre la page de l’extension dans une vue de la fenêtre', !!shown && shown.url === ext.url + 'panel.html' && shown.wc.session === ses && inWindow(shown.view));
   const r1 = w.contentRect();
   const [winW] = w.win.getContentSize();
-  check('la zone des pages rétrécit de la largeur du panneau', r1.width === r0.width - PW() - 8 && r1.x === r0.x && viewA().width === r1.width, { avant: r0, apres: r1, page: viewA() });
+  check('la zone des pages rétrécit de la largeur du panneau', r1.width === r0.width - PW() - panel.GAP && r1.x === r0.x && viewA().width === r1.width, { avant: r0, apres: r1, page: viewA() });
   const pb = shown.view.getBounds();
-  check('le panneau est posé à droite des pages, sous son en-tête', pb.x === r1.x + r1.width + 8 && pb.x + pb.width === winW - 8 && pb.y === r1.y + panel.HEADER && pb.y + pb.height === r1.y + r1.height, pb);
+  check('le panneau est posé à droite des pages, sous son en-tête', pb.x === r1.x + r1.width + panel.GAP && pb.x + pb.width === winW - panel.PAD && pb.y === r1.y + panel.HEADER && pb.y + pb.height === r1.y + r1.height, pb);
   const seenP = await until(() => shown.wc.executeJavaScript('window.activeTab'), 'onglet actif vu par le panneau');
   check('la page du panneau trouve l’onglet actif d’Orbe, sans être elle-même un onglet', seenP.id === rtA.wc.id && seenP.url === base + '/a' && await shown.wc.executeJavaScript('call("tabs.getCurrent")') === undefined, seenP);
   check('…et dialogue avec la page (tabs.sendMessage)', await shown.wc.executeJavaScript(`call("tabs.sendMessage", ${rtA.wc.id}, "titre")`) === 'Page a');
@@ -268,9 +257,9 @@ module.exports = async function extApiTest({ first: w, OrbeWindow, win, extApi, 
   // En-tête d'Orbe : nom, largeur réglable à la souris, fermeture.
   const head = panel.records.get(w).chrome;
   const headTitle = await until(() => head.webContents.executeJavaScript('document.getElementById("title").textContent'), 'en-tête du panneau');
-  check('l’en-tête d’Orbe nomme l’extension', headTitle === ext.name && head.getBounds().x === pb.x - 8 && head.getBounds().y === r1.y, headTitle);
+  check('l’en-tête d’Orbe nomme l’extension', headTitle === ext.name && head.getBounds().x === pb.x - panel.GAP && head.getBounds().y === r1.y, headTitle);
   const cb = w.win.getContentBounds();
-  await head.webContents.executeJavaScript(`orbePanel.send('resize', { screenX: ${cb.x + cb.width - 8 - 320} }); orbePanel.send('resizeEnd')`);
+  await head.webContents.executeJavaScript(`orbePanel.send('resize', { screenX: ${cb.x + cb.width - panel.PAD - 320} }); orbePanel.send('resizeEnd')`);
   await until(() => PW() === 320, 'largeur du panneau');
   check('tirer le bord gauche règle la largeur (320)', w.contentRect().width === r0.width - 328 && shown.view.getBounds().width === 320 && viewA().width === r0.width - 328, shown.view.getBounds());
   panel.setWidth(w, 40);
