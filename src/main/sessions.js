@@ -54,7 +54,7 @@ function configure(ses, { persist }) {
 
   // Autorisations des sites, partage d'écran, certificats, téléchargements :
   // chacun dans son module, par session (profils et navigation privée).
-  permissions.attach(ses, { persist });
+  permissions.attach(ses, { persist, profileOf: () => profileIds.get(ses) || 'default' });
   displayMedia.attach(ses);
   certs.attach(ses);
   downloads.attach(ses, { persist, hooks });

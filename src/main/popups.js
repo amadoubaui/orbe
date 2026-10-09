@@ -14,7 +14,10 @@
 //  - le geste vaut 5 secondes (durée de l'activation passagère de Chromium), ce
 //    qui couvre les connexions OAuth qui ouvrent leur fenêtre après un aller-
 //    retour réseau ;
-//  - il est consommé par l'ouverture : un clic ouvre une fenêtre, pas dix ;
+//  - il est consommé par l'ouverture : un clic ouvre une fenêtre, pas dix (le
+//    relâchement du bouton ne redonne pas un geste si l'appui a déjà servi) ;
+//  - il ne survit pas à un changement de page : la page suivante ne peut pas
+//    ouvrir de fenêtre grâce au clic fait sur la précédente ;
 //  - le site peut être autorisé pour de bon (« Toujours autoriser pour ce
 //    site »), par origine, comme une autorisation.
 // Limite connue : un geste fait dans la page profite à n'importe quel cadre de
@@ -25,11 +28,16 @@ const WINDOW = 5000;
 const KEEP = 8; // ouvertures bloquées gardées par page, pour « Ouvrir quand même »
 const MODIFIERS = new Set(['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Escape', 'Dead', 'Unidentified']);
 
-// Vraie entrée de l'utilisateur dans la page.
+// Vraie entrée de l'utilisateur dans la page : appui ou relâchement d'un bouton
+// de souris, touche enfoncée.
 function gesture(rt, input) {
-  if (input && input.type === 'keyDown' && (MODIFIERS.has(input.key) || input.isAutoRepeat)) return;
-  rt.gesture = Date.now();
+  const type = input && input.type;
+  if (type === 'keyDown' && (MODIFIERS.has(input.key) || input.isAutoRepeat)) return;
   rt.touched = true;
+  if (type === 'mouseDown') rt.clickSpent = false;
+  // Même clic que l'appui qui vient d'ouvrir une fenêtre : pas un second geste.
+  if (type === 'mouseUp' && rt.clickSpent) { rt.clickSpent = false; return; }
+  rt.gesture = Date.now();
 }
 
 function originOf(wc) {
@@ -42,7 +50,7 @@ function allowed(rt, details) {
   const origin = originOf(wc);
   if (origin && permissions.get(wc.session, origin, 'popups') === true) return true;
   const fresh = !!rt.gesture && Date.now() - rt.gesture < WINDOW;
-  if (fresh) { rt.gesture = 0; return true; }
+  if (fresh) { rt.gesture = 0; rt.clickSpent = true; return true; }
   const list = rt.blockedPopups || (rt.blockedPopups = []);
   const url = /^https?:/i.test(details.url) ? details.url.slice(0, 2000) : '';
   if (!list.some((x) => x.url === url)) list.push({ url, at: Date.now() });
@@ -51,8 +59,17 @@ function allowed(rt, details) {
   return false;
 }
 
-// Une nouvelle page dans l'onglet : la mention disparaît.
+// Une nouvelle page dans l'onglet : la mention disparaît, et le geste fait sur
+// la page précédente ne vaut plus.
 function reset(rt) {
+  rt.blockedPopups = null;
+  rt.blockedCount = 0;
+  rt.gesture = 0;
+  rt.clickSpent = false;
+}
+
+// Le menu « ignorer » / « toujours autoriser » retire la mention sans toucher au geste.
+function dismiss(rt) {
   rt.blockedPopups = null;
   rt.blockedCount = 0;
 }
@@ -70,8 +87,8 @@ function menu(owner, rt, t) {
   if (urls.length) items.push({ type: 'separator' });
   for (const x of urls) items.push({ label: t('popup.open', { url: short(x.url) }), click: () => { owner.newTab(x.url, { after: rt.id }); } });
   items.push({ type: 'separator' });
-  items.push({ label: t('popup.always', { site }), enabled: !!origin && origin !== 'null', click: () => { permissions.set(rt.wc.session, origin, 'popups', true); reset(rt); owner.changed(); } });
-  items.push({ label: t('popup.dismiss'), click: () => { reset(rt); owner.changed(); } });
+  items.push({ label: t('popup.always', { site }), enabled: !!origin && origin !== 'null', click: () => { permissions.set(rt.wc.session, origin, 'popups', true); dismiss(rt); owner.changed(); } });
+  items.push({ label: t('popup.dismiss'), click: () => { dismiss(rt); owner.changed(); } });
   return items;
 }
 

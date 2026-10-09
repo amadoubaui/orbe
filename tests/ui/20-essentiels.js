@@ -166,6 +166,8 @@ module.exports = {
       const f = await feuille('auth');
       assert.equal(await f.textContent('#site'), new URL(A).host);
       assert.equal(await f.textContent('.quote'), 'Espace membres');
+      assert.equal(await f.textContent('#pending'), A + '/auth', 'l’adresse demandée est affichée');
+      assert.equal(await f.evaluate(() => document.body.classList.contains('cover')), true, 'la feuille couvre l’ancienne page');
       await jusqua(() => f.evaluate(() => document.activeElement && document.activeElement.id === 'user'), 'champ « identifiant » prêt');
       await touche(f, 'Escape');
       await jusqua(async () => (await titreActif()) === 'Refusé', 'page de refus du serveur');
@@ -299,6 +301,7 @@ module.exports = {
 
     await t.verifier('« Quitter la page » ferme l’onglet', async () => {
       await ctx.principal(() => { global.__quitter.reponse = 0; });
+      await sleep(2100); // pas de boîte de dialogue dans les deux secondes qui suivent « Rester »
       const ligne = ctx.ligne('Brouillon');
       await ctx.clic(shell, ligne.locator('.act.x'), { survol: ligne });
       await jusqua(async () => !(await ctx.titres()).includes('Brouillon'), 'onglet fermé');

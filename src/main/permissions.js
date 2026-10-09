@@ -12,7 +12,8 @@ const sheets = require('./sheets');
 const capture = require('./capture-state');
 
 // Accordées sans question : sans danger, ou confirmées autrement (le partage
-// d'écran passe par le sélecteur d'Orbe, qui vaut consentement à chaque fois).
+// d'écran passe par le sélecteur d'Orbe, qui vaut consentement à chaque fois —
+// voir `displayGate` pour la demande « media » qui le précède).
 const AUTO_ALLOW = new Set(['fullscreen', 'pointerLock', 'clipboard-sanitized-write', 'keyboardLock', 'window-management', 'speaker-selection', 'display-capture']);
 const ASKABLE = new Set(['media', 'geolocation', 'notifications', 'midi', 'midiSysex', 'clipboard-read']);
 // Appareils : la vérification passe (la page peut demander), mais aucun appareil
@@ -28,7 +29,11 @@ const env = {
   // Boîte de dialogue du système, pour les pages qui ne sont pas des onglets.
   confirm: async (parent, opts) => (await (parent ? dialog.showMessageBox(parent, opts) : dialog.showMessageBox(opts))).response === 0,
   openExternal: (url) => shell.openExternal(url).catch(() => {}),
+  // Temps écoulé (ms) depuis la dernière vraie entrée de l'utilisateur dans cet
+  // onglet ; Infinity s'il n'y en a pas eu ; null si ce n'est pas un onglet.
+  gesture: () => null,
 };
+const GESTURE = 5000; // durée de l'activation passagère de Chromium
 
 // Accès accordé à Orbe par le système (macOS, Windows). Remplacé pendant les
 // tests : aucune vraie demande au système n'y est faite.
@@ -54,6 +59,9 @@ const os = {
 const memories = new WeakMap(); // session -> { memory(), persist }
 const pending = new Map(); // « id onglet|origine|clés » -> promesse de la réponse en cours
 const lastExternal = new Map(); // id webContents -> instant de la dernière ouverture sans question
+// Liens externes, par page (oubliés quand l'onglet change de page) :
+// schémas refusés par l'utilisateur, et question déjà posée sans geste.
+const pages = new Map(); // id webContents -> { refused: Set(schéma), asked: bool, at: instant de la dernière question }
 
 const t = (key, vars) => store.t(key, null, vars);
 
@@ -99,8 +107,26 @@ function forget(entry, origin, key) {
   if (entry.persist) store.save();
 }
 
+// Caméra et micro demandés par un cadre intégré à un autre site : la réponse ne
+// vaut que pour ce couple (site intégré, site qui l'intègre). Un site hostile ne
+// peut donc pas hériter, en l'intégrant, de l'accord donné ailleurs à un service.
+const EMBED = '|';
+const keyFor = (key, embedder) => (embedder && (key === 'camera' || key === 'microphone') ? key + EMBED + embedder : key);
+
+// La page (ou le cadre) qui a posé la question est-elle toujours là ? Sinon la
+// réponse ne sert à rien ni à personne : rien n'est retenu, rien n'est ouvert.
+function stillThere(wc, origin, isMainFrame) {
+  if (!wc || wc.isDestroyed()) return false;
+  try {
+    if (isMainFrame !== false) return originOf(wc.getURL()) === origin;
+    return wc.mainFrame.framesInSubtree.some((f) => originOf(f.url) === origin);
+  } catch { return false; }
+}
+
 function labelOf(key) {
   if (key.startsWith('external:')) return t('perm.external', { scheme: key.slice(9) });
+  const at = key.indexOf(EMBED);
+  if (at > 0) return labelOf(key.slice(0, at)) + ' — ' + t('perm.embeddedIn', { site: siteName(key.slice(at + 1)) });
   const k = 'perm.' + (key === 'midiSysex' ? 'midi' : key);
   const label = t(k);
   return label === k ? t('perm.other', { name: key }) : label;
@@ -152,7 +178,20 @@ async function osAccess(wc, keys) {
 
 // Lien vers une autre application (mailto:, tel:, lien d'application). Orbe
 // demande, puis ouvre lui-même le lien : la réponse donnée à Chromium est
-// toujours « non ».
+// toujours « non ». Contre le harcèlement : un refus vaut pour le schéma tant
+// que l'onglet reste sur cette page ; sans geste récent de l'utilisateur, une
+// page ne fait apparaître la question qu'une fois ; une question à la fois.
+function pageState(wc) {
+  let st = pages.get(wc.id);
+  if (st) return st;
+  const id = wc.id;
+  st = { refused: new Set(), asked: false, at: 0 };
+  pages.set(id, st);
+  wc.on('did-navigate', () => { st.refused.clear(); st.asked = false; });
+  wc.once('destroyed', () => pages.delete(id));
+  return st;
+}
+
 async function external(entry, wc, origin, details) {
   const url = String((details && details.externalURL) || '');
   const scheme = (/^([a-z][a-z0-9+.-]*):/i.exec(url) || [])[1];
@@ -161,20 +200,38 @@ async function external(entry, wc, origin, details) {
   if (BLOCKED_SCHEMES.has(name)) return false;
   const key = 'external:' + name;
   const now = Date.now();
+  const st = pageState(wc);
+  if (st.refused.has(name)) return false;
   // Autorisation permanente : au plus une ouverture toutes les trois secondes
   // par page, sinon la question revient.
   const quiet = lookup(entry.memory(), origin, key) === true && now - (lastExternal.get(wc.id) || 0) > 3000;
   if (!quiet) {
     const id = wc.id + '|external';
     if (pending.has(id)) return false; // une question à la fois par page
-    const sheet = sheets.open(wc, 'external', { site: siteName(origin), scheme: name, url: url.slice(0, 300), canRemember: origin !== 'null' });
+    const since = env.gesture(wc);
+    const fresh = since !== null && since < GESTURE;
+    // Sans geste : une seule question par page (une page d'invitation qui lance
+    // son application toute seule reste possible, pas une boucle) ; hors onglet,
+    // au plus une question toutes les dix secondes.
+    if (!fresh) {
+      if (st.asked || (since === null && now - st.at < 10000)) return false;
+      st.asked = true;
+    }
+    st.at = now;
+    const embedded = details && details.isMainFrame === false ? originOf(wc.getURL()) : '';
+    const note = embedded && embedded !== origin ? t('perm.embedded', { site: siteName(embedded) }) : '';
+    const sheet = sheets.open(wc, 'external', { site: siteName(origin), scheme: name, url: url.slice(0, 300), canRemember: origin !== 'null', note });
     const parent = env.ownerWindow(wc);
     const p = sheet
       ? sheet.result
-      : env.confirm(parent, { type: 'question', message: t('external.title', { scheme: name }), detail: t('external.text', { site: siteName(origin) }) + '\n' + url.slice(0, 300), buttons: [t('external.go'), t('sheet.cancel')], defaultId: 1, cancelId: 1 }).then((ok) => (ok ? { open: true } : null));
+      : env.confirm(parent, { type: 'question', message: t('external.title', { scheme: name }), detail: t('external.text', { site: siteName(origin) }) + '\n' + url.slice(0, 300), buttons: [t('external.go'), t('sheet.cancel')], defaultId: 1, cancelId: 1 }).then((ok) => (ok ? { open: true } : false));
     pending.set(id, p);
     const res = await p.finally(() => pending.delete(id));
+    // Refus explicite (pas une feuille fermée par un changement de page) : retenu pour cette page.
+    if (res === false || (res && res.open !== true)) st.refused.add(name);
     if (!res || res.open !== true) return false;
+    // La page qui demandait n'est plus là : rien n'est ouvert, rien n'est retenu.
+    if (!stillThere(wc, origin, details && details.isMainFrame)) return false;
     if (res.always === true) remember(entry, origin, key, true);
   }
   lastExternal.set(wc.id, Date.now());
@@ -183,29 +240,75 @@ async function external(entry, wc, origin, details) {
   return false;
 }
 
+// Demande « media » sans caméra ni micro. Relevé sur Electron 44.7 : c'est ce
+// que reçoit Orbe pour un partage d'écran (`getDisplayMedia`), juste avant
+// l'appel du sélecteur… mais AUSSI pour l'ancienne capture d'écran
+// `getUserMedia({ video: { mandatory: { chromeMediaSource: 'desktop' } } })`,
+// qu'Electron accorde alors directement, écran entier, sans sélecteur ni geste.
+// Les deux demandes sont identiques à ce stade. Orbe ne laisse donc passer que
+// ce qui peut être un vrai partage : un onglet (le sélecteur n'existe que là)
+// où l'utilisateur vient d'agir. Le reste se joue dans `answerDisplay`.
+function displayGate(wc) {
+  if (!wc || wc.isDestroyed()) return false;
+  const since = env.gesture(wc);
+  return since !== null && since < GESTURE ? 'display' : false;
+}
+
+// Réponse « oui » à la demande ci-dessus. Pour un vrai `getDisplayMedia`,
+// Electron appelle le sélecteur (display-media.js) AVANT que `callback(true)` ne
+// rende la main (vérifié par un essai) : `noteDisplay` le signale. S'il n'a pas
+// été appelé, c'était l'ancienne capture d'écran, et Electron vient de
+// l'accorder : les processus de la page sont arrêtés sur-le-champ, avant
+// qu'aucune image ne leur parvienne (l'ouverture du flux demande plusieurs
+// allers-retours entre processus). Aucun site ordinaire n'emploie cet appel :
+// dans Chrome il est réservé aux extensions.
+const display = { armed: null, blocked: 0 };
+function noteDisplay() {
+  if (display.armed) display.armed.seen = true;
+}
+
+function contain(wc) {
+  display.blocked += 1;
+  if (!wc || wc.isDestroyed()) return;
+  const pids = new Set();
+  try { for (const f of wc.mainFrame.framesInSubtree) pids.add(f.osProcessId); } catch {}
+  try { wc.forcefullyCrashRenderer(); } catch {}
+  for (const pid of pids) { try { if (pid > 0 && pid !== process.pid) process.kill(pid, 'SIGKILL'); } catch {} }
+  console.error('[orbe] capture d’écran sans sélecteur (getUserMedia chromeMediaSource) : page arrêtée');
+  env.toast(wc, t('share.legacyBlocked'));
+}
+
+function answerDisplay(wc, callback) {
+  const armed = { seen: false };
+  display.armed = armed;
+  try { callback(true); } finally { display.armed = null; }
+  if (!armed.seen) contain(wc);
+}
+
 async function request(entry, wc, permission, details) {
   const origin = originOf((details && details.requestingUrl) || (wc && !wc.isDestroyed() && wc.getURL()) || '');
   if (origin.startsWith('orbe://') || AUTO_ALLOW.has(permission)) return true;
   if (permission === 'openExternal') return external(entry, wc, origin, details);
   if (!ASKABLE.has(permission) || !origin) return false;
-  const keys = permission === 'media' ? mediaKeys(details) : [permission];
-  // « media » sans caméra ni micro : c'est un partage d'écran (relevé sur
-  // Electron 44). Rien n'est accordé ici : le sélecteur d'Orbe décide ensuite
-  // de ce qui est partagé (display-media.js).
-  if (!keys.length) return true;
+  const kinds = permission === 'media' ? mediaKeys(details) : [permission];
+  if (!kinds.length) return displayGate(wc);
+  const top = wc && !wc.isDestroyed() && details && details.isMainFrame === false ? originOf(wc.getURL()) : '';
+  const embedder = top && top !== origin ? top : '';
+  const keys = kinds.map((k) => keyFor(k, embedder));
   const known = keys.map((k) => lookup(entry.memory(), origin, k));
   if (known.includes(false)) return false;
-  const unknown = keys.filter((k, i) => known[i] === undefined);
+  const unknown = kinds.filter((k, i) => known[i] === undefined);
   if (unknown.length) {
-    const top = wc && !wc.isDestroyed() && details && details.isMainFrame === false ? originOf(wc.getURL()) : '';
     const ok = await ask(wc, origin, unknown, top);
     if (ok === null) return false;
-    for (const k of unknown) remember(entry, origin, k, ok);
+    // Réponse arrivée après le départ de la page qui demandait : sans effet.
+    if (!stillThere(wc, origin, details && details.isMainFrame)) return false;
+    for (const k of unknown) remember(entry, origin, keyFor(k, embedder), ok);
     if (!ok) return false;
   }
   if (permission === 'media') {
-    if (!(await osAccess(wc, keys))) return false;
-    if (wc && !wc.isDestroyed()) for (const k of keys) capture.mark(wc, k);
+    if (!(await osAccess(wc, kinds))) return false;
+    if (wc && !wc.isDestroyed()) for (const k of kinds) capture.mark(wc, k);
   }
   return true;
 }
@@ -215,10 +318,13 @@ function check(entry, permission, requestingOrigin, details) {
   const origin = originOf(requestingOrigin || '');
   const memory = entry.memory();
   if (permission === 'media') {
+    const top = details && details.isMainFrame === false ? originOf(details.embeddingOrigin || '') : '';
+    const embedder = top && top !== origin ? top : '';
+    const has = (k) => lookup(memory, origin, keyFor(k, embedder)) === true;
     const type = details && details.mediaType;
-    if (type === 'video') return lookup(memory, origin, 'camera') === true;
-    if (type === 'audio') return lookup(memory, origin, 'microphone') === true;
-    return lookup(memory, origin, 'camera') === true || lookup(memory, origin, 'microphone') === true;
+    if (type === 'video') return has('camera');
+    if (type === 'audio') return has('microphone');
+    return has('camera') || has('microphone');
   }
   return lookup(memory, origin, permission) === true;
 }
@@ -231,13 +337,25 @@ function denyDevice(kind, wc, callback, value) {
   if (wc && !wc.isDestroyed()) env.toast(wc, t('device.unsupported', { kind: t('device.' + kind) }));
 }
 
-function attach(ses, { persist }) {
-  // Lu à chaque demande : « réinitialiser les autorisations » agit tout de suite.
+// `profileOf()` : identifiant du profil de la session (lu à chaque demande).
+// Chaque profil a ses propres réponses : le profil « default » garde
+// `store.state.permissions`, les autres `store.state.profilePermissions[id]`.
+function attach(ses, { persist, profileOf = () => 'default' }) {
   const volatile = {};
-  const entry = { memory: () => (persist ? store.state.permissions : volatile), persist };
+  // Lu à chaque demande : « réinitialiser les autorisations » agit tout de suite.
+  const memory = () => {
+    if (!persist) return volatile;
+    const id = profileOf() || 'default';
+    if (id === 'default') return store.state.permissions;
+    const all = store.state.profilePermissions || (store.state.profilePermissions = {});
+    return all[id] || (all[id] = {});
+  };
+  const entry = { memory, persist };
   memories.set(ses, entry);
   ses.setPermissionRequestHandler((wc, permission, callback, details) => {
-    request(entry, wc, permission, details).then((ok) => callback(!!ok), (err) => { console.error('[orbe] autorisation', err); callback(false); });
+    request(entry, wc, permission, details).then((ok) => {
+      if (ok === 'display') answerDisplay(wc, callback); else callback(ok === true);
+    }, (err) => { console.error('[orbe] autorisation', err); callback(false); });
   });
   ses.setPermissionCheckHandler((wc, permission, requestingOrigin, details) => check(entry, permission, requestingOrigin, details));
   ses.setDevicePermissionHandler(() => false);
@@ -287,4 +405,16 @@ function get(ses, origin, key) {
   return entry ? lookup(entry.memory(), origin, key) : undefined;
 }
 
-module.exports = { attach, setup, list, reset, set, get, originOf, siteName, labelOf, os, env, internals: { request, check, external, osAccess, memories, BLOCKED_SCHEMES, lastExternal } };
+// « Réinitialiser les autorisations des sites » : tous les profils.
+function resetAll() {
+  for (const k of Object.keys(store.state.permissions)) delete store.state.permissions[k];
+  delete store.state.profilePermissions;
+  store.save();
+}
+
+function forgetProfile(id) {
+  const all = store.state.profilePermissions;
+  if (all && all[id]) { delete all[id]; store.save(); }
+}
+
+module.exports = { attach, setup, list, reset, set, get, resetAll, forgetProfile, noteDisplay, originOf, siteName, labelOf, os, env, internals: { request, check, external, osAccess, memories, BLOCKED_SCHEMES, lastExternal, pages, display, stillThere, keyFor } };

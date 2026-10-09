@@ -2439,9 +2439,7 @@ class OrbeWindow {
       { type: 'separator' },
       ...hooks.siteMenu(this),
       { label: t('view.clearCookies'), enabled: web, click: () => this.clearAndReload('cookies') },
-      { label: t('site.resetPerms'), enabled: web, click: () => {
-        try { delete store.state.permissions[new URL(tab.url).origin]; store.save(); } catch {}
-      } },
+      { label: t('site.resetPerms'), enabled: web, click: () => hooks.action(this, 'resetSitePerms') },
     ]);
   }
 

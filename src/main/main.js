@@ -277,14 +277,13 @@ async function globalAction(action, a, sender) {
       return profileList();
     }
     case 'settings:deleteProfile':
-      if (OrbeWindow.deleteProfile(String(a))) { passwords.forgetProfile(String(a)); prefs.forgetProfile(String(a)); menu.refresh(true); }
+      if (OrbeWindow.deleteProfile(String(a))) { passwords.forgetProfile(String(a)); prefs.forgetProfile(String(a)); essentials.permissions.forgetProfile(String(a)); menu.refresh(true); }
       return profileList();
     case 'settings:makeDefault':
       commands.makeDefault();
       return true;
     case 'settings:resetPerms':
-      for (const k of Object.keys(s.permissions)) delete s.permissions[k];
-      store.save();
+      essentials.permissions.resetAll(); // tous les profils
       return true;
     case 'settings:clearData': {
       const parent = BrowserWindow.fromWebContents(sender);

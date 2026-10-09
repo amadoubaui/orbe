@@ -12,9 +12,16 @@
 //    rapportés par Electron) ; les textes venus du site sont affichés tels quels,
 //    comme du texte, et désignés comme tels ;
 //  - la réponse est reconnue à la vue qui l'envoie (jamais à un jeton lisible par
-//    une page) et un clic tombé à l'instant où la feuille apparaît est ignoré ;
+//    une page) ;
+//  - une réponse qui engage (autoriser, partager, continuer, se connecter,
+//    ouvrir) est refusée par le processus principal pendant la demi-seconde qui
+//    suit le moment où la feuille devient visible — y compris quand elle
+//    réapparaît parce que celle du dessus vient de se fermer : un clic préparé
+//    par la page pour l'ancienne feuille ne décide rien sur la suivante ;
 //  - une feuille se referme d'elle-même (réponse « rien ») quand la page change
-//    ou disparaît : aucune décision ne survit à la page qui l'a demandée.
+//    (début d'une navigation, ou arrivée d'une navigation déjà en route) ou
+//    disparaît : aucune décision ne survit à la page qui l'a demandée ;
+//  - une page ne peut pas empiler les feuilles : quatre au plus par onglet.
 const { WebContentsView } = require('electron');
 
 const env = {
@@ -24,6 +31,11 @@ const env = {
   locate: () => null, // webContents d'onglet -> { owner, rt } (fenêtre Orbe et onglet)
 };
 const RADIUS = 10;
+const GUARD = 500; // délai avant qu'une réponse qui engage soit acceptée
+const MAX_STACK = 4; // feuilles en attente par onglet
+// Réponses sans conséquence : refuser, revenir, fermer, attendre, recharger.
+const SAFE = new Set(['deny', 'back', 'ok', 'wait', 'reload', 'cancel']);
+const engages = (value) => !(value === null || value === undefined || value === false || SAFE.has(value));
 const byTab = new Map(); // id du webContents de l'onglet -> feuilles (la dernière est affichée)
 const byView = new Map(); // id du webContents de la feuille -> feuille
 const watched = new WeakSet(); // onglets déjà surveillés (navigation, destruction)
@@ -52,6 +64,10 @@ function watch(wc) {
     if (!details.isMainFrame || details.isSameDocument) return;
     for (const sheet of [...stackOf(wc)]) if (sheet.untilNavigation && Date.now() - sheet.openedAt > sheet.grace) sheet.close(null);
   });
+  // Une navigation lancée avant l'ouverture de la feuille aboutit : même effet.
+  wc.on('did-navigate', () => {
+    for (const sheet of [...stackOf(wc)]) if (sheet.untilNavigation) sheet.close(null);
+  });
   wc.once('destroyed', () => {
     for (const sheet of [...(byTab.get(id) || [])]) sheet.close(null);
     byTab.delete(id);
@@ -59,6 +75,7 @@ function watch(wc) {
 }
 
 function detach(sheet) {
+  sheet.armedAt = 0;
   if (!sheet.parent) return;
   try { sheet.parent.win.contentView.removeChildView(sheet.view); } catch {}
   sheet.parent = null;
@@ -82,6 +99,9 @@ function layout(owner) {
         if (sheet.parent !== owner) {
           owner.win.contentView.addChildView(sheet.view);
           sheet.parent = owner;
+          // Visible à partir de maintenant : le délai de garde repart, ici et dans la feuille.
+          sheet.armedAt = Date.now();
+          if (!sheet.view.webContents.isDestroyed()) sheet.view.webContents.send('overlay', { arm: true });
           if (owner.activeId === where.rt.id && !owner.modalMode) sheet.view.webContents.focus();
         }
         sheet.view.setBorderRadius(owner.htmlFullscreen ? 0 : RADIUS);
@@ -118,6 +138,7 @@ function open(wc, kind, payload, { cover = false, onAction = null, untilNavigati
   if (!wc || wc.isDestroyed() || !env.locate(wc)) return null;
   // Une seule feuille de chaque sorte par onglet : la nouvelle remplace l'ancienne.
   if (exclusive) for (const old of [...stackOf(wc)]) if (old.kind === kind) old.close(null);
+  if (stackOf(wc).length >= MAX_STACK) return null;
   watch(wc);
   const view = new WebContentsView({ webPreferences: { preload: env.uiPreload, sandbox: true, contextIsolation: true } });
   view.setBackgroundColor('#00000000');
@@ -129,7 +150,7 @@ function open(wc, kind, payload, { cover = false, onAction = null, untilNavigati
   vwc.on('before-input-event', (e, input) => { const where = env.locate(wc); if (where) where.owner.onInput(e, input, true); });
   let done;
   const sheet = {
-    id: ++seq, wc, kind, payload: { kind, cover, ...payload }, view, parent: null, onAction, untilNavigation, grace, openedAt: Date.now(), closed: false,
+    id: ++seq, wc, kind, payload: { kind, cover, ...payload }, view, parent: null, onAction, untilNavigation, grace, openedAt: Date.now(), armedAt: 0, closed: false,
     result: new Promise((resolve) => { done = resolve; }),
   };
   sheet.close = (value) => {
@@ -166,7 +187,12 @@ async function action(name, a, sender) {
   const sheet = byView.get(sender.id);
   if (!sheet || sheet.closed) return undefined;
   if (name === 'sheet:ready') return sheet.payload;
-  if (name === 'sheet:answer') { sheet.close(a === undefined ? null : a); return true; }
+  if (name === 'sheet:answer') {
+    // Réponse qui engage, trop tôt après l'apparition de la feuille : ignorée.
+    if (engages(a) && !(sheet.armedAt && Date.now() - sheet.armedAt >= GUARD)) return false;
+    sheet.close(a === undefined ? null : a);
+    return true;
+  }
   if (name === 'sheet:act' && sheet.onAction && a && typeof a.name === 'string') {
     const out = await sheet.onAction(a.name, a.arg, sheet);
     return out === undefined ? null : out;
@@ -174,8 +200,13 @@ async function action(name, a, sender) {
   return undefined;
 }
 
+// Une feuille de cette sorte attend-elle sur cet onglet (même sous une autre) ?
+function has(wc, kind) {
+  return !!wc && stackOf(wc).some((sheet) => sheet.kind === kind);
+}
+
 function closeAll(wc, kind) {
   for (const sheet of [...stackOf(wc)]) if (!kind || sheet.kind === kind) sheet.close(null);
 }
 
-module.exports = { configure, open, action, layout, focusFor, top, closeAll, internals: { byTab, byView } };
+module.exports = { configure, open, action, layout, focusFor, top, has, closeAll, GUARD, MAX_STACK, internals: { byTab, byView, engages } };

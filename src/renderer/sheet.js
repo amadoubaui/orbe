@@ -136,7 +136,7 @@ const KINDS = {
     site.textContent = '';
     site.append(el('b', '', p.host));
     body.append(el('p', 'strong', t('cert.lead', { host: p.host })), el('p', '', t('cert.why.' + p.reason)));
-    if (p.hard) body.append(el('p', 'warn', t(p.hsts ? 'cert.hsts' : 'cert.hard')));
+    if (p.hard) body.append(el('p', 'warn', t(p.hsts ? 'cert.hsts' : (p.unverified ? 'cert.unverified' : 'cert.hard'))));
     const details = el('div', '');
     details.id = 'details';
     details.hidden = true;
@@ -161,6 +161,8 @@ const KINDS = {
     const site = $('site');
     site.textContent = '';
     site.append(el('b', '', p.host));
+    // Demande faite par la page en cours de chargement : son adresse, bien en vue.
+    if (p.pending) { const line = el('p', 'strong', p.pending); line.id = 'pending'; line.style.userSelect = 'text'; body.append(el('p', '', t('auth.pending')), line); }
     if (p.realm) { body.append(el('p', '', t('auth.realm'))); body.append(el('div', 'quote', p.realm)); }
     if (p.insecure) body.append(el('p', 'warn', t('auth.insecure')));
     if (p.retry) body.append(el('p', 'warn', t('auth.retry')));
@@ -209,9 +211,11 @@ const KINDS = {
     always.type = 'checkbox';
     always.id = 'always';
     line.append(always, el('span', '', t('external.always', { site: p.site, scheme: p.scheme })));
+    if (p.note) body.append(el('p', '', p.note));
     if (p.canRemember) body.append(line);
-    buttons.append(button(t('sheet.cancel'), () => answer(null), { id: 'cancel' }), button(t('external.go'), () => answer({ open: true, always: always.checked }), { cls: 'primary', risky: true, id: 'ok' }));
-    return null;
+    // « Annuler » est un refus (false), retenu tant que l'onglet reste sur cette page.
+    buttons.append(button(t('sheet.cancel'), () => answer(false), { id: 'cancel' }), button(t('external.go'), () => answer({ open: true, always: always.checked }), { cls: 'primary', risky: true, id: 'ok' }));
+    return false;
   },
   // Choix d'un certificat client demandé par le site.
   choose(p, body, buttons) {
@@ -289,7 +293,11 @@ function show(p, keepGuard) {
   $('card').dataset.kind = p.kind;
 }
 
-O.on('overlay', (m) => { if (m && m.sheet) show(m.sheet, true); });
+O.on('overlay', (m) => {
+  // La feuille vient (de nouveau) d'apparaître : le délai de garde repart.
+  if (m && m.arm) shownAt = Date.now();
+  if (m && m.sheet) show(m.sheet, true);
+});
 O.on('settings', (s) => { if (setLang(s.lang) && P) show(P, true); });
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && P && onEscape !== undefined) { e.preventDefault(); answer(onEscape); }

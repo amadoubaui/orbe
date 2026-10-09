@@ -51,6 +51,14 @@ function handler(state) {
     if (p === '/vue.pdf') { res.setHeader('content-type', 'application/pdf'); return res.end(PDF); }
     if (p === '/doc.pdf') { res.setHeader('content-type', 'application/pdf'); res.setHeader('content-disposition', 'attachment; filename="document.pdf"'); return res.end(PDF); }
     if (p === '/installe.dmg') { res.setHeader('content-type', 'application/octet-stream'); res.setHeader('content-disposition', 'attachment; filename="Installe.dmg"'); return res.end('faux disque'); }
+    // Piège : annoncé comme PDF, enregistré sous un nom de page web.
+    if (p === '/piege') { res.setHeader('content-type', 'application/pdf'); res.setHeader('content-disposition', 'attachment; filename="facture.html"'); return res.end('<script>document.title = "piège"</script>'); }
+    // Piège : extension .pdf, contenu qui n'en est pas un.
+    if (p === '/faux.pdf') { res.setHeader('content-type', 'application/pdf'); res.setHeader('content-disposition', 'attachment; filename="faux.pdf"'); return res.end('<html>pas un PDF</html>'); }
+    if (p === '/lent') return setTimeout(() => res.end(page('Page lente', 'enfin')), 900);
+    // Cadres : `?autre` intègre l'autre site (localhost), sinon le même.
+    if (p === '/hote') return res.end(page('Hôte', `<iframe id="f" allow="camera; microphone; display-capture" src="${url.searchParams.has('autre') ? 'http://localhost:' + state.port : ''}/${url.searchParams.get('vers') || 'cadre'}" width="300" height="100"></iframe>`));
+    if (p === '/cadre') return res.end(page('Cadre', 'cadre'));
     if (p === '/note.txt') { res.setHeader('content-disposition', 'attachment; filename="note.txt"'); return res.end('bonjour'); }
     if (p === '/gros.bin') {
       const range = /bytes=(\d+)-/.exec(req.headers.range || '');
@@ -159,6 +167,7 @@ module.exports = async function essentielsTests(ctx) {
   // Clic sur un bouton qui referme la feuille : le clic part après le retour du
   // script (la vue est détruite par la réponse), puis on attend la fermeture.
   const press = async (sheet, id) => {
+    await until(() => sheet.armedAt && Date.now() - sheet.armedAt > sheets.GUARD + 40, 'délai de garde écoulé');
     await inSheet(sheet, `shownAt = 0; setTimeout(() => document.getElementById(${JSON.stringify(id)}).click(), 0); 1`);
     await until(() => sheet.closed, 'feuille refermée par « ' + id + ' »');
   };
@@ -227,6 +236,22 @@ module.exports = async function essentielsTests(ctx) {
   await press(sheet, 'close');
   await until(() => !sheets.top(cam.wc), 'feuille fermée');
 
+  // Délai de garde tenu par le processus principal : une feuille qui réapparaît
+  // (celle du dessus vient de se fermer) ne se laisse pas valider dans l'instant.
+  const under = sheets.open(cam.wc, 'perm', { site: 'essai', lines: ['essai'] }, { exclusive: false });
+  const over = sheets.open(cam.wc, 'os', { title: 'essai', text: 'essai' });
+  await until(() => over.armedAt > 0 && !under.armedAt, 'feuille du dessus affichée');
+  over.close('ok');
+  await until(() => under.armedAt > 0, 'feuille du dessous réaffichée');
+  check('feuille qui réapparaît : « Autoriser » envoyé dans la demi-seconde est refusé par le processus principal', await sheets.action('sheet:answer', 'allow', under.view.webContents) === false && !under.closed);
+  await sleep(sheets.GUARD + 60);
+  check('passé le délai, la même réponse est acceptée ; un refus l’est toujours', await sheets.action('sheet:answer', 'allow', under.view.webContents) === true && under.closed && sheets.internals.engages('deny') === false && sheets.internals.engages({ open: true }) === true);
+  const pile = [];
+  for (let i = 0; i < sheets.MAX_STACK + 2; i++) pile.push(sheets.open(cam.wc, 'perm', { site: 'essai', lines: ['n° ' + i] }, { exclusive: false }));
+  check('une page ne peut pas empiler les feuilles : ' + sheets.MAX_STACK + ' au plus par onglet', pile.filter(Boolean).length === sheets.MAX_STACK && pile.slice(sheets.MAX_STACK).every((x) => x === null));
+  for (const x of pile.filter(Boolean)) x.close(null);
+  check('la page qui demandait n’est plus là : la réponse est sans effet', permissions.internals.stillThere(cam.wc, A, true) === true && permissions.internals.stillThere(cam.wc, 'https://ailleurs.exemple', true) === false && permissions.internals.stillThere(cam.wc, 'https://ailleurs.exemple', false) === false);
+
   // Ancien format : « media » valait pour la caméra et le micro.
   store.state.permissions['https://ancien.exemple'] = { media: true };
   check('ancien réglage « media » : lu comme caméra et micro', permissions.get(cam.wc.session, 'https://ancien.exemple', 'camera') === true && permissions.get(cam.wc.session, 'https://ancien.exemple', 'microphone') === true
@@ -248,6 +273,39 @@ module.exports = async function essentielsTests(ctx) {
   await until(() => sheet.closed, 'question fermée par la navigation');
   check('la page change : la question se ferme, rien n’est retenu', !('notifications' in store.state.permissions[A]));
   await until(() => w.data.tabs[cam.id].title === 'Page /autre', 'page suivante');
+  // Navigation déjà en route quand la question arrive : son arrivée la ferme aussi.
+  cam.wc.loadURL(A + '/lent').catch(() => {});
+  await until(() => state.seen.some((x) => x.path === '/lent'), 'navigation en route');
+  // (demande faite par la page encore affichée : son cadre, pas celui qui arrive)
+  cam.wc.mainFrame.executeJavaScript('Notification.requestPermission(); 1', true).catch(() => {});
+  sheet = await sheetOf(cam.wc, 'perm');
+  const early = w.data.tabs[cam.id].title !== 'Page lente';
+  await until(() => w.data.tabs[cam.id].title === 'Page lente', 'navigation aboutie');
+  check('une navigation lancée avant la question aboutit : la question se ferme, rien n’est retenu', early && sheet.closed && !('notifications' in store.state.permissions[A]), { early, closed: sheet.closed, perms: store.state.permissions[A] });
+
+  // Cadre d'un autre site : son autorisation ne vaut que dans le site qui l'intègre.
+  const hostTab = await open(A + '/hote?autre', 'Hôte');
+  const frameOf = (x) => until(() => { const f = x.wc.mainFrame.frames[0]; return f && /\/(cadre|auth)$/.test(f.url) ? f : null; }, 'cadre chargé');
+  let frame = await frameOf(hostTab);
+  pending = frame.executeJavaScript('navigator.mediaDevices.getUserMedia({ video: true }).then(() => "flux", (e) => "err:" + e.name)', true);
+  sheet = await sheetOf(hostTab.wc, 'perm');
+  check('caméra demandée par un cadre : la feuille nomme le cadre et le site qui l’intègre', sheet.payload.site === B && sheet.payload.note === t('perm.embedded', { site: A }), sheet.payload);
+  await press(sheet, 'allow');
+  const embedded = permissions.internals.memories.get(hostTab.wc.session);
+  const can = (details) => permissions.internals.check(embedded, 'media', B, { mediaType: 'video', ...details });
+  check('l’accord donné à un cadre ne vaut que pour ce couple (cadre, site qui l’intègre)',
+    await pending === 'flux' && store.state.permissions[B]['camera|' + A] === true && !('camera' in store.state.permissions[B])
+    && can({ isMainFrame: false, embeddingOrigin: A + '/' }) === true && can({ isMainFrame: false, embeddingOrigin: 'https://hostile.exemple/' }) === false && can({ isMainFrame: true }) === false, store.state.permissions[B]);
+  check('informations du site : l’autorisation du cadre dit où elle vaut', permissions.list(hostTab.wc.session, B)[0].label.includes(t('perm.embeddedIn', { site: A })));
+
+  // Chaque profil a ses propres réponses.
+  const other = require('../src/main/sessions').profileSession('essai-autorisations');
+  permissions.set(other, 'https://profil.exemple', 'popups', true);
+  check('autorisations rangées par profil : celles d’un profil ne valent pas dans un autre',
+    permissions.get(other, 'https://profil.exemple', 'popups') === true && permissions.get(cam.wc.session, 'https://profil.exemple', 'popups') === undefined && permissions.get(other, A, 'camera') === undefined
+    && !store.state.permissions['https://profil.exemple'] && store.state.profilePermissions['essai-autorisations']['https://profil.exemple'].popups === true);
+  permissions.forgetProfile('essai-autorisations');
+  check('profil supprimé : ses autorisations aussi', permissions.get(other, 'https://profil.exemple', 'popups') === undefined && store.state.permissions[A].camera === true);
 
   // Navigation privée : les réponses restent en mémoire.
   const iw = new OrbeWindow({ incognito: true });
@@ -256,13 +314,14 @@ module.exports = async function essentielsTests(ctx) {
   sheet = await sheetOf(priv.wc, 'perm');
   sheet.close('allow');
   await until(() => permissions.get(priv.wc.session, B, 'notifications') === true, 'réponse retenue en mémoire');
-  check('navigation privée : la réponse n’est pas écrite dans le profil', !store.state.permissions[B]);
+  check('navigation privée : la réponse n’est pas écrite dans le profil', !('notifications' in (store.state.permissions[B] || {})));
 
   // ---------------------------------------------------------------- Partage d'écran
   const fake = { id: 'screen:9999:0', name: 'Écran <b>factice</b>', kind: 'screen', thumb: '', source: { id: 'screen:9999:0', name: 'Écran factice' } };
   displayMedia.env.sources = async () => [fake];
   const share = await open(A + '/partage', 'Page /partage');
   check('partage sans geste de l’utilisateur : refusé, sans sélecteur', (await js(share.wc, 'navigator.mediaDevices.getDisplayMedia({ video: true }).then(() => "flux", (e) => "err:" + e.name)')).startsWith('err:') && !sheets.top(share.wc));
+  await click(share.wc);
   pending = js(share.wc, 'navigator.mediaDevices.getDisplayMedia({ video: true, audio: true }).then((s) => { window.flux = s; return "flux:" + s.getVideoTracks().length; }, (e) => "err:" + e.name)', true);
   sheet = await sheetOf(share.wc, 'picker');
   await until(() => sheet.payload.sources.length === 2, 'écrans listés');
@@ -300,6 +359,7 @@ module.exports = async function essentielsTests(ctx) {
   }
 
   permissions.os.status = (kind) => (kind === 'screen' ? 'denied' : 'granted');
+  await click(share.wc);
   pending = js(share.wc, 'navigator.mediaDevices.getDisplayMedia({ video: true }).then(() => "flux", (e) => "err:" + e.name)', true);
   sheet = await sheetOf(share.wc, 'picker');
   check('macOS n’autorise pas l’enregistrement de l’écran : le sélecteur le dit et propose d’ouvrir les réglages',
@@ -308,16 +368,55 @@ module.exports = async function essentielsTests(ctx) {
   sheet.close({ id: 'screen:1:0', audio: true });
   check('une source absente de la liste proposée est refusée', (await pending).startsWith('err:'), await pending);
   permissions.os.status = saved.osStatus;
+  await click(share.wc);
   pending = js(share.wc, 'navigator.mediaDevices.getDisplayMedia({ video: true }).then(() => "flux", (e) => "err:" + e.name)', true);
   sheet = await sheetOf(share.wc, 'picker');
   await inSheet(sheet, 'setTimeout(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })), 0); 1');
   check('Échap annule le partage : la page reçoit une erreur', (await pending).startsWith('err:'));
   check('aucune autorisation de partage n’est retenue', !store.state.permissions[A] || !Object.keys(store.state.permissions[A]).some((k) => /display|screen/.test(k)));
+  await click(priv.wc);
   pending = js(priv.wc, 'navigator.mediaDevices.getDisplayMedia({ video: true }).then(() => "flux", (e) => "err:" + e.name)', true);
   sheet = await sheetOf(priv.wc, 'picker');
   sheet.close(null);
   check('navigation privée : même sélecteur', (await pending).startsWith('err:'));
   displayMedia.env.sources = saved.sources;
+
+  // Ancienne capture d'écran (getUserMedia + chromeMediaSource) : pour Electron,
+  // la même demande qu'un partage, mais accordée sans sélecteur. Jamais de flux.
+  const LEGACY = (extra) => `navigator.mediaDevices.getUserMedia({ video: { mandatory: { chromeMediaSource: 'desktop'${extra} } } }).then((s) => { window.vol = s; return 'FLUX:' + s.getVideoTracks().length; }, (e) => 'err:' + e.name)`;
+  const outcome = (promise) => Promise.race([promise.catch(() => 'page arrêtée'), sleep(4000).then(() => 'sans réponse')]);
+  const blocked = () => permissions.internals.display.blocked;
+  const legacy = await open(A + '/ancienne', 'Page /ancienne');
+  let got1 = await outcome(js(legacy.wc, LEGACY('')));
+  let got2 = await outcome(js(legacy.wc, LEGACY(", chromeMediaSourceId: 'screen:0:0'"), true));
+  check('ancienne capture d’écran sans geste de l’utilisateur : refusée, aucun flux, aucun sélecteur', got1 === 'err:NotAllowedError' && got2 === 'err:NotAllowedError' && !sheets.top(legacy.wc) && blocked() === 0 && !capture.of(legacy.wc).length, [got1, got2]);
+  // Juste après un vrai clic, la demande ne se distingue plus d'un partage :
+  // Orbe constate que le sélecteur n'a pas été appelé et arrête la page aussitôt.
+  await click(legacy.wc);
+  got1 = await outcome(js(legacy.wc, LEGACY('')));
+  await until(() => legacy.wc.isCrashed(), 'page arrêtée');
+  check('ancienne capture d’écran après un clic : la page est arrêtée avant de recevoir la moindre image', blocked() === 1 && !String(got1).startsWith('FLUX') && legacy.wc.isCrashed(), got1);
+  sheet = await sheetOf(legacy.wc, 'crash');
+  await press(sheet, 'reload');
+  await until(() => !legacy.wc.isCrashed() && !legacy.wc.isLoading(), 'page rechargée');
+  check('après l’arrêt, aucun flux n’existe dans la page rechargée', await js(legacy.wc, 'typeof window.vol') === 'undefined');
+  // Depuis un cadre d'un autre site (autre processus).
+  const legacyHost = await open(A + '/hote?autre', 'Hôte');
+  frame = await frameOf(legacyHost);
+  got1 = await outcome(frame.executeJavaScript(LEGACY('')));
+  check('ancienne capture d’écran depuis un cadre, sans geste : refusée', got1 === 'err:NotAllowedError' && blocked() === 1, got1);
+  await click(legacyHost.wc);
+  got1 = await outcome(frame.executeJavaScript(LEGACY(''), true));
+  await until(() => legacyHost.wc.isCrashed(), 'page et cadre arrêtés');
+  check('ancienne capture d’écran depuis un cadre, après un clic : page et cadre arrêtés, aucun flux', blocked() === 2 && !String(got1).startsWith('FLUX'), got1);
+  (await sheetOf(legacyHost.wc, 'crash')).close(null);
+  // Le vrai partage fonctionne toujours après cela.
+  await click(share.wc);
+  pending = js(share.wc, 'navigator.mediaDevices.getDisplayMedia({ video: true }).then(() => "flux", (e) => "err:" + e.name)', true);
+  sheet = await sheetOf(share.wc, 'picker');
+  check('le partage d’écran par le sélecteur fonctionne toujours (aucune page arrêtée à tort)', blocked() === 2 && !share.wc.isCrashed());
+  sheet.close(null);
+  await pending;
 
   // ---------------------------------------------------------------- Certificats
   check('état de la connexion : https sûr, http « non sécurisé », machine locale à part',
@@ -350,7 +449,35 @@ module.exports = async function essentielsTests(ctx) {
   sheet.close('proceed'); // réponse forgée
   await sleep(600);
   check('site HSTS : une réponse « continuer » forgée est ignorée', !certs.hasException(sec.wc.session, S + '/') && !state.seen.some((x) => x.path === '/secret'));
+  // La sonde ne conclut pas (délai, demande bloquée) : pas de « continuer » non plus.
+  certs.internals.probes.hsts = async () => null;
+  sec.wc.loadURL(S + '/secret').catch(() => {});
+  sheet = await sheetOf(sec.wc, 'cert');
+  check('sonde HSTS sans réponse : échec fermé, « Continuer quand même » n’est pas proposé', sheet.payload.canProceed === false && sheet.payload.hard === true && sheet.payload.unverified === true && sheet.payload.hsts === false && (await inSheet(sheet, 'document.querySelector("#body p.warn").textContent')) === t('cert.unverified'));
+  // Avertissement recouvert par une autre feuille : la pastille reste en alerte.
+  const above = sheets.open(sec.wc, 'os', { title: 'essai', text: 'essai' });
+  check('avertissement sous une autre feuille : la connexion reste « non sécurisée »', sheets.top(sec.wc) === above && certs.state(sec.wc, S + '/secret') === 'broken');
+  above.close('ok');
+  sheet.close(null);
+  // Pendant la sonde, et si une autre navigation part avant sa fin : jamais « sécurisé ».
+  let release;
+  certs.internals.probes.hsts = () => new Promise((r) => { release = () => r(false); });
+  sec.wc.loadURL(S + '/secret').catch(() => {});
+  await until(() => sec.rt.failed === true && typeof release === 'function', 'chargement refusé');
+  await until(() => ui('S.nav.security === "broken"'), 'pastille en alerte pendant la sonde');
+  check('certificat refusé, sonde en cours : la pastille dit déjà « Non sécurisé », jamais « sécurisé »', !sheets.top(sec.wc) && win.hooks.navState(w, sec.rt, w.data.tabs[sec.id]).security === 'broken');
+  sec.wc.loadURL(A + '/avant').catch(() => {});
+  await until(() => w.data.tabs[sec.id].url === A + '/avant' && sec.rt.failed === false, 'autre navigation aboutie');
+  release();
+  await sleep(300);
+  check('une autre navigation part pendant la sonde : pas d’avertissement tardif, état de la nouvelle page', !sheets.top(sec.wc) && win.hooks.navState(w, sec.rt, w.data.tabs[sec.id]).security === 'local');
   certs.internals.probes.hsts = async () => false;
+  for (const code of [-203, -207]) {
+    certs.failed(sec.wc, { code, url: S + '/secret' }, { back() {}, load() {} });
+    sheet = await sheetOf(sec.wc, 'cert');
+    check('certificat invalide (' + code + ') : refus sans appel', sheet.payload.hard === true && sheet.payload.canProceed === false);
+    sheet.close(null);
+  }
   certs.failed(sec.wc, { code: -206, url: S + '/secret' }, { back() {}, load() {} });
   sheet = await sheetOf(sec.wc, 'cert');
   check('certificat révoqué : refus sans appel', sheet.payload.hard === true && sheet.payload.canProceed === false && sheet.payload.reason === 'revoked');
@@ -389,6 +516,7 @@ module.exports = async function essentielsTests(ctx) {
   au.wc.loadURL(A + '/auth').catch(() => {});
   sheet = await sheetOf(au.wc, 'auth');
   check('authentification HTTP : feuille sur l’onglet, avec l’hôte rapporté par Electron', sheet.payload.host === new URL(A).host && sheet.payload.proxy === false && sheet.payload.retry === false && sheet.payload.insecure === false, sheet.payload);
+  check('demande de la page en cours de chargement : la feuille couvre l’ancienne page et affiche l’adresse demandée', sheet.payload.cover === true && sheet.payload.pending === A + '/auth' && await inSheet(sheet, 'document.body.classList.contains("cover") && document.getElementById("pending").textContent') === A + '/auth');
   const realm = await inSheet(sheet, '({ quote: document.querySelector(".quote").textContent, tags: document.querySelectorAll(".quote b").length, pass: document.getElementById("pass").type })');
   check('le message du serveur est cité comme du texte ; le mot de passe est masqué', realm.quote === 'Zone <b>reservee</b>' && realm.tags === 0 && realm.pass === 'password', realm);
   await press(sheet, 'cancel');
@@ -409,6 +537,17 @@ module.exports = async function essentielsTests(ctx) {
   const emb = await open(A + '/embarque', 'Embarque');
   await until(() => state.seen.some((x) => x.path === '/auth.png'), 'image demandée');
   check('une image d’un autre site ne peut pas faire apparaître la question', await noSheet(emb.wc, 700));
+  // Cadre intégré qui navigue vers une page protégée.
+  await au.wc.session.clearAuthCache();
+  const sameFrame = await open(A + '/hote?vers=auth', 'Hôte');
+  sheet = await sheetOf(sameFrame.wc, 'auth');
+  check('cadre du même hôte : la question est posée, sans couvrir la page', sheet.payload.cover === false && sheet.payload.pending === '' && sheet.payload.host === new URL(A).host);
+  sheet.close(null);
+  const before401 = state.seen.filter((x) => x.path === '/auth' && x.host.startsWith('localhost')).length;
+  const otherFrame = await open(A + '/hote?autre&vers=auth', 'Hôte');
+  await until(() => state.seen.filter((x) => x.path === '/auth' && x.host.startsWith('localhost')).length > before401, 'cadre demandé');
+  check('cadre d’un autre hôte : la question n’apparaît pas sur la page qui l’intègre', await noSheet(otherFrame.wc, 800));
+  w.activate(emb.id);
   // Réponse forgée (pas des chaînes) : demande annulée.
   let got = 'rien';
   const fakeEvent = { preventDefault() {} };
@@ -458,6 +597,11 @@ module.exports = async function essentielsTests(ctx) {
   const inArchive = () => store.state.archive.filter((x) => x.url === A + '/sale').length;
   const archivedBefore = inArchive();
   const undoBefore = w.pendingLabel('undo');
+  // Nouvelle tentative dans les deux secondes qui suivent « Rester » : refusée sans boîte de dialogue.
+  d2.wc.loadURL(A + '/ailleurs').catch(() => {});
+  await sleep(400);
+  check('tentatives en rafale : pas de seconde boîte de dialogue, la page reste', asks.length === 1 && d2.wc.getURL() === A + '/sale');
+  unload.forget(d2.wc);
   w.close(d2.id);
   await until(() => asks.length === 2, 'question à la fermeture');
   await until(() => w.data.tabs[d2.id] && w.activeId === d2.id && win.live.get(d2.id) === d2.rt, 'onglet revenu');
@@ -474,6 +618,7 @@ module.exports = async function essentielsTests(ctx) {
   const calm = await open(A + '/calme', 'Page /calme');
   asks.length = 0;
   leave = true;
+  unload.forget(d2.wc);
   w.closeMany([d2.id, d3.id, calm.id]);
   await until(() => d2.wc.isDestroyed() && d3.wc.isDestroyed(), 'pages fermées');
   check('archiver plusieurs onglets : une question par page qui s’y oppose, pas pour les autres', asks.length === 2 && !w.data.tabs[d2.id] && !w.data.tabs[d3.id] && !w.data.tabs[calm.id], asks.length);
@@ -491,6 +636,7 @@ module.exports = async function essentielsTests(ctx) {
   await sleep(500);
   check('fermer la fenêtre puis « Rester » : la fenêtre et la page restent', !w2.win.isDestroyed() && OrbeWindow.all.includes(w2) && !d4.wc.isDestroyed() && await js(d4.wc, 'window.sale') === true);
   leave = true;
+  unload.forget(d4.wc);
   w2.win.close();
   await until(() => !OrbeWindow.all.includes(w2), 'fenêtre fermée');
   check('fermer la fenêtre puis « Quitter » : elle se ferme, l’onglet reste dans l’Espace (non archivé)', asks.length === 2 && !!store.state.tabs[d4.id] && store.state.archive.length === archived && d4.wc.isDestroyed());
@@ -530,6 +676,23 @@ module.exports = async function essentielsTests(ctx) {
   check('site autorisé : window.open passe sans geste', true);
   permissions.reset(pop.wc.session, A, 'popups');
   w.activate(pop.id);
+  // Fenêtre ouverte dès l'appui du bouton : le relâchement du même clic n'en autorise pas une seconde.
+  pop.rt.gesture = 0;
+  pop.wc.sendInputEvent({ type: 'mouseDown', x: 230, y: 90, button: 'left', clickCount: 1 });
+  await until(() => pop.rt.gesture > 0, 'appui reçu');
+  count = w.space.today.length;
+  await js(pop.wc, 'window.open("/appui"); 1');
+  await until(() => w.space.today.length === count + 1, 'fenêtre ouverte à l’appui');
+  opened.push([w, w.activeId]);
+  w.activate(pop.id);
+  pop.wc.sendInputEvent({ type: 'mouseUp', x: 230, y: 90, button: 'left', clickCount: 1 });
+  await sleep(300);
+  check('un clic = une fenêtre : le relâchement du bouton ne redonne pas de geste', pop.rt.gesture === 0 && await js(pop.wc, 'window.open("/relache") === null') === true && w.space.today.length === count + 1);
+  await click(pop.wc);
+  pop.wc.loadURL(A + '/apres-clic');
+  await until(() => w.data.tabs[pop.id].title === 'Page /apres-clic', 'page suivante');
+  check('le geste ne survit pas au changement de page', pop.rt.gesture === 0 && await js(pop.wc, 'window.open("/heritee") === null') === true);
+  popups.reset(pop.rt);
   pop.rt.gesture = 0;
   await js(pop.wc, 'window.open("/x"); 1');
   await until(() => popups.count(pop.rt) === 1, 'bloquée de nouveau');
@@ -545,6 +708,17 @@ module.exports = async function essentielsTests(ctx) {
   await press(sheet, 'cancel');
   await sleep(300);
   check('annuler : rien n’est ouvert, la page reste affichée (pas de page d’erreur)', launched.length === 0 && w.data.tabs[ext.id].url === A + '/lien' && w.data.tabs[ext.id].title === 'Lien externe');
+  await clickLink(ext.wc, 'm');
+  check('après « Annuler », la page ne peut pas reposer la question pour ce schéma', await noSheet(ext.wc, 600) && launched.length === 0);
+  // Sans geste : une seule question par page.
+  ext.wc.reload();
+  await until(() => !ext.wc.isLoading() && permissions.internals.pages.get(ext.wc.id).refused.size === 0, 'page rechargée');
+  ext.rt.gesture = 0;
+  await js(ext.wc, 'location.href = "tel:0100000000"; 1');
+  sheet = await sheetOf(ext.wc, 'external');
+  sheet.close(null);
+  await js(ext.wc, 'location.href = "tel:0100000001"; 1');
+  check('sans geste de l’utilisateur, une page ne fait apparaître la question qu’une fois', await noSheet(ext.wc, 600) && launched.length === 0);
   await clickLink(ext.wc, 'm');
   sheet = await sheetOf(ext.wc, 'external');
   await inSheet(sheet, 'document.getElementById("always").checked = true; 1');
@@ -607,6 +781,9 @@ module.exports = async function essentielsTests(ctx) {
   downloads.env.confirm = async (parent, opts) => { confirms.push(opts); return agree; };
 
   check('nom proposé par un site : réduit à un simple nom de fichier', downloads.safeName('../../.ssh/authorized_keys') === 'authorized_keys' && downloads.safeName('C:\\Windows\\x.exe') === 'x.exe' && downloads.safeName('') !== '');
+  check('extension masquée (sens de lecture inversé, points ou espaces en fin de nom) : reconnue quand même',
+    downloads.isDangerous('facture\u202efdp.exe') && downloads.isDangerous('installe.exe. ') && downloads.isDangerous('x.scr\u200b') && downloads.safeName('doc\u202efdp.exe') === 'docfdp.exe' && downloads.safeName('a.pdf . ') === 'a.pdf'
+    && ['x.js', 'x.py', 'x.chm', 'x.mobileconfig', 'x.inetloc', 'x.settingcontent-ms', 'x.vhdx', 'x.xll'].every((n) => downloads.isDangerous(n)) && !downloads.isDangerous('notes.txt'));
   state.mode = 'lent';
   let d = await start('/gros.bin');
   await until(() => d.received > 0, 'premiers octets');
@@ -676,15 +853,46 @@ module.exports = async function essentielsTests(ctx) {
   check('un PDF s’affiche dans la visionneuse de Chromium, sans téléchargement', viewer.wc.getURL() === A + '/vue.pdf' && !store.state.downloads.some((x) => x.url === A + '/vue.pdf'));
   count = Object.keys(w.data.tabs).length;
   store.state.settings.downloadOpenPdf = true;
+  // Téléchargement lancé par la page à la suite d'un geste de l'utilisateur (lien cliqué).
+  const startByUser = async (file) => { const known = new Set(store.state.downloads); await click(dl.wc); await js(dl.wc, `location.href = ${JSON.stringify(file)}; 1`, true); return until(() => store.state.downloads.find((x) => !known.has(x)), 'téléchargement lancé : ' + file); };
+  // Annoncé « application/pdf », mais enregistré en .html : jamais ouvert dans un onglet.
+  d = await startByUser('/piege');
+  await until(() => d.state === 'completed', 'piège téléchargé');
+  await sleep(400);
+  check('fichier .html annoncé comme PDF : ni ouvert tout seul, ni ouvert dans un onglet à la demande', path.basename(d.path) === 'facture.html' && d.mime === 'application/pdf' && Object.keys(w.data.tabs).length === count && !downloads.isPdfFile(d.path)
+    && await lib('dl:open', d.id) === true && Object.keys(w.data.tabs).length === count && opens[opens.length - 1] === d.path, { name: d.name, mime: d.mime });
+  fs.unlinkSync(d.path);
+  d = await startByUser('/faux.pdf');
+  await until(() => d.state === 'completed', 'faux PDF téléchargé');
+  await sleep(400);
+  check('extension .pdf mais contenu qui n’en est pas un : pas ouvert dans un onglet', Object.keys(w.data.tabs).length === count && !downloads.isPdfFile(d.path));
+  fs.unlinkSync(d.path);
+  // Vrai PDF, mais téléchargement que personne n'a demandé : pas d'ouverture automatique.
   d = await start('/doc.pdf');
+  await until(() => d.state === 'completed', 'pdf non demandé');
+  await sleep(400);
+  check('PDF téléchargé sans geste de l’utilisateur : pas ouvert tout seul', d.gesture === false && downloads.isPdfFile(d.path) && Object.keys(w.data.tabs).length === count, { gesture: d.gesture });
+  fs.unlinkSync(d.path);
+  const opensBefore = opens.length;
+  d = await startByUser('/doc.pdf');
   await until(() => d.state === 'completed', 'pdf téléchargé');
   const pdfTab = await until(() => Object.values(w.data.tabs).find((x) => x.url.startsWith('file:') && x.url.endsWith('/document.pdf')), 'onglet du PDF');
   opened.push([w, pdfTab.id]);
   await until(() => rtOf(pdfTab.id) && rtOf(pdfTab.id).wc.mainFrame.framesInSubtree.some((f) => f.url.startsWith('chrome-extension://mhjfbmdgcfjbbpaeojofohoefgiehjai/')), 'visionneuse sur le fichier', 20000);
-  check('PDF téléchargé : ouvert dans un onglet, par la visionneuse intégrée', Object.keys(w.data.tabs).length === count + 1 && opens.length === 1);
+  check('PDF téléchargé à la demande : ouvert dans un onglet, par la visionneuse intégrée', d.gesture === true && Object.keys(w.data.tabs).length === count + 1 && opens.length === opensBefore);
+  // Exécutable ? Jugé au moment de l'ouvrir, sur le fichier tel qu'il est.
+  const renamed = path.join(dlDir, 'renommé.command');
+  fs.writeFileSync(renamed, 'echo');
+  const sly = { id: 'rusé-' + Date.now(), name: 'notes.txt', path: renamed, url: A + '/note.txt', total: 4, received: 4, state: 'completed', at: Date.now() };
+  store.state.downloads.unshift(sly);
+  confirms.length = 0;
+  agree = false;
+  check('fichier devenu exécutable après coup : la confirmation est demandée à l’ouverture', await lib('dl:open', sly.id) === false && confirms.length === 1);
+  store.state.downloads.shift();
+  fs.unlinkSync(renamed);
   store.state.settings.downloadOpenPdf = false;
   const pdf1 = d.path;
-  d = await start('/doc.pdf');
+  d = await startByUser('/doc.pdf');
   await until(() => d.state === 'completed', 'second pdf');
   await sleep(300);
   check('réglage coupé : le PDF téléchargé n’ouvre pas d’onglet', Object.keys(w.data.tabs).length === count + 1 && path.basename(d.path) === 'document (1).pdf');
@@ -709,6 +917,11 @@ module.exports = async function essentielsTests(ctx) {
   check('« Toujours demander où enregistrer » : la fenêtre propose le dossier habituel, le fichier va où on le dit', dialogs.length === 1 && dialogs[0].defaultPath === path.join(dlDir, 'note.txt') && d.path === target && fs.existsSync(target));
   downloads.env.saveDialog = (parent, opts) => { dialogs.push(opts); return undefined; };
   const lengthBefore = store.state.downloads.length;
+  // Sans geste, pas de seconde fenêtre d'enregistrement coup sur coup (elles bloquent l'application).
+  dl.wc.downloadURL(A + '/note.txt');
+  await sleep(700);
+  check('« toujours demander » : une page ne peut pas enchaîner les fenêtres d’enregistrement', dialogs.length === 1 && store.state.downloads.length === lengthBefore);
+  downloads.internals.asked.clear();
   dl.wc.downloadURL(A + '/note.txt');
   await until(() => dialogs.length === 2, 'fenêtre d’enregistrement');
   await sleep(400);
@@ -740,6 +953,8 @@ module.exports = async function essentielsTests(ctx) {
   for (const [owner, id] of opened) if (owner === w && w.data.tabs[id]) w.close(id, { silent: true, ask: false });
   w.undoStack.length = 0;
   for (const key of [A, B]) delete store.state.permissions[key];
+  delete store.state.profilePermissions;
+  permissions.internals.display.blocked = 0;
   store.state.downloads = store.state.downloads.filter((x) => !String(x.url).startsWith(A));
   Object.assign(store.state.settings, { downloadAsk: saved.settings.downloadAsk, downloadDir: saved.settings.downloadDir, downloadOpenPdf: saved.settings.downloadOpenPdf });
   unload.env.ask = saved.ask;

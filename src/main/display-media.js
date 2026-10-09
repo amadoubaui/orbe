@@ -93,6 +93,9 @@ async function handle(request, callback) {
 
 function attach(ses) {
   ses.setDisplayMediaRequestHandler((request, callback) => {
+    // Dit tout de suite (appel synchrone) à permissions.js que cette demande
+    // « media » était bien un partage d'écran, et non l'ancienne capture directe.
+    permissions.noteDisplay();
     handle(request, callback).catch((err) => { console.error('[orbe] partage d’écran', err); try { callback(null); } catch {} });
   }, { useSystemPicker: false });
 }

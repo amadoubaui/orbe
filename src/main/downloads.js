@@ -8,7 +8,13 @@
 //  - un fichier exécutable n'est jamais ouvert tout seul : il est signalé, et
 //    son ouverture depuis Orbe demande une confirmation qui nomme sa provenance ;
 //  - seuls les PDF sont ouverts automatiquement, dans la visionneuse de Chromium
-//    (bac à sable), jamais par une application du système.
+//    (bac à sable), jamais par une application du système. « PDF » se juge sur le
+//    fichier enregistré : extension `.pdf` ET contenu qui commence par `%PDF-`.
+//    Le type annoncé par le serveur ne compte pas : un fichier `.html` servi
+//    comme « application/pdf » serait sinon ouvert en `file://` dans un onglet ;
+//  - l'ouverture automatique n'a lieu que pour un téléchargement lancé par un
+//    geste de l'utilisateur, et « toujours demander » ne laisse pas une page
+//    enchaîner les fenêtres d'enregistrement.
 const { app, dialog, shell, BaseWindow } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -18,7 +24,9 @@ const { store, uid } = require('./store');
 // Extensions de fichiers qui peuvent exécuter du code à l'ouverture.
 const DANGEROUS = new Set(['dmg', 'pkg', 'mpkg', 'app', 'command', 'tool', 'terminal', 'workflow', 'action', 'scpt', 'scptd', 'applescript', 'sh', 'bash', 'zsh', 'csh', 'ksh', 'fish', 'run', 'bin',
   'exe', 'msi', 'msix', 'msp', 'appx', 'appxbundle', 'bat', 'cmd', 'com', 'scr', 'pif', 'cpl', 'lnk', 'ps1', 'psm1', 'vbs', 'vbe', 'jse', 'wsf', 'wsh', 'hta', 'reg', 'dll', 'sys', 'inf', 'url',
-  'jar', 'jnlp', 'apk', 'deb', 'rpm', 'iso', 'img', 'webloc', 'desktop', 'appimage']);
+  'jar', 'jnlp', 'apk', 'deb', 'rpm', 'iso', 'img', 'webloc', 'desktop', 'appimage',
+  'js', 'vb', 'wsc', 'ws', 'msc', 'chm', 'scf', 'application', 'appref-ms', 'settingcontent-ms', 'diagcab', 'gadget', 'xll', 'py', 'pyw', 'cab', 'vhd', 'vhdx',
+  'inetloc', 'fileloc', 'mobileconfig', 'prefpane', 'xip']);
 
 const env = {
   // Fenêtre Orbe (BaseWindow) de la page qui télécharge, pour y attacher les boîtes de dialogue.
@@ -35,9 +43,26 @@ const resuming = new Map(); // chemin du fichier -> enregistrement dont la repri
 const profiles = new WeakMap(); // session -> identifiant de profil
 const t = (key, vars) => store.t(key, null, vars);
 
-const extOf = (name) => path.extname(String(name || '')).slice(1).toLowerCase();
+// Caractères invisibles qui retournent le sens de lecture (« exe.fdp » affiché
+// « pdf.exe ») ou se cachent en fin de nom : retirés avant de lire l'extension.
+const HIDDEN = /[\u0000-\u001f\u007f\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g;
+const clean = (name) => String(name || '').replace(HIDDEN, '').replace(/[. ]+$/, '');
+const extOf = (name) => path.extname(clean(name)).slice(1).toLowerCase();
 const isDangerous = (name) => DANGEROUS.has(extOf(name));
-const isPdf = (name, mime) => extOf(name) === 'pdf' || mime === 'application/pdf';
+// Vrai PDF : le fichier enregistré porte l'extension .pdf et commence par « %PDF- ».
+function isPdfFile(file) {
+  if (extOf(file) !== 'pdf') return false;
+  let fd = null;
+  try {
+    fd = fs.openSync(file, 'r');
+    const head = Buffer.alloc(5);
+    return fs.readSync(fd, head, 0, 5, 0) === 5 && head.toString('latin1') === '%PDF-';
+  } catch { return false; } finally { if (fd !== null) { try { fs.closeSync(fd); } catch {} } }
+}
+// Exécutable ? Jugé sur le fichier tel qu'il est sur disque, au moment de l'ouvrir.
+const dangerNow = (d) => !!d.danger || isDangerous(d.path) || isDangerous(d.name);
+const asked = new Map(); // id webContents (0 : aucun) -> instant de la dernière fenêtre « enregistrer sous »
+const ASK_GAP = 10000;
 
 // Dossier de destination : celui des réglages (général, ou propre au profil de la
 // session — voir prefs.js, par `sessions.hooks.downloadDir`), sinon Téléchargements.
@@ -50,7 +75,7 @@ function downloadDir(ses) {
 
 // Nom proposé par le site : un simple nom de fichier, sans dossier ni caractère interdit.
 function safeName(name) {
-  const base = String(name || '').split(/[\\/]/).pop().replace(/[\x00-\x1f<>:"|?*]/g, '_').replace(/^\.+/, '').slice(0, 200);
+  const base = clean(String(name || '').split(/[\\/]/).pop()).replace(/[<>:"|?*]/g, '_').replace(/^\.+/, '').slice(0, 200);
   return base || 'téléchargement';
 }
 
@@ -95,7 +120,8 @@ function track(d, item, wc, { persist, hooks }) {
     if (state === 'cancelled' && d.path) fs.unlink(d.path, () => {});
     if (persist) store.save();
     hooks.onDownload('done', d, wc, item);
-    if (state === 'completed' && !d.danger && isPdf(d.name, d.mime) && store.state.settings.downloadOpenPdf) openFile(d, wc);
+    // Ouverture automatique : un vrai PDF, téléchargé à la demande de l'utilisateur.
+    if (state === 'completed' && d.gesture && store.state.settings.downloadOpenPdf && !dangerNow(d) && isPdfFile(d.path)) openFile(d, wc);
   });
 }
 
@@ -116,6 +142,13 @@ function attach(ses, { persist, hooks }) {
     const name = safeName(item.getFilename());
     let target = uniquePath(downloadDir(ses), name);
     if (store.state.settings.downloadAsk) {
+      // Sans geste de l'utilisateur, une page n'ouvre pas deux fenêtres
+      // d'enregistrement de suite (elles bloquent toute l'application).
+      const who = wc && !wc.isDestroyed() ? wc.id : 0;
+      const now = Date.now();
+      if (!item.hasUserGesture() && now - (asked.get(who) || 0) < ASK_GAP) { event.preventDefault(); return; }
+      asked.set(who, now);
+      if (asked.size > 500) asked.clear();
       const parent = (wc && env.ownerWindow(wc)) || BaseWindow.getFocusedWindow();
       const chosen = env.saveDialog(parent, { defaultPath: target, title: t('dl.saveAs') });
       // Annulé : pas de téléchargement.
@@ -125,7 +158,7 @@ function attach(ses, { persist, hooks }) {
     item.setSavePath(target);
     const d = {
       id: uid(), name: path.basename(target), path: target, url: item.getURL(), total: item.getTotalBytes(), received: 0, state: 'progressing', at: Date.now(),
-      mime: item.getMimeType(), profile: profiles.get(ses) || 'default',
+      mime: item.getMimeType(), profile: profiles.get(ses) || 'default', gesture: item.hasUserGesture(),
     };
     if (isDangerous(d.name)) d.danger = true;
     if (persist) store.addDownload(d); else volatileRecords.add(d);
@@ -196,7 +229,8 @@ function cancel(d) {
 // Un fichier exécutable demande d'abord confirmation.
 async function openFile(d, wc, { parent = null, confirmed = false } = {}) {
   if (!d || d.state !== 'completed' || !fs.existsSync(d.path)) return false;
-  if (d.danger && !confirmed) {
+  const danger = dangerNow(d);
+  if (danger && !confirmed) {
     let host = '';
     try { host = new URL(d.url).host; } catch {}
     const ok = await env.confirm(parent, {
@@ -204,7 +238,7 @@ async function openFile(d, wc, { parent = null, confirmed = false } = {}) {
     });
     if (!ok) return false;
   }
-  if (!d.danger && isPdf(d.name, d.mime) && env.openInTab(pathToFileURL(d.path).href, wc)) return true;
+  if (!danger && isPdfFile(d.path) && env.openInTab(pathToFileURL(d.path).href, wc)) return true;
   env.openPath(d.path);
   return true;
 }
@@ -227,4 +261,4 @@ async function action(name, a, sender) {
   return undefined;
 }
 
-module.exports = { attach, bindProfile, action, resume, cancel, openFile, downloadDir, isDangerous, isPdf, safeName, env, internals: { items, resuming, DANGEROUS } };
+module.exports = { attach, bindProfile, action, resume, cancel, openFile, downloadDir, isDangerous, isPdfFile, safeName, env, internals: { items, resuming, DANGEROUS, asked, extOf } };

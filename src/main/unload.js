@@ -14,12 +14,18 @@ const env = {
   ask: (parent, opts) => (parent && !parent.isDestroyed() ? dialog.showMessageBoxSync(parent, opts) : dialog.showMessageBoxSync(opts)),
 };
 const state = { quitting: false, asked: 0 };
+// Une page ne peut pas enchaîner les boîtes de dialogue (elles bloquent toute
+// l'application) : pendant deux secondes après « Rester », une nouvelle
+// tentative de quitter cette page est refusée sans rien demander.
+const QUIET = 2000;
+const stays = new WeakMap(); // webContents -> instant du dernier « Rester »
 
 // Pose la question, de façon synchrone (l'événement d'Electron l'exige).
 // Renvoie true si l'utilisateur accepte de quitter la page.
 function confirm(parent, wc) {
   let host = '';
   try { host = new URL(wc.getURL()).host; } catch {}
+  if (wc && Date.now() - (stays.get(wc) || 0) < QUIET) return false;
   state.asked += 1;
   const t = (key, vars) => store.t(key, null, vars);
   let choice = 1;
@@ -33,6 +39,7 @@ function confirm(parent, wc) {
       cancelId: 1,
     });
   } catch (err) { console.error('[orbe] beforeunload', err.message); }
+  if (choice !== 0 && wc) stays.set(wc, Date.now());
   return choice === 0;
 }
 
@@ -60,4 +67,4 @@ function setup() {
   app.on('before-quit', () => { state.quitting = true; });
 }
 
-module.exports = { confirm, closeAll, setup, env, state };
+module.exports = { confirm, closeAll, setup, env, state, QUIET, forget: (wc) => stays.delete(wc) };

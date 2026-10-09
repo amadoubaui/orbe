@@ -71,7 +71,9 @@ function setup({ win, sessions, test = false }) {
   const toast = (wc, text) => { const o = ownerOf(wc); if (o) o.toast(text); };
 
   sheets.configure({ trusted, uiPreload: UI_PRELOAD, internal: INTERNAL, locate });
-  permissions.setup({ test, toast, ownerWindow });
+  // Geste récent de l'utilisateur dans un onglet (relevé par popups.gesture) : sert au partage d'écran et aux liens externes.
+  const gesture = (wc) => { const where = locate(wc); if (!where) return null; return where.rt.gesture ? Date.now() - where.rt.gesture : Infinity; };
+  permissions.setup({ test, toast, ownerWindow, gesture });
   displayMedia.setup({ test, toast });
   certs.setup();
   auth.setup();
@@ -96,7 +98,8 @@ function setup({ win, sessions, test = false }) {
   hooks.busy = (rt) => capture.of(rt.wc).length > 0;
   hooks.tabState = (rt) => capture.of(rt.wc);
   hooks.navState = (w, rt, tab) => ({
-    security: rt && tab && !rt.internal ? certs.state(rt.wc, rt.failed ? tab.url : (rt.wc.getURL() || tab.url)) : '',
+    // Chargement refusé pour un certificat : « non sécurisé », que l'avertissement soit déjà affiché ou non.
+    security: rt && tab && !rt.internal ? (rt.failed ? 'broken' : certs.state(rt.wc, rt.wc.getURL() || tab.url)) : '',
     popups: popups.count(rt),
     capture: rt ? capture.of(rt.wc) : [],
   });
@@ -133,6 +136,12 @@ function setup({ win, sessions, test = false }) {
   };
   hooks.action = (w, action, a) => {
     if (action === 'siteInfo') { siteInfo(w); return true; }
+    // Autorisations du site affiché, dans la mémoire de SA session (profil, navigation privée).
+    if (action === 'resetSitePerms') {
+      const rt = w.activeRt;
+      if (rt && !rt.wc.isDestroyed()) { permissions.reset(rt.wc.session, permissions.originOf(rt.wc.getURL()), '*'); w.changed(); }
+      return true;
+    }
     if (action === 'popupMenu') { const items = popups.menu(w, w.activeRt, t); if (items.length) w.popup(items); return true; }
     if (action === 'captureMenu') { captureMenu(w, (typeof a === 'string' && live.get(a)) || w.activeRt); return true; }
     return undefined;

@@ -9,8 +9,12 @@
 //    certificat (empreinte), dans la session en cours : jamais écrit sur disque,
 //    oublié à la fermeture d'Orbe ; un autre certificat redemande ;
 //  - le choix n'est pas proposé pour les refus sans appel (certificat révoqué,
-//    transparence exigée, interception connue) ni pour un site qui impose HTTPS
-//    (HSTS), reconnu par une sonde locale du réseau de Chromium ;
+//    invalide ou incohérent, transparence exigée, interception connue) ni pour
+//    un site qui impose HTTPS (HSTS), reconnu par une sonde locale du réseau de
+//    Chromium. Vérifié sur Electron 44 : `certificate-error` est émis même pour
+//    un site HSTS et `callback(true)` passerait outre — cette vérification est
+//    donc la seule barrière. La sonde échoue fermée : sans preuve que le site
+//    n'impose pas HTTPS, pas de « continuer » ;
 //  - tout ce qui est affiché du certificat vient d'Electron, en simple texte.
 const { app, net } = require('electron');
 const sheets = require('./sheets');
@@ -20,9 +24,13 @@ const seen = new WeakMap(); // session -> Map(hôte -> résumé du dernier certi
 const lastError = new Map(); // id webContents -> { url, error, cert, at } (dernier refus, cadre principal)
 const SEEN_MAX = 400;
 // Refus sans appel : jamais de « continuer quand même ».
-const HARD = new Set([-206, -214, -217]);
+const HARD = new Set([-203, -206, -207, -214, -217]);
 const REASONS = { '-200': 'name', '-201': 'date', '-202': 'authority', '-206': 'revoked', '-207': 'invalid', '-208': 'weak', '-211': 'weak', '-213': 'date' };
-const env = { hstsTimeout: 500 };
+const env = { hstsTimeout: 1500 };
+// Erreurs de transport : la demande est bien partie en HTTP simple vers l'hôte,
+// ce qui prouve que Chromium ne l'a pas convertie en HTTPS (HSTS agit avant
+// toute connexion). Toute autre erreur (demande bloquée, annulée…) ne prouve rien.
+const TRANSPORT = /ERR_(CONNECTION_REFUSED|CONNECTION_RESET|CONNECTION_CLOSED|CONNECTION_TIMED_OUT|CONNECTION_FAILED|NAME_NOT_RESOLVED|ADDRESS_UNREACHABLE|EMPTY_RESPONSE|INTERNET_DISCONNECTED|TIMED_OUT)\b/;
 
 const isCertError = (code) => Number.isInteger(code) && code <= -200 && code > -220;
 
@@ -78,7 +86,11 @@ const isIp = (hostname) => /^\d+\.\d+\.\d+\.\d+$/.test(hostname) || hostname.sta
 // Electron ne le dit pas : on demande au réseau de la session d'ouvrir
 // http://hôte/ sans suivre la redirection. Un site HSTS répond par une
 // redirection interne (307, « Non-Authoritative-Reason: HSTS ») avant tout
-// échange ; sinon la demande est abandonnée aussitôt, sans cookies.
+// échange (vérifié sur un hôte de la liste préchargée : réponse en quelques
+// millisecondes, sans trafic) ; sinon la demande est abandonnée aussitôt, sans cookies.
+// Renvoie true (HSTS), false (prouvé que non : une réponse HTTP, une autre
+// redirection, ou une erreur de transport en HTTP simple), ou null (on ne sait
+// pas : délai dépassé, demande bloquée ou annulée) — null vaut refus.
 function probeHsts(ses, hostname) {
   if (!hostname || isIp(hostname) || isLocal(hostname)) return Promise.resolve(false);
   return new Promise((resolve) => {
@@ -91,7 +103,7 @@ function probeHsts(ses, hostname) {
       try { if (req) req.abort(); } catch {}
       resolve(value);
     };
-    const timer = setTimeout(() => finish(false), env.hstsTimeout);
+    const timer = setTimeout(() => finish(null), env.hstsTimeout);
     try {
       req = net.request({ method: 'HEAD', url: `http://${hostname}/`, session: ses, redirect: 'manual', credentials: 'omit', useSessionCookies: false });
       req.on('redirect', (status, method, redirectUrl, headers) => {
@@ -99,9 +111,9 @@ function probeHsts(ses, hostname) {
         finish(status === 307 && /^https:/i.test(redirectUrl || '') && !!reason && String(reason[1]).toUpperCase().includes('HSTS'));
       });
       req.on('response', () => finish(false));
-      req.on('error', () => finish(false));
+      req.on('error', (err) => finish(TRANSPORT.test(String(err && err.message)) ? false : null));
       req.end();
-    } catch { finish(false); }
+    } catch { finish(null); }
   });
 }
 const probes = { hsts: probeHsts };
@@ -121,13 +133,15 @@ function failed(wc, { code, url }, actions) {
   const onNav = (details) => { if (details.isMainFrame && !details.isSameDocument) stale = true; };
   wc.on('did-start-navigation', onNav);
   (async () => {
-    const hsts = await probes.hsts(ses, hostname).catch(() => false);
+    const probed = await probes.hsts(ses, hostname).catch(() => null);
+    const hsts = probed === true;
     if (!wc.isDestroyed()) wc.off('did-start-navigation', onNav);
     if (stale || wc.isDestroyed()) return;
-    const hard = HARD.has(code) || hsts;
+    // Seul « false » (prouvé sans HSTS) laisse la possibilité de continuer.
+    const hard = HARD.has(code) || probed !== false;
     const canProceed = !hard && !!mine && !!mine.cert && !!mine.cert.fingerprint;
     const sheet = sheets.open(wc, 'cert', {
-      host, reason: REASONS[String(code)] || 'other', error: (mine && mine.error) || `net::${code}`, cert: mine ? mine.cert : null, canProceed, hard, hsts,
+      host, reason: REASONS[String(code)] || 'other', error: (mine && mine.error) || `net::${code}`, cert: mine ? mine.cert : null, canProceed, hard, hsts, unverified: probed === null,
     }, { cover: true });
     if (!sheet) return;
     const choice = await sheet.result;
@@ -147,8 +161,8 @@ function state(wc, url) {
   let u;
   try { u = new URL(url); } catch { return ''; }
   if (u.protocol === 'https:') {
-    const top = wc && !wc.isDestroyed() ? sheets.top(wc) : null;
-    if ((top && top.kind === 'cert') || (wc && !wc.isDestroyed() && hasException(wc.session, url))) return 'broken';
+    // Avertissement en attente (même sous une autre feuille), ou exception en cours.
+    if (wc && !wc.isDestroyed() && (sheets.has(wc, 'cert') || hasException(wc.session, url))) return 'broken';
     return 'secure';
   }
   if (u.protocol === 'http:') return isLocal(u.hostname) ? 'local' : 'insecure';
