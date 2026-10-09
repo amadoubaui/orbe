@@ -404,15 +404,15 @@ Chiffres d'Arc : seuls ANI-1 à ANI-4 ont été mesurés. Pour le reste, l'exist
 | ANI-2 | Réafficher la barre : environ 50 ms | M-4 | ✅ | 180 ms | Fait le 8 oct. (cotes et durées d'Arc) |
 | ANI-3 | Barre de commande : apparition sans délai perceptible | mesuré (pas d'image intermédiaire à 60 images/s) | ✅ | `pop` 130 ms | Fait le 8 oct. (cotes et durées d'Arc) |
 | ANI-4 | Vue scindée : ouverture et fermeture immédiates | M-13, M-14 | ✅ | sans animation ; self | Identique |
-| ANI-5 | Miroitement au démarrage | HC 20498417809815 | ⬜ | | |
+| ANI-5 | Miroitement au démarrage | HC 20498417809815 | ✅ | | reflet qui traverse la barre latérale au premier affichage (900 ms, transformation et opacité) ; ui 27-details : médiane 8,3 ms, 0 mise en page |
 | ANI-6 | Animation de fenêtre au redémarrage | HC 20498417809815 | ⬜ | | |
 | ANI-7 | Boutons plus, fermer, actualiser, précédent, suivant animés | HC 20498417809815 | ✅ | SC `.ib svg` : « actualiser » fait un tour à chaque clic, les flèches partent dans leur sens à la pression, le « + » et la croix pivotent ; ui 23 « boutons animés » |  |
 | ANI-8 | Indicateur de chargement en lueur en haut de la fenêtre | HC 20498377604887 ; binaire (shader) | ✅ | SC `#glow` : lueur à la couleur de l'Espace le long du bord haut de la page, plus le reflet de la pastille ; transformations seules ; ui 23 « chargement » (120 images/s, pas de mise en page par image) | Lueur CSS, pas un shader ; à comparer à l'œil avec Arc |
-| ANI-9 | Téléchargement : le fichier « saute » dans l'icône de la Bibliothèque ; plusieurs à la fois | HC 20498377604887 | ⬜ | anneau de progression | |
+| ANI-9 | Téléchargement : le fichier « saute » dans l'icône de la Bibliothèque ; plusieurs à la fois | HC 20498377604887 | ✅ | anneau de progression | un fichier tombe dans l’icône de la Bibliothèque à chaque téléchargement commencé (4 à la fois, décalés de 110 ms), l’icône rebondit ; self tests/details.js, ui 27-details : médiane 8,3 ms |
 | ANI-10 | Changement d'Espace : la barre glisse d'un Espace à l'autre en suivant le doigt, l'icône se transforme | HC 20498377604887 ; binaire `space_swiping.mp4` | ✅ | glissé-fondu de 36 px, 220 ms | deux listes côte à côte qui suivent le doigt, teinte fondue, ressort (SH PAGER) ; l'icône grossit dans sa pastille ; self ; ui 06. Durées à régler face à Arc |
 | ANI-11 | Aperçu : ouverture et fermeture animées, fermeture interactive | HC 20498417809815, 20498377604887 | 🟡 | la carte grandit depuis le lien (200 ms), se réduit à la fermeture (150 ms), s'étend pour ⌘O (220 ms) ; self, ui 16 | Reste la fermeture interactive (tirer la carte) ; durées d'Arc non mesurées |
 | ANI-12 | Glisser vers une vue scindée : l'onglet devient une bulle, rebond au dépôt | inverse | ⬜ | | |
-| ANI-13 | Dépôt dans un dossier animé | HC 20498377604887 | ⬜ | | |
+| ANI-13 | Dépôt dans un dossier animé | HC 20498377604887 | ✅ | | l’icône du dossier rebondit (340 ms) et sa ligne s’éclaire au dépôt ; ui 27-details |
 | ANI-14 | Effacement des onglets du jour animé | HC 20498377604887 | ✅ | SH `flipPlay` : les lignes s'effacent en cascade (22 ms d'écart, dix crans au plus) ; ui 23 « Effacer » |  |
 | ANI-15 | Messages (toasts) animés, aux couleurs du thème | HC 20498293324823 | ✅ | entrée au ressort, sortie de 180 ms ; pilule sombre teintée à 26 % par la couleur de l'Espace ; ui 22 « messages » |  |
 | ANI-16 | Petite fenêtre : animation d'ouverture | HC 20498417809815 | ✅ | | opacité 0→1 et montée de 14 pt en 180 ms (position et opacité de la fenêtre seulement), coupée par « Réduire les animations » ; self tests/details.js, ui 25 |

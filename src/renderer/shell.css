@@ -395,6 +395,27 @@ body.incognito #incognito { display: flex; }
 #dl-ring circle { fill: none; stroke: var(--accent); stroke-width: 2; stroke-dasharray: 75.4; stroke-dashoffset: 75.4; transition: stroke-dashoffset 200ms; }
 #b-library.downloading #dl-ring { display: block; }
 
+/* Téléchargement commencé : un fichier tombe dans l'icône de la Bibliothèque (src/renderer/fx.js). */
+.dl-drop { position: absolute; left: 6px; top: 6px; width: 16px; height: 16px; pointer-events: none; color: var(--accent); opacity: 0; animation: dl-drop 560ms cubic-bezier(0.5, 0, 0.9, 0.6) both; }
+.dl-drop svg.i { fill: color-mix(in srgb, var(--accent) 22%, transparent); }
+@keyframes dl-drop {
+  0% { opacity: 0; transform: translate(10px, -64px) rotate(-14deg) scale(0.7); }
+  22% { opacity: 1; transform: translate(9px, -58px) rotate(-10deg) scale(1.1); }
+  80% { opacity: 1; transform: translate(1px, -6px) rotate(4deg) scale(0.8); }
+  100% { opacity: 0; transform: translate(0, 2px) rotate(0) scale(0.35); }
+}
+#b-library.gulp > svg.i:first-child { animation: dl-gulp var(--spring-bouncy); }
+@keyframes dl-gulp { 0% { transform: scale(1); } 30% { transform: scale(1.32) translateY(1px); } 100% { transform: scale(1); } }
+/* Premier affichage : un reflet traverse la barre, une fois. */
+#shimmer { position: absolute; inset: 0; overflow: hidden; pointer-events: none; border-radius: inherit; }
+#shimmer > i { position: absolute; top: -20%; bottom: -20%; left: 0; width: 55%; background: linear-gradient(100deg, transparent, color-mix(in srgb, #fff 13%, transparent) 45%, color-mix(in srgb, var(--accent) 16%, transparent) 55%, transparent); transform: translateX(-110%) skewX(-12deg); animation: shimmer 900ms 120ms var(--ease) both; }
+@keyframes shimmer { 0% { transform: translateX(-110%) skewX(-12deg); opacity: 0; } 20% { opacity: 1; } 100% { transform: translateX(260%) skewX(-12deg); opacity: 0; } }
+/* Dépôt dans un dossier : l'icône rebondit, la ligne s'éclaire. */
+.folder.gulped > .row .ic { animation: folder-gulp var(--spring-bouncy); }
+.folder.gulped > .row::after { content: ''; position: absolute; inset: 0; border-radius: inherit; background: color-mix(in srgb, var(--accent) 26%, transparent); pointer-events: none; animation: folder-flash 520ms var(--ease-out) both; }
+@keyframes folder-gulp { 0% { transform: scale(1); } 35% { transform: scale(1.35) rotate(-6deg); } 100% { transform: scale(1); } }
+@keyframes folder-flash { from { opacity: 1; } to { opacity: 0; } }
+
 #resize { position: absolute; top: 0; right: -3px; width: 7px; height: 100%; cursor: col-resize; -webkit-app-region: no-drag; }
 
 #drop-line { position: absolute; height: 2px; border-radius: 1px; background: var(--accent); pointer-events: none; display: none; z-index: 5; }

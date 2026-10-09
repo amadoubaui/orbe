@@ -242,8 +242,10 @@ function keepThumb(rt, data) {
 const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'AltGraph', 'NumLock', 'ScrollLock', 'Fn', 'Hyper', 'Super']);
 // Téléchargements en cours, par page d'origine : son onglet ne s'endort pas (voir `trimLive`).
 const downloading = new Map(); // id webContents -> identifiants des téléchargements
+let downloadsStarted = 0; // compteur : la barre latérale fait tomber un fichier dans la Bibliothèque à chaque nouveau
 function noteDownload(phase, d, wc) {
   if (!d) return;
+  if (phase === 'start') downloadsStarted += 1;
   if (phase === 'done' || (d.state && d.state !== 'progressing')) {
     for (const [id, set] of downloading) { set.delete(d.id); if (!set.size) downloading.delete(id); }
     return;
@@ -3896,6 +3898,7 @@ class OrbeWindow {
         });
       })(),
       players: media.payload(this, settings),
+      downloadsStarted,
       downloads: downloads.length
         ? { count: downloads.length, progress: downloads.reduce((a, x) => a + (x.total ? x.received / x.total : 0), 0) / downloads.length }
         : null,

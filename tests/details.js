@@ -160,6 +160,25 @@ module.exports = async function detailsTests(ctx) {
     w.close(tab.id, { silent: true, ask: false });
   }
 
+  // === Téléchargement : un fichier tombe dans l'icône de la Bibliothèque ==================
+  {
+    const ui = (js) => w.ui.webContents.executeJavaScript(js);
+    const sent = [];
+    const realSend = w.ui.webContents.send.bind(w.ui.webContents);
+    w.ui.webContents.send = (ch, p) => { if (ch === 'state') sent.push(p.downloadsStarted); return realSend(ch, p); };
+    win.OrbeWindow.pushAll();
+    const n0 = sent[sent.length - 1];
+    win.noteDownload('start', { id: 'essai-1', state: 'progressing' }, null);
+    win.noteDownload('progress', { id: 'essai-1', state: 'progressing' }, null);
+    win.noteDownload('start', { id: 'essai-2', state: 'progressing' }, null);
+    win.OrbeWindow.pushAll();
+    check('téléchargements commencés : comptés un par un (même sans page d’origine), et donnés à la barre latérale', typeof n0 === 'number' && sent[sent.length - 1] === n0 + 2, JSON.stringify(sent.slice(-3)));
+    w.ui.webContents.send = realSend;
+    win.noteDownload('done', { id: 'essai-1' }, null);
+    win.noteDownload('done', { id: 'essai-2' }, null);
+    check('compteur illisible : la barre n’anime rien et ne casse pas', (await ui('(() => { try { fxDownloads(undefined); fxDownloads("3"); fxDownloads(null); return true; } catch { return false; } })()')) === true);
+  }
+
   await sleep(30);
   return failed;
 };

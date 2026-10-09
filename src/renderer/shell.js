@@ -373,6 +373,7 @@ function render(s) {
 
   const lib = $('b-library');
   lib.classList.toggle('downloading', !!s.downloads);
+  fxDownloads(s.downloadsStarted);
   if (s.downloads) lib.querySelector('circle').style.strokeDashoffset = String(75.4 * (1 - s.downloads.progress));
 
   // Dépôt en attente : les listes viennent de prendre leur ordre définitif.
@@ -957,6 +958,7 @@ function onState(s) {
   if (first && !FLOATING) {
     const b = document.body;
     b.classList.add('ready', 'no-anim');
+    fxStart();
     requestAnimationFrame(() => requestAnimationFrame(() => b.classList.remove('no-anim')));
   }
   return undefined;
