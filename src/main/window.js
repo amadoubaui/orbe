@@ -336,6 +336,8 @@ class OrbeWindow {
     this.data = apart
       ? { spaces: [incognito ? store.makeSpace(t('incognito.title'), '🕶️', '#52525b') : store.makeSpace(t('blank.title'), '◻️', '#71717a')], tabs: {}, favs: { default: [] }, profiles: [{ id: 'default', name: '' }] }
       : store.state;
+    // Une trace de Chromium en cours porterait sur cette fenêtre aussi : elle est arrêtée et jetée.
+    if (incognito) require('./trace').discard(OrbeWindow.focused || OrbeWindow.primary);
     this.session = incognito ? sessions.incognitoSession() : sessions.mainSession();
     const restore = !apart && first;
     const resume = resumed(saved, this.data.spaces, restore && store.state.settings.restoreSession !== false);
@@ -4351,6 +4353,7 @@ class OrbeWindow {
       dark: nativeTheme.shouldUseDarkColors,
       incognito: this.incognito,
       blank: this.blank,
+      tracing: require('./trace').state.on, // trace de Chromium en cours : la barre le montre
       sidebar: { visible: this.sidebarVisible, peek: this.peek, width: this.sidebarWidth },
       toolbar,
       fullUrl: settings.showFullUrl !== false || (!!tab && prefs.devMode(tab.url)),
@@ -4470,6 +4473,7 @@ class OrbeWindow {
         return a && Array.isArray(a.ids) ? this.moveMany(a) : this.move(a);
       }
       case 'toggleMute': return this.toggleMute(a);
+      case 'trace:stop': return require('./trace').stop(this);
       case 'mediaToggle': return this.mediaToggle();
       case 'mediaAct': return this.mediaAct(a);
       case 'resetPinned': return this.resetPinned(a);

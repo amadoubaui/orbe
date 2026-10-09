@@ -680,17 +680,58 @@ module.exports = async function finitionsTests(ctx) {
   const stop0 = contentTracing.stopRecording;
   const show0 = shell.showItemInFolder;
   const trace = [];
-  contentTracing.startRecording = async (o) => { trace.push(['start', Object.keys(o).join()]); };
   contentTracing.stopRecording = async (file) => { trace.push(['stop', file]); return file; };
   shell.showItemInFolder = (f) => trace.push(['show', f]);
+  contentTracing.startRecording = async (o) => { trace.push(['start', o]); };
+  const traceLib = require('../src/main/trace');
+  const box0 = dialog.showMessageBox;
+  const questions = [];
+  let traceAnswer = 1;
+  dialog.showMessageBox = async (...args) => { questions.push(args[args.length - 1]); return { response: traceAnswer }; };
+  const noteShown = (x = w) => x.ui.webContents.executeJavaScript('!document.getElementById("trace-note").hidden');
   toasts.length = 0;
+  // La question d'abord : elle dit ce que la trace contient. Refusée, rien ne s'enregistre.
+  await commands.run(w, 'recordTrace');
+  check('« Enregistrer une trace… » : la question est posée d’abord, elle dit que la trace contient adresses et titres de toutes les fenêtres ; refusée, rien ne commence',
+    questions.length === 1 && questions[0].message === T('trace.confirm') && questions[0].detail === T('trace.detail') && /toutes les fenêtres|every Orbe window/.test(questions[0].detail) && /adresses|addresses/.test(questions[0].detail) && questions[0].cancelId === 1 && questions[0].defaultId === 1 && commands.tracing() === false && trace.length === 0 && toasts.length === 0, JSON.stringify(questions));
+  traceAnswer = 0;
   await commands.run(w, 'recordTrace');
   menu.refresh(true);
   await until(() => !!menuItem('help.stopTrace'), 'article « Arrêter la trace »');
-  check('« Enregistrer une trace… » : l’enregistrement commence, un message le dit, l’article du menu devient « Arrêter… »', commands.tracing() === true && trace.length === 1 && toasts[0] === T('toast.traceOn'));
+  check('acceptée : l’enregistrement commence, un message le dit, l’article du menu devient « Arrêter… »', commands.tracing() === true && trace.length === 1 && toasts[0] === T('toast.traceOn'));
+  const traceCats = (trace[0] && trace[0][1].included_categories) || [];
+  check('catégories relevées : une liste courte, sans « * », sans journal du réseau ni catégorie détaillée', traceCats.length > 5 && traceCats.length < 30 && !traceCats.includes('*') && !traceCats.some((c) => /^disabled-by-default|netlog|^net$|navigation|cookie|history/i.test(c)) && traceCats.includes('toplevel') && traceCats.includes('v8') && Object.keys(trace[0][1]).join() === 'included_categories', traceCats.join());
+  await until(() => noteShown(), 'témoin de la trace dans la barre latérale');
+  check('trace en cours : la barre latérale le montre', (await w.ui.webContents.executeJavaScript('document.getElementById("trace-note").textContent')) === T('trace.note'));
+  // Le témoin l'arrête.
+  await w.ui.webContents.executeJavaScript('document.getElementById("trace-note").click()');
+  await until(() => commands.tracing() === false && trace.length === 3, 'trace arrêtée par le témoin');
+  check('… un clic sur le témoin l’arrête : la trace est écrite dans Téléchargements et montrée dans le dossier',
+    trace[1][0] === 'stop' && trace[1][1].startsWith(app.getPath('downloads')) && /orbe-trace-[\dT-]+\.json$/.test(trace[1][1]) && trace[2][1] === trace[1][1] && toasts[1] === T('toast.traceSaved'), JSON.stringify(trace.slice(1)));
+  await until(async () => !(await noteShown()), 'témoin retiré');
+  // Arrêt seul au bout du délai (deux minutes ; raccourci pour l'essai).
+  const limit0 = traceLib.LIMIT.ms;
+  trace.length = 0; toasts.length = 0;
+  traceLib.LIMIT.ms = 250;
   await commands.run(w, 'recordTrace');
-  check('… second appel : la trace est écrite dans Téléchargements et montrée dans le dossier',
-    commands.tracing() === false && trace.length === 3 && trace[1][0] === 'stop' && trace[1][1].startsWith(app.getPath('downloads')) && /orbe-trace-[\dT-]+\.json$/.test(trace[1][1]) && trace[2][1] === trace[1][1] && toasts[1] === T('toast.traceSaved'), JSON.stringify(trace));
+  const traceRunning = commands.tracing();
+  await until(() => commands.tracing() === false && trace.length === 3, 'trace arrêtée seule');
+  traceLib.LIMIT.ms = limit0;
+  check('la trace s’arrête seule au bout du délai (2 minutes), et un message le dit', limit0 === 120000 && traceRunning === true && trace[1][0] === 'stop' && trace[1][1].startsWith(app.getPath('downloads')) && toasts.includes(T('toast.traceAuto')), JSON.stringify([limit0, traceRunning, toasts]));
+  // Navigation privée : une fenêtre qui s'ouvre arrête et jette la trace ; ouverte, elle l'interdit.
+  trace.length = 0; toasts.length = 0; questions.length = 0;
+  await commands.run(w, 'recordTrace');
+  const nPriv = OrbeWindow.all.length;
+  const privWin = commands.hooks.newWindow({ incognito: true });
+  await until(() => commands.tracing() === false && trace.length === 2, 'trace jetée');
+  check('une fenêtre de navigation privée s’ouvre pendant la trace : elle est arrêtée et jetée (rien dans Téléchargements, rien de montré)',
+    trace[1][0] === 'stop' && !trace[1][1].startsWith(app.getPath('downloads')) && trace[1][1].startsWith(require('os').tmpdir()) && !trace.some((x) => x[0] === 'show') && !require('fs').existsSync(trace[1][1]) && toasts.includes(T('trace.discarded')), JSON.stringify(trace.slice(1)));
+  trace.length = 0; toasts.length = 0; questions.length = 0;
+  const refusedTrace = await commands.run(w, 'recordTrace');
+  check('fenêtre de navigation privée ouverte : aucune trace, sans même poser la question', refusedTrace === false && commands.tracing() === false && trace.length === 0 && questions.length === 0 && toasts[0] === T('trace.private'), JSON.stringify([refusedTrace, toasts]));
+  privWin.win.close();
+  await until(() => OrbeWindow.all.length === nPriv, 'fenêtre privée refermée');
+  dialog.showMessageBox = box0;
   contentTracing.startRecording = start0;
   contentTracing.stopRecording = stop0;
   shell.showItemInFolder = show0;
