@@ -1,5 +1,5 @@
-# TEMPORAIRE (branche rester-fiable) : répète « fermer la fenêtre puis Rester »
-# avec et sans le bouclier, pour compter les pages perdues. À retirer avant la fin.
+# TEMPORAIRE (branche rester-fiable) : répète le scénario « essentiels » sans le
+# bouclier, pour retrouver la page perdue après « Rester ». À retirer avant la fin.
 name: Rester répété
 
 on:
@@ -9,29 +9,28 @@ on:
 
 jobs:
   repete:
-    name: ${{ matrix.os }} bouclier=${{ matrix.bouclier }} charge=${{ matrix.charge }} n° ${{ matrix.lot }}
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    name: macOS sans bouclier n° ${{ matrix.lot }}
+    runs-on: macos-latest
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest]
-        bouclier: ['0', '1']
-        charge: ['0', '8']
-        lot: [1, 2, 3]
+        lot: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Fermer la fenêtre puis « Rester », 200 fois
+      - name: Scénario « essentiels », dix passages sans bouclier
         shell: bash
         env:
-          RESTER_N: '200'
-          ORBE_TEST_LIMIT: '1500'
-          ORBE_TEST_STALL: '1500'
-          RESTER_BOUCLIER: ${{ matrix.bouclier }}
-          RESTER_CHARGE: ${{ matrix.charge }}
-          RESTER_ONGLETS: '14'
-          ORBE_SCENARIO: tests/rester.js
-        run: node scripts/dev.js --selftest 2>&1 | grep -v "^\[orbe\] page détruite" | cut -c1-600
+          ORBE_SANS_BOUCLIER: '1'
+          ORBE_SCENARIO: tests/essentiels.js
+        run: |
+          set +e
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            node scripts/dev.js --selftest > "$RUNNER_TEMP/passage.log" 2>&1
+            echo "=== passage $i : code $?"
+            grep -E "fermer la fenêtre puis « (Rester|Quitter)|page détruite [0-9]+ ms après|Délai dépassé|vérifications réussies|vérification\(s\) en échec" "$RUNNER_TEMP/passage.log" | grep -v "^    at" | cut -c1-900 | sort -u
+          done
+          exit 0

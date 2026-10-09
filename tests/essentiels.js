@@ -120,6 +120,7 @@ module.exports = async function essentielsTests(ctx) {
   permissions.env.openExternal = (url) => { launched.push(url); };
   const asks = [];
   let leave = false;
+  if (process.env.ORBE_SANS_BOUCLIER) unload.env.shield = false; // PROVISOIRE (essai répété)
   let onAsk = null; // appelé pendant que la question est « à l'écran »
   unload.env.ask = (parent, opts) => { asks.push(opts); if (onAsk) onAsk(); return leave ? 0 : 1; };
 
@@ -628,12 +629,15 @@ module.exports = async function essentielsTests(ctx) {
   asks.length = 0;
   leave = false;
   const archived = store.state.archive.length;
+  // Pages vivantes servies par le même processus que celle-ci (un processus occupé par une autre retarde sa réponse).
+  const pid4 = d4.wc.getOSProcessId();
+  const sharing4 = [...win.live.values()].filter((r) => r !== rt4 && !r.wc.isDestroyed() && r.wc.getOSProcessId() === pid4).length;
   w2.win.close();
   await until(() => asks.length === 1, 'question à la fermeture de la fenêtre');
   const asked4 = Date.now();
   await sleep(500);
   // Si la page a disparu : quand (après la question), et ce qu'Orbe lui a fait (journal de la page).
-  const stayed = { fenetre: !w2.win.isDestroyed(), connue: OrbeWindow.all.includes(w2), page: !d4.wc.isDestroyed(), questions: asks.length, detruiteApres: gone4 ? gone4 - asked4 : null, attente: Date.now() - asked4, journal: rt4.trail };
+  const stayed = { fenetre: !w2.win.isDestroyed(), connue: OrbeWindow.all.includes(w2), page: !d4.wc.isDestroyed(), questions: asks.length, detruiteApres: gone4 ? gone4 - asked4 : null, attente: Date.now() - asked4, journal: rt4.trail, memeProcessus: sharing4 };
   stayed.sale = stayed.page ? await js(d4.wc, 'window.sale').catch((e) => String(e)) : null;
   stayed.adresse = stayed.page ? d4.wc.getURL() : null;
   check('fermer la fenêtre puis « Rester » : la fenêtre et la page restent', stayed.fenetre && stayed.connue && stayed.page && stayed.sale === true, JSON.stringify(stayed));
