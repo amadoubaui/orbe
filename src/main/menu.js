@@ -244,7 +244,7 @@ function build() {
         sep, { label: t('window.front'), role: 'front' },
       ],
     },
-    { label: t('menu.help'), role: 'help', submenu: [item('welcome'), item('shortcuts'), item('helpCenter'), item('whatsNew'), item('reportIssue'), item('support'), item('github'), sep, item('exportNotes'), sep, { label: t('help.troubleshooting'), submenu: [item('revealData'), item('copyInfo'), item('recordTrace', { labelKey: commands.tracing() ? 'help.stopTrace' : 'help.recordTrace' }), sep, { label: t('backup.menu'), submenu: require('./backups').menuItems() }] }] },
+    { label: t('menu.help'), role: 'help', submenu: [item('welcome'), item('shortcuts'), item('helpCenter'), item('whatsNew'), item('reportIssue'), item('support'), item('github'), sep, item('exportNotes'), sep, { label: t('help.troubleshooting'), submenu: [item('revealData'), item('copyInfo'), item('taskManager'), item('recordTrace', { labelKey: commands.tracing() ? 'help.stopTrace' : 'help.recordTrace' }), sep, { label: t('backup.menu'), submenu: require('./backups').menuItems() }] }] },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(platform.menuTemplate(template)));
   if (platform.isMac && app.dock) app.dock.setMenu(Menu.buildFromTemplate(dockTemplate()));

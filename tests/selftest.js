@@ -1112,6 +1112,9 @@ module.exports = async function selftest(ctx) {
   // Finitions : icônes, dossier et Espace archivés à la suppression, fenêtre vierge, menus (tests/finitions.js)
   await require('./finitions')({ ...ctx, check });
 
+  // Finitions, deuxième série : « Premiers pas », Échap en plein écran, quatre côtés, onglet hors de la fenêtre (tests/finitions2.js)
+  await require('./finitions2')({ ...ctx, check });
+
   // Tableaux (tests/easels.js)
   await require('./easels')({ ...ctx, check });
 

@@ -118,6 +118,7 @@ const fr = {
   'spaces.prev': 'Espace précédent',
   'spaces.defaultName': 'Nouvel Espace',
   'spaces.firstName': 'Personnel',
+  'starter.folder': 'Premiers pas',
   'spaces.deleteConfirm': 'Supprimer l’Espace « {name} » ?',
   'spaces.deleteDetail': 'Tous ses onglets et ses dossiers iront dans l’archive.',
 
@@ -1339,6 +1340,7 @@ const en = {
   'spaces.prev': 'Previous Space',
   'spaces.defaultName': 'New Space',
   'spaces.firstName': 'Personal',
+  'starter.folder': 'Getting Started',
   'spaces.deleteConfirm': 'Delete the Space “{name}”?',
   'spaces.deleteDetail': 'This will archive all the tabs and folders inside it.',
   'tabs.pin': 'Pin Tab',

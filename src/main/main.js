@@ -504,7 +504,7 @@ app.whenReady().then(async () => {
   menu.build();
 
   const first = newWindow();
-  if (firstRun && !SELFTEST && !process.env.ORBE_NO_WELCOME) { store.state.window.welcomed = true; first.openInternal('welcome.html'); }
+  if (firstRun && !SELFTEST && !process.env.ORBE_NO_WELCOME) { store.state.window.welcomed = true; require('./starter').seed(first); first.openInternal('welcome.html'); }
   for (const url of pendingUrls.splice(0)) openUrl(url);
 
   // L'historique se charge une fois la fenêtre affichée et la coque peinte.

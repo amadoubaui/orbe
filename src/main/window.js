@@ -46,6 +46,13 @@ const ICON_MAX = 65536;
 // Processus de la coque perdu : délai avant de la recharger, selon le nombre de pertes dans la minute.
 // Durée pendant laquelle un glisser signalé retient la réserve de vues (ms).
 const DRAG_HOLD = 8000;
+// Échap en plein écran : deux appuis en moins de 400 ms, ou une touche tenue 600 ms, en font sortir.
+const ESC_DOUBLE = 400;
+const ESC_HOLD = 600;
+// Glisser un onglet sur une page seule : part de la hauteur, en haut et en bas, qui empile la vue.
+const DROP_EDGE = 0.25;
+// Onglet glissé hors de la fenêtre : la nouvelle fenêtre se pose avec ce point de sa barre sous le pointeur.
+const TEAR = { x: 120, y: 60 };
 const uiRetryDelay = (n) => (n <= 3 ? 150 : Math.min(60000, 5000 * 2 ** (n - 4)));
 // Vues d'appoint tenues prêtes par la coque (voir `fillSpares`).
 const RESERVE = 'overlay.html#reserve';
@@ -87,6 +94,8 @@ const hooks = {
   busy: () => false, tabState: () => [], navState: () => ({}), failed: () => false, gone: () => {}, hung: () => {}, action: () => undefined, siteMenu: () => [],
   // Note « mise à jour disponible » de la barre latérale ({ version } ou null) : posée par main.js.
   updateNote: () => null,
+  // Position du pointeur à l'écran (onglet glissé hors de la fenêtre) ; remplacée dans les essais.
+  cursor: () => screen.getCursorScreenPoint(),
   // Un arrêt d'Orbe demandé puis retenu par une page (« Rester ») : posé par main.js.
   quitAborted: () => {},
 };
@@ -3413,10 +3422,28 @@ class OrbeWindow {
       this.switcherClose();
     } else if (input.type === 'keyDown' && input.key === 'Escape') {
       if (this.switcher) this.hideModal();
+      else if (this.escFullScreen(input)) e.preventDefault();
       else if (this.findOpen) this.closeFind();
       // Comme dans Arc : Échap arrête la page en cours de chargement.
       else if (!fromUi && this.activeRt && this.activeRt.loading && !this.activeRt.wc.isDestroyed()) this.activeRt.wc.stop();
     }
+  }
+
+  // Fenêtre en plein écran : Échap va d'abord à la page (ou à ce qui est ouvert) ;
+  // doublé, ou maintenu, il fait sortir la fenêtre du plein écran (comme dans Arc).
+  // Le plein écran d'une page (vidéo) garde le comportement du moteur : un Échap suffit.
+  escFullScreen(input, now = Date.now()) {
+    if (!this.win.isFullScreen() || this.htmlFullscreen) { this.escAt = 0; return false; }
+    if (input.isAutoRepeat) {
+      if (!this.escAt || now - this.escAt < ESC_HOLD) return false;
+    } else {
+      const doubled = !!this.escAt && now - this.escAt <= ESC_DOUBLE;
+      this.escAt = now;
+      if (!doubled) return false;
+    }
+    this.escAt = 0;
+    this.win.setFullScreen(false);
+    return true;
   }
 
   // ⌘← / ⌘→ hors d'un champ de saisie : page précédente ou suivante. La page est
@@ -3593,12 +3620,16 @@ class OrbeWindow {
     let i = panes.findIndex((p) => x >= p.x && x < p.x + p.width + GAP && y >= p.y && y < p.y + p.height + GAP);
     if (i < 0) i = Math.max(0, ids.indexOf(this.activeId));
     const p = panes[i];
-    const vertical = p.vertical && ids.length > 1;
+    // Page seule : les quatre côtés (comme dans Arc). Le quart haut ou bas de la page
+    // empile le nouvel onglet au-dessus ou au-dessous ; le reste le place à gauche ou à
+    // droite. Vue déjà scindée : elle garde son sens (côte à côte, ou empilée).
+    const band = ids.length === 1 ? (y - p.y) / Math.max(1, p.height) : 0.5;
+    const vertical = ids.length > 1 ? !!p.vertical : band < DROP_EDGE || band > 1 - DROP_EDGE;
     const before = vertical ? y < p.y + p.height / 2 : x < p.x + p.width / 2;
     const zone = vertical
       ? { x: p.x - rect.x, y: (before ? p.y : p.y + p.height / 2) - rect.y, w: p.width, h: p.height / 2 }
       : { x: (before ? p.x : p.x + p.width / 2) - rect.x, y: p.y - rect.y, w: p.width / 2, h: p.height };
-    return { id: ids[i], before, zone: { x: Math.round(zone.x), y: Math.round(zone.y), w: Math.round(zone.w), h: Math.round(zone.h) } };
+    return { id: ids[i], before, vertical, zone: { x: Math.round(zone.x), y: Math.round(zone.y), w: Math.round(zone.w), h: Math.round(zone.h) } };
   }
 
   // Survol pendant un glisser : la zone de dépôt éclaire le côté visé.
@@ -3627,7 +3658,62 @@ class OrbeWindow {
       this.setVertical(g, vertical);
       return this.activate(id);
     }
-    return this.splitWith(anchor, id, false, !!(target && target.before));
+    const alone = !g;
+    this.splitWith(anchor, id, true, !!(target && target.before));
+    // Lâché en haut ou en bas d'une page seule : la vue est empilée.
+    const made = this.groupOf(anchor);
+    if (!made || !made.includes(id)) return undefined; // vue déjà pleine : rien n'a changé
+    if (alone && target && target.vertical) this.setVertical(made, true);
+    return this.activate(id);
+  }
+
+  // --- Onglet glissé hors de la fenêtre -------------------------------------
+  // Lâché hors de toute fenêtre d'Orbe : il s'ouvre dans une nouvelle fenêtre, posée sous
+  // le pointeur. Lâché sur une autre fenêtre ordinaire : c'est elle qui l'affiche. Les
+  // fenêtres ordinaires montrent les mêmes Espaces : l'onglet ne change pas de liste, il
+  // change de fenêtre. Le point vient du système (jamais de l'interface) ; `pt` sert aux essais.
+  tearOff(ids, pt = hooks.cursor()) {
+    ids = this.checkIds(ids);
+    if (!ids.length || !this.shared || !pt || !Number.isFinite(pt.x) || !Number.isFinite(pt.y)) return null;
+    const inside = (w) => { const b = w.win.getBounds(); return pt.x >= b.x && pt.x < b.x + b.width && pt.y >= b.y && pt.y < b.y + b.height; };
+    if (inside(this)) return null;
+    const other = OrbeWindow.all.find((w) => w !== this && w.shared && !w.win.isDestroyed() && w.win.isVisible() && !w.win.isMinimized() && inside(w));
+    if (other) return other.adopt(ids, this);
+    const from = this.win.getBounds();
+    const w = new OrbeWindow();
+    const area = screen.getDisplayNearestPoint({ x: Math.round(pt.x), y: Math.round(pt.y) }).workArea;
+    const width = Math.min(from.width, area.width);
+    const height = Math.min(from.height, area.height);
+    w.win.setBounds({
+      x: clamp(Math.round(pt.x - TEAR.x), area.x, area.x + area.width - width),
+      y: clamp(Math.round(pt.y - TEAR.y), area.y, area.y + area.height - height),
+      width,
+      height,
+    });
+    w.adopt(ids, this);
+    return w;
+  }
+
+  // Affiche ici des onglets venus d'une autre fenêtre ordinaire (`from`) : celle-ci passe
+  // d'abord à un autre onglet, pour ne pas rester sur une page vide. Si les deux fenêtres
+  // montrent des Espaces différents, la fenêtre d'arrivée passe à l'Espace des onglets.
+  adopt(ids, from) {
+    if (!this.shared || !from || from === this || !from.shared) return null;
+    ids = (Array.isArray(ids) ? ids : []).filter((id) => typeof id === 'string' && this.data.tabs[id] && this.locate(id) && this.locate(id).node.type !== 'folder');
+    if (!ids.length) return null;
+    for (const id of ids) {
+      if (!from.visibleIds().includes(id)) continue;
+      const loc = from.locate(id);
+      const space = (loc && loc.space) || from.space;
+      from.leaveSplit(id);
+      const next = from.nextActiveAfter(id, space);
+      if (next && next !== id && !ids.includes(next)) from.activate(next);
+      else { delete from.activeBySpace[space.id]; from.layout(); from.changed(); }
+    }
+    this.activate(ids[0]);
+    if (this.win.isMinimized()) this.win.restore();
+    this.win.focus();
+    return this;
   }
 
   // Adresse du lien survolé, en bas à gauche de la page.
@@ -4542,6 +4628,10 @@ class OrbeWindow {
       case 'paneMenu': return this.visibleIds().includes(a) && this.groupOf(a) ? this.popup(this.paneMenuTemplate(a)) : undefined;
       case 'paneClose': return this.visibleIds().includes(a) ? this.closeSplitPane(a) : undefined;
       case 'splitTab': return this.splitTab(String(a));
+      // Onglet lâché hors de la fenêtre : seuls les identifiants viennent de l'interface, le point vient du système.
+      case 'tearOff': return a && typeof a === 'object' && Array.isArray(a.ids) ? !!this.tearOff(a.ids) : false;
+      // Ligne d'une autre fenêtre d'Orbe lâchée sur cette barre latérale.
+      case 'adoptTab': { const from = typeof a === 'string' ? OrbeWindow.all.find((x) => x !== this && x.shared && x.orderedIds().includes(a)) : null; return from ? !!this.adopt([a], from) : false; }
       // ⌥⌘clic sur un onglet de la barre latérale : sa page s'ouvre dans une petite fenêtre.
       case 'littleTab': { const tab = this.data.tabs[a]; if (tab && webUrl(tab.url) && !this.incognito) hooks.openLittle(tab.url); return undefined; }
       case 'splitResize': return this.resizeSplit(Number(a.i), Number(a.at != null ? a.at : a.x));

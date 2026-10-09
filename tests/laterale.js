@@ -774,7 +774,7 @@ module.exports = async function lateraleTests(ctx) {
 
   // Aide → Dépannage.
   const help = menuItem('help.troubleshooting');
-  check('Aide → Dépannage : « Afficher les données d’Orbe », « Copier les infos d’Orbe », « Restaurer une sauvegarde »', !!help && help.submenu.items.filter((x) => x.type !== 'separator').map((x) => x.label).join('|') === [T('help.revealData'), T('help.copyInfo'), T('help.recordTrace'), T('backup.menu')].join('|'));
+  check('Aide → Dépannage : « Afficher les données d’Orbe », « Copier les infos d’Orbe », « Gestionnaire de tâches », « Restaurer une sauvegarde »', !!help && help.submenu.items.filter((x) => x.type !== 'separator').map((x) => x.label).join('|') === [T('help.revealData'), T('help.copyInfo'), T('help.taskManager'), T('help.recordTrace'), T('backup.menu')].join('|'));
   menuItem('help.copyInfo').click();
   await until(async () => (await clipboard.readText()).startsWith(`Orbe ${app.getVersion()}\nElectron ${process.versions.electron}\nChromium ${process.versions.chrome}\n${process.platform}`), 'infos copiées');
   check('« Copier les infos d’Orbe » : versions d’Orbe, d’Electron, de Chromium et du système', true);

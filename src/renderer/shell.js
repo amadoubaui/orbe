@@ -1513,7 +1513,17 @@ sidebar.addEventListener('dragstart', (e) => {
   });
   return undefined;
 });
-sidebar.addEventListener('dragend', () => { if (drag && !drag.settling) endDrag(); });
+// Fin d'un glisser que personne n'a accepté. Onglet lâché hors de la fenêtre : il part
+// dans une nouvelle fenêtre (ou dans l'autre fenêtre d'Orbe qui se trouve dessous) ; le
+// processus principal le vérifie avec la position réelle du pointeur.
+sidebar.addEventListener('dragend', (e) => {
+  if (!drag || drag.settling) return;
+  const d = drag;
+  const out = !d.folder && !d.space && e.dataTransfer.dropEffect === 'none'
+    && (e.clientX < 0 || e.clientY < 0 || e.clientX > innerWidth || e.clientY > innerHeight);
+  endDrag();
+  if (out && S && !S.incognito && !S.blank) send('tearOff', { ids: d.ids || [d.id] });
+});
 
 // Image du glisser pour une sélection : la ligne saisie, une carte derrière
 // elle et le nombre d'onglets emportés. Posée hors de l'écran, le temps que le
@@ -1588,6 +1598,14 @@ function listTarget(y) {
   return t;
 }
 
+// Dépôt sur l'en-tête d'un dossier : il ne s'ouvre pas, son icône rebondit une fois
+// (transformation seulement) pour dire que l'onglet y est entré.
+function dropPulse(folderEl) {
+  const ic = folderEl && folderEl._head && folderEl._head.querySelector('.ic');
+  if (!ic || reducedMotion.matches) return;
+  ic.animate({ transform: ['scale(1)', 'scale(1.35)', 'scale(1)'] }, { duration: 280, easing: SPRING.easing, id: 'drop-pulse' });
+}
+
 // Pastilles des Espaces : rang où tomberait l'Espace glissé, et trait vertical.
 function spaceTarget(e) {
   if (!e.target.closest('#bottom')) return null;
@@ -1634,7 +1652,8 @@ function setZone(on, e) {
 function zoneKeyAt(x, y) {
   const panes = (S && S.panes) || [];
   const p = panes.find((q) => x >= q.x && x < q.x + q.w + 8 && y >= q.y && y < q.y + q.h + 8);
-  if (!p) return x < (S.sidebar.width + innerWidth) / 2 ? 'g' : 'd';
+  // Page seule : quatre côtés ; la hauteur est découpée en huit bandes, le processus principal tranche.
+  if (!p) return (x < (S.sidebar.width + innerWidth) / 2 ? 'g' : 'd') + Math.floor((8 * y) / Math.max(1, innerHeight));
   const stacked = panes.length > 1 && panes[0].x === panes[1].x;
   return p.id + (stacked ? (y < p.y + p.h / 2 ? 'h' : 'b') : (x < p.x + p.w / 2 ? 'g' : 'd'));
 }
@@ -1662,9 +1681,16 @@ document.addEventListener('drop', (e) => {
 function overSidebar(e) {
   if (overPage(e) || (drag && drag.settling)) return;
   if (!drag) {
-    // Adresse ou texte venu d'ailleurs (une ligne d'une autre fenêtre Orbe n'en est pas une).
     const types = [...e.dataTransfer.types];
-    if (types.includes('application/x-orbe-item') || !types.some((x) => x === 'text/uri-list' || x === 'text/plain')) return;
+    // Ligne venue d'une autre fenêtre d'Orbe : cette fenêtre va l'afficher.
+    if (types.includes('application/x-orbe-item')) {
+      if (!S || S.incognito || S.blank) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      return;
+    }
+    // Adresse ou texte venu d'ailleurs.
+    if (!types.some((x) => x === 'text/uri-list' || x === 'text/plain')) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
     return;
@@ -1684,8 +1710,13 @@ sidebar.addEventListener('drop', (e) => {
   if (overPage(e)) return undefined;
   e.preventDefault();
   if (!drag) {
-    // Ligne venue d'une autre fenêtre Orbe : ce n'est pas une adresse.
-    if ([...e.dataTransfer.types].includes('application/x-orbe-item')) return undefined;
+    // Ligne venue d'une autre fenêtre Orbe : ce n'est pas une adresse ; l'onglet s'affiche ici
+    // (le processus principal vérifie l'identifiant et la fenêtre d'où il vient).
+    if ([...e.dataTransfer.types].includes('application/x-orbe-item')) {
+      const id = e.dataTransfer.getData('application/x-orbe-item');
+      if (id && S && !S.incognito && !S.blank) send('adoptTab', String(id).slice(0, 80));
+      return undefined;
+    }
     const url = (e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain') || '').split('\n')[0].trim();
     if (url) send('dropUrl', url);
     return undefined;
@@ -1696,6 +1727,7 @@ sidebar.addEventListener('drop', (e) => {
   if (drag.space) { send('moveSpace', { id: drag.space, index: t.index }); return endDrag(); }
   if (t.toSpace) { send('moveToSpace', { ...(drag.ids ? { ids: drag.ids } : { id: drag.id }), spaceId: t.toSpace }); return endDrag(); }
   showTarget(t);
+  if (t.into) dropPulse(t.into);
   send('move', { ...(drag.ids ? { ids: drag.ids } : { id: drag.id }), to: t.to, folderId: t.folderId, index: t.index, ...(copying(e, t) ? { copy: true } : {}) });
   // Lâché à sa propre place, ou rien d'emporté dans les listes (tuile de favori) : fin immédiate.
   if (!geom) measure();
