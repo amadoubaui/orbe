@@ -150,20 +150,35 @@ function read(file) {
   return data;
 }
 
-// Ajoute les signets à l'état d'Orbe : un nouvel Espace, dossiers et onglets épinglés.
-function merge(data, { name, profileId = 'default' } = {}, state = store.state) {
-  if (!data || !data.bookmarks) return null;
+// Nœuds d'Orbe (dossiers, onglets épinglés) pour des signets lus ; les onglets sont créés dans l'état.
+function pinnedNodes(nodes, state = store.state) {
   const tab = (n) => {
     const t = { id: uid(), url: n.url, title: n.title, favicon: '', createdAt: Date.now(), lastActiveAt: Date.now(), homeUrl: n.url };
     state.tabs[t.id] = t;
     return { type: 'tab', id: t.id };
   };
-  const build = (nodes) => nodes.map((n) => (n.type === 'folder' ? { type: 'folder', id: uid(), name: n.name, open: false, children: build(n.children) } : tab(n)));
+  const build = (list) => list.map((n) => (n.type === 'folder' ? { type: 'folder', id: uid(), name: n.name, open: false, children: build(n.children) } : tab(n)));
+  return build(nodes);
+}
+
+// Ajoute les signets à l'état d'Orbe : un nouvel Espace, dossiers et onglets épinglés.
+function merge(data, { name, profileId = 'default' } = {}, state = store.state) {
+  if (!data || !data.bookmarks) return null;
   const space = store.makeSpace(String(name || store.t('bm.space')).slice(0, 60), '🔖', SPACE_COLORS[state.spaces.length % SPACE_COLORS.length]);
   space.profileId = state.profiles.some((p) => p.id === profileId) ? profileId : 'default';
-  space.pinned = build(data.nodes);
+  space.pinned = pinnedNodes(data.nodes, state);
   state.spaces.push(space);
   return space;
 }
 
-module.exports = { parse, read, merge, webUrl, MAX_BYTES, MAX_BOOKMARKS, MAX_DEPTH, MAX_FOLDERS };
+// Ajoute les signets à un Espace existant : tels quels s'il n'a rien d'épinglé,
+// sinon dans un dossier au nom donné. Rend les nœuds ajoutés (pour l'annulation).
+function mergeInto(data, space, { name } = {}, state = store.state) {
+  if (!data || !data.bookmarks || !space) return null;
+  const nodes = pinnedNodes(data.nodes, state);
+  const added = space.pinned.length ? [{ type: 'folder', id: uid(), name: String(name || store.t('bm.space')).slice(0, 60), open: true, children: nodes }] : nodes;
+  space.pinned.push(...added);
+  return added;
+}
+
+module.exports = { parse, read, merge, mergeInto, pinnedNodes, clean, webUrl, MAX_BYTES, MAX_BOOKMARKS, MAX_DEPTH, MAX_FOLDERS };

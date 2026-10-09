@@ -357,7 +357,40 @@ Avec elle (`tests/ext-reelles.js`) :
   `tabs.create` dans un onglet d'Orbe.
 - **uBlock Origin Lite** : fenêtre « www.lemonde.fr — filtering mode optimal ».
 
-Reste à faire : dessiner les boutons dans la barre latérale, accès aux sites
+## Interface (`src/main/ext-ui.js`)
+
+- **Bouton** : chaque extension a son bouton sous l'adresse. Clic droit : nom,
+  « Options », « Détacher de la barre latérale », « Désactiver », « Retirer
+  d'Orbe… » (avec confirmation), « Gérer les extensions… ». Une extension
+  détachée (réglage `extHidden`) reste dans le menu du bouclier et dans le menu
+  Extensions ; Réglages → Extensions la ré-épingle.
+- **Réglages → Extensions** : par extension, « Ouvrir » (fenêtre), « Options »
+  (page d'options, dans un onglet ; le chemin du manifeste est résolu dans
+  l'origine de l'extension, refusé s'il en sort), « Épinglée », « Mettre à
+  jour » (réinstallation depuis le Store, avec la même vérification de
+  signature ; la version est comparée et annoncée), interrupteur, suppression.
+- **Réglages → Raccourcis** : chaque commande déclarée (`commands` du manifeste)
+  a sa ligne, avec ou sans raccourci, modifiable comme ceux d'Orbe (réglage
+  `extShortcuts`, `{ '<id>/<commande>': accélérateur | '' }`). Un raccourci
+  d'Orbe ou du système est refusé ou demande confirmation ; pris à une autre
+  extension, la question la nomme. `chrome.commands.getAll` rend le raccourci en
+  vigueur.
+
+Ces actions ne viennent que des pages de l'interface (`orbe://`, porte IPC
+`orbe`) : aucune n'est exposée aux extensions ni aux pages web.
+
+Non fait, et pourquoi :
+
+- **Accès par site (« au clic / sur ce site / sur tous les sites »)** : Electron
+  ne sait ni restreindre ni accorder l'accès à un site après le chargement d'une
+  extension (voir « Accès à l'onglet en cours »). Un réglage qui l'afficherait
+  sans le garantir serait trompeur.
+- **Navigation privée** : les extensions n'y sont jamais chargées (session non
+  persistante ignorée par `loadInto`). Une option par extension demanderait de
+  rejouer toute la couche d'API dans une session jetable ; elle n'est pas faite.
+- **Mise à jour automatique** : à la demande seulement.
+
+Reste à faire : accès aux sites
 accordé après coup (`permissions.request({ origins })`, modes « complet »
 d'uBlock Origin Lite), messagerie native, retirer dans les Réglages un accès
 `activeTab` accordé, dessiner les groupes d'onglets.

@@ -248,7 +248,80 @@ un onglet sans lien `window.opener` avec la page.
 - Orbe ouvre le lien lui-même (`shell.openExternal`) et répond toujours « non »
   à Chromium : une seule porte, vérifiable.
 
+## Mises à jour (`src/main/updates.js`)
+
+Orbe est signé « ad hoc » sur macOS et pas du tout sous Windows : il ne peut pas
+se remplacer lui-même (Sparkle et Squirrel demandent une application signée par
+un compte de développeur). Il fait donc seulement ceci : demander à GitHub la
+dernière version publiée, comparer les numéros, et le dire.
+
+- **Quand** : une fois par jour au plus (application fabriquée seulement), et à
+  la demande (menu Orbe → « Rechercher les mises à jour… », Réglages → Avancé).
+  Le réglage « Rechercher les mises à jour automatiquement » le coupe. Jamais en
+  test ni depuis les sources : les essais remplacent GitHub par un serveur local
+  (`tests/mises-a-jour.js`), accepté uniquement en mode test et sur `127.0.0.1`.
+- **Ce qui part** : une requête `GET` vers
+  `https://api.github.com/repos/amadoubaui/orbe/releases/latest`, depuis une
+  session à part, en mémoire (`orbe-mises-a-jour`) : aucun cookie, aucun
+  référent, aucun identifiant, agent « Orbe » sans numéro de version. Rien
+  d'autre : ni statistique, ni la version installée.
+- **Ce qui est cru** : rien. Hôte et chemin fixes, HTTPS, redirection refusée,
+  réponse bornée à 512 Ko. Le numéro de version doit avoir la forme `x.y.z` ;
+  brouillons et préversions sont ignorés ; l'adresse de la page est
+  **reconstruite** (`…/releases/tag/vX.Y.Z`), jamais reprise ; l'archive n'est
+  proposée que si son nom est exactement celui de ce système
+  (`Orbe-X.Y.Z-mac-arm64.zip`, `Orbe-X.Y.Z-windows-x64.zip`) et son adresse sous
+  `https://github.com/amadoubaui/orbe/releases/download/`. Les notes de version
+  sont réduites à du texte (6 000 caractères, sans caractères de contrôle ni
+  d'inversion du sens d'écriture) et affichées comme du texte.
+- **Téléchargement** : dans le dossier des téléchargements, sous un nom libre.
+  Après redirection, l'hôte doit être de GitHub ; la taille doit être celle
+  annoncée, et l'empreinte SHA-256 celle que GitHub publie (`digest`) quand elle
+  est donnée. Sinon le fichier est supprimé. L'archive n'est **jamais** ouverte
+  ni exécutée : elle est montrée dans son dossier, et c'est l'utilisateur qui
+  remplace l'application.
+- **Échecs** : hors ligne, quota de GitHub (403, 429), réponse inattendue — rien
+  n'est affiché pour une vérification automatique, et il n'y a pas de nouvelle
+  tentative avant le lendemain ; à la demande, la carte des réglages le dit.
+
+Limite assumée : l'empreinte vient du même hôte que l'archive. Elle protège
+d'un fichier abîmé ou tronqué, pas d'un compte GitHub compromis ; seule une
+signature de développeur le ferait.
+
+## Import depuis un navigateur installé (`src/main/import-browsers.js`)
+
+- **Seuls les signets sont lus.** Ni mots de passe (ils passent par un fichier
+  CSV, dans la fenêtre des mots de passe), ni cookies (chiffrés par chaque
+  navigateur avec une clé de son trousseau), ni historique.
+- **Lecture seule.** Rien n'est écrit dans le profil d'un navigateur. La base
+  `places.sqlite` de Firefox est copiée dans un dossier temporaire avant d'être
+  ouverte par le `sqlite3` du système (`/usr/bin/sqlite3`, chemin fixe, jamais
+  cherché dans le `PATH`) ; sans lui (Windows), c'est la dernière sauvegarde
+  automatique (`bookmarkbackups/*.jsonlz4`) qui est décodée.
+- **Fichiers étrangers.** JSON de Chrome, LZ4 de Firefox et liste de propriétés
+  binaire de Safari sont décodés ici, avec des bornes partout (taille des
+  fichiers, décalages, nombre d'objets, profondeur). Mêmes plafonds que pour un
+  fichier HTML : 3 000 signets, 600 dossiers, huit niveaux ; seules les adresses
+  `http(s)` sans identifiants sont reprises ; titres nettoyés.
+- **Le profil lu est choisi sur le disque, pas par l'interface** : l'identifiant
+  reçu de la page n'est accepté que s'il figure dans la liste trouvée (pas de
+  chemin, pas de `..`). Un chemin relatif de `profiles.ini` ne sort pas du
+  dossier de Firefox.
+- **Safari** : macOS protège `~/Library/Safari`. Sans « Accès complet au
+  disque », la lecture est refusée ; Orbe le reconnaît (`EPERM`), l'explique et
+  propose d'ouvrir le bon volet des Réglages Système. Il ne tente rien d'autre.
+- **Aperçu, puis accord** : les comptes sont montrés avant tout import, et ce
+  qui est importé est exactement ce qui a été montré (jeton d'aperçu à usage
+  unique). L'import s'annule (bouton, ou Édition → Annuler).
+- **En test**, aucun vrai profil n'est lu : sans dossier d'essai désigné, la
+  recherche ne rend rien (`tests/fixtures/navigateurs.js` fabrique les profils).
+
 ## Ce qui demande une vérification humaine
+
+- Une vraie mise à jour, d'une version publiée à la suivante (annonce,
+  téléchargement, remplacement de l'application à la main).
+- L'import depuis de vrais profils de Chrome, Firefox et Safari, et l'accord
+  « Accès complet au disque » pour Safari (application fabriquée).
 
 - Les vraies questions du système (caméra, micro, enregistrement de l'écran)
   avec l'application signée ; le partage d'un écran ou d'une fenêtre réels.
