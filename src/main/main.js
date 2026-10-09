@@ -123,33 +123,8 @@ function openSettings(pane) {
   return panes.open(pane);
 }
 
-// Éditeur de Boost : petite fenêtre liée à l'onglet actif au moment de l'ouverture.
-let boostWindow = null;
-let boostTarget = null;
-function openBoost(w) {
-  const rt = w && w.activeRt;
-  if (!rt || w.incognito || !boosts.hostOf(rt.wc.getURL())) return;
-  boostTarget = rt.wc;
-  if (boostWindow && !boostWindow.isDestroyed()) { boostWindow.webContents.reload(); return boostWindow.focus(); }
-  boostWindow = new BrowserWindow({
-    width: 380, height: 460, minWidth: 300, minHeight: 320, ...platform.windowChrome({ inset: true, dark: nativeTheme.shouldUseDarkColors }),
-    alwaysOnTop: true, fullscreenable: false, webPreferences: { preload: UI_PRELOAD, sandbox: true, contextIsolation: true },
-  });
-  trusted.add(boostWindow.webContents);
-  boostWindow.webContents.on('will-navigate', (e) => e.preventDefault());
-  boostWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  boostWindow.loadURL(INTERNAL + 'boost.html');
-  return boostWindow;
-}
-
-async function boostAction(action, a) {
-  const wc = boostTarget && !boostTarget.isDestroyed() ? boostTarget : null;
-  const host = wc ? boosts.hostOf(wc.getURL()) : '';
-  if (!host) return null;
-  if (action === 'boost:set') { boosts.set(host, a || {}); await boosts.apply(wc); }
-  if (action === 'boost:zap') { wc.focus(); await boosts.zap(wc); if (boostWindow && !boostWindow.isDestroyed()) boostWindow.focus(); }
-  return { host, ...boosts.get(host) };
-}
+// Éditeur de Boost et liste des Boosts : src/main/boost-editor.js.
+const boostEditor = require('./boost-editor');
 
 function applyAppearance() {
   const a = store.state.settings.appearance;
@@ -349,7 +324,7 @@ function setupIpc() {
   });
   ipcMain.handle('orbe', async (e, action, payload) => {
     if (!ok(e) || typeof action !== 'string') return undefined;
-    if (action.startsWith('boost:')) return boostAction(action, payload);
+    if (action.startsWith('boost:')) return boostEditor.action(action, payload, e.sender);
     if (action.startsWith('pw:')) return passwords.action(action, payload, e.sender);
     if (action.startsWith('easel:')) return easels.action(action, payload, e.sender);
     if (action.startsWith('sheet:')) return essentials.sheets.action(action, payload, e.sender);
@@ -402,7 +377,8 @@ app.whenReady().then(async () => {
   commands.hooks.newWindow = newWindow;
   commands.hooks.newLittle = (url) => new little.LittleWindow(url);
   commands.hooks.openSettings = openSettings;
-  commands.hooks.openBoost = openBoost;
+  commands.hooks.openBoost = (w, mode) => boostEditor.open(w, mode);
+  boostEditor.hooks.openSettings = () => openSettings('advanced');
   commands.hooks.openPasswords = () => passwords.openManager();
   passwords.configure({ trusted, uiPreload: UI_PRELOAD, internal: INTERNAL, toast: (wc, text) => { const o = OrbeWindow.ownerOf(wc); if (o) o.toast(text); } });
   commands.hooks.settingsChanged = broadcastSettings;

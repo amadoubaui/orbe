@@ -375,6 +375,8 @@ function render(s) {
     });
   }
 
+  drawPanes(s.panes || []);
+
   const lib = $('b-library');
   lib.classList.toggle('downloading', !!s.downloads);
   if (s.downloads) lib.querySelector('circle').style.strokeDashoffset = String(75.4 * (1 - s.downloads.progress));
@@ -543,6 +545,12 @@ sidebar.addEventListener('click', (e) => {
   // ⌘clic (Ctrl hors macOS) ou ⇧clic sur un onglet : sélection, sans l'afficher.
   // (⌘clic sur l'icône d'un épinglé sorti de son adresse : c'est un retour, plus bas.)
   const aside = !!act && act.dataset.act === 'icon' && !!row && row.classList.contains('changed') && modKey(e);
+  // ⌥clic sur un onglet : vue scindée avec la page affichée ; ⌥⌘clic : petite fenêtre (comme dans Arc).
+  if (row && !row.dataset.folder && e.altKey && !e.shiftKey && !act) {
+    e.stopPropagation();
+    if (sel.size) setSel([]);
+    return send(modKey(e) ? 'littleTab' : 'splitTab', row.dataset.id);
+  }
   if (row && !row.dataset.folder && (modKey(e) || e.shiftKey) && !(act && act.dataset.act !== 'icon') && !aside) {
     e.stopPropagation();
     return modKey(e) ? toggleSel(row.dataset.id) : rangeSel(row.dataset.id);
@@ -638,6 +646,8 @@ $('lock').onclick = () => send('siteInfo');
 $('popup-note').onclick = () => send('popupMenu');
 $('capture-note').onclick = () => send('captureMenu');
 $('tb-url').onclick = () => send('openCommand', 'edit');
+// Clic droit sur la barre d'outils : adresse entière, copie, capture, partage.
+$('toolbar').addEventListener('contextmenu', (e) => { e.preventDefault(); send('toolbarMenu'); });
 $('b-newtab').onclick = () => send('openCommand', 'new');
 $('b-clear').onclick = () => send('command', 'clearToday');
 $('b-library').onclick = () => send('command', S && S.downloads ? 'downloads' : 'library');
@@ -1037,6 +1047,58 @@ $('resize').addEventListener('pointerdown', (e) => {
 // Double-clic sur le bord : retour à la largeur par défaut.
 $('resize').addEventListener('dblclick', () => send('sidebarWidthReset'));
 
+// --- Petite barre des volets d'une vue scindée -------------------------------
+// Une par volet, au-dessus de sa page : adresse (clic : la modifier), « ⋯ »
+// (déplacer, agrandir, séparer…), « × » (fermer le volet). Un liseré entoure le
+// volet actif.
+function drawPanes(list) {
+  const box = $('pane-bars');
+  const ring = $('pane-ring');
+  while (box.children.length > list.length) box.lastChild.remove();
+  const active = list.find((p) => p.active);
+  ring.classList.toggle('on', !!active);
+  if (active) ring.style.cssText = `left:${active.x}px;top:${active.y}px;width:${active.w}px;height:${active.h}px`;
+  list.forEach((p, i) => {
+    let bar = box.children[i];
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.innerHTML = '<button class="pane-url"></button><button class="pb" data-pane="menu"><svg class="i"><use href="#i-more"/></svg></button><button class="pb" data-pane="close"><svg class="i"><use href="#i-x"/></svg></button>';
+      box.appendChild(bar);
+    }
+    bar.className = 'pane-bar' + (p.active ? ' active' : '');
+    bar.dataset.pane = p.id;
+    bar.style.cssText = `left:${p.x}px;top:${p.y}px;width:${p.w}px`;
+    const text = p.internal ? (p.title || '') : (S && S.fullUrl === false ? host(p.url) : (p.url || '').replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, ''));
+    const url = bar.firstChild;
+    const sig = (p.favicon || '') + '|' + text;
+    if (url.dataset.sig !== sig) {
+      url.dataset.sig = sig;
+      url.textContent = '';
+      url.appendChild(faviconEl(p.favicon, host(p.url) || p.title || '?'));
+      const span = document.createElement('span');
+      span.className = 'pane-text';
+      span.textContent = text;
+      url.appendChild(span);
+    }
+    url.title = p.internal ? '' : p.url;
+    bar.children[1].title = t('pane.options');
+    bar.children[2].title = t('view.closeSplit');
+  });
+}
+$('pane-bars').addEventListener('click', (e) => {
+  const bar = e.target.closest('.pane-bar');
+  if (!bar) return;
+  const b = e.target.closest('[data-pane]');
+  const what = b && b !== bar ? b.dataset.pane : 'edit';
+  send(what === 'menu' ? 'paneMenu' : (what === 'close' ? 'paneClose' : 'paneEdit'), bar.dataset.pane);
+});
+$('pane-bars').addEventListener('contextmenu', (e) => {
+  const bar = e.target.closest('.pane-bar');
+  if (!bar) return;
+  e.preventDefault();
+  send('paneMenu', bar.dataset.pane);
+});
+
 // --- Largeur des volets d'une vue scindée -----------------------------------
 let splitDrag = false;
 $('dividers').addEventListener('pointerdown', (e) => {
@@ -1390,11 +1452,24 @@ function dropTarget(e) {
 // Au-dessus de la page : lâcher l'onglet crée une vue scindée. Pendant un
 // glisser, c'est la coque qui reçoit les événements, même au-dessus des pages.
 const overPage = (e) => !!drag && !drag.settling && !drag.folder && !drag.space && !!S && S.sidebar.visible && !!S.activeId && e.clientX > S.sidebar.width + 12;
+// Le côté visé (moitié gauche ou droite du volet survolé) est éclairé par la zone
+// de dépôt : le processus principal le calcule d'après le point transmis.
 let zoneOn = false;
-function setZone(on) {
-  if (on === zoneOn) return;
+let zoneKey = '';
+function setZone(on, e) {
+  // Un envoi par moitié de volet traversée, pas un par mouvement.
+  const key = on && e ? zoneKeyAt(e.clientX, e.clientY) : '';
+  if (on === zoneOn && key === zoneKey) return;
   zoneOn = on;
-  send('dragZoneOver', on);
+  zoneKey = key;
+  send('dragZoneOver', on && e ? { x: e.clientX, y: e.clientY } : false);
+}
+function zoneKeyAt(x, y) {
+  const panes = (S && S.panes) || [];
+  const p = panes.find((q) => x >= q.x && x < q.x + q.w + 8 && y >= q.y && y < q.y + q.h + 8);
+  if (!p) return x < (S.sidebar.width + innerWidth) / 2 ? 'g' : 'd';
+  const stacked = panes.length > 1 && panes[0].x === panes[1].x;
+  return p.id + (stacked ? (y < p.y + p.h / 2 ? 'h' : 'b') : (x < p.x + p.w / 2 ? 'g' : 'd'));
 }
 // « dragenter » compte autant que « dragover » : quand l'élément sous le pointeur
 // change (une ligne qui s'écarte suffit), le moteur n'envoie que « dragenter »,
@@ -1404,7 +1479,7 @@ function overDocument(e) {
   e.preventDefault();
   e.dataTransfer.dropEffect = 'move';
   showTarget(null);
-  return setZone(true);
+  return setZone(true, e);
 }
 document.addEventListener('dragover', overDocument, true);
 document.addEventListener('dragenter', overDocument, true);
@@ -1414,7 +1489,7 @@ document.addEventListener('drop', (e) => {
   e.stopPropagation();
   const id = drag.id;
   endDrag();
-  send('dropSplit', id);
+  send('dropSplit', { id, x: e.clientX, y: e.clientY });
 }, true);
 
 function overSidebar(e) {

@@ -56,6 +56,11 @@ const COMMANDS = [
   { name: 'splitDirection', label: 'view.splitDirection', run: (w) => w.toggleSplitDirection() },
   { name: 'closeSplit', label: 'view.closeSplit', accel: 'Ctrl+Shift+-', keys: '⌃⇧-', run: (w) => w.closeSplitPane() },
   { name: 'separateSplit', label: 'view.separateSplit', run: (w) => w.separateSplit() },
+  { name: 'separateAll', label: 'view.separateAll', run: (w) => w.separateAll() },
+  { name: 'expandSplit', label: 'view.expandSplit', run: (w) => w.expandSplit() },
+  // ⌃⇧] / ⌃⇧[ : volet suivant, précédent.
+  { name: 'nextPane', label: 'view.nextPane', accel: 'Ctrl+Shift+]', keys: '⌃⇧]', palette: false, run: (w) => w.stepPane(1) },
+  { name: 'prevPane', label: 'view.prevPane', accel: 'Ctrl+Shift+[', keys: '⌃⇧[', palette: false, run: (w) => w.stepPane(-1) },
   { name: 'actualSize', label: 'view.actualSize', accel: 'Cmd+0', keys: '⌘0', run: (w) => w.zoom(0) },
   { name: 'zoomIn', label: 'view.zoomIn', accel: 'Cmd+Plus', keys: '⌘+', run: (w) => w.zoom(0.5) },
   { name: 'zoomOut', label: 'view.zoomOut', accel: 'Cmd+-', keys: '⌘-', run: (w) => w.zoom(-0.5) },
@@ -110,7 +115,9 @@ const COMMANDS = [
   ...(platform.isWin ? [{ name: 'undoDefaultBrowser', label: 'app.undoDefaultBrowser', global: true, run: async (w) => { const ok = await platform.undoDefault(); if (w && ok) w.toast(store.t('toast.undoDefaultBrowser')); } }] : []),
   { name: 'toggleSiteBlocking', label: 'adblock.toggleSite', run: (w) => w.toggleSiteBlocking() },
   { name: 'boost', label: 'boost.edit', run: (w) => hooks.openBoost(w) },
-  { name: 'zap', label: 'boost.zapCmd', run: (w) => { const p = w.activeRt; if (p && !w.incognito) require('./boosts').zap(p.wc); } },
+  { name: 'zap', label: 'boost.zapCmd', run: (w) => { const p = w.activeRt; if (p && !p.internal && !w.incognito) require('./boosts').zap(p.wc); } },
+  // « View Boosts… » dans Arc : la liste de tous les Boosts (activer, supprimer, exporter, importer).
+  { name: 'boosts', label: 'boost.list', run: (w) => hooks.openBoost(w, 'list') },
   { name: 'importArc', label: 'app.importArc', run: (w) => importArc(w) },
   { name: 'importBookmarks', label: 'app.importBookmarks', run: (w) => hooks.importBookmarks(w) },
   { name: 'newProfile', label: 'spaces.newProfile', palette: false, run: (w) => w.newProfile() },

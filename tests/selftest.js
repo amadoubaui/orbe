@@ -244,7 +244,7 @@ module.exports = async function selftest(ctx) {
     const moving = win.motion(1) > 0;
     const view = () => win.live.get(w.activeId).view;
     const same = (r1, r2) => r1.x === r2.x && r1.y === r2.y && r1.width === r2.width && r1.height === r2.height;
-    const pane = (i = 0) => { const p = w.paneRects(w.contentRect(), w.visibleIds())[i]; return { x: p.x, y: p.y, width: p.width, height: p.height }; };
+    const pane = (i = 0) => w.pageRect(w.paneRects(w.contentRect(), w.visibleIds())[i]);
     const docked = pane();
     w.toggleSidebar(false);
     await sleep(120);
@@ -1076,6 +1076,9 @@ module.exports = async function selftest(ctx) {
   // Navigation de tous les jours : autorisations, partage d'écran, certificats,
   // authentification, « quitter la page ? », fenêtres surgissantes… (tests/essentiels.js)
   await require('./essentiels')({ ...ctx, check });
+
+  // Vue scindée, petite fenêtre, aperçu, Boosts, menus de page (tests/fenetres.js)
+  await require('./fenetres')({ ...ctx, check });
 
   // Réglages à volets, raccourcis modifiables, import de signets (tests/reglages.js)
   await require('./reglages')({ ...ctx, check });

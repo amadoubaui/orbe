@@ -313,21 +313,21 @@ Actions de la barre de commande relevées dans Arc (libellés du binaire et du c
 | SCI-1 | Jusqu'à 4 pages | HC 20498417809815 | ✅ | W:splitWith ; self | |
 | SCI-2 | ⌃⇧= ajoute un volet, avec la barre de commande dedans | menu ; M-13 | ✅ | self ; nat | |
 | SCI-3 | ⌃⇧- ferme le volet actif | menu ; M-14 | ✅ | self ; nat | |
-| SCI-4 | Côte à côte ou empilée ; bascule depuis le bouton du volet | HC 20498377604887 | ✅ | self « vue scindée empilée », « retour côte à côte » | Pas de bouton sur le volet |
-| SCI-5 | Chaque volet a une petite barre en haut (adresse, fermer, options) | M-13 ; binaire « Split View Controls Menu » | ⬜ | | Manque visible |
-| SCI-6 | ⌥clic sur un onglet ou un lien : l'ouvre en vue scindée | HC 20498293324823 | ⬜ | | |
+| SCI-4 | Côte à côte ou empilée ; bascule depuis le bouton du volet | HC 20498377604887 | ✅ | self « vue scindée empilée », « retour côte à côte », « menu d’un volet, vue empilée… » | Bascule par la commande et par le menu « ⋯ » de chaque volet |
+| SCI-5 | Chaque volet a une petite barre en haut (adresse, fermer, options) | M-13 ; binaire « Split View Controls Menu » | ✅ | petite barre en haut de chaque volet : adresse (clic : la modifier), « ⋯ » (déplacer, agrandir, empiler, séparer, fermer), « × » ; self « vue scindée à trois volets : chaque page sous la petite barre de son volet », « petite barre de chaque volet : son adresse, à sa place », « menu d’un volet… » ; ui 12 (trois vérifications) | |
+| SCI-6 | ⌥clic sur un onglet ou un lien : l'ouvre en vue scindée | HC 20498293324823 | ✅ | ⌥clic sur un onglet de la barre latérale et sur un lien (clic retenu avant la page, adresse du lien survolé rapportée par le moteur) ; self « ⌥clic sur un onglet de la barre latérale… », « ⌥clic sur un lien… » (trois vérifications) ; ui 12 (deux vérifications) | |
 | SCI-7 | Séparateur déplaçable | HC 19335393146775 | ✅ | self « la séparation se déplace à la souris » | |
-| SCI-8 | Tailles conservées | non vérifié | 🟡 | perdues au redémarrage d'après la lecture du code | À corriger et tester |
+| SCI-8 | Tailles conservées | non vérifié | ✅ | parts rangées avec l’Espace (`splitRatios`) ; self « tailles des volets conservées au redémarrage », « parts illisibles dans le fichier : ignorées » | |
 | SCI-9 | ⌃⇧1 … 4 : aller au volet | binaire ; hongkiat | ✅ | nat | |
-| SCI-10 | Volet suivant / précédent | binaire | ⬜ | | |
-| SCI-11 | Le volet actif se distingue | non vérifié | ⬜ | aucun repère | Liseré discret |
+| SCI-10 | Volet suivant / précédent | binaire | ✅ | commandes `nextPane` / `prevPane` (⌃⇧] / ⌃⇧[, modifiables) ; self « ⌃⇧] / ⌃⇧[ : volet suivant et précédent, en boucle » | |
+| SCI-11 | Le volet actif se distingue | non vérifié | ✅ | barre du volet actif marquée et liseré de 2 px autour de lui ; un clic dans une page active son volet ; self « le volet actif se distingue… » ; ui 12 « cliquer dans une page : son volet devient actif… » | |
 | SCI-12 | La vue scindée est un seul élément dans la barre, épinglable, renommable, déplaçable | HC 20498417809815 | 🟡 | une ligne par groupe (ui 12) | Épingler le groupe non vérifié |
-| SCI-13 | « Separate Page from Split View », « Separate All Tabs » | menu ; binaire | 🟡 | ⌃⇧- seulement | |
-| SCI-14 | « Expand Current Split » | menu | ⬜ | | |
+| SCI-13 | « Separate Page from Split View », « Separate All Tabs » | menu ; binaire | ✅ | « Séparer la page de la vue scindée » et « Séparer tous les onglets » : menu Présentation, menu du volet, menu de l’onglet ; self « Séparer tous les onglets… », « Séparer la page de la vue scindée… » | |
+| SCI-14 | « Expand Current Split » | menu | ✅ | « Agrandir ce volet » : le volet actif prend toute la place que les autres lui laissent, une seconde fois les parts redeviennent égales ; self. Comportement d’Arc déduit de son nom interne (« MaximizeCurrentPane »), non observé | |
 | SCI-15 | Vue scindée enregistrée avec l'Espace | non vérifié | ✅ | self | |
-| SCI-16 | ⌘L change l'adresse du volet actif | HC 19335393146775 | 🟡 | non testé | |
-| SCI-17 | Pendant le glisser : zone de dépôt aux couleurs du thème, l'onglet devient une bulle, petit rebond au dépôt | inverse | 🟡 | zone en pointillés, sans bulle ni rebond | Voir ANI-12 |
-| SCI-18 | Messages affichés au-dessus du volet concerné | HC 20498293324823 | ⬜ | | |
+| SCI-16 | ⌘L change l'adresse du volet actif | HC 19335393146775 | ✅ | self « ⌘L en vue scindée : seule l’adresse du volet actif change » ; ui 12 « clic sur l’adresse d’un volet… Entrée ne change que lui » | |
+| SCI-17 | Pendant le glisser : zone de dépôt aux couleurs du thème, l'onglet devient une bulle, petit rebond au dépôt | inverse | 🟡 | zone aux couleurs de l’Espace, qui éclaire le côté visé (moitié du volet survolé : avant ou après lui) ; self « glisser un onglet : la zone de dépôt éclaire le côté visé », « lâcher un onglet sur le bord gauche d’un volet… » ; ui 12 | Ni bulle ni rebond (voir ANI-12) |
+| SCI-18 | Messages affichés au-dessus du volet concerné | HC 20498293324823 | ✅ | le message se place au-dessus du volet actif ; self « message affiché au-dessus du volet actif, pas à cheval sur les deux », « le message suit le volet actif » | |
 
 ## APE — Aperçu (Peek)
 
@@ -335,7 +335,7 @@ Actions de la barre de commande relevées dans Arc (libellés du binaire et du c
 | --- | --- | --- | --- | --- | --- |
 | APE-1 | Depuis un épinglé ou un favori, un lien vers un autre site s'ouvre en aperçu | HC 19335302900887 ; binaire | ✅ | self (deux vérifications) | |
 | APE-2 | ⇧clic sur n'importe quel lien : aperçu | HC 20498377604887 ; binaire | ✅ | ui 19 « ⇧-clic sur un lien : aperçu… » | Corrigé : le ⇧clic levait une erreur et n’ouvrait rien |
-| APE-3 | Deux réglages distincts pour ces deux déclencheurs | binaire | 🟡 | un seul (`peekLinks`) | |
+| APE-3 | Deux réglages distincts pour ces deux déclencheurs | binaire | ✅ | réglages `peekLinks` (onglets épinglés) et `peekShift` (⇧clic) ; ui 19 « ⇧-clic sur un lien : aperçu, sauf si le réglage est coupé… », « onglet épinglé : un lien vers un autre site s’ouvre en aperçu, ou dans l’onglet si le réglage est coupé » | |
 | APE-4 | Boutons à côté : fermer, ouvrir en onglet (⌘O), ouvrir en vue scindée | HC 19335302900887 | ✅ | self « ⌘O transforme l'aperçu en onglet sans recharger » | |
 | APE-5 | Fermer : clic à l'extérieur, croix, ⌘W, Échap | HC 20498377604887 | ✅ | self « ⌘W ferme l'aperçu… » | |
 | APE-6 | Geste de fermeture interactif | HC 20498377604887 | ⬜ | | |
@@ -503,17 +503,17 @@ Aucun geste n'a été rejoué sur Arc pendant cet inventaire (ils demandent la m
 | Id | Ce que fait Arc | Preuve Arc | État | Preuve Orbe | Note |
 | --- | --- | --- | --- | --- | --- |
 | BOO-1 | Un Boost par domaine, actif dans tous les profils | HC 19212718608151 | ✅ | `boosts.js` ; self « Boost : le CSS du site et le Zap s'appliquent » | |
-| BOO-2 | Créer : « + » → New Boost, commande, pinceau du centre de contrôle | HC 19212718608151 | 🟡 | menu Présentation, bouclier, palette | |
-| BOO-3 | Nuancier de couleurs à points | HC 19212718608151 | ⬜ | CSS à la main | |
-| BOO-4 | Inverser la luminosité ; curseurs Contrast, Brightness, Original Saturation ; remise à zéro | HC 19212718608151 | ⬜ | | Filtres CSS |
-| BOO-5 | Polices prêtes (Aa), taille 90 à 150 %, casse | HC 19212718608151 | ⬜ | | |
+| BOO-2 | Créer : « + » → New Boost, commande, pinceau du centre de contrôle | HC 19212718608151 | ✅ | bouton « + », commandes « Modifier le Boost de ce site… » et « Afficher les Boosts… », centre de contrôle, menu de page ; self « créer un Boost : bouton « + », commande, centre de contrôle, menu de page » ; ui 24 | |
+| BOO-3 | Nuancier de couleurs à points | HC 19212718608151 | ✅ | dix pastilles et « aucune couleur » : fond, texte lisible, liens et champs recolorés ; self « Boost, apparence : couleur du nuancier… », « éditeur : une pastille du nuancier colore la page aussitôt » ; ui 24 | |
+| BOO-4 | Inverser la luminosité ; curseurs Contrast, Brightness, Original Saturation ; remise à zéro | HC 19212718608151 | ✅ | self « Boost, apparence : luminosité inversée, contraste, luminosité, saturation », « apparence remise à zéro… » ; ui 24 « inverser la luminosité, curseur de contraste au clavier, remise à zéro » | |
+| BOO-5 | Polices prêtes (Aa), taille 90 à 150 %, casse | HC 19212718608151 | ✅ | cinq familles de polices du système, taille de 90 à 150 % (zoom de la page), casse ; self « Boost, texte : police prête, taille en pourcentage, casse » ; ui 24 | |
 | BOO-6 | Zap : cliquer un élément pour le retirer ; le rétablir | HC 19212718608151 | ✅ | self | |
 | BOO-7 | Éditeur CSS | HC 19212718608151 | ✅ | self « réappliqué à chaque chargement », « retiré quand il est vidé » | |
-| BOO-8 | Éditeur JavaScript (désactivé par défaut) | HC 26681118599191 | ⬜ | CSS seulement | Risque de sécurité, à peser |
-| BOO-9 | Renommer, « Reset all Edits » | HC 19212718608151 | ⬜ | | |
-| BOO-10 | Activer/désactiver depuis le centre de contrôle (pinceau gris) | HC 19212718608151 | 🟡 | case dans l'éditeur | |
-| BOO-11 | Liste des Boosts dans la Bibliothèque, suppression | HC 19212718608151 ; menu « View Boosts… » | ⬜ | | |
-| BOO-12 | Réglage global « Enable Boosts on websites you visit » | binaire | ⬜ | | |
+| BOO-8 | Éditeur JavaScript (désactivé par défaut) | HC 26681118599191 | ✅ | coupé par défaut : réglage « Autoriser le JavaScript des Boosts » puis case de chaque Boost ; exécuté dans le monde de la page, cadre principal seulement, site vérifié par le processus principal ; self (treize vérifications « JavaScript d’un Boost… ») ; ui 24 ; docs/securite-navigation.md « Boosts » | |
+| BOO-9 | Renommer, « Reset all Edits » | HC 19212718608151 | ✅ | champ de nom et « Tout réinitialiser » dans l’éditeur ; self « éditeur : taille du texte et nom du Boost enregistrés », « Tout réinitialiser : le Boost du site disparaît… » | |
+| BOO-10 | Activer/désactiver depuis le centre de contrôle (pinceau gris) | HC 19212718608151 | ✅ | case « Boost de ce site » du centre de contrôle (bouclier) ; self « centre de contrôle : décocher coupe le Boost sans le supprimer, recocher le rétablit » | |
+| BOO-11 | Liste des Boosts dans la Bibliothèque, suppression | HC 19212718608151 ; menu « View Boosts… » | ✅ | liste dans la fenêtre des Boosts (« Afficher les Boosts… », menu Présentation), pas dans la Bibliothèque : activer, modifier, supprimer, exporter, importer (un Boost importé arrive désactivé) ; self « liste des Boosts… », « export… », « import… » (cinq vérifications) ; ui 24 | |
+| BOO-12 | Réglage global « Enable Boosts on websites you visit » | binaire | ✅ | réglage « Appliquer les Boosts aux sites » (Réglages → Avancé) ; self « Boosts : appliqués ou non selon le réglage, sans recharger la page », « …Boosts coupés dans les réglages, le script ne part plus » | |
 | BOO-13 | Partage de Boosts | HC 19212718608151 (retiré d'Arc) | ➖ | | Retiré d'Arc lui-même |
 
 ## TAB — Tableaux (Easels) et capture
@@ -744,7 +744,7 @@ Arc : `menu` pour ceux de la barre de menus, sinon la source indiquée. Orbe : `
 | RAC-4 | ⌃⌘N | Fenêtre vierge | menu | ⬜ | Conflit avec « Nouvelle note » |
 | RAC-5 | ⌘W / ⇧⌘W | Archiver l'onglet, fermer la fenêtre | menu | ✅ | |
 | RAC-6 | ⇧⌘T | Rouvrir | menu | ✅ | |
-| RAC-7 | ⌘Z / ⇧⌘Z | Annuler, rétablir (actions de la barre) | menu | 🟡 | |
+| RAC-7 | ⌘Z / ⇧⌘Z | Annuler, rétablir (actions de la barre) | menu | ✅ | ui 18 (annuler et rétablir, geste par geste) ; self barre « ⌘Z défait toute la suite… », « ⇧⌘Z refait toute la suite… » |
 | RAC-8 | ⌘D | Épingler | menu | ✅ | |
 | RAC-9 | ⌘S | Barre latérale | menu | ✅ | |
 | RAC-10 | ⇧⌘D | Barre d'outils | menu | ✅ | |
@@ -753,29 +753,29 @@ Arc : `menu` pour ceux de la barre de menus, sinon la source indiquée. Orbe : `
 | RAC-13 | ⌘1 … ⌘9 | Élément n de la barre | binaire | ✅ | |
 | RAC-14 | ⌃1 … ⌃9 | Espace n | menu | ✅ | |
 | RAC-15 | ⌃⇥ / ⌃⇧⇥ | Onglets récents | HC 25619402657303 | ✅ | |
-| RAC-16 | ⌃` | Onglets récents (variante) | HC 25619402657303 | ⬜ | |
+| RAC-16 | ⌃` | Onglets récents (variante) | HC 25619402657303 | ✅ | ⌃` ouvre la bascule des onglets récents, comme ⌃Tab ; self « ⌃` : onglets récents, comme ⌃Tab » |
 | RAC-17 | ⌥⌘↓ / ⌥⌘↑ | Onglet suivant, précédent | menu | ✅ | |
 | RAC-18 | ⌥⌘→ / ⌥⌘← | Espace suivant, précédent | menu | ✅ | |
 | RAC-19 | ⌘[ / ⌘] | Page précédente, suivante | menu | ✅ | |
-| RAC-20 | ⌘← / ⌘→ | Page précédente, suivante | HC 20595231349911 | ⬜ | À vérifier hors champ de saisie |
+| RAC-20 | ⌘← / ⌘→ | Page précédente, suivante | HC 20595231349911 | ✅ | macOS : ⌘← / ⌘→ hors d’un champ de saisie (la page est interrogée) ; self « ⌘← / ⌘→ hors d’un champ de saisie… », « ⌘← dans un champ de saisie : la page ne change pas ». Windows : Alt+← / Alt+→ (RAC-19) |
 | RAC-21 | ⌘R / ⇧⌘R / ⌘. | Actualiser, forcer, arrêter | menu | ✅ | |
 | RAC-22 | ⌃⇧= / ⌃⇧- | Ajouter, fermer un volet | menu | ✅ | |
 | RAC-23 | ⌃⇧1 … ⌃⇧4 | Aller au volet | binaire ; hongkiat | ✅ | |
-| RAC-24 | ⌃⇧[ / ⌃⇧] | Volet précédent, suivant | hongkiat (peu fiable) | ⬜ | |
+| RAC-24 | ⌃⇧[ / ⌃⇧] | Volet précédent, suivant | hongkiat (peu fiable) | ✅ | commandes `nextPane` / `prevPane` (⌃⇧] / ⌃⇧[, modifiables) ; self « ⌃⇧] / ⌃⇧[ : volet suivant et précédent, en boucle » |
 | RAC-25 | ⌘F / ⌘G / ⇧⌘G | Chercher, suivant, précédent | menu | ✅ | |
 | RAC-26 | ⌥⌘F / ⌘J | Chercher et remplacer, aller à la sélection | menu | ⬜ | |
-| RAC-27 | ⌘0 / ⌘+ / ⌘- | Zoom | menu | 🟡 | Sans test |
+| RAC-27 | ⌘0 / ⌘+ / ⌘- | Zoom | menu | ✅ | self « ⌘+ / ⌘- / ⌘0 : zoom de la page, pourcentage affiché à chaque fois » |
 | RAC-28 | ⌘Y | Historique | menu | ✅ | |
 | RAC-29 | ⇧⌘L / ⇧⌘J | Bibliothèque, téléchargements | menu | ✅ | |
-| RAC-30 | ⇧⌘2 | Capture | menu | 🟡 | |
+| RAC-30 | ⇧⌘2 | Capture | menu | ✅ | self « capture d’une zone : enregistrée », « …l’image a les proportions de la zone » |
 | RAC-31 | ⌃⇧E | Nouveau tableau | menu | ✅ | |
 | RAC-32 | ⌃⇧N / ⌃⌥N | Nouvelle note, note en vue scindée | HC 22557798824855 | 🟡 | ⌃⌘N dans Orbe |
 | RAC-33 | ⇧⌘S / ⌘P | Enregistrer la page, imprimer | menu | 🟡 | Sans test |
-| RAC-34 | ⌥⌘U / ⌥⌘I / ⌥⌘C / ⌥⌘J | Source, outils, inspecteur, console | menu | 🟡 | Sans test |
+| RAC-34 | ⌥⌘U / ⌥⌘I / ⌥⌘C / ⌥⌘J | Source, outils, inspecteur, console | menu | ✅ | self « ⌥⌘U : le code source s’ouvre dans un nouvel onglet », « ⌥⌘I, ⌥⌘C, ⌥⌘J… au menu, avec leur raccourci » (l’ouverture des outils eux-mêmes n’est pas essayée) |
 | RAC-35 | ⌃D | Mode développeur du site | menu | ✅ | `toggleDevMode` : barre d’outils et adresse entière pour le site ; Alt+Shift+D sous Windows ; self |
 | RAC-36 | ⌃⌘F | Plein écran | menu | 🟡 | |
 | RAC-37 | ⌘O / ⌥⌘O | Dans un aperçu ou une petite fenêtre : ouvrir en onglet, choisir l'Espace | HC 19235387524503 | ✅ | ⌥⌘O sans effet dans la fenêtre principale d'Orbe (corps vide) |
-| RAC-38 | ⌥⌘V | Coller l'adresse dans un nouvel onglet | HC 20498377604887 | ⬜ | |
+| RAC-38 | ⌥⌘V | Coller l'adresse dans un nouvel onglet | HC 20498377604887 | ✅ | voir ONG-25 ; self lat ; ui 22 |
 | RAC-39 | ⌘E | Faire défiler les extensions | HC 19434259167767 | ⬜ | |
 | RAC-40 | ⌥⌘⌫ | Supprimer la suggestion désignée | HC 20498377604887 | ⬜ | |
 | RAC-41 | ⌥⌘G | ChatGPT | HC 19335160678679 | ➖ | |
@@ -783,7 +783,7 @@ Arc : `menu` pour ceux de la barre de menus, sinon la source indiquée. Orbe : `
 | RAC-43 | ⌘, / ⌘H / ⌥⌘H / ⌘M / ⌥⌘M / ⌘Q | Réglages et raccourcis du système | menu | ✅ | |
 | RAC-44 | ⇧⌘V | Coller en adaptant le style | menu | ✅ | |
 | RAC-45 | Échap | Préfère le site ; maintenu ou doublé, quitte le plein écran | HC 25619348451223 | 🟡 | Ferme aperçu, recherche, sélecteur |
-| RAC-46 | ⇧clic / ⌥clic / ⌥⌘clic sur un lien | Aperçu, vue scindée, petite fenêtre | HC 20498377604887 | 🟡 | ⇧clic et ⌥⌘clic : ui 19 ; ⌥clic (vue scindée) absent |
+| RAC-46 | ⇧clic / ⌥clic / ⌥⌘clic sur un lien | Aperçu, vue scindée, petite fenêtre | HC 20498377604887 | ✅ | ⇧clic et ⌥⌘clic : ui 19 ; ⌥clic (vue scindée) : self, ui 12 |
 | RAC-47 | Raccourci global pour la petite fenêtre | Réglable | binaire | ✅ | Volet Raccourcis, « Partout sur l’ordinateur » ; self (voir REG-24) |
 | RAC-48 | Tous les raccourcis modifiables | Volet Shortcuts | binaire | ✅ | self ; ui 19 (voir REG-26) |
 
@@ -811,23 +811,23 @@ Arc : `menu` pour ceux de la barre de menus, sinon la source indiquée. Orbe : `
 | Id | Ce que fait Arc | Preuve Arc | État | Preuve Orbe | Note |
 | --- | --- | --- | --- | --- | --- |
 | DIV-1 | Barre d'outils (⇧⌘D) : précédent, suivant, actualiser, adresse, extensions épinglées à droite | HC 25625617866263 | 🟡 | bandeau de 38 px sans extensions ; ui 07 | |
-| DIV-2 | Clic droit sur la barre d'outils : Show Full URL, copier, capture, partager | HC 20498377604887 | ⬜ | | |
-| DIV-3 | En vue scindée, la barre d'outils montre l'adresse de chaque volet | HC 20498377604887 | ⬜ | | |
+| DIV-2 | Clic droit sur la barre d'outils : Show Full URL, copier, capture, partager | HC 20498377604887 | ✅ | adresse entière, copier (aussi en Markdown), capture, partager (feuille de partage de macOS), masquer ; self « clic droit sur la barre d’outils… » (trois vérifications). Feuille de partage non vérifiée à la main | |
+| DIV-3 | En vue scindée, la barre d'outils montre l'adresse de chaque volet | HC 20498377604887 | ✅ | chaque volet porte sa petite barre avec son adresse (la barre d’outils garde celle du volet actif) ; self, ui 12 (voir SCI-5) | |
 | DIV-4 | Recherche dans la page | menu | ✅ | self « ⌘F trouve le texte dans la page » ; ui 08 | |
-| DIV-5 | Zoom : pourcentage affiché | HC 20498293324823 | 🟡 | message « Zoom N % » ; aucun test | |
-| DIV-6 | Messages (toasts) au-dessus de la page, cliquables | HC 20498417809815 | 🟡 | W:toast ; aucun test | |
-| DIV-7 | Copie de l'adresse sans les paramètres de pistage (« Super Copy », cas d'Amazon et d'Instagram) | HC 20498293324823 ; binaire « without any trackers » | 🟡 | copie simple (self) | Retirer `utm_*`, `fbclid`, etc. |
+| DIV-5 | Zoom : pourcentage affiché | HC 20498293324823 | ✅ | message « Zoom N % » à chaque changement ; self « ⌘+ / ⌘- / ⌘0 : zoom de la page, pourcentage affiché à chaque fois » | |
+| DIV-6 | Messages (toasts) au-dessus de la page, cliquables | HC 20498417809815 | ✅ | self « message (toast) : affiché par-dessus la page », « message cliquable : le clic lance son action et le fait disparaître » ; « Nouvel onglet créé » mène à l’onglet | |
+| DIV-7 | Copie de l'adresse sans les paramètres de pistage (« Super Copy », cas d'Amazon et d'Instagram) | HC 20498293324823 ; binaire « without any trackers » | ✅ | utm_*, fbclid, gclid, igshid, etc. retirés à la copie (⇧⌘C, Markdown, citation, menus) ; fiche Amazon réduite à son produit ; self « copie d’adresse : paramètres de pistage retirés… », « ⇧⌘C et ⌥⇧⌘C copient l’adresse sans ses paramètres de pistage » | |
 | DIV-8 | Fenêtre privée | menu | ✅ | self (deux vérifications) | |
 | DIV-9 | Fenêtre vierge (hors Espaces, non synchronisée) | menu ; HC 20498377604887 | ⬜ | | |
-| DIV-10 | Stay On Top | menu | 🟡 | présent | |
+| DIV-10 | Stay On Top | menu | ✅ | self « Toujours au premier plan : la fenêtre passe au-dessus des autres, puis revient » | |
 | DIV-11 | Plein écran : nouvelles fenêtres en plein écran, barre au survol | HC 20498377604887 | 🟡 | natif | |
 | DIV-12 | Page d'erreur | non vérifié | ✅ | self (deux vérifications) ; ui 09 | |
-| DIV-13 | Menu de page, lien : ouvrir dans un nouvel onglet, en vue scindée, en aperçu, dans Little Arc, copier | slashgear ; binaire « Open in Background Tab », « Open in Split View » | 🟡 | W:pageMenu ; aucun test du menu | |
-| DIV-14 | Menu de page, sélection : chercher, « Share Quote » | HC 20498293324823 ; binaire « Search With Google » | 🟡 | Copier, Rechercher | |
-| DIV-15 | Menu de page, image : ouvrir, copier, enregistrer | non vérifié (Chromium) | 🟡 | présent ; aucun test | |
+| DIV-13 | Menu de page, lien : ouvrir dans un nouvel onglet, en vue scindée, en aperçu, dans Little Arc, copier | slashgear ; binaire « Open in Background Tab », « Open in Split View » | ✅ | self « menu de page, lien… » (cinq vérifications : contenu, nouvel onglet en arrière-plan, vue scindée, aperçu, petite fenêtre) | |
+| DIV-14 | Menu de page, sélection : chercher, « Share Quote » | HC 20498293324823 ; binaire « Search With Google » | ✅ | copier, rechercher, « Copier la sélection en citation » (équivalent de Share Quote) ; self « menu de page, sélection… », « Copier la sélection en citation… » | |
+| DIV-15 | Menu de page, image : ouvrir, copier, enregistrer | non vérifié (Chromium) | ✅ | self « menu de page, image : ouvrir, copier, copier l’adresse, enregistrer » (contenu du menu ; les actions elles-mêmes sont celles de Chromium) | |
 | DIV-16 | Menu de page, vidéo : image dans l'image | HC 19234766331799 | ⬜ | | |
-| DIV-17 | Menu de page : traduire, « Customize Page » (Boost) | HC 25626093607703 ; binaire | ⬜ | | |
-| DIV-18 | Menu de page : Inspecter | non vérifié | 🟡 | présent | |
+| DIV-17 | Menu de page : traduire, « Customize Page » (Boost) | HC 25626093607703 ; binaire | ✅ | « Modifier le Boost de ce site… » et « Traduire la page » (page traduite par Google dans un nouvel onglet, sur un clic) ; self « menu de page, page… », « Traduire la page… » | |
+| DIV-18 | Menu de page : Inspecter | non vérifié | ✅ | « Inspecter » en dernier article de chaque menu de page ; self (cinq menus vérifiés) | |
 | DIV-19 | Boîte « quitter la page ? » (`beforeunload`) | non vérifié (Chromium) | ✅ | question « Quitter la page ? » à la navigation, à la fermeture de l’onglet, de plusieurs onglets et de la fenêtre (unload.js) ; self « fermer l’onglet puis « Rester » : l’onglet revient… », « archiver plusieurs onglets : une question par page… », « fermer la fenêtre puis « Rester »… » ; ui « page modifiée au clavier… » | Aperçu fermé sans question |
 | DIV-20 | Fenêtres surgissantes bloquées | non vérifié (Chromium) | ✅ | bloquées sans geste, mention dans la pastille, « Ouvrir quand même », « Toujours autoriser pour ce site » (popups.js) ; self « window.open sans geste : bloqué », « après un vrai clic : la fenêtre s’ouvre, avec window.opener » ; ui « fenêtre ouverte sans geste : bloquée… » | Heuristique de geste documentée dans popups.js |
 | DIV-21 | Lecture de PDF | non vérifié (Chromium) | ✅ | visionneuse de Chromium (aucun réglage à changer) ; PDF téléchargé ouvert dans un onglet ; self « un PDF s’affiche dans la visionneuse de Chromium », « PDF téléchargé : ouvert dans un onglet » |  |

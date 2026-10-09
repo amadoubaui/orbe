@@ -248,6 +248,30 @@ un onglet sans lien `window.opener` avec la page.
 - Orbe ouvre le lien lui-même (`shell.openExternal`) et répond toujours « non »
   à Chromium : une seule porte, vérifiable.
 
+## Boosts (`src/main/boosts.js`, `src/main/boost-editor.js`)
+
+Un Boost est du contenu écrit par l'utilisateur — ou reçu d'un fichier — et
+injecté dans les pages d'un site : apparence, éléments masqués, CSS, et
+JavaScript si l'utilisateur l'a permis.
+
+| Menace | Réponse |
+| --- | --- |
+| Le script d'un Boost atteint Orbe (pont `window.orbe`, Node) | Il s'exécute dans le **monde principal de la page** (`frame.executeJavaScript`), celui des scripts du site : il a les droits de la page, rien de plus. Les pages web n'ont ni préchargement privilégié ni `window.orbe`. Vérifié : `typeof window.orbe`, `require` et `process` valent `undefined` dans le script. |
+| Le script s'exécute ailleurs que sur son site | Le site est relu **dans le processus principal, sur le cadre principal, au moment d'exécuter** (`hostOf(frame.url)`), jamais d'après la page. Le script part une fois par chargement (`dom-ready`), dans le cadre principal seulement — pas dans les cadres intégrés. |
+| Le script s'exécute dans une page d'Orbe, une feuille, un aperçu, une petite fenêtre | `canScript` n'accepte que la page web d'un onglet ordinaire : ni page interne (`orbe://`), ni navigation privée ; aperçus, petites fenêtres, feuilles et vues de l'interface ne sont pas des onglets et ne reçoivent ni CSS ni script. Vérifié cas par cas. |
+| Un script s'exécute sans que l'utilisateur l'ait voulu | Trois accords : les Boosts sont actifs, le réglage « Autoriser le JavaScript des Boosts » est coché (**décoché par défaut**), et la case du Boost l'est aussi. |
+| Un Boost importé exécute du code, ou vole des données par son CSS (sélecteurs d'attributs + images distantes) | À l'import **rien n'est appliqué ni exécuté** : le Boost arrive désactivé, son script coupé, et ne remplace jamais un Boost existant. Le fichier est du JSON borné (2 Mo, 300 Boosts) ; seuls les champs connus sont lus, chacun borné. Activer un Boost importé est un geste explicite, après relecture. |
+| Sélecteur de « Zap » piégé (venu de la page cliquée ou d'un fichier) qui ferme la règle et injecte du CSS | `validSelector` : ni accolade, ni point-virgule, ni arobase, ni commentaire ; parenthèses, crochets et guillemets fermés ; pas de virgule hors parenthèses ; 500 caractères au plus. Une règle par sélecteur. |
+| Valeur d'apparence piégée (couleur, police, taille…) | Le CSS de l'apparence est **fabriqué** par Orbe à partir de nombres bornés et de valeurs prises dans une liste ; aucun texte du Boost n'y est recopié. |
+| Une page web écrit ou lit des Boosts | Les messages `boost:*` ne sont acceptés que de la **fenêtre de l'éditeur** (reconnue à son `webContents`). L'éditeur est lié au site de l'onglet à son ouverture : si l'onglet change de site, rien n'est écrit pour le nouveau. Le sélecteur rendu par la page au « Zap » est rangé pour le site que le processus principal voit affiché. |
+| Retirer un Boost | Décocher, « Tout réinitialiser » ou supprimer depuis la liste retire le CSS aussitôt. Un script déjà exécuté ne se « retire » pas : il faut recharger la page (bouton de l'éditeur) — c'est dit dans l'éditeur. |
+
+Limites assumées : le CSS libre d'un Boost est du CSS quelconque (`@import`,
+images distantes) — c'est le but de la fonction ; un Boost activé par
+l'utilisateur a donc sur son site le pouvoir d'une feuille de style
+d'utilisateur. « Traduire la page » (menu de page) transmet l'adresse de la
+page au service de traduction de Google, sur un clic seulement.
+
 ## Ce qui demande une vérification humaine
 
 - Les vraies questions du système (caméra, micro, enregistrement de l'écran)

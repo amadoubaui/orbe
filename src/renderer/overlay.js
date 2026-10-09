@@ -421,6 +421,9 @@ O.on('overlay', (p) => {
     show('drop');
     $('drop-label').textContent = p.label;
     $('drop').classList.toggle('over', !!p.over);
+    // Côté visé (moitié d'un volet), donné par le processus principal ; sinon la moitié droite.
+    const z = p.zone;
+    $('drop-label').style.cssText = z ? `position:absolute;margin:0;left:${z.x + 6}px;top:${z.y + 6}px;width:${Math.max(40, z.w - 12)}px;height:${Math.max(40, z.h - 12)}px` : '';
   } else if (p.mode === 'swipe') {
     drawSwipe(p);
   } else if (p.mode === 'status') {
@@ -430,6 +433,7 @@ O.on('overlay', (p) => {
     show('toast');
     const el = $('toast');
     el.textContent = p.text;
+    el.style.cursor = p.action ? 'pointer' : '';
     el.classList.remove('in');
     void el.offsetWidth;
     el.classList.add('in');
@@ -455,6 +459,8 @@ dropBox.addEventListener('drop', (e) => {
   if (id) send('dropSplit', id);
 });
 
+// Clic sur un message : son action (aller à l'onglet…), ou simple disparition.
+$('toast').onclick = () => send('toastClick');
 $('peek-close').onclick = () => send('peekClose');
 $('peek-expand').onclick = () => send('peekExpand');
 $('peek-split').onclick = () => send('peekSplit');

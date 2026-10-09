@@ -471,6 +471,20 @@ body.toolbar #empty { top: 50px; }
 .divider::after { content: ''; width: 3px; height: 34px; border-radius: 2px; background: var(--faint); opacity: 0; transition: opacity 120ms; }
 .divider:hover::after, .divider.on::after { opacity: 1; }
 
+/* Vue scindée : petite barre en haut de chaque volet (adresse, options, fermer)
+   et liseré autour du volet actif, dessiné dans l'interstice entre les pages. */
+#pane-ring { position: absolute; display: none; border-radius: 12px; box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 70%, transparent); pointer-events: none; transition: left 90ms var(--ease-out), top 90ms var(--ease-out), width 90ms var(--ease-out), height 90ms var(--ease-out); }
+#pane-ring.on { display: block; }
+.pane-bar { position: absolute; height: 24px; display: flex; align-items: center; gap: 2px; padding: 0 2px 0 6px; border-radius: 8px; color: var(--dim); -webkit-app-region: no-drag; }
+.pane-bar.active { color: var(--fg); background: var(--pill); }
+.pane-bar .pane-url { flex: 1; min-width: 0; height: 22px; display: flex; align-items: center; gap: 6px; padding: 0 4px; border-radius: 6px; color: inherit; font-size: 12px; font-weight: 500; text-align: left; }
+.pane-bar .pane-url .pane-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pane-bar .pane-url .favicon, .pane-bar .pane-url .letter { width: 14px; height: 14px; flex: none; font-size: 9px; }
+.pane-bar .pb { width: 22px; height: 22px; flex: none; border-radius: 6px; display: grid; place-items: center; color: inherit; opacity: 0.55; }
+.pane-bar .pb svg { width: 14px; height: 14px; }
+.pane-bar:hover .pb, .pane-bar.active .pb { opacity: 1; }
+.pane-bar .pb:hover, .pane-bar .pane-url:hover { background: var(--hover); }
+
 /* Barre latérale flottante (barre masquée, survol du bord gauche) : une carte
    posée sur la page, qui ne déplace rien. */
 .floating body { background: transparent !important; }
@@ -487,7 +501,7 @@ body.toolbar #empty { top: 50px; }
 .floating body.open #sidebar { transform: none; transition: transform var(--spring-smooth); }
 .floating body.ready #sidebar { animation: none; }
 .floating #top { padding-left: 62px; height: 40px; }
-.floating #toolbar, .floating #empty, .floating #dividers, .floating #resize { display: none !important; }
+.floating #toolbar, .floating #empty, .floating #dividers, .floating #pane-bars, .floating #pane-ring, .floating #resize { display: none !important; }
 
 /* Apparition et disparition des lignes : opacité et transformation seulement.
    La place se fait (ou se referme) par le glissement des lignes voisines, animé
