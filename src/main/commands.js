@@ -32,6 +32,8 @@ const COMMANDS = [
   { name: 'captureToEasel', label: 'easel.capture', accel: 'Alt+Shift+Cmd+2', keys: '⌥⇧⌘2', run: (w) => easels.capture(w) },
   { name: 'savePage', label: 'file.savePage', accel: 'Shift+Cmd+S', keys: '⇧⌘S', run: (w) => w.savePage() },
   { name: 'print', label: 'file.print', accel: 'Cmd+P', keys: '⌘P', run: (w) => wc(w) && wc(w).print() },
+  // « Share… » dans Arc : la feuille de partage de macOS, pour l'adresse de la page.
+  ...(platform.isMac ? [{ name: 'share', label: 'tb.share', run: (w) => w.share() }] : []),
   // Édition
   { name: 'copyUrl', label: 'edit.copyUrl', accel: 'Shift+Cmd+C', keys: '⇧⌘C', run: (w) => (w.selected().length > 1 ? w.copyLinks(w.selected()) : w.copyUrl(false)) },
   { name: 'copyUrlMarkdown', label: 'edit.copyUrlMarkdown', accel: 'Alt+Shift+Cmd+C', keys: '⌥⇧⌘C', run: (w) => w.copyUrl(true) },

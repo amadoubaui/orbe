@@ -104,7 +104,10 @@ function openUrl(url) {
     // Sans règle : petite fenêtre, Espace précis (« space:<id> »), ou l'Espace affiché.
     target = rule ? rule.to : (ext === 'little' ? 'little' : (String(ext).startsWith('space:') ? ext.slice(6) : null));
   }
-  if (target === 'little') return new little.LittleWindow(url);
+  // Lien de réunion (Meet, Zoom, Teams…) : jamais en petite fenêtre, toujours dans un onglet.
+  if (target === 'little' && win.isMeetingUrl(url)) target = null;
+  // Déjà affiché dans une petite fenêtre : elle revient au premier plan.
+  if (target === 'little') return little.LittleWindow.openOrFocus(url);
   let w = OrbeWindow.primary;
   if (!w) w = new OrbeWindow();
   if (target && store.state.spaces.some((sp) => sp.id === target)) w.switchSpace(target);
@@ -112,6 +115,12 @@ function openUrl(url) {
   if (w.win.isMinimized()) w.win.restore();
   w.win.focus();
   return undefined;
+}
+
+// Destination qu'une règle d'aiguillage donne à cette adresse (identifiant d'Espace, « little »), ou null.
+function routeFor(url) {
+  const rule = (store.state.settings.routes || []).find((r) => r.match && String(url).toLowerCase().includes(r.match.toLowerCase()));
+  return rule ? rule.to : null;
 }
 
 function newWindow(opts = {}) {
@@ -387,6 +396,9 @@ app.whenReady().then(async () => {
   // Moteur de recherche et suggestions : ceux du profil de l'Espace affiché.
   suggest.hooks.profileId = () => { const w = OrbeWindow.focused || OrbeWindow.primary; return w && !w.incognito ? w.space.profileId : 'default'; };
   win.hooks.openLittle = (url) => new little.LittleWindow(url);
+  // Aiguillage : un lien qui s'ouvrirait en aperçu suit d'abord les règles.
+  win.hooks.route = routeFor;
+  win.hooks.openRouted = (url) => openUrl(url);
   win.hooks.changed = () => { menu.refresh(); extHost.sync(); passwords.sync(); };
   win.hooks.extensionMenu = (wc, params) => [...extApi.contextMenuItems(wc, params), ...passwords.contextMenuItems(wc, params)];
   extApi.hooks.actionChanged = () => OrbeWindow.pushAll();

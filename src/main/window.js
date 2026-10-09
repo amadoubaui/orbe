@@ -21,6 +21,7 @@ const PAD = 10;
 const GAP = 8;
 const RADIUS = 10;
 const TOOLBAR_H = 40;
+const PEEK_BAR = 40; // marge au-dessus de la carte de l'aperçu quand son adresse s'affiche
 const SPLIT_BAR = 28; // petite barre de chaque volet d'une vue scindée (adresse, options, fermer)
 const TRAFFIC = { x: 15, y: 15 };
 const SIDEBAR_MIN = 200;
@@ -59,7 +60,7 @@ const loadingUi = new WeakSet(); // vues de l'interface créées à part, dont l
 // `rightInset(fenêtre)` : place réservée à droite des pages (panneau latéral d'une
 // extension) ; `layout(fenêtre)` : appelé à la fin de chaque mise en page.
 const hooks = {
-  changed: () => {}, openLittle: () => {}, openSettings: () => {}, extensionMenu: () => [], rightInset: () => 0, layout: () => {},
+  changed: () => {}, openLittle: () => {}, route: () => null, openRouted: () => {}, openSettings: () => {}, extensionMenu: () => [], rightInset: () => 0, layout: () => {},
   // Raccords posés par essentials.js (feuilles d'onglet, certificats, « quitter la page ? », fenêtres surgissantes…).
   sheetFocus: () => null, leave: () => true, closeAll: async () => true, quitState: { quitting: false }, input: () => {}, popup: () => true, navigated: () => {},
   busy: () => false, tabState: () => [], navState: () => ({}), failed: () => false, gone: () => {}, hung: () => {}, action: () => undefined, siteMenu: () => [],
@@ -977,7 +978,11 @@ class OrbeWindow {
         if (rt.owner.locate(rt.id) && rt.owner.visibleIds().includes(rt.id)) {
           e.preventDefault();
           lastClick = 0;
-          rt.owner.openPeek(url, rt.id);
+          // Lien de réunion ou règle d'aiguillage : un onglet, pas un aperçu.
+          const how = rt.owner.peekTarget(url);
+          if (how === 'peek') rt.owner.openPeek(url, rt.id);
+          else if (how === 'route') hooks.openRouted(url);
+          else rt.owner.newTab(url, { after: rt.id });
         }
       });
       wc.on('will-navigate', guard);
@@ -1088,11 +1093,15 @@ class OrbeWindow {
       // et Electron ne fournit alors pas de contenu à adopter : on ouvre nous-mêmes.
       const shifted = details.disposition === 'new-window' && !details.features;
       if (shifted && /^https?:/i.test(details.url)) {
-        if (store.state.settings.peekShift !== false) owner.openPeek(details.url, rt.id);
+        const how = store.state.settings.peekShift !== false ? owner.peekTarget(details.url) : 'tab';
+        if (how === 'peek') owner.openPeek(details.url, rt.id);
+        else if (how === 'route') hooks.openRouted(details.url);
         else owner.newTab(details.url, { after: rt.id });
         return { action: 'deny' };
       }
-      if (/^https?:/i.test(details.url) && outside) {
+      const how = /^https?:/i.test(details.url) && outside ? owner.peekTarget(details.url) : 'tab';
+      if (how === 'route') { hooks.openRouted(details.url); return { action: 'deny' }; }
+      if (how === 'peek') {
         return { action: 'allow', createWindow: (options) => owner.openPeek(details.url, rt.id, options).webContents };
       }
       // Conserve window.opener (connexions OAuth, paiements…).
@@ -2518,10 +2527,20 @@ class OrbeWindow {
   // lien cliqué (ou depuis le centre), se réduit vers lui à la fermeture, et
   // s'étend jusqu'à la place de l'onglet quand elle en devient un.
 
-  // Place de la carte dans la zone des pages.
+  // Un lien qui s'ouvrirait en aperçu : 'peek', ou 'tab' pour un lien de réunion
+  // (on y reste, micro ouvert : il lui faut un onglet), ou 'route' quand une règle
+  // d'aiguillage lui donne une autre destination (Espace, petite fenêtre).
+  peekTarget(url) {
+    if (isMeetingUrl(url)) return 'tab';
+    return !this.incognito && hooks.route(url) ? 'route' : 'peek';
+  }
+
+  // Place de la carte dans la zone des pages. Barre d'outils affichée : l'aperçu
+  // montre aussi son adresse, au-dessus de la carte, qui descend d'autant.
   peekRect(rect = this.contentRect()) {
     const m = Math.round(Math.min(90, Math.max(44, rect.width * 0.07)));
-    return { x: rect.x + m, y: rect.y + 16, width: Math.max(200, rect.width - 2 * m), height: Math.max(120, rect.height - 16) };
+    const top = this.toolbarShown ? PEEK_BAR : 16;
+    return { x: rect.x + m, y: rect.y + top, width: Math.max(200, rect.width - 2 * m), height: Math.max(120, rect.height - top) };
   }
 
   // Rectangle de départ (et de retour) : une petite carte autour du point cliqué
@@ -2556,6 +2575,15 @@ class OrbeWindow {
     if (wc && !wc.isDestroyed()) wc.send('overlay', { mode: 'peek', ...payload });
   }
 
+  // Adresse de l'aperçu, affichée au-dessus de la carte quand la barre d'outils l'est.
+  peekAddress() {
+    const st = this.peekState;
+    const wc = this.peekChrome && this.peekChrome.webContents;
+    if (!st || !wc || wc.isDestroyed()) return;
+    const full = store.state.settings.showFullUrl !== false;
+    wc.send('overlay', { mode: 'peek-url', text: this.toolbarShown ? (full ? st.url : suggest.strip(st.url)) : '' });
+  }
+
   // `point` : d'où part la carte (coordonnées de la fenêtre) ; à défaut, le
   // dernier clic dans la page d'origine s'il vient d'avoir lieu.
   openPeek(url, fromId, options, point) {
@@ -2579,8 +2607,8 @@ class OrbeWindow {
     if (dark) wc.once('dom-ready', () => { try { view.setBackgroundColor('#ffffff'); } catch {} });
     on('page-title-updated', (e, title) => { state.title = title; });
     on('page-favicon-updated', (e, icons) => { state.favicon = icons[0] || ''; });
-    on('did-navigate', (e, u) => { state.url = u; });
-    on('did-navigate-in-page', (e, u, main) => { if (main) state.url = u; });
+    on('did-navigate', (e, u) => { state.url = u; this.peekAddress(); });
+    on('did-navigate-in-page', (e, u, main) => { if (main) { state.url = u; this.peekAddress(); } });
     on('will-prevent-unload', (e) => { if (hooks.leave(this, wc)) e.preventDefault(); });
     on('destroyed', () => { if (this.peekState === state) this.closePeek(); });
     const guard = (e, u) => { if (isInternal(u)) e.preventDefault(); };
@@ -2595,9 +2623,10 @@ class OrbeWindow {
     const ms = motion(MOTION.peekIn);
     if (!this.peekChrome) {
       this.peekChrome = this.makeUiView('overlay.html#peek');
-      this.peekChrome.webContents.once('did-finish-load', () => { if (!this.gone && this.peekState) this.peekOverlay({ ms }); });
+      this.peekChrome.webContents.once('did-finish-load', () => { if (!this.gone && this.peekState) { this.peekOverlay({ ms }); this.peekAddress(); } });
     } else {
       this.peekOverlay({ ms });
+      this.peekAddress();
     }
     this.win.contentView.addChildView(this.peekChrome);
     this.win.contentView.addChildView(view);
@@ -3602,7 +3631,7 @@ class OrbeWindow {
     if (this.win.isDestroyed() || this.ui.webContents.isDestroyed()) return;
     // La barre d'outils peut apparaître avec la page (mode développeur) : la mise en page suit.
     const toolbar = this.toolbarShown;
-    if (this.toolbarWas !== undefined && this.toolbarWas !== toolbar) { this.toolbarWas = toolbar; this.layout(); }
+    if (this.toolbarWas !== undefined && this.toolbarWas !== toolbar) { this.toolbarWas = toolbar; this.layout(); this.peekAddress(); }
     this.toolbarWas = toolbar;
     const d = this.data;
     const space = this.space;

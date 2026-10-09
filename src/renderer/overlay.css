@@ -208,6 +208,8 @@ body.peek-out #backdrop, body.peek-out #peek { animation: fade-out var(--peek-ms
 @keyframes fade { from { opacity: 0; } }
 @keyframes fade-out { to { opacity: 0; } }
 #peek { position: fixed; top: 22px; right: 8px; display: flex; flex-direction: column; gap: 8px; }
+/* Adresse de l'aperçu, au-dessus de la carte (barre d'outils affichée). */
+#peek-url { position: fixed; top: 8px; left: 50%; transform: translateX(-50%); max-width: 62%; height: 24px; line-height: 24px; padding: 0 12px; border-radius: 8px; background: rgba(255, 255, 255, 0.16); color: #fff; font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
 .pk { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, 0.16); color: #fff; transition: background 120ms, transform var(--spring-bouncy); }
 .pk:hover { background: rgba(255, 255, 255, 0.3); }
 .pk:active { transform: scale(0.9); transition: transform var(--press); }

@@ -409,6 +409,10 @@ O.on('overlay', (p) => {
     findInput.focus();
     findInput.select();
     if (findInput.value) send('find', { text: findInput.value });
+  } else if (p.mode === 'peek-url') {
+    // Adresse de l'aperçu (barre d'outils affichée) : au-dessus de la carte.
+    $('peek-url').textContent = p.text || '';
+    $('peek-url').hidden = !p.text;
   } else if (p.mode === 'peek') {
     // Ouverture : le voile et les boutons paraissent en fondu ; `leaving` : ils s'effacent
     // pendant que la carte se réduit ou s'étend (durée donnée par le processus principal).

@@ -111,5 +111,23 @@ module.exports = {
       assert.equal(e.actifUrl, autre().url());
       assert.equal(await ctx.vueAu(e.vuePage.x + 40, e.vuePage.y + 40), autre().url());
     });
+
+    await t.verifier('barre d’outils affichée (⇧⌘D) : l’aperçu montre son adresse au-dessus de la carte', async () => {
+      await ctx.menu('Shift+Cmd+D');
+      await jusqua(() => shell.evaluate(() => document.body.classList.contains('toolbar')), 'barre d’outils affichée');
+      await ctx.clic(shell, ctx.ligne('Page à liens', '#pinned'));
+      await jusqua(async () => (await ctx.etat()).actifUrl === ctx.url('/liens'), 'retour sur la page épinglée');
+      await ctx.sleep(200);
+      await ouvrir();
+      const chrome = await ctx.attendrePage('overlay.html#peek');
+      await jusqua(() => chrome.evaluate(() => !document.getElementById('peek-url').hidden && document.getElementById('peek-url').textContent), 'adresse de l’aperçu');
+      assert.match(await chrome.locator('#peek-url').textContent(), /^http:\/\/localhost:\d+\/b$/);
+      const a = await apercu();
+      const pastille = await chrome.locator('#peek-url').boundingBox();
+      assert.ok(pastille.y + pastille.height <= a.place.y - a.zone.y, `l’adresse (${JSON.stringify(pastille)}) est au-dessus de la carte (${JSON.stringify(a.place)}, zone ${JSON.stringify(a.zone)})`);
+      await chrome.keyboard.press('Escape');
+      await ferme();
+      await ctx.menu('Shift+Cmd+D');
+    });
   },
 };

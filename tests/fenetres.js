@@ -16,7 +16,14 @@ function serve() {
     if (m) return res.end(page('Page ' + m[1], `<h1>${m[1]}</h1><p class="texte">orbe</p>`));
     if (url.pathname === '/liens') return res.end(page('Liens', `<a id="lien" href="/p/cible" style="position:fixed;left:0;top:0;width:300px;height:120px;background:#def;display:block">vers la cible</a><input id="champ" style="position:fixed;left:0;top:200px">`));
     if (url.pathname === '/boost') return res.end(page('Boost', '<h1 id="t">Titre</h1><p class="pub">publicité</p><p id="reste">reste</p><iframe id="cadre" src="/p/cadre" style="width:200px;height:80px"></iframe>'));
-    if (url.pathname === '/video') return res.end(page('Vidéo', '<video id="v" style="position:fixed;left:0;top:0;width:320px;height:180px;background:#000" controls></video>'));
+    if (url.pathname === '/video') return res.end(page('Vidéo', `<video id="v" style="position:fixed;left:0;top:0;width:320px;height:180px;background:#000" playsinline muted></video><script>
+      window.start = async () => {
+        const c = document.createElement('canvas'); c.width = 320; c.height = 180;
+        const g = c.getContext('2d'); let n = 0;
+        setInterval(() => { g.fillStyle = 'hsl(' + (n++ % 360) + ' 70% 50%)'; g.fillRect(0, 0, 320, 180); }, 40);
+        const v = document.getElementById('v'); v.srcObject = c.captureStream(25); await v.play(); return true;
+      };
+    </script>`));
     res.statusCode = 404;
     return res.end(page('404', 'introuvable'));
   });
@@ -394,7 +401,9 @@ module.exports = async function fenetresTests(ctx) {
     check('éditeur : une pastille du nuancier colore la page aussitôt', await ed(`document.querySelectorAll('#swatches .dot')[3].classList.contains('on')`));
     await ed(`(() => { const r = document.getElementById('size'); r.value = '130'; r.dispatchEvent(new Event('input', { bubbles: true })); const n = document.getElementById('name'); n.value = '  Mon   Boost  '; n.dispatchEvent(new Event('input', { bubbles: true })); })()`);
     await until(() => boosts.get(host).look.size === 130 && boosts.get(host).name === 'Mon Boost', 'taille et nom enregistrés');
-    check('éditeur : taille du texte et nom du Boost enregistrés', await js('getComputedStyle(document.documentElement).zoom') === '1.3');
+    // (Le Boost est rangé d'abord, appliqué à la page ensuite : on attend la page.)
+    await until(async () => (await js('getComputedStyle(document.documentElement).zoom')) === '1.3', 'taille appliquée à la page');
+    check('éditeur : taille du texte et nom du Boost enregistrés', true);
     check('éditeur : la case JavaScript suit le réglage général', await ed(`!document.getElementById('js-on').disabled && document.getElementById('js-on').checked && document.getElementById('js-off').hidden`));
     set({ boostsJs: false });
     await ed(`O.send('boost:get').then(draw)`);
@@ -641,6 +650,218 @@ module.exports = async function fenetresTests(ctx) {
     const acc = (name) => require('../src/main/shortcuts').accelOf(name);
     check('⌥⌘I, ⌥⌘C, ⌥⌘J : outils de développement, inspecteur, console (au menu, avec leur raccourci)', ['devtools', 'inspect', 'console', 'source'].every((n) => !!acc(n) && !!Menu.getApplicationMenu() && (function find(m) { return m.items.some((it) => it.accelerator === acc(n) || (it.submenu && find(it.submenu))); })(Menu.getApplicationMenu())));
     w.close(P.id, { silent: true, ask: false });
+  }
+
+
+  // === Petite fenêtre ========================================================
+  {
+    const { LittleWindow } = little;
+    const { dialog } = require('electron');
+    const count = () => LittleWindow.all.length;
+    const closeAll = async () => { for (const l of LittleWindow.all) l.win.close(); await until(() => count() === 0, 'petites fenêtres fermées'); };
+    await closeAll();
+    const settings = store.state.settings;
+    const before = { externalLinks: settings.externalLinks, routes: settings.routes, size: store.state.window.littleSize };
+    const calls = [];
+    const openInOrbe = little.hooks.openInOrbe;
+
+    // Liens venus d'autres applications
+    settings.externalLinks = 'little';
+    settings.routes = [];
+    openUrl(base + '/p/externe');
+    await until(() => count() === 1 && LittleWindow.all[0].title === 'Page externe', 'lien externe en petite fenêtre');
+    const l1 = LittleWindow.all[0];
+    check('lien venu d’une autre application, réglage « petite fenêtre » : il s’y ouvre', l1.url === base + '/p/externe' && !Object.values(d.tabs).some((x) => x.url === base + '/p/externe'));
+    openUrl(base + '/p/externe');
+    await sleep(120);
+    check('le même lien une seconde fois : la petite fenêtre existante revient, sans en ouvrir une autre', count() === 1 && LittleWindow.all[0] === l1);
+    openUrl(base + '/p/autre');
+    await until(() => count() === 2, 'seconde petite fenêtre');
+    check('un autre lien : une seconde petite fenêtre', LittleWindow.all[1].url === base + '/p/autre');
+    const tabsBefore = Object.keys(d.tabs).length;
+    const meet = [];
+    const newTab = w.newTab;
+    w.newTab = (url) => { meet.push(url); };
+    for (const url of ['https://meet.google.com/abc-defg-hij', 'https://us02web.zoom.us/j/123456789?pwd=x', 'https://teams.microsoft.com/l/meetup-join/19%3ameeting']) openUrl(url);
+    w.newTab = newTab;
+    check('liens de réunion (Meet, Zoom, Teams) venus d’ailleurs : dans un onglet, jamais en petite fenêtre', count() === 2 && meet.length === 3 && Object.keys(d.tabs).length === tabsBefore, JSON.stringify(meet));
+    check('lien de réunion ou non', ['https://meet.google.com/abc-defg-hij', 'https://zoom.us/j/1', 'https://teams.live.com/meet/9', 'https://exemple.webex.com/meet/nom'].every(win.isMeetingUrl) && !['https://meet.google.com/', 'https://zoom.us/pricing', 'https://exemple.org/j/1', 'https://faux-zoom.us.exemple.org/j/1', 'javascript:alert(1)', 'pas une adresse'].some(win.isMeetingUrl));
+    settings.externalLinks = before.externalLinks;
+    LittleWindow.all[1].win.close();
+    await until(() => count() === 1, 'seconde fenêtre fermée');
+
+    // Barre : copie du lien, menu « Ouvrir dans… » avec recherche
+    const lui = (code) => l1.ui.webContents.executeJavaScript(code);
+    await until(() => lui(`!document.getElementById('copy').disabled && !document.getElementById('open').disabled`), 'barre de la petite fenêtre prête');
+    l1.url = base + '/p/externe?utm_source=x&id=1';
+    const clip = await clipboard.readText();
+    await lui(`document.getElementById('copy').click()`);
+    await until(async () => (await clipboard.readText()) === base + '/p/externe?id=1', 'lien copié');
+    check('petite fenêtre : bouton de copie du lien (sans paramètres de pistage)', await lui(`document.getElementById('copy').classList.contains('done')`));
+    await clipboard.writeText(clip);
+    l1.url = base + '/p/externe';
+    const extra = store.makeSpace('Été à Paris', '🌞', '#f59e0b');
+    d.spaces.push(extra);
+    little.hooks.openInOrbe = (url, spaceId) => calls.push([url, spaceId]);
+    await lui(`document.getElementById('open-in').click()`);
+    await until(() => lui(`!document.getElementById('spaces').hidden && document.querySelectorAll('#space-list button').length`).then((n) => n === d.spaces.length), 'menu des Espaces');
+    const kids = l1.win.contentView.children;
+    check('« Ouvrir dans… » : la liste des Espaces, par-dessus la page, avec un champ de recherche', kids[kids.length - 1] === l1.ui && await lui(`document.activeElement === document.getElementById('space-search') && document.body.classList.contains('menu')`));
+    await lui(`(() => { const s = document.getElementById('space-search'); s.value = 'ete a'; s.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+    check('recherche d’Espace : sans tenir compte des accents ni de la casse', await lui(`[...document.querySelectorAll('#space-list button')].map((b) => b.dataset.space).join()`) === extra.id);
+    await lui(`(() => { const s = document.getElementById('space-search'); s.value = 'zzz'; s.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+    check('recherche d’Espace sans résultat : dit', await lui(`document.querySelectorAll('#space-list button').length === 0 && !document.getElementById('space-none').hidden`));
+    await lui(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+    await until(() => !l1.menu && l1.win.contentView.children[l1.win.contentView.children.length - 1] === l1.view, 'menu refermé');
+    check('Échap referme le menu : la page repasse devant, la fenêtre reste', await lui(`document.getElementById('spaces').hidden && !document.body.classList.contains('menu')`) && count() === 1);
+    check('Espace inconnu ou message forgé : rien ne s’ouvre', l1.handle('openInSpace', 'inconnu') === undefined && l1.handle('openInSpace', { id: extra.id }) === undefined && calls.length === 0 && count() === 1);
+    l1.run('openInSpace');
+    await until(() => lui(`document.querySelectorAll('#space-list button').length`).then((n) => n === d.spaces.length), 'menu rouvert par ⌥⌘O');
+    await lui(`(() => { const s = document.getElementById('space-search'); s.value = 'paris'; s.dispatchEvent(new Event('input', { bubbles: true })); s.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); })()`);
+    await until(() => calls.length === 1 && count() === 0, 'page envoyée dans l’Espace choisi');
+    check('⌥⌘O, recherche, Entrée : la page part dans l’Espace trouvé et la petite fenêtre se ferme', calls[0][0] === base + '/p/externe' && calls[0][1] === extra.id);
+    little.hooks.openInOrbe = openInOrbe;
+    d.spaces.splice(d.spaces.indexOf(extra), 1);
+
+    // Taille mémorisée
+    const l2 = new LittleWindow(base + '/p/taille');
+    l2.win.setSize(702, 505);
+    l2.rememberSize();
+    l2.win.close();
+    await until(() => count() === 0, 'fenêtre fermée');
+    const l3 = new LittleWindow('');
+    check('petite fenêtre : la taille choisie est reprise par la suivante', l3.win.getSize().join('x') === '702x505' && store.state.window.littleSize.width === 702, l3.win.getSize().join('x'));
+    store.state.window.littleSize = { width: 'x', height: -5 };
+    check('taille enregistrée illisible ou hors bornes : taille par défaut, puis bornée', JSON.stringify(little.savedSize()) === JSON.stringify({ width: 860, height: 640 }) && (store.state.window.littleSize = { width: 10, height: 99999 }) && JSON.stringify(little.savedSize()) === JSON.stringify({ width: 380, height: 3000 }));
+    if (before.size) store.state.window.littleSize = before.size; else delete store.state.window.littleSize;
+
+    // Jamais une page d'Orbe dans une petite fenêtre
+    l3.load('orbe://app/settings.html');
+    check('petite fenêtre : une adresse interne d’Orbe n’y est jamais chargée', !l3.view && l3.url === '' && new LittleWindow('orbe://app/library.html').url === '');
+    l3.load(base + '/p/garde');
+    await until(() => l3.title === 'Page garde', 'page de la petite fenêtre');
+    await l3.view.webContents.executeJavaScript(`location.href = 'orbe://app/settings.html'; true`).catch(() => {});
+    await sleep(300);
+    check('… ni atteinte par une navigation de la page', l3.view.webContents.getURL() === base + '/p/garde' && !win.trusted.has(l3.view.webContents));
+    const asked = [];
+    const box = dialog.showMessageBoxSync;
+    dialog.showMessageBoxSync = (...args) => { asked.push(args); return 0; };
+    await closeAll();
+    dialog.showMessageBoxSync = box;
+    settings.routes = before.routes;
+  }
+
+  // === Aperçu : réunions, aiguillage, adresse ================================
+  {
+    const settings = store.state.settings;
+    const routes = settings.routes;
+    const other = store.makeSpace('Travail', '💼', '#6366f1');
+    d.spaces.push(other);
+    settings.routes = [{ match: '/p/regle', to: other.id }, { match: '/p/petite', to: 'little' }];
+    check('lien qui s’ouvrirait en aperçu : aperçu, onglet pour une réunion, aiguillage pour une règle', w.peekTarget(base + '/p/x') === 'peek' && w.peekTarget('https://meet.google.com/abc-defg-hij') === 'tab' && w.peekTarget(base + '/p/regle') === 'route' && w.peekTarget(base + '/p/petite') === 'route');
+    const Pn = await open('/liens', 'Liens');
+    w.togglePin(Pn);
+    const rt = win.live.get(Pn);
+    // Clic sur un lien sortant de l'onglet épinglé, tel que le moteur le rapporte : relâchement
+    // du bouton, puis navigation de la page.
+    const follow = (url) => {
+      rt.wc.emit('before-mouse-event', { preventDefault() {} }, { type: 'mouseUp', button: 'left', x: 20, y: 20 });
+      const e = { isMainFrame: true, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
+      rt.wc.emit('will-navigate', e, url);
+      return e.defaultPrevented;
+    };
+    const outside = `http://localhost:${port}`;
+    check('onglet épinglé, lien vers un autre site : aperçu', follow(outside + '/p/x') === true && !!w.peekState && w.peekState.url === outside + '/p/x');
+    w.closePeek({ animate: false });
+    const opened = [];
+    const newTab = w.newTab;
+    w.newTab = (url, opts) => { opened.push([url, opts && opts.after]); };
+    const held = follow('https://meet.google.com/abc-defg-hij');
+    w.newTab = newTab;
+    check('onglet épinglé, lien de réunion : un onglet à côté, pas d’aperçu', held === true && !w.peekState && opened.length === 1 && opened[0][0] === 'https://meet.google.com/abc-defg-hij' && opened[0][1] === Pn);
+    const held2 = follow(outside + '/p/regle');
+    await until(() => w.spaceId === other.id && other.today.length === 1, 'lien aiguillé vers son Espace');
+    check('onglet épinglé, lien couvert par une règle d’aiguillage : il s’ouvre dans l’Espace de la règle, pas en aperçu', held2 === true && !w.peekState && d.tabs[other.today[0]].url === outside + '/p/regle');
+    w.close(other.today[0], { silent: true, ask: false });
+    w.switchSpace(space.id);
+    w.activate(Pn);
+    const lw0 = little.LittleWindow.all.length;
+    follow(outside + '/p/petite');
+    await until(() => little.LittleWindow.all.length === lw0 + 1, 'lien aiguillé vers une petite fenêtre');
+    check('règle « petite fenêtre » : le lien y va, pas en aperçu', !w.peekState && little.LittleWindow.all[lw0].url === outside + '/p/petite');
+    little.LittleWindow.all[lw0].win.close();
+    settings.routes = routes;
+
+    // Adresse de l'aperçu quand la barre d'outils est affichée
+    w.activate(Pn);
+    const plain = w.peekRect();
+    const zone = w.contentRect();
+    check('aperçu sans barre d’outils : la carte commence à 16 px du haut de la zone des pages', plain.y === zone.y + 16);
+    commands.setSetting('showToolbar', true);
+    await until(() => w.toolbarShown && w.contentRect().y > zone.y, 'barre d’outils affichée');
+    w.openPeek(base + '/p/adresse', Pn);
+    await until(() => w.peekState && w.peekChrome && !w.peekChrome.webContents.isLoading() && w.peekChrome.webContents.executeJavaScript(`!document.getElementById('peek-url').hidden && document.getElementById('peek-url').textContent`).then((x) => x === base + '/p/adresse'), 'adresse de l’aperçu affichée');
+    const z2 = w.contentRect();
+    const card = w.peekRect();
+    const pill = await w.peekChrome.webContents.executeJavaScript(`(() => { const r = document.getElementById('peek-url').getBoundingClientRect(); return { top: r.top, bottom: r.bottom }; })()`);
+    check('barre d’outils affichée : l’aperçu montre son adresse, au-dessus de la carte', card.y === z2.y + 40 && pill.bottom <= card.y - z2.y && pill.top >= 0, JSON.stringify([card, z2, pill]));
+    w.peekState.view.webContents.loadURL(base + '/p/suite');
+    await until(() => w.peekChrome.webContents.executeJavaScript(`document.getElementById('peek-url').textContent`).then((x) => x === base + '/p/suite'), 'adresse suivie');
+    check('l’adresse de l’aperçu suit sa navigation', true);
+    commands.setSetting('showToolbar', false);
+    await until(() => !w.toolbarShown && w.peekChrome.webContents.executeJavaScript(`document.getElementById('peek-url').hidden`), 'barre d’outils masquée');
+    check('barre d’outils masquée : plus d’adresse, la carte remonte', w.peekRect().y === w.contentRect().y + 16);
+    w.closePeek({ animate: false });
+    w.togglePin(Pn);
+    d.spaces.splice(d.spaces.indexOf(other), 1);
+    w.close(Pn, { silent: true, ask: false });
+  }
+
+
+  // === Menus : partage, Boosts, volets ; enregistrer, imprimer ; vidéo en image dans l'image ===
+  {
+    const fs = require('fs');
+    const os = require('os');
+    const path = require('path');
+    const { dialog } = require('electron');
+    const menuHas = (key) => (function find(m) { return m.items.some((it) => it.label === t(key) || (it.submenu && find(it.submenu))); })(Menu.getApplicationMenu());
+    const V = await open('/video', 'Vidéo');
+    const vrt = win.live.get(V);
+    require('../src/main/menu').refresh(true);
+    check('barre de menus : « Agrandir ce volet », « Séparer tous les onglets… », « Afficher les Boosts… »' + (process.platform === 'darwin' ? ', « Partager… »' : ''), ['view.expandSplit', 'view.separateAll', 'boost.list', ...(process.platform === 'darwin' ? ['tb.share'] : [])].every(menuHas), ['view.expandSplit', 'view.separateAll', 'boost.list', 'tb.share'].filter((k) => !menuHas(k)).join());
+    // Enregistrer la page (⇧⌘S)
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'orbe-page-'));
+    const file = path.join(tmp, 'page.html');
+    const save = dialog.showSaveDialog;
+    let proposed = '';
+    dialog.showSaveDialog = async (win0, opts) => { proposed = path.basename(opts.defaultPath); return { canceled: false, filePath: file }; };
+    await w.run('savePage');
+    await until(() => fs.existsSync(file) && fs.statSync(file).size > 50, 'page enregistrée');
+    dialog.showSaveDialog = save;
+    check('⇧⌘S : la page est enregistrée dans le fichier choisi, nommé d’après son titre', proposed === 'Vidéo.html' && /<title>Vidéo<\/title>/.test(fs.readFileSync(file, 'utf8')));
+    fs.rmSync(tmp, { recursive: true, force: true });
+    // Imprimer (⌘P) : la demande part bien à la page affichée (la boîte du système n'est pas ouverte ici).
+    let printed = 0;
+    const print = vrt.wc.print;
+    vrt.wc.print = () => { printed += 1; };
+    w.run('print');
+    vrt.wc.print = print;
+    check('⌘P : l’impression est demandée à la page affichée', printed === 1);
+    // Image dans l'image depuis le menu de la vidéo
+    const vmenu = w.pageMenuTemplate(vrt, { x: 100, y: 90, mediaType: 'video', srcURL: '' });
+    check('menu d’une vidéo sans adresse propre (flux) : image dans l’image seulement', labels(vmenu).join('|') === [t('ctx.pip'), t('ctx.inspect')].join('|'));
+    if (!env.vivant) {
+      ignorer('menu d’une vidéo : « Image dans l’image » la détache, une seconde fois la ramène', env.muet || env.raison);
+    } else {
+      await vrt.wc.executeJavaScript('start()', true);
+      await until(() => vrt.wc.executeJavaScript('document.getElementById("v").readyState > 2 && document.getElementById("v").videoWidth > 0'), 'vidéo en lecture');
+      item(vmenu, 'ctx.pip').click();
+      await until(() => vrt.wc.executeJavaScript('document.pictureInPictureElement === document.getElementById("v")'), 'vidéo en image dans l’image');
+      item(vmenu, 'ctx.pip').click();
+      await until(async () => !(await vrt.wc.executeJavaScript('!!document.pictureInPictureElement')), 'vidéo revenue dans la page');
+      check('menu d’une vidéo : « Image dans l’image » la détache, une seconde fois la ramène', true);
+    }
+    w.close(V, { silent: true, ask: false });
   }
 
   // === Ménage ================================================================

@@ -602,6 +602,8 @@ const fr = {
 
   'little.openIn': 'Ouvrir dans un Espace…',
   'little.open': 'Ouvrir dans Orbe',
+  'little.searchSpaces': 'Chercher un Espace',
+  'little.noSpace': 'Aucun Espace à ce nom',
   'err.title': 'Impossible d’ouvrir cette page',
   'err.retry': 'Réessayer',
   'incognito.title': 'Navigation privée',
@@ -1445,6 +1447,8 @@ const en = {
   'tb.share': 'Share…',
   'little.openIn': 'Open in a Space…',
   'little.open': 'Open in Orbe',
+  'little.searchSpaces': 'Search Spaces',
+  'little.noSpace': 'No Space by that name',
   'err.title': 'This page can’t be opened',
   'err.retry': 'Try again',
   'incognito.title': 'Incognito',

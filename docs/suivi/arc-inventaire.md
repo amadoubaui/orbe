@@ -341,9 +341,9 @@ Actions de la barre de commande relevées dans Arc (libellés du binaire et du c
 | APE-6 | Geste de fermeture interactif | HC 20498377604887 | ⬜ | | |
 | APE-7 | ⌘Z ou ⇧⌘T rouvre un aperçu fermé | HC 20498377604887 ; menu « Annuler Close Peek » | ✅ | `W:dismissPeek` ; self « ⌘Z rouvre l’aperçu fermé », « ⇧⌘T rouvre aussi un aperçu fermé » ; ui 18 | La page de l’aperçu est rechargée (son défilement et ses saisies ne sont pas rendus) |
 | APE-8 | Animation d'ouverture et de fermeture | HC 20498417809815 (existence) ; durée non mesurée | ✅ | fondu du voile seul, la page apparaît d'un coup | la carte grandit depuis le lien (200 ms), se réduit à la fermeture (150 ms) ; self ; ui 16. Durées d'Arc non mesurées |
-| APE-9 | La barre d'outils s'affiche aussi dans l'aperçu | HC 20498293324823 | ⬜ | | |
-| APE-10 | Les liens de réunion s'ouvrent en onglet, pas en aperçu | HC 20498377604887 | ⬜ | | |
-| APE-11 | L'aperçu respecte les règles d'aiguillage | HC 20498293324823 | 🟡 | non vérifié | |
+| APE-9 | La barre d'outils s'affiche aussi dans l'aperçu | HC 20498293324823 | ✅ | barre d’outils affichée : l’adresse de l’aperçu s’affiche au-dessus de la carte et suit sa navigation ; self « barre d’outils affichée : l’aperçu montre son adresse… », « l’adresse de l’aperçu suit sa navigation » ; ui 16 | |
+| APE-10 | Les liens de réunion s'ouvrent en onglet, pas en aperçu | HC 20498377604887 | ✅ | self « onglet épinglé, lien de réunion : un onglet à côté, pas d’aperçu » | |
+| APE-11 | L'aperçu respecte les règles d'aiguillage | HC 20498293324823 | ✅ | une règle d’aiguillage passe avant l’aperçu (Espace ou petite fenêtre) ; self « onglet épinglé, lien couvert par une règle d’aiguillage… », « règle « petite fenêtre »… » | |
 | APE-12 | Tableaux et notes ouverts depuis la Bibliothèque : en aperçu | HC 20498377604887 | ⬜ | ouverts en onglet | |
 
 ## PET — Petite fenêtre (Little Arc)
@@ -351,21 +351,21 @@ Actions de la barre de commande relevées dans Arc (libellés du binaire et du c
 | Id | Ce que fait Arc | Preuve Arc | État | Preuve Orbe | Note |
 | --- | --- | --- | --- | --- | --- |
 | PET-1 | ⌥⌘N ouvre une petite fenêtre sans barre latérale | menu ; HC 19235387524503 | ✅ | self | |
-| PET-2 | Les liens venus d'autres applications s'y ouvrent (par défaut) | HC 19235387524503 ; binaire | 🟡 | MA:openUrl selon réglage ; défaut à vérifier | |
-| PET-3 | ⌥⌘clic sur un lien ou un onglet | slashgear ; binaire | 🟡 | lien : ui 19 (réglage `littleAltClick`) | Pas sur un onglet de la barre latérale |
+| PET-2 | Les liens venus d'autres applications s'y ouvrent (par défaut) | HC 19235387524503 ; binaire | 🟡 | réglage « Liens venus d’autres applications » ; self « lien venu d’une autre application, réglage « petite fenêtre » : il s’y ouvre » | Le défaut d’Orbe reste la fenêtre principale (Arc : petite fenêtre) : choix à trancher |
+| PET-3 | ⌥⌘clic sur un lien ou un onglet | slashgear ; binaire | ✅ | lien : ui 19 (réglage `littleAltClick`) ; onglet de la barre latérale : self « ⌥⌘clic sur un onglet de la barre latérale : sa page dans une petite fenêtre, l’onglet reste » | |
 | PET-4 | Bouton « Open In » ; ⌘O vers l'Espace le plus récent ; ⌥⌘O pour choisir | HC 19235387524503 | ✅ | self « Ouvrir dans Orbe crée un onglet » | |
-| PET-5 | Recherche d'Espace dans le menu « Open In » | binaire « Search Spaces » | ⬜ | | |
-| PET-6 | Plusieurs petites fenêtres ; le même lien externe refocalise celle qui existe | HC 20498377604887 | 🟡 | non vérifié | |
+| PET-5 | Recherche d'Espace dans le menu « Open In » | binaire « Search Spaces » | ✅ | menu « Ouvrir dans… » dessiné dans la barre de la petite fenêtre, avec un champ de recherche (accents et casse ignorés) ; self « Ouvrir dans… : la liste des Espaces… », « recherche d’Espace… », « ⌥⌘O, recherche, Entrée… » ; ui 25 (deux vérifications) | |
+| PET-6 | Plusieurs petites fenêtres ; le même lien externe refocalise celle qui existe | HC 20498377604887 | ✅ | self « le même lien une seconde fois : la petite fenêtre existante revient, sans en ouvrir une autre », « un autre lien : une seconde petite fenêtre » | |
 | PET-7 | Fermées d'office après 6 h ; elles vont dans l'archive, filtre « Little Arc » | HC 19235387524503 ; binaire | 🟡 | délai réglable (`littleArchiveHours`), page rangée dans l’archive ; self | « Jamais » par défaut, et non 6 h ; pas de filtre « petite fenêtre » dans l’archive |
 | PET-8 | Flotte au-dessus du plein écran, s'ouvre sur le bureau courant | HC 20498377604887 | 🟡 | non vérifié | |
-| PET-9 | Extensions disponibles ; bouton de copie du lien | binaire (infobulles) | ⬜ | | |
-| PET-10 | Menu du Dock : afficher/masquer toutes les petites fenêtres, nouvelle fenêtre privée | HC 20498377604887 | ⬜ | | `app.dock.setMenu` |
+| PET-9 | Extensions disponibles ; bouton de copie du lien | binaire (infobulles) | 🟡 | bouton de copie du lien (sans paramètres de pistage) ; self « petite fenêtre : bouton de copie du lien… » ; ui 25 | Extensions absentes de la petite fenêtre |
+| PET-10 | Menu du Dock : afficher/masquer toutes les petites fenêtres, nouvelle fenêtre privée | HC 20498377604887 | ✅ | menu du Dock : navigation privée, masquer ou afficher toutes les petites fenêtres ; self lat « menu du Dock… » (cinq vérifications, voir MEN-96) | |
 | PET-11 | Retient le profil choisi pour un domaine | HC 20498377604887 | ⬜ | | |
-| PET-12 | Taille mémorisée | binaire (préférence `LittleBrowserWindow_size`) | 🟡 | 860 × 640 fixes | |
+| PET-12 | Taille mémorisée | binaire (préférence `LittleBrowserWindow_size`) | ✅ | taille de la dernière petite fenêtre redimensionnée reprise par la suivante ; self « petite fenêtre : la taille choisie est reprise par la suivante », « taille enregistrée illisible ou hors bornes… » | |
 | PET-13 | Animation d'ouverture | HC 20498417809815 | ⬜ | | |
 | PET-14 | Première fois : bulle d'explication | binaire | ⬜ | | |
 | PET-15 | Aiguillage : règle « contient » ou « est égal à » → Espace ; défaut Little Arc, Espace le plus récent ou un Espace précis | HC 22932014625431 | ✅ | self « aiguillage : le lien s'ouvre dans l'Espace de la règle » | « est égal à » absent |
-| PET-16 | Les liens Google Meet vont dans l'Espace le plus récent | HC 20498377604887 | ⬜ | | |
+| PET-16 | Les liens Google Meet vont dans l'Espace le plus récent | HC 20498377604887 | ✅ | Meet, Zoom, Teams, Webex… : toujours un onglet de l’Espace affiché ; self « liens de réunion (Meet, Zoom, Teams) venus d’ailleurs : dans un onglet, jamais en petite fenêtre », « lien de réunion ou non » | |
 
 ## THM — Thèmes et apparence
 
@@ -655,7 +655,7 @@ Relevé complet d'Arc par l'accessibilité. Orbe : `menu.js` ; test self « les 
 | MEN-18 | File → New Easel | ⌃⇧E | ✅ | |
 | MEN-19 | File → Close Window | ⇧⌘W | ✅ | |
 | MEN-20 | File → Archive Tab | ⌘W | ✅ | |
-| MEN-21 | File → Share… | | ⬜ | Feuille de partage macOS (`ShareMenu` d'Electron) |
+| MEN-21 | File → Share… | | ✅ | « Partager… » (macOS, `ShareMenu`) au menu Fichier et au clic droit sur la barre d’outils ; self « barre de menus… ». Feuille de partage non vérifiée à la main |
 | MEN-22 | File → Capture… | ⇧⌘2 | 🟡 | Voir TAB-14 |
 | MEN-23 | File → Capture Full Page | | ✅ | |
 | MEN-24 | File → Capture in Portrait Mode | | ⬜ | |
@@ -686,7 +686,7 @@ Relevé complet d'Arc par l'accessibilité. Orbe : `menu.js` ; test self « les 
 | MEN-49 | View → Add Split View | ⌃⇧= | ✅ | |
 | MEN-50 | View → Close this Split Pane | ⌃⇧- | ✅ | |
 | MEN-51 | View → Separate Page from Split View | | ✅ | W:separateSplit, grisé hors d’une vue scindée ; self lat (3 vérifications) |
-| MEN-52 | View → Expand Current Split | | ⬜ | |
+| MEN-52 | View → Expand Current Split | | ✅ | « Agrandir ce volet » ; self « barre de menus : Agrandir ce volet… » (voir SCI-14) |
 | MEN-53 | View → Zoom to Actual Size, Zoom In, Zoom Out | ⌘0, ⌘+, ⌘- | ✅ | self lat : niveaux de zoom lus sur la page (0,5 ; −0,5 ; 0) |
 | MEN-54 | View → Cast | | ➖ | Electron n’embarque pas le routeur de médias de Chrome (Cast) |
 | MEN-55 | View → Developer → View Source | ⌥⌘U | ✅ | self lat : onglet « view-source: » chargé depuis le site |
@@ -722,7 +722,7 @@ Relevé complet d'Arc par l'accessibilité. Orbe : `menu.js` ; test self « les 
 | MEN-85 | Window → View Downloads… | ⇧⌘J | ✅ | |
 | MEN-86 | Window → View Easels… | | ✅ | |
 | MEN-87 | Window → View Media… | | 🟡 | Liste simple |
-| MEN-88 | Window → View Boosts… | | ⬜ | |
+| MEN-88 | Window → View Boosts… | | ✅ | « Afficher les Boosts… » (menu Présentation) ; self « barre de menus… » (voir BOO-11) |
 | MEN-89 | Window → Bring All to Front, liste des fenêtres | | ✅ | Rôle natif |
 | MEN-90 | Help → Getting Started | | ✅ | « Bienvenue dans Orbe » ; self « la page d'accueil s'affiche » |
 | MEN-91 | Help → Essential Keyboard Shortcuts | | ✅ | self (reglages) « page des raccourcis, barre de commande et pages de l’interface : même nouveau raccourci » |
@@ -770,7 +770,7 @@ Arc : `menu` pour ceux de la barre de menus, sinon la source indiquée. Orbe : `
 | RAC-30 | ⇧⌘2 | Capture | menu | ✅ | self « capture d’une zone : enregistrée », « …l’image a les proportions de la zone » |
 | RAC-31 | ⌃⇧E | Nouveau tableau | menu | ✅ | |
 | RAC-32 | ⌃⇧N / ⌃⌥N | Nouvelle note, note en vue scindée | HC 22557798824855 | 🟡 | ⌃⌘N dans Orbe |
-| RAC-33 | ⇧⌘S / ⌘P | Enregistrer la page, imprimer | menu | 🟡 | Sans test |
+| RAC-33 | ⇧⌘S / ⌘P | Enregistrer la page, imprimer | menu | ✅ | self « ⇧⌘S : la page est enregistrée dans le fichier choisi, nommé d’après son titre », « ⌘P : l’impression est demandée à la page affichée » (la boîte d’impression du système n’est pas ouverte dans l’essai) |
 | RAC-34 | ⌥⌘U / ⌥⌘I / ⌥⌘C / ⌥⌘J | Source, outils, inspecteur, console | menu | ✅ | self « ⌥⌘U : le code source s’ouvre dans un nouvel onglet », « ⌥⌘I, ⌥⌘C, ⌥⌘J… au menu, avec leur raccourci » (l’ouverture des outils eux-mêmes n’est pas essayée) |
 | RAC-35 | ⌃D | Mode développeur du site | menu | ✅ | `toggleDevMode` : barre d’outils et adresse entière pour le site ; Alt+Shift+D sous Windows ; self |
 | RAC-36 | ⌃⌘F | Plein écran | menu | 🟡 | |
@@ -825,7 +825,7 @@ Arc : `menu` pour ceux de la barre de menus, sinon la source indiquée. Orbe : `
 | DIV-13 | Menu de page, lien : ouvrir dans un nouvel onglet, en vue scindée, en aperçu, dans Little Arc, copier | slashgear ; binaire « Open in Background Tab », « Open in Split View » | ✅ | self « menu de page, lien… » (cinq vérifications : contenu, nouvel onglet en arrière-plan, vue scindée, aperçu, petite fenêtre) | |
 | DIV-14 | Menu de page, sélection : chercher, « Share Quote » | HC 20498293324823 ; binaire « Search With Google » | ✅ | copier, rechercher, « Copier la sélection en citation » (équivalent de Share Quote) ; self « menu de page, sélection… », « Copier la sélection en citation… » | |
 | DIV-15 | Menu de page, image : ouvrir, copier, enregistrer | non vérifié (Chromium) | ✅ | self « menu de page, image : ouvrir, copier, copier l’adresse, enregistrer » (contenu du menu ; les actions elles-mêmes sont celles de Chromium) | |
-| DIV-16 | Menu de page, vidéo : image dans l'image | HC 19234766331799 | ⬜ | | |
+| DIV-16 | Menu de page, vidéo : image dans l'image | HC 19234766331799 | 🟡 | « Image dans l’image » au menu d’une vidéo (la détache, une seconde fois la ramène) ; self « menu d’une vidéo… » : contenu du menu vérifié, lecture réelle ignorée écran verrouillé | À confirmer par un essai écran vivant |
 | DIV-17 | Menu de page : traduire, « Customize Page » (Boost) | HC 25626093607703 ; binaire | ✅ | « Modifier le Boost de ce site… » et « Traduire la page » (page traduite par Google dans un nouvel onglet, sur un clic) ; self « menu de page, page… », « Traduire la page… » | |
 | DIV-18 | Menu de page : Inspecter | non vérifié | ✅ | « Inspecter » en dernier article de chaque menu de page ; self (cinq menus vérifiés) | |
 | DIV-19 | Boîte « quitter la page ? » (`beforeunload`) | non vérifié (Chromium) | ✅ | question « Quitter la page ? » à la navigation, à la fermeture de l’onglet, de plusieurs onglets et de la fenêtre (unload.js) ; self « fermer l’onglet puis « Rester » : l’onglet revient… », « archiver plusieurs onglets : une question par page… », « fermer la fenêtre puis « Rester »… » ; ui « page modifiée au clavier… » | Aperçu fermé sans question |
