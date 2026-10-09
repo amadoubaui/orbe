@@ -252,6 +252,52 @@ module.exports = async function finitions2Tests(ctx) {
     check('chargement fini : la lueur s’éteint', true);
   }
 
+  // --- Téléchargements en cours, au bas de la barre (BL-57) -----------------------------------
+  {
+    const dl = require('../src/main/downloads');
+    const rec = { id: 'fin2-dl', name: 'gros <b>fichier</b>.zip', url: dead('dl'), path: '', state: 'progressing', received: 1048576, total: 10485760 };
+    const done = { id: 'fin2-fini', name: 'fini.zip', url: dead('dl2'), path: '', state: 'completed', received: 5, total: 5 };
+    store.state.downloads.push(done, rec);
+    check('temps restant : inconnu tant que le débit n’est pas mesuré', dl.eta(rec) === null);
+    dl.sample(rec, 1000);
+    rec.received = 2097152;
+    dl.sample(rec, 1200); // relevé trop rapproché : ignoré
+    dl.sample(rec, 2000); // 1 Mo en 1 s
+    check('temps restant : reste à recevoir ÷ débit lissé (8 Mo à 1 Mo/s : 8 s) ; en pause ou sans taille : inconnu',
+      dl.eta(rec) === 8 && dl.eta({ ...rec }) === null && (() => { rec.paused = true; const p = dl.eta(rec); rec.paused = false; return p === null; })(), String(dl.eta(rec)));
+    w.changed();
+    await until(() => ui('document.querySelectorAll("#dls .dl").length === 1 && !document.getElementById("dls").hidden'), 'ligne du téléchargement');
+    const row = await ui(`(() => { const el = document.querySelector('#dls .dl'); return { name: el.querySelector('.dl-name').textContent, tags: el.querySelector('.dl-name').children.length, sub: el.querySelector('.dl-sub').textContent, bar: el.querySelector('.dl-bar').style.transform, x: el.querySelector('.dl-x').title, id: el.dataset.dl }; })()`);
+    const units = T('dl.units').split(' ');
+    check('téléchargement en cours : une ligne au bas de la barre — nom posé comme du texte, taille reçue sur taille totale, temps restant, « × » pour annuler',
+      row.name === rec.name && row.tags === 0 && row.sub === `2.0 ${units[2]} / 10.0 ${units[2]} · ${T('dl.leftSec', { n: 8 })}` && row.bar === 'scaleX(0.2)' && row.x === T('dl.cancel') && row.id === rec.id, JSON.stringify(row));
+    const more = [1, 2, 3].map((n) => ({ ...rec, id: 'fin2-plus' + n, name: 'autre' + n }));
+    store.state.downloads.push(...more);
+    w.changed();
+    await until(() => ui('document.querySelectorAll("#dls .dl").length === 3'), 'trois lignes');
+    check('seuls les téléchargements en cours ont une ligne, trois au plus, le plus récent en haut', await ui('[...document.querySelectorAll("#dls .dl-name")].map((x) => x.textContent).join()') === 'autre3,autre2,autre1');
+    store.state.downloads = store.state.downloads.filter((x) => !more.includes(x));
+    w.changed();
+    await until(() => ui('document.querySelectorAll("#dls .dl").length === 1'), 'une ligne');
+    rec.paused = true;
+    w.changed();
+    await until(() => ui(`document.querySelector('#dls .dl-sub').textContent.endsWith(${JSON.stringify(T('dl.paused'))})`), 'en pause');
+    check('téléchargement en pause : la ligne le dit, sans temps restant', true);
+    rec.paused = false;
+    const cancel0 = dl.cancel;
+    const cancelled = [];
+    dl.cancel = (d) => { cancelled.push(d.id); return true; };
+    await ui('document.querySelector("#dls .dl-x").click()');
+    await until(() => cancelled.length === 1, 'annulation demandée');
+    check('« × » : le téléchargement est annulé ; identifiant inconnu, objet, ou téléchargement déjà fini : refusé',
+      cancelled.join() === rec.id && w.handle('dlCancel', 'nope') === false && w.handle('dlCancel', { id: rec.id }) === false && w.handle('dlCancel', done.id) === false && cancelled.length === 1);
+    dl.cancel = cancel0;
+    store.state.downloads = store.state.downloads.filter((x) => x !== rec && x !== done);
+    w.changed();
+    await until(() => ui('document.getElementById("dls").hidden && document.querySelectorAll("#dls .dl").length === 0'), 'ligne retirée');
+    check('téléchargement terminé : la ligne s’en va', true);
+  }
+
   // --- Remise en état ---------------------------------------------------------------------
   w.switchSpace(space.id);
   for (const id of Object.keys(d.tabs)) if (mine(d.tabs[id])) { OrbeWindow.destroyView(id); delete d.tabs[id]; }

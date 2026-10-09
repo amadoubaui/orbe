@@ -458,6 +458,7 @@ function render(s) {
   lib.classList.toggle('downloading', !!s.downloads);
   fxDownloads(s.downloadsStarted);
   if (s.downloads) lib.querySelector('circle').style.strokeDashoffset = String(75.4 * (1 - s.downloads.progress));
+  renderDownloads(s.downloads ? s.downloads.items || [] : []);
 
   // Dépôt en attente : les listes viennent de prendre leur ordre définitif.
   if (drag && drag.settling && drag.settling !== structSig(s)) endDrag();
@@ -469,6 +470,52 @@ function render(s) {
   revealed = reveal ? reveal.n : 0;
   offViewSoon();
 }
+
+// --- Téléchargements en cours, au bas de la barre -----------------------------
+// Une ligne par téléchargement (trois au plus) : nom, taille reçue sur taille
+// totale, temps restant, et « × » pour annuler. Un clic sur la ligne ouvre les
+// téléchargements de la Bibliothèque. Le nom vient du site : posé comme du texte.
+function byteSize(n) {
+  if (!(n > 0)) return '';
+  const u = t('dl.units').split(' ');
+  let i = 0;
+  while (n >= 1024 && i < u.length - 1) { n /= 1024; i += 1; }
+  return `${n.toFixed(i ? 1 : 0)} ${u[i]}`;
+}
+function timeLeft(sec) {
+  if (sec === null || sec === undefined || !(sec >= 0)) return '';
+  if (sec < 60) return t('dl.leftSec', { n: Math.max(1, Math.round(sec)) });
+  if (sec < 3600) return t('dl.leftMin', { n: Math.round(sec / 60) });
+  return t('dl.leftHour', { h: Math.floor(sec / 3600), m: Math.round((sec % 3600) / 60) });
+}
+function renderDownloads(list) {
+  const box = $('dls');
+  box.hidden = !list.length;
+  while (box.children.length > list.length) box.lastChild.remove();
+  list.forEach((d, i) => {
+    let el = box.children[i];
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'dl';
+      el.innerHTML = '<div class="dl-text"><span class="dl-name"></span><span class="dl-sub"></span></div><button class="ib dl-x"><svg class="i"><use href="#i-x"/></svg></button><i class="dl-bar"></i>';
+      box.appendChild(el);
+    }
+    el.dataset.dl = d.id;
+    el.querySelector('.dl-name').textContent = d.name;
+    el.title = d.name;
+    const sizes = d.total ? `${byteSize(d.received) || '0'} / ${byteSize(d.total)}` : byteSize(d.received);
+    el.querySelector('.dl-sub').textContent = [sizes, d.paused ? t('dl.paused') : timeLeft(d.left)].filter(Boolean).join(' · ');
+    el.querySelector('.dl-x').title = t('dl.cancel');
+    el.querySelector('.dl-bar').style.transform = `scaleX(${d.total ? Math.max(0, Math.min(1, d.received / d.total)).toFixed(3) : 0})`;
+  });
+}
+$('dls').addEventListener('click', (e) => {
+  const el = e.target.closest('.dl');
+  if (!el) return;
+  e.stopPropagation();
+  if (e.target.closest('.dl-x')) send('dlCancel', el.dataset.dl);
+  else send('command', 'downloads');
+});
 
 // --- Ligne de l'onglet affiché : la montrer, signaler qu'elle est hors de vue --
 let revealed = 0;

@@ -241,11 +241,32 @@ async function confirmQuit() {
   return !!ok;
 }
 
+// Débit lissé de chaque téléchargement en cours (jamais enregistré) : il donne le temps
+// restant affiché au bas de la barre latérale. Un relevé toutes les 500 ms au plus.
+const rates = new WeakMap();
+function sample(d, now = Date.now()) {
+  const r = rates.get(d);
+  if (!r) { rates.set(d, { at: now, bytes: d.received || 0, rate: 0 }); return; }
+  const dt = now - r.at;
+  if (dt < 500) return;
+  const inst = (Math.max(0, (d.received || 0) - r.bytes) * 1000) / dt;
+  r.rate = r.rate ? r.rate * 0.7 + inst * 0.3 : inst;
+  r.at = now;
+  r.bytes = d.received || 0;
+}
+// Secondes restantes ; null si on ne peut pas le dire (taille inconnue, pause, débit pas encore mesuré).
+function eta(d) {
+  const r = rates.get(d);
+  if (!r || !(r.rate > 0) || !d.total || d.paused || d.stalled || d.total <= d.received) return null;
+  return Math.min(359999, Math.ceil((d.total - d.received) / r.rate));
+}
+
 function track(d, item, wc, { persist, hooks }) {
   items.set(d.id, item);
   records.set(item, d);
   const note = () => {
     d.received = item.getReceivedBytes();
+    sample(d);
     d.total = item.getTotalBytes();
     d.paused = item.isPaused();
     d.canResume = item.canResume();
@@ -561,4 +582,4 @@ async function action(name, a, sender) {
   return undefined;
 }
 
-module.exports = { saveFrom, mark, markTree, rename, cleared, dragAllowed, unmarked, decodable, imageSize, imageSizeOf, findRecord, confirmQuit, quarantine, beforeQuit, attach, bindProfile, action, resume, cancel, openFile, copyFile, trash, forget, menuTemplate, downloadDir, isDangerous, isPdfFile, safeName, env, internals: { items, resuming, DANGEROUS, asked, extOf, track, accepted, volatileRecords } };
+module.exports = { sample, eta, saveFrom, mark, markTree, rename, cleared, dragAllowed, unmarked, decodable, imageSize, imageSizeOf, findRecord, confirmQuit, quarantine, beforeQuit, attach, bindProfile, action, resume, cancel, openFile, copyFile, trash, forget, menuTemplate, downloadDir, isDangerous, isPdfFile, safeName, env, internals: { items, resuming, DANGEROUS, asked, extOf, track, accepted, volatileRecords } };

@@ -4525,7 +4525,12 @@ class OrbeWindow {
       // Couleur de thème de la page affichée (barre d'outils teintée), hors vue scindée.
       pageColor: toolbar && this.activeRt && this.visibleIds().length === 1 ? this.activeRt.themeColor || null : null,
       downloads: downloads.length
-        ? { count: downloads.length, progress: downloads.reduce((a, x) => a + (x.total ? x.received / x.total : 0), 0) / downloads.length }
+        ? {
+          count: downloads.length,
+          progress: downloads.reduce((a, x) => a + (x.total ? x.received / x.total : 0), 0) / downloads.length,
+          // Les trois plus récents, pour les lignes du bas de la barre (nom borné : il vient du site).
+          items: downloads.slice(-3).reverse().map((x) => ({ id: String(x.id), name: String(x.name || '').slice(0, 200), received: Number(x.received) || 0, total: Number(x.total) || 0, paused: !!x.paused, left: require('./downloads').eta(x) })),
+        }
         : null,
     };
     platform.syncChrome(this.win, { color: space.color, dark: payload.dark, toolbar, translucent: settings.translucent });
@@ -4589,6 +4594,8 @@ class OrbeWindow {
         return a && Array.isArray(a.ids) ? this.moveMany(a) : this.move(a);
       }
       case 'toggleMute': return this.toggleMute(a);
+      // « × » d'un téléchargement en cours, au bas de la barre latérale.
+      case 'dlCancel': { const dl = require('./downloads'); const rec = typeof a === 'string' ? dl.findRecord(a) : null; return rec && rec.state === 'progressing' ? dl.cancel(rec) : false; }
       case 'trace:stop': return require('./trace').stop(this);
       case 'mediaToggle': return this.mediaToggle();
       case 'mediaAct': return this.mediaAct(a);

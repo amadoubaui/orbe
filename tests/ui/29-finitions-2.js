@@ -2,6 +2,10 @@
 // pas », onglet lâché en haut de la page (vue empilée), dépôt dans un dossier fermé,
 // onglet glissé hors de la fenêtre puis vers une autre fenêtre, Échap doublé en plein écran.
 const assert = require('node:assert/strict');
+const fs = require('fs');
+const http = require('http');
+const os = require('os');
+const path = require('path');
 
 module.exports = {
   nom: 'Finitions 2 : premiers pas, quatre côtés, onglet hors de la fenêtre',
@@ -160,6 +164,51 @@ module.exports = {
       assert.equal((await ctx.titres()).filter((x) => x === 'Page B').length, 1);
       await ctx.principal(({ win }) => { win.hooks.cursor = win.hooks.cursor0; const w2 = win.OrbeWindow.all[1]; win.OrbeWindow.all[0].activate(win.OrbeWindow.all[0].space.today[0]); w2.win.close(); });
       await jusqua(async () => (await fenetres()).length === 1, 'seconde fenêtre fermée');
+    });
+
+    // --- Téléchargement en cours au bas de la barre -----------------------------------------
+    await t.verifier('téléchargement en cours : une ligne au bas de la barre (nom, taille, progression) ; un clic ouvre les téléchargements ; « × » l’annule', async () => {
+      const GROS = Buffer.alloc(4 * 1024 * 1024, 7);
+      const serveur = http.createServer((req, res) => {
+        res.setHeader('content-type', 'application/octet-stream');
+        res.setHeader('content-disposition', 'attachment; filename="gros.bin"');
+        res.setHeader('content-length', String(GROS.length));
+        let at = 0;
+        const timer = setInterval(() => {
+          if (res.destroyed || at >= GROS.length) { clearInterval(timer); if (!res.destroyed) res.end(); return; }
+          res.write(GROS.subarray(at, at + 16384));
+          at += 16384;
+        }, 100);
+      });
+      await new Promise((r) => serveur.listen(0, '127.0.0.1', r));
+      const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'orbe-ui-dl2-'));
+      try {
+        await ctx.clic(shell, ctx.ligne('Page A'));
+        await jusqua(async () => (await volets()).actif === 'Page A', 'Page A affichée');
+        await ctx.principal(({ w, store }, a) => { store.state.settings.downloadDir = a.dir; w.activeRt.wc.downloadURL(a.url); }, { dir: dossier, url: `http://127.0.0.1:${serveur.address().port}/gros.bin` });
+        const ligne = shell.locator('#dls .dl').first();
+        await jusqua(() => ligne.isVisible(), 'ligne du téléchargement', 10000);
+        assert.equal(await ligne.locator('.dl-name').textContent(), 'gros.bin');
+        const unites = (await ctx.texte('dl.units')).split(' ');
+        await jusqua(async () => new RegExp(`^[\\d.]+ (${unites.join('|')}) / 4\\.0 ${unites[2]}( · .+)?$`).test(await ligne.locator('.dl-sub').textContent()), 'taille reçue sur taille totale', 8000);
+        await jusqua(async () => /restantes|left/.test(await ligne.locator('.dl-sub').textContent()), 'temps restant affiché', 8000);
+        // La ligne tient au-dessus de la rangée du bas, dans la barre.
+        const b = await ligne.boundingBox();
+        const bas = await shell.locator('#bottom').boundingBox();
+        const barre = await shell.locator('#sidebar').boundingBox();
+        assert.ok(b.y + b.height <= bas.y + 1 && b.x >= barre.x && b.x + b.width <= barre.x + barre.width, JSON.stringify([b, bas, barre]));
+        await ctx.capture('telechargement-barre');
+        await ctx.clic(shell, ligne.locator('.dl-name'));
+        await ctx.attendrePage('library.html');
+        await ctx.clic(shell, ligne.locator('.dl-x'));
+        await jusqua(async () => (await shell.locator('#dls .dl').count()) === 0, 'ligne retirée');
+        await jusqua(() => !fs.existsSync(path.join(dossier, 'gros.bin')), 'morceau retiré');
+        assert.equal(await ctx.principal(({ store }) => store.state.downloads.filter((d) => d.name === 'gros.bin').map((d) => d.state).join()), 'cancelled');
+      } finally {
+        serveur.closeAllConnections();
+        serveur.close();
+        try { fs.rmSync(dossier, { recursive: true, force: true }); } catch {}
+      }
     });
 
     // --- Échap en plein écran -------------------------------------------------------------
