@@ -9,7 +9,7 @@ interface entièrement en français (anglais disponible dans les réglages).
 > Projet libre et indépendant, sans lien avec The Browser Company. Orbe ne
 > contient aucun code ni aucune ressource d'Arc : tout est réécrit.
 
-État : **version 0.12, macOS et Windows**. La version Windows est validée en intégration continue, pas encore essayée sur une machine réelle : voir [docs/windows.md](docs/windows.md).
+État : **version 0.13, macOS et Windows**. La version Windows est validée en intégration continue, pas encore essayée sur une machine réelle : voir [docs/windows.md](docs/windows.md).
 
 ![Orbe : barre latérale, favoris, onglets épinglés et barre de commande](docs/captures/barre-de-commande.png)
 
@@ -113,9 +113,9 @@ Il faut [Node.js](https://nodejs.org) 20 ou plus récent.
 git clone https://github.com/amadoubaui/orbe.git
 cd orbe
 npm start        # lance le navigateur
-npm test         # tests de bout en bout (plus de 700 vérifications)
-npm run test:ui  # tests d'interface Playwright, souris et clavier réels (321 vérifications)
-npm run test:ext # couche d'API des extensions, dans le vrai navigateur (146 vérifications)
+npm test         # tests de bout en bout (plus de 1 100 vérifications)
+npm run test:ui  # tests d'interface Playwright, souris et clavier réels (397 vérifications)
+npm run test:ext # couche d'API des extensions, dans le vrai navigateur (169 vérifications)
 # tests au clavier réel (prennent le clavier) : voir tests/natif/
 npm run build    # fabrique ~/.orbe-dev/dist/Orbe.app (-- --install pour /Applications)
 ```
