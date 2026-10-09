@@ -88,7 +88,7 @@ function build() {
         item('newTab'), item('newWindow'), item('newIncognito'), item('newLittle'), item('newNote'), item('newNoteSplit'), item('newEasel'), item('reopen'),
         sep, item('commandBar'), item('newProfile', { enabled: !!w && !w.incognito }),
         sep, item('closeTab'), item('closeWindow'),
-        sep, ...(platform.isMac ? [item('share', { enabled: !!tab && /^https?:/i.test(tab.url) })] : []), item('capture'), item('captureFull'), item('captureToEasel'), item('savePage'), item('print'),
+        sep, ...(platform.isMac ? [item('share', { enabled: !!tab && /^https?:/i.test(tab.url) })] : []), item('capture'), item('captureFull'), item('capturePortrait'), item('captureToEasel'), item('savePage'), item('print'),
       ],
     },
     {

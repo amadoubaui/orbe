@@ -360,11 +360,21 @@ body.parting #scroll .row, body.parting #divider { transform: translateY(0); tra
 body.incognito #incognito { display: flex; }
 
 /* Note « mise à jour disponible » : discrète, au-dessus des Espaces. */
-#update-note { display: flex; align-items: center; gap: 2px; margin-bottom: 4px; border-radius: 10px; background: var(--hover); flex: none; }
+/* Mise à jour disponible : une ligne discrète, un cœur qui bat ; au survol, la ligne
+   devient le bouton — dégradé aux couleurs de l'Espace — et la croix paraît.
+   Fondu et transformations seulement : la ligne ne change pas de taille. */
+#update-note { position: relative; display: flex; align-items: center; gap: 2px; margin-bottom: 4px; border-radius: 10px; background: var(--hover); flex: none; overflow: hidden; }
 #update-note[hidden] { display: none; }
-#update-open { flex: 1; min-width: 0; text-align: left; padding: 7px 4px 7px 10px; font-size: 11.5px; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#update-open::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-right: 7px; vertical-align: 1px; }
-#update-close { width: 24px; height: 24px; font-size: 14px; color: var(--dim); }
+#update-note::before { content: ''; position: absolute; inset: 0; background: linear-gradient(105deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #ff5fa2) 60%, color-mix(in srgb, var(--accent) 40%, #ffb347)); opacity: 0; transition: opacity 180ms var(--ease-out); pointer-events: none; }
+#update-note:hover::before, #update-note:focus-within::before { opacity: 1; }
+#update-open { position: relative; flex: 1; min-width: 0; text-align: left; padding: 7px 4px 7px 10px; font-size: 11.5px; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: color 180ms var(--ease-out), transform var(--spring-snappy); }
+#update-open:active { transform: scale(0.98); transition: transform var(--press); }
+#update-open::before { content: ''; display: inline-block; width: 11px; height: 10px; margin-right: 7px; vertical-align: -1px; background: var(--accent); -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 20'%3E%3Cpath d='M11 19.2C4.6 14.3 1 10.8 1 6.6 1 3.6 3.3 1.4 6.1 1.4c1.9 0 3.7 1 4.9 2.700 1.200-1.700 3-2.700 4.900-2.700 2.800 0 5.100 2.200 5.100 5.200 0 4.200-3.600 7.700-10 12.600z'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 20'%3E%3Cpath d='M11 19.2C4.6 14.3 1 10.8 1 6.6 1 3.6 3.3 1.4 6.1 1.4c1.9 0 3.7 1 4.9 2.700 1.200-1.700 3-2.700 4.900-2.700 2.800 0 5.100 2.200 5.100 5.200 0 4.200-3.600 7.700-10 12.600z'/%3E%3C/svg%3E") center / contain no-repeat; animation: update-heart 1600ms var(--ease) infinite; transition: background-color 180ms var(--ease-out); }
+@keyframes update-heart { 0%, 40%, 100% { transform: scale(1); } 12% { transform: scale(1.28); } 24% { transform: scale(0.96); } 32% { transform: scale(1.14); } }
+#update-note:hover #update-open, #update-note:focus-within #update-open { color: #fff; }
+#update-note:hover #update-open::before, #update-note:focus-within #update-open::before { background: #fff; }
+#update-close { position: relative; width: 24px; height: 24px; font-size: 14px; color: rgba(255, 255, 255, 0.85); opacity: 0; transform: scale(0.7); transition: opacity 140ms var(--ease-out), transform var(--spring-bouncy); }
+#update-note:hover #update-close, #update-close:focus-visible { opacity: 1; transform: none; }
 
 #bottom { height: 42px; display: flex; align-items: center; gap: 4px; flex: none; }
 #spaces { display: flex; align-items: center; justify-content: center; gap: 2px; overflow: hidden; }
@@ -395,6 +405,27 @@ body.incognito #incognito { display: flex; }
 #dl-ring circle { fill: none; stroke: var(--accent); stroke-width: 2; stroke-dasharray: 75.4; stroke-dashoffset: 75.4; transition: stroke-dashoffset 200ms; }
 #b-library.downloading #dl-ring { display: block; }
 
+/* Téléchargement commencé : un fichier tombe dans l'icône de la Bibliothèque (src/renderer/fx.js). */
+.dl-drop { position: absolute; left: 6px; top: 6px; width: 16px; height: 16px; pointer-events: none; color: var(--accent); opacity: 0; animation: dl-drop 560ms cubic-bezier(0.5, 0, 0.9, 0.6) both; }
+.dl-drop svg.i { fill: color-mix(in srgb, var(--accent) 22%, transparent); }
+@keyframes dl-drop {
+  0% { opacity: 0; transform: translate(10px, -64px) rotate(-14deg) scale(0.7); }
+  22% { opacity: 1; transform: translate(9px, -58px) rotate(-10deg) scale(1.1); }
+  80% { opacity: 1; transform: translate(1px, -6px) rotate(4deg) scale(0.8); }
+  100% { opacity: 0; transform: translate(0, 2px) rotate(0) scale(0.35); }
+}
+#b-library.gulp > svg.i:first-child { animation: dl-gulp var(--spring-bouncy); }
+@keyframes dl-gulp { 0% { transform: scale(1); } 30% { transform: scale(1.32) translateY(1px); } 100% { transform: scale(1); } }
+/* Premier affichage : un reflet traverse la barre, une fois. */
+#shimmer { position: absolute; inset: 0; overflow: hidden; pointer-events: none; border-radius: inherit; }
+#shimmer > i { position: absolute; top: -20%; bottom: -20%; left: 0; width: 55%; background: linear-gradient(100deg, transparent, color-mix(in srgb, #fff 13%, transparent) 45%, color-mix(in srgb, var(--accent) 16%, transparent) 55%, transparent); transform: translateX(-110%) skewX(-12deg); animation: shimmer 900ms 120ms var(--ease) both; }
+@keyframes shimmer { 0% { transform: translateX(-110%) skewX(-12deg); opacity: 0; } 20% { opacity: 1; } 100% { transform: translateX(260%) skewX(-12deg); opacity: 0; } }
+/* Dépôt dans un dossier : l'icône rebondit, la ligne s'éclaire. */
+.folder.gulped > .row .ic { animation: folder-gulp var(--spring-bouncy); }
+.folder.gulped > .row::after { content: ''; position: absolute; inset: 0; border-radius: inherit; background: color-mix(in srgb, var(--accent) 26%, transparent); pointer-events: none; animation: folder-flash 520ms var(--ease-out) both; }
+@keyframes folder-gulp { 0% { transform: scale(1); } 35% { transform: scale(1.35) rotate(-6deg); } 100% { transform: scale(1); } }
+@keyframes folder-flash { from { opacity: 1; } to { opacity: 0; } }
+
 #resize { position: absolute; top: 0; right: -3px; width: 7px; height: 100%; cursor: col-resize; -webkit-app-region: no-drag; }
 
 #drop-line { position: absolute; height: 2px; border-radius: 1px; background: var(--accent); pointer-events: none; display: none; z-index: 5; }
@@ -423,6 +454,12 @@ body.incognito #incognito { display: flex; }
   transition: left 50ms var(--ease-out);
 }
 body.toolbar #toolbar { display: flex; }
+/* Teintée par la couleur de thème de la page : la barre prolonge la page vers le haut
+   (le fond descend derrière ses coins arrondis). */
+#toolbar::before { content: ''; position: absolute; inset: -2px 0 -12px 0; border-radius: 10px 10px 0 0; background: var(--page, transparent); opacity: 0; transition: opacity 180ms var(--ease-out), background-color 180ms var(--ease-out); z-index: -1; pointer-events: none; }
+#toolbar.tinted::before { opacity: 1; }
+#toolbar.tinted { --fg: #16161a; --dim: rgba(22, 22, 26, 0.62); --faint: rgba(22, 22, 26, 0.4); --hover: rgba(0, 0, 0, 0.08); --pill: rgba(0, 0, 0, 0.07); color: var(--fg); }
+#toolbar.tinted.on-dark { --fg: #fff; --dim: rgba(255, 255, 255, 0.72); --faint: rgba(255, 255, 255, 0.45); --hover: rgba(255, 255, 255, 0.14); --pill: rgba(255, 255, 255, 0.12); }
 body.toolbar.docked #toolbar { left: var(--sw); }
 body.toolbar:not(.docked):not(.fullscreen) #toolbar { padding-left: 70px; }
 #tb-url {
@@ -461,14 +498,44 @@ body.toolbar #empty { top: 50px; }
 #empty .mark { display: none; }
 #empty p { margin: 0; font-size: 13.5px; color: var(--faint); }
 
-/* Lecteur miniature : un onglet en arrière-plan qui joue du son. */
-#media { display: flex; align-items: center; gap: 2px; height: 44px; padding: 0 6px 0 4px; margin: 4px 0 2px; border-radius: 12px; background: var(--hover); flex: none; }
+/* Lecteurs miniatures : un par onglet qui joue du son hors de vue (src/renderer/players.js).
+   Mouvements en transformations et opacité seulement. */
+#media { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 2px; flex: none; }
 #media[hidden] { display: none; }
-#media-open { flex: 1; min-width: 0; height: 36px; display: flex; align-items: center; gap: 10px; padding: 0 6px; border-radius: 9px; text-align: left; transition: transform var(--spring-snappy); }
-#media-open:hover { background: var(--hover); }
-#media-open:active { transform: scale(0.98); transition: transform var(--press); }
-#media-icon { display: grid; flex: none; }
-#media-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12.5px; font-weight: 500; }
+.mp { position: relative; display: flex; align-items: center; gap: 2px; height: 48px; padding: 0 6px 0 4px; border-radius: 12px; background: var(--hover); animation: mp-in var(--spring-smooth) both; contain: layout; }
+.mp.out { animation: mp-out 140ms var(--ease-in) both; pointer-events: none; }
+@keyframes mp-in { from { opacity: 0; transform: translateY(10px) scale(0.96); } }
+@keyframes mp-out { to { opacity: 0; transform: scale(0.96); } }
+.mp-open { flex: 1; min-width: 0; height: 40px; display: flex; align-items: center; gap: 9px; padding: 0 4px; border-radius: 9px; text-align: left; transition: transform var(--spring-snappy); }
+.mp-open:active { transform: scale(0.98); transition: transform var(--press); }
+.mp-art { width: 32px; height: 32px; flex: none; display: grid; place-items: center; border-radius: 7px; background: var(--hover); overflow: hidden; }
+.mp-art.cover .favicon { width: 32px; height: 32px; border-radius: 0; object-fit: cover; }
+.mp-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; transition: opacity 120ms var(--ease-out); }
+.mp-title { display: block; overflow: hidden; white-space: nowrap; font-size: 12.5px; font-weight: 550; line-height: 16px; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 14px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 14px), transparent); }
+.mp-title > span { display: inline-block; will-change: transform; }
+.mp-title.run > span { animation: mp-marquee var(--run, 6000ms) ease-in-out infinite alternate; }
+@keyframes mp-marquee { 0%, 18% { transform: translateX(0); } 82%, 100% { transform: translateX(var(--shift, 0)); } }
+.mp-sub { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 11px; line-height: 14px; color: var(--dim); }
+.mp-sub[hidden] { display: none; }
+/* Au survol (ou au clavier), les commandes prennent la place du titre. */
+.mp-ctl { position: absolute; left: 44px; right: 36px; top: 0; height: 46px; display: flex; align-items: center; justify-content: center; gap: 1px; opacity: 0; pointer-events: none; transform: translateY(3px); transition: opacity 120ms var(--ease-out), transform var(--spring-snappy); }
+.mp-ctl .ib[hidden] { display: none; }
+.mp:hover .mp-ctl, .mp:focus-within .mp-ctl, .mp.scrub .mp-ctl { opacity: 1; pointer-events: auto; transform: none; }
+.mp:hover .mp-text, .mp:focus-within .mp-text, .mp.scrub .mp-text { opacity: 0; }
+.mp .ib { width: 26px; height: 26px; flex: none; }
+.mp-play { transition: transform var(--spring-bouncy); }
+.mp-play:active { transform: scale(0.86); transition: transform var(--press); }
+.mp-x { position: absolute; top: -5px; right: -4px; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 50%; background: var(--bg); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3); opacity: 0; transform: scale(0.6); transition: opacity 120ms var(--ease-out), transform var(--spring-bouncy); }
+.mp-x svg.i { width: 10px; height: 10px; stroke-width: 2.2; }
+.mp:hover .mp-x, .mp-x:focus-visible { opacity: 1; transform: none; }
+/* Avancement : un trait fin au bas de la carte, qui s'épaissit sous le pointeur. */
+.mp-bar { position: absolute; left: 12px; right: 12px; bottom: 0; height: 10px; cursor: pointer; touch-action: none; }
+.mp-bar[hidden] { display: none; }
+.mp-bar::before, .mp-bar > i { content: ''; position: absolute; left: 0; right: 0; bottom: 3px; height: 2px; border-radius: 1px; transform-origin: 0 100%; }
+.mp-bar::before { background: var(--faint); opacity: 0.5; transition: transform var(--spring-snappy); }
+.mp-bar > i { background: var(--accent); transform: scaleX(0); }
+.mp-bar:hover::before, .mp.scrub .mp-bar::before { transform: scaleY(2); }
+.mp.fine .mp-bar > i { background: color-mix(in srgb, var(--accent) 60%, #fff); }
 
 /* Longues listes : les lignes hors écran ne sont ni mises en page ni peintes. */
 .list > .row, .children > .row { content-visibility: auto; contain-intrinsic-size: auto 37px; }

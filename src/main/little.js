@@ -5,12 +5,40 @@ const platform = require('./platform');
 const { store } = require('./store');
 const sessions = require('./sessions');
 const suggest = require('./suggest');
-const { trusted, UI_PRELOAD, INTERNAL, isInternal, cleanUrl } = require('./window');
+const { trusted, UI_PRELOAD, INTERNAL, isInternal, cleanUrl, motion, place } = require('./window');
 
 const BAR = 42;
 const PAD = 6;
 const SIZE = { width: 860, height: 640 };
 const MIN = { width: 380, height: 260 };
+const HINT = 34; // bandeau d'explication de la première petite fenêtre
+// Ouverture : la fenêtre monte de quelques points en se dévoilant.
+const OPEN = { ms: 180, rise: 14, step: 8 };
+const HINT_MS = 12000;
+const PROFILES_MAX = 200;
+const easeOut = (x) => 1 - (1 - x) ** 3;
+
+// Profil retenu pour un site : celui de l'Espace où une petite fenêtre de ce site
+// a été envoyée (« Ouvrir dans un Espace »). La suivante s'ouvre avec ses connexions.
+const siteOf = (url) => { try { const u = new URL(url); return /^https?:$/.test(u.protocol) ? u.hostname.replace(/^www\./, '').toLowerCase() : ''; } catch { return ''; } };
+function rememberedProfile(url) {
+  const map = store.state.window && store.state.window.littleProfiles;
+  const id = map && typeof map === 'object' ? map[siteOf(url)] : null;
+  return typeof id === 'string' && hooks.profiles().includes(id) ? id : null;
+}
+function rememberProfile(url, profileId) {
+  const site = siteOf(url);
+  if (!site || typeof profileId !== 'string') return false;
+  const w = store.state.window || (store.state.window = {});
+  const map = w.littleProfiles && typeof w.littleProfiles === 'object' ? w.littleProfiles : {};
+  delete map[site];
+  map[site] = profileId; // le dernier retenu en dernier
+  const keys = Object.keys(map);
+  for (const k of keys.slice(0, Math.max(0, keys.length - PROFILES_MAX))) delete map[k];
+  w.littleProfiles = map;
+  store.save();
+  return true;
+}
 
 // Taille de la dernière petite fenêtre redimensionnée : la suivante la reprend.
 function savedSize() {
@@ -22,7 +50,7 @@ function savedSize() {
   };
 }
 const littles = new Map(); // id webContents de la barre -> LittleWindow
-const hooks = { openInOrbe: () => {}, profileId: () => 'default', spaces: () => [] };
+const hooks = { openInOrbe: () => {}, profileId: () => 'default', spaces: () => [], profiles: () => ['default'], profileOfSpace: () => null };
 
 class LittleWindow {
   static ownerOf(wc) { return littles.get(wc.id) || null; }
@@ -57,14 +85,21 @@ class LittleWindow {
 
   constructor(input) {
     // Même profil (cookies, connexions) que l'Espace affiché à l'ouverture.
-    this.profileId = hooks.profileId();
     this.url = input ? suggest.resolve(input) : '';
     if (isInternal(this.url)) this.url = '';
+    // … sauf si un profil a été retenu pour ce site.
+    this.profileId = rememberedProfile(this.url) || hooks.profileId();
     this.title = '';
     this.loading = false;
     this.usedAt = Date.now();
+    // Première petite fenêtre : un bandeau dit à quoi elle sert (une seule fois).
+    const seen = store.state.window && store.state.window.littleSeen;
+    this.hint = !seen;
+    if (!seen) { (store.state.window || (store.state.window = {})).littleSeen = true; store.save(); }
+    const ms = motion(OPEN.ms);
     this.win = new BaseWindow({
       ...savedSize(),
+      show: !ms,
       minWidth: MIN.width,
       minHeight: MIN.height,
       ...platform.windowChrome({ traffic: { x: 14, y: 13 }, dark: nativeTheme.shouldUseDarkColors }),
@@ -89,6 +124,47 @@ class LittleWindow {
     });
     if (this.url) this.load(this.url);
     this.layout();
+    if (ms) this.animateIn(ms);
+    if (this.hint) { this.hintTimer = setTimeout(() => this.closeHint(), HINT_MS); if (this.hintTimer.unref) this.hintTimer.unref(); }
+  }
+
+  // Ouverture : opacité de 0 à 1 et montée de quelques points, en `ms`. Seules la
+  // position et l'opacité de la fenêtre changent : son contenu n'est pas remis en page.
+  animateIn(ms) {
+    const win = this.win;
+    const [x, y] = win.getPosition();
+    const t0 = Date.now();
+    this.opening = { ms, steps: 0 };
+    win.setOpacity(0);
+    win.setPosition(x, y + OPEN.rise);
+    win.show();
+    const end = () => {
+      clearInterval(timer);
+      this.opening = null;
+      if (win.isDestroyed()) return;
+      win.setOpacity(1);
+      // Fenêtre déplacée à la main pendant l'ouverture : on ne la ramène pas.
+      if (!moved) win.setPosition(x, y);
+    };
+    let moved = false;
+    let last = y + OPEN.rise;
+    const timer = setInterval(() => {
+      if (win.isDestroyed()) return end();
+      const k = Math.min(1, (Date.now() - t0) / ms);
+      if (win.getPosition()[1] !== last || win.getPosition()[0] !== x) moved = true;
+      if (k >= 1) return end();
+      this.opening.steps += 1;
+      win.setOpacity(easeOut(k));
+      if (!moved) { last = Math.round(y + OPEN.rise * (1 - easeOut(k))); win.setPosition(x, last); }
+    }, OPEN.step);
+  }
+
+  closeHint() {
+    clearTimeout(this.hintTimer);
+    if (!this.hint || this.win.isDestroyed()) return;
+    this.hint = false;
+    this.layout(motion(160));
+    this.send();
   }
 
   rememberSize() {
@@ -98,10 +174,12 @@ class LittleWindow {
     store.save();
   }
 
-  layout() {
+  // `ms` : la page glisse à sa place (bandeau refermé), animée par le système.
+  layout(ms = 0) {
     const [W, H] = this.win.getContentSize();
     this.ui.setBounds({ x: 0, y: 0, width: W, height: H });
-    if (this.view) this.view.setBounds({ x: PAD, y: BAR, width: W - 2 * PAD, height: H - BAR - PAD });
+    const top = BAR + (this.hint ? HINT : 0);
+    if (this.view) place(this.view, { x: PAD, y: top, width: W - 2 * PAD, height: H - top - PAD }, ms);
   }
 
   load(input) {
@@ -140,7 +218,7 @@ class LittleWindow {
     if (this.ui.webContents.isDestroyed()) return;
     const s = store.state.settings;
     // `spaces` : liste du menu « Ouvrir dans… », tant qu'il est ouvert.
-    this.ui.webContents.send('state', { lang: s.lang, appearance: s.appearance, url: this.url, title: this.title, loading: this.loading, spaces: this.menu ? hooks.spaces() : null });
+    this.ui.webContents.send('state', { lang: s.lang, appearance: s.appearance, url: this.url, title: this.title, loading: this.loading, hint: !!this.hint, spaces: this.menu ? hooks.spaces() : null });
   }
 
   // « Ouvrir dans… » : choix de l'Espace de destination (⌥⌘O dans Arc), avec un
@@ -166,6 +244,7 @@ class LittleWindow {
   // Espace choisi dans le menu : l'identifiant doit être celui d'un Espace existant.
   openInSpace(id) {
     if (!this.url || !hooks.spaces().some((sp) => sp.id === id)) return;
+    rememberProfile(this.url, hooks.profileOfSpace(id));
     hooks.openInOrbe(this.url, id);
     this.win.close();
   }
@@ -188,6 +267,7 @@ class LittleWindow {
     if (action === 'closeMenu') return this.closeMenu();
     if (action === 'openInSpace') return this.openInSpace(String(a));
     if (action === 'copyUrl') return this.copyUrl();
+    if (action === 'closeHint') return this.closeHint();
     return undefined;
   }
 
@@ -214,4 +294,4 @@ class LittleWindow {
   }
 }
 
-module.exports = { LittleWindow, hooks, savedSize };
+module.exports = { LittleWindow, hooks, savedSize, OPEN, HINT, rememberedProfile, rememberProfile, siteOf };
