@@ -702,14 +702,22 @@ class OrbeWindow {
     return !!store.state.settings.showToolbar || (!!tab && prefs.devMode(tab.url));
   }
 
+  // ⌃D : mode développeur du site affiché. Sur un site local où il est automatique, le couper
+  // note le site dans « devOff » ; ailleurs, l'activer le note dans « devSites ».
   toggleDevMode() {
     const tab = this.activeId && this.data.tabs[this.activeId];
     const host = tab ? prefs.hostOf(tab.url) : '';
     if (!host || this.incognito) return;
-    const list = (store.state.settings.devSites || []).filter((h) => h !== host);
-    const on = list.length === (store.state.settings.devSites || []).length;
-    if (on) list.push(host);
-    require('./commands').setSetting('devSites', list.slice(-200));
+    const s = store.state.settings;
+    const { setSetting } = require('./commands');
+    const on = !prefs.devMode(tab.url);
+    if (on) {
+      if ((s.devOff || []).includes(host)) setSetting('devOff', s.devOff.filter((h) => h !== host));
+      if (!prefs.devMode(tab.url)) setSetting('devSites', [...(s.devSites || []).filter((h) => h !== host), host].slice(-200));
+    } else {
+      if ((s.devSites || []).includes(host)) setSetting('devSites', s.devSites.filter((h) => h !== host));
+      if (prefs.devMode(tab.url)) setSetting('devOff', [...(s.devOff || []).filter((h) => h !== host), host].slice(-200));
+    }
     this.toast(t(on ? 'dev.on' : 'dev.off', { site: host }));
   }
 
@@ -3708,7 +3716,7 @@ class OrbeWindow {
         { label: t('ctx.openImage'), visible: !!src, click: () => this.newTab(src, { after: rt.id }) },
         { label: t('ctx.copyImage'), click: () => wc.copyImageAt(p.x, p.y) },
         { label: t('ctx.copyImageUrl'), click: () => clipboard.writeText(p.srcURL) },
-        { label: t('ctx.saveImage'), visible: !!src, click: () => wc.downloadURL(src) },
+        { label: t('ctx.saveImage'), visible: !!src, click: () => require('./downloads').saveFrom(wc, src) },
       );
     }
     if (p.isEditable) {
@@ -3952,6 +3960,8 @@ class OrbeWindow {
         if (!a || typeof a !== 'object') return undefined;
         return Array.isArray(a.ids) ? this.moveManyToSpace(a.ids, String(a.spaceId)) : this.moveToSpace(String(a.id), String(a.spaceId));
       }
+      // Clic sur le bouclier : le centre de contrôle du site (feuille d'Orbe) ; à défaut (page interne, pas d'onglet), le menu.
+      case 'siteControl': return hooks.action(this, 'siteControl') ? undefined : this.shieldMenu();
       case 'shieldMenu': return this.shieldMenu();
       case 'toolbarMenu': return this.popup(this.toolbarMenuTemplate());
       case 'toastClick': return this.toastClick();

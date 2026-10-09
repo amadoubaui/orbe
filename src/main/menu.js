@@ -259,7 +259,7 @@ function refresh(force) {
       loc && loc.list, tab && tab.muted, w ? w.data.spaces.map((x) => x.icon + x.name) : 0,
       w && w.space.profileId, w ? w.data.profiles.length : 0, !!(w && w.peekState),
       w && w.pendingLabel('undo'), w && w.pendingLabel('redo'),
-      s.shortcuts, s.devSites, tab && tab.url && require('./prefs').hostOf(tab.url),
+      s.shortcuts, s.devSites, s.devOff, s.devLocalhost, tab && tab.url && require('./prefs').hostOf(tab.url),
       w && w.space.pinnedCollapsed, !!(w && w.activeId && w.groupOf(w.activeId)), !!(w && w.win.isAlwaysOnTop()),
       isDefaultBrowser(), extensionActions(w).map((x) => [x.id, x.title, x.enabled]),
     ]);

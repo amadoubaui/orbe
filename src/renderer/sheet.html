@@ -10,6 +10,18 @@
    src/main/sheets.js). Elle ne fait pas partie de la page. */
 body { display: grid; place-items: center; background: rgba(0, 0, 0, 0.28); padding: 18px; }
 body.cover { background: var(--base); }
+/* Bulle ancrée : en haut de la page, du côté de la barre latérale (adresse, cadenas, bouclier). */
+body.anchor { place-items: start; padding: 10px 12px; background: rgba(0, 0, 0, 0.16); }
+body.anchor #card { width: min(400px, 100%); position: relative; overflow: visible; }
+body.anchor #card::before { content: ''; position: absolute; top: -6px; left: 22px; width: 12px; height: 12px; background: var(--panel); border-left: 0.5px solid var(--panel-line); border-top: 0.5px solid var(--panel-line); transform: rotate(45deg); }
+body.anchor.control #card { width: min(430px, 100%); overflow: auto; }
+body.anchor.control #card::before { display: none; }
+p.hint { font-size: 12px; }
+.quick { display: flex; gap: 6px; flex-wrap: wrap; }
+.b.small { height: 26px; padding: 0 10px; font-size: 12px; }
+.item input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--accent); flex: none; }
+.item .badge { font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 8px; background: var(--accent); color: #fff; }
+.item .grow > div:first-child { overflow: hidden; text-overflow: ellipsis; }
 body.empty { background: transparent; }
 #card { width: min(460px, 100%); max-height: 100%; overflow: auto; background: var(--panel); border: 0.5px solid var(--panel-line); border-radius: 14px; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28), 0 2px 8px rgba(0, 0, 0, 0.12); padding: 18px 18px 16px; display: flex; flex-direction: column; gap: 10px; }
 body.cover #card { background: none; border: 0; box-shadow: none; width: min(560px, 100%); padding: 0; }

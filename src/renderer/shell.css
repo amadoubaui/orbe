@@ -409,6 +409,17 @@ body.incognito #incognito { display: flex; }
   transition: transform 140ms var(--ease);
 }
 
+/* Mode développeur du site affiché : liseré de chantier, jaune et noir, sous l'adresse. */
+body.dev-site #tb-url { position: relative; overflow: hidden; }
+body.dev-site #tb-url::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 3px;
+  background: repeating-linear-gradient(-45deg, #facc15 0 7px, #18181b 7px 14px);
+  pointer-events: none;
+}
+
 /* Barre d'outils optionnelle (⇧⌘D), au-dessus de la page. */
 #toolbar {
   position: absolute;

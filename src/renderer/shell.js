@@ -264,6 +264,7 @@ function render(s) {
   b.classList.toggle('translucent', s.translucent);
   b.classList.toggle('incognito', s.incognito);
   b.classList.toggle('toolbar', s.toolbar);
+  b.classList.toggle('dev-site', !!s.devMode); // liseré jaune et noir sous l'adresse (mode développeur du site)
   b.classList.toggle('fullscreen', s.fullScreen);
   b.classList.toggle('no-tab', !s.activeId && !FLOATING);
   // Compléments : fenêtre à l'arrière-plan, en-tête de l'Espace, section épinglée repliée.
@@ -693,7 +694,8 @@ $('exts').addEventListener('click', (e) => {
 $('b-sidebar').onclick = () => send('toggleSidebar');
 $('b-menu').onclick = () => send('command', 'appMenu');
 $('url').onclick = () => send('openCommand', 'edit');
-$('shield').onclick = () => send('shieldMenu');
+$('shield').onclick = () => send('siteControl');
+$('shield').addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); send('shieldMenu'); });
 $('lock').onclick = () => send('siteInfo');
 $('popup-note').onclick = () => send('popupMenu');
 $('capture-note').onclick = () => send('captureMenu');

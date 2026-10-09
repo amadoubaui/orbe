@@ -62,6 +62,10 @@ const KINDS = {
     head(p.icon || 'info', t('perm.title', { origin: p.site }), '');
     for (const line of p.lines) body.append(el('p', 'strong', line));
     if (p.note) body.append(el('p', '', p.note));
+    // Comme dans Arc : la réponse se change ensuite depuis le site (cadenas, bouclier).
+    const later = el('p', 'hint', t('perm.changeLater'));
+    later.id = 'later';
+    body.append(later);
     buttons.append(button(t('perm.deny'), () => answer('deny'), { id: 'deny' }), button(t('perm.allow'), () => answer('allow'), { cls: 'primary', risky: true, id: 'allow' }));
     return 'deny';
   },
@@ -271,6 +275,81 @@ const KINDS = {
     buttons.append(button(t('sheet.close'), () => answer(null), { cls: 'primary', id: 'close' }));
     return null;
   },
+  // Centre de contrôle du site (bouclier) : bloqueur, autorisations, données, Boost,
+  // mode développeur, extensions. Chaque clic part au processus principal, qui
+  // revérifie le site de l'onglet avant d'agir et renvoie l'état à afficher.
+  control(p, body, buttons) {
+    const secure = p.security === 'secure';
+    head(secure ? 'lock' : (p.security === 'local' ? 'info' : 'warn'), p.site, t('site.sec.' + p.security), p.security === 'insecure' || p.security === 'broken');
+    const run = async (name, arg) => { const next = await act(name, arg); if (next) show(next, true); };
+    const section = (title, id) => { const box = el('div', 'list'); box.id = id; body.append(el('h2', '', title), box); return box; };
+    // Ligne : libellé (et précision), puis une case à cocher ou des boutons.
+    const line = (box, label, sub, ...controls) => {
+      const row = el('div', 'item');
+      const text = el('div', 'grow');
+      text.append(el('div', '', label));
+      if (sub) text.append(el('div', 'sub', sub));
+      row.append(text, ...controls);
+      box.append(row);
+      return row;
+    };
+    const toggle = (id, on, enabled, name) => {
+      const input = el('input');
+      input.type = 'checkbox';
+      input.id = id;
+      input.checked = !!on;
+      input.disabled = !enabled;
+      // L'état affiché est celui que renvoie le processus principal, pas celui du clic.
+      input.onclick = (e) => { e.preventDefault(); if (settled()) run(name); };
+      return input;
+    };
+    const small = (id, label, name, arg, cls = '') => button(label, () => run(name, arg), { id, cls: 'small ' + cls, risky: true });
+
+    const quick = el('div', 'quick');
+    quick.append(button(t('edit.copyUrl'), () => run('copy'), { id: 'c-copy', cls: 'small' }));
+    if (p.share) quick.append(button(t('tb.share'), () => run('share'), { id: 'c-share', cls: 'small' }));
+    quick.append(button(t('ctl.capture'), () => run('capture'), { id: 'c-capture', cls: 'small' }), button(t('ctl.details'), () => run('details'), { id: 'c-details', cls: 'small' }));
+    body.append(quick);
+
+    const shield = section(t('ctl.blocking'), 'c-shield');
+    line(shield, t('adblock.thisSite'), p.adblock.on ? t('adblock.count', { n: p.blocked }) : t('ctl.blockingOff'), toggle('c-shield-site', p.adblock.on && p.adblock.site, p.adblock.on, 'shield'));
+    line(shield, t('adblock.everywhere'), '', toggle('c-shield-all', p.adblock.on, true, 'shieldAll'));
+
+    const perms = section(t('site.perms'), 'perms');
+    if (!p.perms.length) line(perms, t('site.noPerms'), '');
+    for (const perm of p.perms) {
+      const row = line(perms, perm.label, '', el('span', 'state ' + (perm.value ? 'yes' : 'no'), t(perm.value ? 'site.allowed' : 'site.denied')), small('', t('site.reset'), 'reset', perm.key));
+      row.dataset.key = perm.key;
+      row.lastChild.dataset.do = 'reset';
+    }
+    if (p.capture && p.capture.length) body.append(el('p', 'warn', p.capture.join(' · ')));
+
+    const data = section(t('ctl.data'), 'c-data');
+    const n = el('span', '', p.cookies == null ? '' : t('ctl.cookieCount', { n: p.cookies }));
+    n.id = 'c-cookies';
+    line(data, t('ctl.cookies'), t('ctl.cookiesHint'), n, small('c-clear-cookies', t('ctl.clear'), 'cookies'));
+    line(data, t('ctl.cache'), t('ctl.cacheHint'), small('c-clear-cache', t('ctl.empty'), 'cache'));
+
+    const tools = section(t('ctl.tools'), 'c-tools');
+    if (p.boost.can) {
+      const controls = [];
+      if (p.boost.has) controls.push(toggle('c-boost', p.boost.enabled, p.boost.all, 'boost'));
+      line(tools, t('boost.thisSite'), p.boost.has ? '' : t('ctl.noBoost'), small('c-zap', t('ctl.zap'), 'zap'), small('c-boost-edit', t(p.boost.has ? 'set.edit' : 'ctl.create'), 'boostEdit'), ...controls);
+    }
+    line(tools, t('view.devMode'), p.dev.can ? (p.dev.auto ? t('ctl.devAuto') : t('ctl.devHint')) + (p.dev.keys ? ' ' + p.dev.keys : '') : t('ctl.devPrivate'), toggle('c-dev', p.dev.on, p.dev.can, 'dev'));
+
+    if (p.extensions.length) {
+      const exts = section(t('pane.extensions'), 'c-exts');
+      for (const x of p.extensions) {
+        const open = small('', t('ctl.open'), 'ext', x.id);
+        open.disabled = !x.enabled;
+        const row = line(exts, x.title, '', ...(x.badge ? [el('span', 'badge', x.badge)] : []), open);
+        row.dataset.ext = x.id;
+      }
+    }
+    buttons.append(button(t('sheet.close'), () => answer(null), { cls: 'primary', id: 'close' }));
+    return null;
+  },
 };
 
 let pickerChoice = null;
@@ -280,7 +359,9 @@ function show(p, keepGuard) {
   if (!p || !KINDS[p.kind]) return;
   P = p;
   if (!keepGuard) shownAt = Date.now();
-  document.body.className = p.cover ? 'cover' : '';
+  // Demande d'autorisation et centre de contrôle : une bulle ancrée en haut de la page, du côté
+  // de l'adresse et du cadenas, plutôt qu'une carte au milieu. La vue couvre toujours toute la page.
+  document.body.className = p.cover ? 'cover' : (p.kind === 'perm' || p.kind === 'control' ? 'anchor ' + p.kind : '');
   const body = $('body');
   const buttons = $('buttons');
   body.textContent = '';
@@ -299,6 +380,8 @@ O.on('overlay', (m) => {
   if (m && m.sheet) show(m.sheet, true);
 });
 O.on('settings', (s) => { if (setLang(s.lang) && P) show(P, true); });
+// Centre de contrôle : un clic à côté de la carte le ferme.
+document.addEventListener('mousedown', (e) => { if (P && P.kind === 'control' && e.target === document.body) answer(null); });
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && P && onEscape !== undefined) { e.preventDefault(); answer(onEscape); }
 });

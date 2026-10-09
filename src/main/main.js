@@ -474,6 +474,9 @@ app.whenReady().then(async () => {
   // Import depuis un navigateur installé. En test, aucun vrai profil n'est lu :
   // les essais désignent eux-mêmes un dossier d'essai (import-browsers.configure).
   if (SELFTEST || process.env.ORBE_UI_TEST === '1') require('./import-browsers').configure({ home: '', local: '', roaming: '' });
+  // Les essais servent leurs pages depuis 127.0.0.1 : le mode développeur automatique des sites locaux
+  // y afficherait partout la barre d'outils. Coupé au départ ; les essais qui le vérifient l'activent.
+  if (SELFTEST || process.env.ORBE_UI_TEST === '1') store.state.settings.devLocalhost = false;
   imports.hooks.refreshMenu = () => menu.refresh(true);
   extUi.hooks.openSettings = openSettings;
   extUi.hooks.changed = () => { for (const wc of webContents.getAllWebContents()) if (trusted.has(wc) && !wc.isDestroyed()) wc.send('settings', store.state.settings); menu.refresh(true); };

@@ -230,6 +230,142 @@ module.exports = async function essentielsTests(ctx) {
   await press(sheet, 'close');
   await until(() => !sheets.top(cam.wc), 'feuille fermée');
 
+  // ---------------------------------------------------------------- Centre de contrôle du site (bouclier)
+  {
+    const prefs = require('../src/main/prefs');
+    const adblock = require('../src/main/adblock');
+    const hostA = A.replace('http://', '');
+    const ctl = await open(A + '/controle', 'Page /controle');
+    const ses = ctl.wc.session;
+    const act = (sh, name, arg) => sheets.action('sheet:act', { name, arg }, sh.view.webContents);
+    const armed = (sh) => until(() => sh.armedAt && Date.now() - sh.armedAt > sheets.GUARD + 40, 'délai de garde écoulé');
+    const cookiesOf = async (o) => (await ses.cookies.get({ url: o })).map((c) => c.name).join();
+    await js(ctl.wc, 'document.cookie = "essai=1; path=/"; 1');
+    const popups = [];
+    const evil = '<img src=x onerror="window.pirate=1"> Extension';
+    const deps = { extActions: () => [{ id: 'ext-a', title: evil, badgeText: '3', enabled: true }, { id: 'ext-b', title: 'Coupée', enabled: false }], openExtPopup: (ow, id) => popups.push(id) };
+    check('le bouclier ouvre le centre de contrôle : une feuille d’Orbe sur l’onglet, pas un menu', win.hooks.action(w, 'siteControl') === true && sheets.top(ctl.wc).kind === 'control');
+    sheets.top(ctl.wc).close(null);
+    let panel = essentials.siteControl(w, deps);
+    await until(() => panel.payload.cookies === 1, 'cookies comptés');
+    check('centre de contrôle : site, bloqueur, autorisations, cookies, Boost, mode développeur et extensions viennent du processus principal',
+      panel.payload.site === permissions.siteName(A) && panel.payload.perms.map((x) => x.key + ':' + x.value).join() === 'camera:true' && panel.payload.adblock.on === true && panel.payload.adblock.site === true
+      && panel.payload.dev.on === false && panel.payload.dev.can === true && panel.payload.boost.has === false && panel.payload.extensions.length === 2 && panel.origin === A, panel.payload);
+    const shown = await inSheet(panel, `(() => { const c = document.getElementById('card'); const r = c.getBoundingClientRect(); return {
+      anchor: document.body.classList.contains('anchor') && r.top < 40 && r.left < 40, title: document.getElementById('title').textContent,
+      perms: [...document.querySelectorAll('#perms .item')].map((x) => x.dataset.key).join(), cookies: document.getElementById('c-cookies').textContent,
+      ext: document.querySelector('#c-exts .item .grow').textContent, imgs: c.querySelectorAll('img, script, iframe').length, pirate: typeof window.pirate,
+      extOff: document.querySelectorAll('#c-exts .item button')[1].disabled, dev: document.getElementById('c-dev').checked, site: document.getElementById('c-shield-site').checked }; })()`);
+    check('… affiché en bulle ancrée, tout en texte : un nom d’extension piégé reste du texte',
+      shown.anchor && shown.title === permissions.siteName(A) && shown.perms === 'camera' && shown.cookies === t('ctl.cookieCount', { n: 1 }) && shown.ext === evil && shown.imgs === 0 && shown.pirate === 'undefined'
+      && shown.extOff === true && shown.dev === false && shown.site === true, shown);
+    // Garde : une action qui change quelque chose est refusée dans la demi-seconde qui suit l'apparition.
+    panel.armedAt = Date.now();
+    const early = await act(panel, 'dev');
+    check('action tombée à l’instant où le panneau apparaît : ignorée', early === null && !prefs.devMode(A + '/controle') && !panel.closed);
+    await armed(panel);
+    // Une page web n'a aucun canal : un message qui ne vient pas de la vue du panneau n'a pas d'effet.
+    const fromPage = await sheets.action('sheet:act', { name: 'cookies' }, ctl.wc);
+    check('une page ne peut pas actionner le panneau à la place de l’utilisateur', fromPage === undefined && (await cookiesOf(A)) === 'essai' && !panel.closed);
+    let next = await act(panel, 'dev');
+    const devOn = next && next.dev.on === true && store.state.settings.devSites.includes(hostA) && w.toolbarShown;
+    next = await act(panel, 'dev');
+    check('mode développeur : activé puis coupé depuis le panneau, qui réaffiche l’état rendu par le processus principal', devOn && next.dev.on === false && !store.state.settings.devSites.includes(hostA) && !w.toolbarShown);
+    next = await act(panel, 'shieldAll');
+    const offAll = store.state.settings.adblock === false && next.adblock.on === false;
+    next = await act(panel, 'shieldAll');
+    check('bloqueur : coupé puis rétabli partout', offAll && store.state.settings.adblock === true && next.adblock.on === true);
+    next = await act(panel, 'reset', 'camera');
+    check('autorisation réinitialisée depuis le panneau', next.perms.length === 0 && !(store.state.permissions[A] && 'camera' in store.state.permissions[A]));
+    permissions.set(ses, A, 'camera', true);
+    await act(panel, 'ext', 'inconnue');
+    const closedByExt = panel.closed;
+    panel = essentials.siteControl(w, deps);
+    await act(panel, 'ext', 'ext-b');
+    panel = essentials.siteControl(w, deps);
+    await act(panel, 'ext', 'ext-a');
+    check('extensions : seule une extension de la liste, et active, s’ouvre ; le panneau se ferme', closedByExt && popups.join() === 'ext-a' && panel.closed);
+
+    // L'onglet n'est plus l'onglet actif : rien n'est fait, le panneau se ferme.
+    panel = essentials.siteControl(w, deps);
+    await armed(panel);
+    const other = await open(A + '/autre', 'Page /autre');
+    const stale = await act(panel, 'cookies');
+    check('action reçue alors que l’onglet du panneau n’est plus l’onglet actif : refusée, panneau fermé', stale === null && panel.closed && (await cookiesOf(A)) === 'essai');
+    w.close(other.id, { silent: true, ask: false });
+    w.activate(ctl.id);
+
+    // Le site de l'onglet a changé depuis l'ouverture : l'action vaudrait pour un autre site. Refusée.
+    panel = essentials.siteControl(w, deps);
+    panel.untilNavigation = false; // comme si la fermeture à la navigation avait manqué
+    await armed(panel);
+    ctl.wc.loadURL(B + '/controle');
+    await until(() => w.data.tabs[ctl.id].url.startsWith(B) && !ctl.wc.isLoading(), 'onglet passé sur un autre site');
+    await js(ctl.wc, 'document.cookie = "autre=1; path=/"; 1');
+    const crossed = await act(panel, 'cookies');
+    check('action reçue après que l’onglet a changé de site : validée contre l’origine du moment, refusée — aucun cookie effacé, ni ici ni là',
+      crossed === null && panel.closed && (await cookiesOf(A)) === 'essai' && (await cookiesOf(B)).includes('autre'));
+    ctl.wc.loadURL(A + '/controle');
+    await until(() => w.data.tabs[ctl.id].url === A + '/controle' && !ctl.wc.isLoading(), 'retour sur le site');
+
+    // Navigation ordinaire : le panneau se ferme de lui-même.
+    panel = essentials.siteControl(w, deps);
+    await armed(panel);
+    const cleared = act(panel, 'cookies');
+    await until(() => panel.closed, 'panneau fermé par le rechargement');
+    await cleared;
+    await until(() => !ctl.wc.isLoading(), 'page rechargée');
+    check('« Effacer » les cookies du site : effacés pour cette origine seulement, page rechargée, panneau fermé', (await cookiesOf(A)) === '' && panel.closed);
+    panel = essentials.siteControl(w, deps);
+    await armed(panel);
+    act(panel, 'shield');
+    await until(() => adblock.isSiteAllowed(A + '/controle') && panel.closed, 'bloqueur coupé pour le site');
+    await until(() => !ctl.wc.isLoading(), 'page rechargée');
+    panel = essentials.siteControl(w, deps);
+    const siteOff = panel.payload.adblock.site === false;
+    await armed(panel);
+    act(panel, 'shield');
+    await until(() => !adblock.isSiteAllowed(A + '/controle') && panel.closed, 'bloqueur rétabli pour le site');
+    await until(() => !ctl.wc.isLoading(), 'page rechargée');
+    check('« Bloquer sur ce site » : coupé puis rétabli, la page se recharge', siteOff);
+
+    // Page interne, navigation privée.
+    const inner = w.openInternal('shortcuts.html');
+    check('page interne d’Orbe : pas de centre de contrôle (le bouclier garde son menu)', essentials.siteControl(w) === null && win.hooks.action(w, 'siteControl') === false);
+    if (inner && inner.id) w.close(inner.id, { silent: true, ask: false });
+    w.activate(ctl.id);
+
+    // Autres autorisations demandées par une feuille : détection d'inactivité, stockage durable, cookies d'un cadre intégré.
+    w.activate(ctl.id);
+    await until(() => w.activeRt && w.activeRt.wc === ctl.wc && !ctl.wc.isLoading(), 'page du centre de contrôle');
+    const entry = permissions.internals.memories.get(ses);
+    let wait = js(ctl.wc, 'IdleDetector.requestPermission()', true);
+    sheet = await sheetOf(ctl.wc, 'perm');
+    const idleLine = sheet.payload.lines.join();
+    await press(sheet, 'allow');
+    check('détection d’inactivité : demandée par une feuille, accord retenu pour le site', idleLine === t('perm.idle-detection') && (await wait) === 'granted' && store.state.permissions[A]['idle-detection'] === true);
+    wait = permissions.internals.request(entry, ctl.wc, 'persistent-storage', { requestingUrl: A + '/controle', isMainFrame: true });
+    sheet = await sheetOf(ctl.wc, 'perm');
+    const persistLine = sheet.payload.lines.join();
+    await press(sheet, 'deny');
+    check('stockage durable : demandé, refus retenu', persistLine === t('perm.persistent-storage') && (await wait) === false && store.state.permissions[A]['persistent-storage'] === false);
+    await js(ctl.wc, `(() => { const f = document.createElement('iframe'); f.src = ${JSON.stringify(B + '/cadre')}; document.body.append(f); return new Promise((r) => { f.onload = () => r(1); }); })()`);
+    wait = permissions.internals.request(entry, ctl.wc, 'storage-access', { requestingUrl: B + '/cadre', isMainFrame: false });
+    sheet = await sheetOf(ctl.wc, 'perm');
+    const embedNote = sheet.payload.note;
+    await press(sheet, 'allow');
+    check('cookies d’un cadre intégré (Storage Access) : la feuille nomme le site qui intègre, et l’accord ne vaut que pour ce couple de sites',
+      (await wait) === true && embedNote === t('perm.embedded', { site: permissions.siteName(A) }) && store.state.permissions[B]['storage-access|' + A] === true
+      && permissions.internals.check(entry, 'storage-access', B, { isMainFrame: false, embeddingOrigin: A }) === true
+      && permissions.internals.check(entry, 'storage-access', B, { isMainFrame: false, embeddingOrigin: 'https://ailleurs.exemple' }) === false
+      && permissions.internals.check(entry, 'storage-access', B, {}) === false);
+    for (const k of ['idle-detection', 'persistent-storage']) permissions.reset(ses, A, k);
+    permissions.reset(ses, B, '*');
+    w.close(ctl.id, { silent: true, ask: false });
+    w.activate(cam.id);
+    await until(() => w.activeRt && w.activeRt.wc === cam.wc, 'retour sur la page');
+  }
+
   // Délai de garde tenu par le processus principal : une feuille qui réapparaît
   // (celle du dessus vient de se fermer) ne se laisse pas valider dans l'instant.
   const under = sheets.open(cam.wc, 'perm', { site: 'essai', lines: ['essai'] }, { exclusive: false });
@@ -898,6 +1034,49 @@ module.exports = async function essentielsTests(ctx) {
   const dlDir = app.getPath('downloads');
   const custom = fs.mkdtempSync(path.join(os.tmpdir(), 'orbe-dl-'));
   const dl = await open(A + '/fichiers', 'Page /fichiers');
+  // Téléchargements multiples : une page a droit à un téléchargement qu'on ne lui a pas demandé ; au suivant, Orbe demande.
+  {
+    const ses = dl.wc.session;
+    const count = () => store.state.downloads.length;
+    const n0 = count();
+    dl.wc.downloadURL(A + '/note.txt');
+    await until(() => count() === n0 + 1, 'premier téléchargement automatique');
+    dl.wc.downloadURL(A + '/note.txt');
+    sheet = await sheetOf(dl.wc, 'perm');
+    check('téléchargements multiples : le deuxième téléchargement lancé par la page sans geste attend une réponse, sur une feuille qui nomme le site',
+      count() === n0 + 1 && sheet.payload.lines.join() === t('perm.downloads') && sheet.payload.site === permissions.siteName(A), sheet.payload);
+    check('la demande d’autorisation est une bulle ancrée en haut de la page, qui dit où changer d’avis',
+      await inSheet(sheet, '(() => { const c = document.getElementById("card").getBoundingClientRect(); return document.body.classList.contains("anchor") && c.top < 40 && c.left < 40 && document.getElementById("later").textContent.length > 20; })()'));
+    await press(sheet, 'deny');
+    dl.wc.downloadURL(A + '/note.txt');
+    check('refus : retenu pour le site, plus de question ni de téléchargement automatique', store.state.permissions[A].downloads === false && await noSheet(dl.wc) && count() === n0 + 1);
+    downloads.saveFrom(dl.wc, A + '/note.txt');
+    await until(() => count() === n0 + 2, 'téléchargement demandé par Orbe');
+    await click(dl.wc);
+    dl.wc.downloadURL(A + '/note.txt');
+    await until(() => count() === n0 + 3, 'téléchargement après un geste');
+    dl.wc.downloadURL(A + '/note.txt');
+    await sleep(300);
+    check('« Enregistrer l’image » (demandé par Orbe) et un téléchargement qui suit un geste passent toujours ; un geste n’en couvre qu’un', count() === n0 + 3);
+    // Site sans réponse retenue, page rechargée : la question revient, et « Autoriser » relance le fichier refusé.
+    permissions.reset(ses, A, 'downloads');
+    win.live.get(dl.id).gesture = 0;
+    dl.wc.reload();
+    await until(() => !dl.wc.isLoading() && permissions.internals.pages.get(dl.wc.id).downloads === 0, 'page rechargée');
+    dl.wc.downloadURL(A + '/note.txt');
+    await until(() => count() === n0 + 4, 'premier téléchargement de la page rechargée');
+    dl.wc.downloadURL(A + '/note.txt');
+    sheet = await sheetOf(dl.wc, 'perm');
+    await press(sheet, 'allow');
+    await until(() => count() === n0 + 5, 'téléchargement relancé après l’accord');
+    dl.wc.downloadURL(A + '/note.txt');
+    await until(() => count() === n0 + 6, 'téléchargements suivants sans question');
+    check('accord : retenu pour le site, le fichier refusé repart et les suivants passent sans question', store.state.permissions[A].downloads === true && !sheets.top(dl.wc));
+    check('… et l’autorisation figure parmi celles du site', permissions.list(ses, A).some((x) => x.key === 'downloads' && x.value === true && x.label === t('perm.downloads')));
+    await until(() => store.state.downloads.slice(0, 6).every((d) => d.state !== 'progressing'), 'téléchargements d’essai terminés');
+    // Les fichiers de cet essai ne restent pas : la suite compte sur un dossier sans « note.txt ».
+    for (const d of store.state.downloads.slice(0, 6)) { try { fs.rmSync(d.path, { force: true }); } catch {} }
+  }
   const newest = () => store.state.downloads[0];
   const start = async (file) => { const before = newest(); dl.wc.downloadURL(A + file); return until(() => (newest() !== before ? newest() : null), 'téléchargement lancé : ' + file); };
   const lib = (name, id) => downloads.action(name, id, null);

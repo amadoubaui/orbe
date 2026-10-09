@@ -59,6 +59,8 @@ const DEFAULT_SETTINGS = {
   tabKeysFavorites: true,
   tabKeysNinthLast: true,
   devSites: [],
+  devLocalhost: true,
+  devOff: [],
   downloadDir: '',
   profileSettings: {},
   shortcuts: {},
