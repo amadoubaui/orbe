@@ -68,6 +68,16 @@ module.exports = async function detailsTests(ctx) {
     for (let i = 0; i < 230; i++) little.rememberProfile(`http://site${i}.test/`, 'default');
     check('profils retenus : 200 sites au plus, les plus anciens oubliés', Object.keys(store.state.window.littleProfiles).length === 200 && !('site0.test' in store.state.window.littleProfiles) && 'site229.test' in store.state.window.littleProfiles);
 
+    // Table relue du fichier d'état : sans prototype, noms d'hôte valides seulement.
+    store.state.window.littleProfiles = JSON.parse('{"__proto__":"default","bon.test":"default","pas un hôte":"default","nombre.test":7,"toString":"default"}');
+    const viaProto = little.rememberedProfile('http://__proto__/');
+    const kept = little.rememberedProfile('http://bon.test/');
+    const table = store.state.window.littleProfiles;
+    check('profils retenus : table sans prototype, entrées relues (nom d’hôte valide, identifiant de profil) — « __proto__ » n’y désigne rien',
+      viaProto === null && kept === 'default' && Object.getPrototypeOf(table) === null && Object.keys(table).join() === 'bon.test' && little.rememberProfile('http://__proto__/', 'default') === false && little.siteOf('http://__proto__/') === ''
+      && little.rememberProfile('http://constructor/', 'default') === true && little.rememberedProfile('http://constructor/') === 'default' && little.rememberedProfile('http://valueof/') === null && typeof ({}).constructor === 'function' && JSON.stringify(table) === '{"bon.test":"default","constructor":"default"}',
+      JSON.stringify([viaProto, kept, Object.keys(table)]));
+
     for (const l of LittleWindow.all) l.win.close();
     await until(() => LittleWindow.all.length === 0, 'petites fenêtres fermées');
     Object.assign(little.hooks, saved.hooks);
