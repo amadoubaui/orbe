@@ -138,7 +138,7 @@ function build() {
         sep,
         item('actualSize'), item('zoomIn'), item('zoomOut'),
         sep,
-        { label: t('view.developer'), submenu: [item('source'), item('devtools'), item('inspect'), item('console'), sep, item('toggleDevMode', { type: 'checkbox', checked: !!tab && require('./prefs').devMode(tab.url), enabled: !!tab && !!require('./prefs').hostOf(tab.url) && !w.incognito })] },
+        { label: t('view.developer'), submenu: [item('source'), item('devtools'), item('inspect'), item('console'), sep, item('toggleDevMode', { type: 'checkbox', checked: !!tab && require('./prefs').devMode(tab.url), enabled: !!tab && !!require('./prefs').hostOf(tab.url) && !w.incognito }), sep, item('taskManager')] },
         sep,
         item('fullscreen'),
       ],
@@ -208,7 +208,8 @@ function build() {
           enabled: x.enabled !== false,
           click: () => { const win = OrbeWindow.focused || OrbeWindow.primary; if (win) require('./ext-host').openPopup(win, x.id); },
         })),
-        ...(exts.length ? [sep] : []),
+        // ⌘E : d'une extension à la suivante, comme dans Arc.
+        ...(exts.length ? [sep, item('cycleExtensions'), sep] : []),
         { label: t('ext.add'), click: () => commands.hooks.openSettings('extensions') },
         { label: t('ext.manage'), click: () => commands.hooks.openSettings('extensions') },
       ],

@@ -253,6 +253,9 @@ async function globalAction(action, a, sender) {
     }
     case 'shortcuts:get':
       return shortcutGroups();
+    // Gestionnaire de tâches (src/main/tasks.js).
+    case 'tasks:list': case 'tasks:end':
+      return require('./tasks').handle(action, a);
     case 'settings:get':
       return { settings: s.settings, spaces: s.spaces.map((sp) => ({ id: sp.id, name: `${sp.icon} ${sp.name}` })), profiles: profileList(), engines: Object.entries(suggest.ENGINES).map(([id, e]) => ({ id, name: e.name })), version: app.getVersion(), chrome: process.versions.chrome, ...panes.info() };
     case 'settings:set':
@@ -380,7 +383,7 @@ function setupIpc() {
     if (action.startsWith('import:')) return imports.action(action, payload, e.sender);
     if (action.startsWith('welcome:')) return welcomeAction(action, e.sender);
     if (action.startsWith('lib:')) return library.action(action, payload, e.sender);
-    if (/^(settings|shortcuts|ext|notes):/.test(action)) return globalAction(action, payload, e.sender);
+    if (/^(settings|shortcuts|ext|notes|tasks):/.test(action)) return globalAction(action, payload, e.sender);
     const owner = OrbeWindow.ownerOf(e.sender) || little.LittleWindow.ownerOf(e.sender) || OrbeWindow.primary;
     return owner ? owner.handle(action, payload) : undefined;
   });

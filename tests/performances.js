@@ -482,6 +482,38 @@ module.exports = async function performancesTests(ctx) {
         reset();
       }
     }
+
+    // --- Gestionnaire de tâches (EXT-22) ---
+    {
+      const tasks = require('../src/main/tasks');
+      const commands = require('../src/main/commands');
+      const piege = '<img src=x onerror="window.pirate=1">Piège';
+      const [cible, temoin] = ['Tâche ' + piege, 'Tâche témoin'].map((title) => w.newTab(page(title), { background: true }));
+      await until(() => w.data.tabs[cible.id].title.startsWith('Tâche') && w.data.tabs[temoin.id].title === 'Tâche témoin' && !win.live.get(cible.id).loading, 'onglets du gestionnaire');
+      const pidCible = win.live.get(cible.id).wc.getOSProcessId();
+      const data = tasks.list();
+      const row = data.rows.find((r) => r.pid === pidCible);
+      const kinds = new Set(data.rows.map((r) => r.kind));
+      check('gestionnaire de tâches : chaque processus dit ce qu’il porte (Orbe, interface, graphique, onglets avec leur titre), sa mémoire et son processeur',
+        kinds.has('app') && kinds.has('ui') && kinds.has('gpu') && kinds.has('tab') && !!row && row.kind === 'tab' && row.titles.join().includes('Piège') && row.mb > 0 && row.canEnd === true
+        && data.total >= row.mb && data.rows.every((r) => Number.isInteger(r.pid) && typeof r.cpu === 'number') && data.rows.filter((r) => r.canEnd).every((r) => r.kind === 'tab'), JSON.stringify([...kinds]));
+      const uiPid = w.ui.webContents.getOSProcessId();
+      const gpu = data.rows.find((r) => r.kind === 'gpu');
+      check('« Arrêter » ne vaut que pour le processus d’un onglet : jamais Orbe, son interface, le processus graphique, ni un numéro quelconque',
+        tasks.end(process.pid) === 0 && tasks.end(uiPid) === 0 && tasks.end(gpu.pid) === 0 && tasks.end(-1) === 0 && tasks.end(NaN) === 0 && tasks.end('1') === 0
+        && !w.ui.webContents.isCrashed() && !win.live.get(cible.id).wc.isCrashed());
+      commands.run(w, 'taskManager');
+      const tm = await until(() => { const id = Object.keys(w.data.tabs).find((x) => w.data.tabs[x].internal && w.data.tabs[x].url.includes('tasks.html')); const rt = id && win.live.get(id); return rt && !rt.wc.isLoading() ? { id, wc: rt.wc } : null; }, 'page du gestionnaire');
+      await until(() => tm.wc.executeJavaScript(`!!document.querySelector('.line[data-pid="${pidCible}"] .btn')`), 'ligne de l’onglet');
+      const vu = await tm.wc.executeJavaScript(`(() => { const l = document.querySelector('.line[data-pid="${pidCible}"]'); return { name: l.querySelector('.name').textContent, imgs: document.querySelectorAll('main img').length, pirate: typeof window.pirate, boutons: [...document.querySelectorAll('.line .btn')].every((b) => b.closest('.line').dataset.kind === 'tab'), note: document.getElementById('note').textContent.length > 20 }; })()`);
+      check('page du gestionnaire : un titre piégé reste du texte ; le bouton « Arrêter » n’existe que sur les lignes d’onglets',
+        vu.name.includes(piege) && vu.imgs === 0 && vu.pirate === 'undefined' && vu.boutons && vu.note, JSON.stringify(vu));
+      await tm.wc.executeJavaScript(`document.querySelector('.line[data-pid="${pidCible}"] .btn').click(); 1`);
+      await until(() => { const rt = win.live.get(cible.id); return !rt || rt.wc.isCrashed() || rt.crashed; }, 'onglet arrêté');
+      const rtT = win.live.get(temoin.id);
+      check('« Arrêter » un onglet : son processus s’arrête, sa ligne reste dans la barre latérale, les autres onglets vivent', !!w.data.tabs[cible.id] && !!rtT && !rtT.wc.isCrashed());
+      for (const id of [cible.id, temoin.id, tm.id]) w.close(id, { silent: true, ask: false });
+    }
     Object.assign(s, saved);
 
     // Vignettes de la bascule ⌃Tab : huit au plus.

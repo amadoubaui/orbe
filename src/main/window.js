@@ -96,7 +96,7 @@ function resumed(saved, spaces, on) {
 const isInternal = (url) => (url || '').startsWith(INTERNAL);
 const isErrorPage = (url) => (url || '').startsWith(INTERNAL + 'error.html');
 // Pages internes pouvant s'ouvrir dans un onglet, avec accès à l'interface.
-const INTERNAL_PAGES = new Set(['library.html', 'shortcuts.html', 'welcome.html', 'notes.html', 'easel.html']);
+const INTERNAL_PAGES = new Set(['library.html', 'shortcuts.html', 'welcome.html', 'notes.html', 'easel.html', 'tasks.html']);
 // Adresse fournie par une page web (lien, image, glisser-déposer) : seuls
 // http et https sont acceptés, jamais file:, orbe: ou chrome:.
 const webUrl = (u) => (/^https?:\/\//i.test(u || '') ? u : null);
@@ -4072,4 +4072,4 @@ function archiveStale() {
   if (count) { store.save(); for (const w of windows.values()) w.layout(); OrbeWindow.pushAll(); }
 }
 
-module.exports = { OrbeWindow, windows, live, trusted, hooks, lostAfterStay: () => lastLost, applyBoosts, cleanUrl, mdLink, isMeetingUrl, SPLIT_BAR, archiveStale, tabMemory, tabProcesses, lastSweep: () => lastSweep, noteDownload, uiRetryDelay, UI_PREFS, STATUS_MAX, ICON_MAX, thumbs: { keep: keepThumb, MAX: THUMBS }, INTERNAL, UI_PRELOAD, isInternal, MOTION, motion, forceMotion, motionStats: stats, boundsOf, inFlight, resumed };
+module.exports = { OrbeWindow, windows, live, trusted, hooks, lostAfterStay: () => lastLost, applyBoosts, cleanUrl, mdLink, isMeetingUrl, SPLIT_BAR, archiveStale, tabMemory, tabProcesses, processMb, lastSweep: () => lastSweep, noteDownload, uiRetryDelay, UI_PREFS, STATUS_MAX, ICON_MAX, thumbs: { keep: keepThumb, MAX: THUMBS }, INTERNAL, UI_PRELOAD, isInternal, MOTION, motion, forceMotion, motionStats: stats, boundsOf, inFlight, resumed };
