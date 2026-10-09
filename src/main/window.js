@@ -1577,10 +1577,24 @@ class OrbeWindow {
     return true;
   }
 
+  // Site où l'image dans l'image automatique est coupée (réglage `pipOffSites`).
+  static pipSite(url) { try { const u = new URL(url); return /^https?:$/.test(u.protocol) ? u.hostname.toLowerCase() : ''; } catch { return ''; } }
+  static pipOff(url) { const h = OrbeWindow.pipSite(url); const list = store.state.settings.pipOffSites; return !!h && Array.isArray(list) && list.includes(h); }
+  static togglePipSite(url) {
+    const h = OrbeWindow.pipSite(url);
+    if (!h) return false;
+    const list = Array.isArray(store.state.settings.pipOffSites) ? store.state.settings.pipOffSites : [];
+    const next = list.includes(h) ? list.filter((x) => x !== h) : [...list, h].slice(-200);
+    require('./commands').setSetting('pipOffSites', next);
+    return true;
+  }
+
   // Image dans l'image : la vidéo en cours suit l'utilisateur quand il change
   // d'onglet, et retourne dans sa page quand il y revient.
   pip(rt, enter) {
     if (!store.state.settings.autoPip || rt.wc.isDestroyed()) return;
+    // Coupée pour ce site (menu d'une vidéo) : on ne l'y fait pas entrer ; en sortir reste permis.
+    if (enter && OrbeWindow.pipOff(rt.wc.getURL())) return;
     rt.pip = enter;
     const code = enter
       ? `(() => {
@@ -3677,6 +3691,9 @@ class OrbeWindow {
         { label: t('ctx.pip'), click: () => wc.executeJavaScript(`(() => { const el = document.elementFromPoint(${x}, ${y}); const v = el && (el.closest('video') || (el.querySelector && el.querySelector('video'))); if (!v || !document.pictureInPictureEnabled) return false; return (document.pictureInPictureElement === v ? document.exitPictureInPicture() : v.requestPictureInPicture()).then(() => true, () => false); })()`, true).catch(() => {}) },
         { label: t('ctx.copyVideoUrl'), visible: !!src, click: () => clipboard.writeText(p.srcURL) },
       );
+      // Image dans l'image automatique, site par site (quand le réglage général est actif).
+      const site = OrbeWindow.pipSite(wc.getURL());
+      if (site && store.state.settings.autoPip) tpl.push({ label: t('ctx.pipAuto', { site }), type: 'checkbox', checked: !OrbeWindow.pipOff(wc.getURL()), click: () => OrbeWindow.togglePipSite(wc.getURL()) });
     }
     if (!p.linkURL && !p.isEditable && p.mediaType === 'none' && !(p.selectionText || '').trim()) {
       const nav = wc.navigationHistory;
@@ -3996,4 +4013,4 @@ function archiveStale() {
   if (count) { store.save(); for (const w of windows.values()) w.layout(); OrbeWindow.pushAll(); }
 }
 
-module.exports = { OrbeWindow, windows, live, media, trusted, hooks, lostAfterStay: () => lastLost, applyBoosts, cleanUrl, mdLink, isMeetingUrl, SPLIT_BAR, archiveStale, tabMemory, noteDownload, uiRetryDelay, UI_PREFS, STATUS_MAX, ICON_MAX, thumbs: { keep: keepThumb, MAX: THUMBS }, INTERNAL, UI_PRELOAD, isInternal, MOTION, motion, forceMotion, motionStats: stats, boundsOf, inFlight, resumed };
+module.exports = { OrbeWindow, windows, live, media, trusted, hooks, lostAfterStay: () => lastLost, applyBoosts, cleanUrl, mdLink, isMeetingUrl, SPLIT_BAR, archiveStale, tabMemory, noteDownload, uiRetryDelay, UI_PREFS, STATUS_MAX, ICON_MAX, thumbs: { keep: keepThumb, MAX: THUMBS }, INTERNAL, UI_PRELOAD, isInternal, MOTION, motion, place, forceMotion, motionStats: stats, boundsOf, inFlight, resumed };

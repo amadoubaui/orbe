@@ -35,6 +35,7 @@ const DEFAULT_SETTINGS = {
   routes: [],
   externalLinks: 'window',
   autoPip: true,
+  pipOffSites: [],
   sounds: true,
   // Volume des sons (0 à 100) ; sons des gestes (onglets, Espaces, épingle) : coupés par défaut.
   soundVolume: 50,

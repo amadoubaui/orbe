@@ -362,10 +362,10 @@ Actions de la barre de commande relevées dans Arc (libellés du binaire et du c
 | PET-8 | Flotte au-dessus du plein écran, s'ouvre sur le bureau courant | HC 20498377604887 | 🟡 | non vérifié | |
 | PET-9 | Extensions disponibles ; bouton de copie du lien | binaire (infobulles) | 🟡 | bouton de copie du lien (sans paramètres de pistage) ; self « petite fenêtre : bouton de copie du lien… » ; ui 25 | Extensions absentes de la petite fenêtre |
 | PET-10 | Menu du Dock : afficher/masquer toutes les petites fenêtres, nouvelle fenêtre privée | HC 20498377604887 | ✅ | menu du Dock : navigation privée, masquer ou afficher toutes les petites fenêtres ; self lat « menu du Dock… » (cinq vérifications, voir MEN-96) | |
-| PET-11 | Retient le profil choisi pour un domaine | HC 20498377604887 | ⬜ | | |
+| PET-11 | Retient le profil choisi pour un domaine | HC 20498377604887 | ✅ | | le profil de l’Espace où une petite fenêtre est envoyée est retenu pour son site (200 sites) ; self tests/details.js |
 | PET-12 | Taille mémorisée | binaire (préférence `LittleBrowserWindow_size`) | ✅ | taille de la dernière petite fenêtre redimensionnée reprise par la suivante ; self « petite fenêtre : la taille choisie est reprise par la suivante », « taille enregistrée illisible ou hors bornes… » | |
-| PET-13 | Animation d'ouverture | HC 20498417809815 | ⬜ | | |
-| PET-14 | Première fois : bulle d'explication | binaire | ⬜ | | |
+| PET-13 | Animation d'ouverture | HC 20498417809815 | ✅ | | opacité 0→1 et montée de 14 pt en 180 ms (position et opacité de la fenêtre seulement), coupée par « Réduire les animations » ; self tests/details.js, ui 25 |
+| PET-14 | Première fois : bulle d'explication | binaire | ✅ | | bandeau de première fois entre la barre et la page, refermé par × ou après 12 s ; self, ui 25 |
 | PET-15 | Aiguillage : règle « contient » ou « est égal à » → Espace ; défaut Little Arc, Espace le plus récent ou un Espace précis | HC 22932014625431 | ✅ | self « aiguillage : le lien s'ouvre dans l'Espace de la règle » | « est égal à » absent |
 | PET-16 | Les liens Google Meet vont dans l'Espace le plus récent | HC 20498377604887 | ✅ | Meet, Zoom, Teams, Webex… : toujours un onglet de l’Espace affiché ; self « liens de réunion (Meet, Zoom, Teams) venus d’ailleurs : dans un onglet, jamais en petite fenêtre », « lien de réunion ou non » | |
 
@@ -415,7 +415,7 @@ Chiffres d'Arc : seuls ANI-1 à ANI-4 ont été mesurés. Pour le reste, l'exist
 | ANI-13 | Dépôt dans un dossier animé | HC 20498377604887 | ⬜ | | |
 | ANI-14 | Effacement des onglets du jour animé | HC 20498377604887 | ✅ | SH `flipPlay` : les lignes s'effacent en cascade (22 ms d'écart, dix crans au plus) ; ui 23 « Effacer » |  |
 | ANI-15 | Messages (toasts) animés, aux couleurs du thème | HC 20498293324823 | ✅ | entrée au ressort, sortie de 180 ms ; pilule sombre teintée à 26 % par la couleur de l'Espace ; ui 22 « messages » |  |
-| ANI-16 | Petite fenêtre : animation d'ouverture | HC 20498417809815 | ⬜ | | |
+| ANI-16 | Petite fenêtre : animation d'ouverture | HC 20498417809815 | ✅ | | opacité 0→1 et montée de 14 pt en 180 ms (position et opacité de la fenêtre seulement), coupée par « Réduire les animations » ; self tests/details.js, ui 25 |
 | ANI-17 | Passage en plein écran simplifié | HC 20498417809815 | 🟡 | natif | |
 | ANI-18 | Image dans l'image : élastique sous la taille minimale, lancer vers un coin | inverse ; HC 20498417809815 | ⬜ | fenêtre native de Chromium | |
 | ANI-19 | Le lecteur audio rejoint la position de l'image dans l'image en s'animant | HC 20498377604887 | ⬜ | | |
@@ -496,7 +496,7 @@ Aucun geste n'a été rejoué sur Arc pendant cet inventaire (ils demandent la m
 | BIB-26 | Touches multimédia du clavier | HC 20498417809815 | 🟡 | défaut de Chromium, non testé | |
 | BIB-27 | Image dans l'image automatique en quittant un onglet vidéo ; pas si l'onglet est muet | HC 19234766331799 ; binaire | ✅ | self (deux vérifications) | |
 | BIB-28 | Fenêtre d'image dans l'image propre à Arc : retour à l'onglet, fermer, réduire, vitesse, flèches pour chercher, espace pour pause | HC 20498377604887 ; binaire | 🟡 | fenêtre native de Chromium | |
-| BIB-29 | Désactivable par site et globalement | HC 25590734716823 | 🟡 | réglage global `autoPip` | |
+| BIB-29 | Désactivable par site et globalement | HC 25590734716823 | ✅ | réglage global `autoPip` | réglage global autoPip + case par site dans le menu d’une vidéo (pipOffSites) ; self tests/details.js |
 | BIB-30 | Google Meet : image dans l'image avec commandes de réunion | HC 20498293324823 | ➖ | | Propre à un service |
 | BIB-31 | Cast | menu | ➖ | | Écarté : Electron ne fournit ni Chromecast ni le sélecteur de diffusion de Chrome |
 

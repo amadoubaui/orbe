@@ -611,7 +611,7 @@ module.exports = async function fenetresTests(ctx) {
     const img = menu({ mediaType: 'image', srcURL: base + '/image.png' });
     check('menu de page, image : ouvrir, copier, copier l’adresse, enregistrer', labels(img).join('|') === ['ctx.openImage', 'ctx.copyImage', 'ctx.copyImageUrl', 'ctx.saveImage', 'ctx.inspect'].map((k) => t(k)).join('|'), labels(img).join('|'));
     const vid = menu({ mediaType: 'video', srcURL: base + '/film.mp4' });
-    check('menu de page, vidéo : image dans l’image, copier l’adresse', labels(vid).join('|') === ['ctx.pip', 'ctx.copyVideoUrl', 'ctx.inspect'].map((k) => t(k)).join('|'), labels(vid).join('|'));
+    check('menu de page, vidéo : image dans l’image, copier l’adresse', labels(vid).join('|') === [t('ctx.pip'), t('ctx.copyVideoUrl'), t('ctx.pipAuto', { site: '127.0.0.1' }), t('ctx.inspect')].join('|'), labels(vid).join('|'));
     const pageMenu = menu({});
     check('menu de page, page : précédent, suivant, actualiser, copier l’adresse, enregistrer, imprimer, Boost, traduire, inspecter', labels(pageMenu).join('|') === ['ctx.back', 'ctx.forward', 'ctx.reload', 'edit.copyUrl', 'file.savePage', 'file.print', 'boost.edit', 'ctx.translate', 'ctx.inspect'].map((k) => t(k)).join('|'), labels(pageMenu).join('|'));
     const opened = [];
@@ -878,7 +878,7 @@ module.exports = async function fenetresTests(ctx) {
     check('⌘P : l’impression est demandée à la page affichée', printed === 1);
     // Image dans l'image depuis le menu de la vidéo
     const vmenu = w.pageMenuTemplate(vrt, { x: 100, y: 90, mediaType: 'video', srcURL: '' });
-    check('menu d’une vidéo sans adresse propre (flux) : image dans l’image seulement', labels(vmenu).join('|') === [t('ctx.pip'), t('ctx.inspect')].join('|'));
+    check('menu d’une vidéo sans adresse propre (flux) : image dans l’image seulement', labels(vmenu).join('|') === [t('ctx.pip'), t('ctx.pipAuto', { site: '127.0.0.1' }), t('ctx.inspect')].join('|'), labels(vmenu).join('|'));
     if (!env.vivant) {
       ignorer('menu d’une vidéo : « Image dans l’image » la détache, une seconde fois la ramène', env.muet || env.raison);
     } else {

@@ -18,6 +18,7 @@ O.on('state', (s) => {
   open.disabled = !s.url;
   copy.disabled = !s.url;
   document.title = s.title || 'Orbe';
+  document.getElementById('hint').hidden = !s.hint;
   const was = !!spaces;
   spaces = Array.isArray(s.spaces) ? s.spaces : null;
   document.body.classList.toggle('menu', !!spaces);
@@ -34,6 +35,7 @@ u.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') u.blur();
 });
 open.onclick = () => O.send('openInOrbe');
+document.getElementById('hint-close').onclick = () => O.send('closeHint');
 document.getElementById('open-in').onclick = () => O.send('openInMenu');
 copy.onclick = () => {
   O.send('copyUrl');

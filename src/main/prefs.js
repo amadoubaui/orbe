@@ -122,6 +122,8 @@ const SETTABLE = {
   boostsEnabled: bool,
   boostsJs: bool,
   mediaControls: bool,
+  // Sites où la vidéo ne passe pas d'elle-même en image dans l'image (menu d'une vidéo).
+  pipOffSites: (v) => Array.isArray(v) && v.length <= 200 && v.every((h) => typeof h === 'string' && HOST.test(h)) && new Set(v).size === v.length,
   tabKeysFavorites: bool,
   tabKeysNinthLast: bool,
   devSites: (v) => Array.isArray(v) && v.length <= 200 && v.every((h) => typeof h === 'string' && HOST.test(h)) && new Set(v).size === v.length,

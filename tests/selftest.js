@@ -1105,6 +1105,9 @@ module.exports = async function selftest(ctx) {
   // Médias : lecteurs miniatures de la barre latérale (tests/medias.js)
   await require('./medias')({ ...ctx, check });
 
+  // Petite fenêtre, image dans l'image par site, capture… (tests/details.js)
+  await require('./details')({ ...ctx, check });
+
   // Correctifs de la revue de sécurité : quarantaine, sauvegardes, aiguillage, Boosts, adresses étroites.
   await require('./securite')({ ...ctx, check });
 
