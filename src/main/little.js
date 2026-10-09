@@ -53,7 +53,7 @@ class LittleWindow {
     this.uiId = this.ui.webContents.id;
     this.win.contentView.addChildView(this.ui);
     this.ui.webContents.loadURL(INTERNAL + 'little.html');
-    this.ui.webContents.once('did-finish-load', () => { this.send(); if (!this.url) this.ui.webContents.focus(); });
+    this.ui.webContents.once('did-finish-load', () => { if (this.win.isDestroyed() || this.ui.webContents.isDestroyed()) return; this.send(); if (!this.url) this.ui.webContents.focus(); });
     this.win.on('resize', () => this.layout());
     this.win.on('focus', () => { this.usedAt = Date.now(); });
     this.win.on('blur', () => { this.usedAt = Date.now(); });

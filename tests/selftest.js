@@ -1000,6 +1000,25 @@ module.exports = async function selftest(ctx) {
   check('navigation privée : pas d’historique', store.state.history[base + '/b'].visits === visitsBefore);
   inc.win.close();
 
+  // Fenêtre fermée avant que sa barre latérale ait fini de se charger : la fin du
+  // chargement arrive sur une fenêtre détruite. Y toucher levait une exception que
+  // rien ne rattrapait — Electron ouvrait alors une boîte d'erreur native, qui fige
+  // tout le processus : c'était le blocage des essais après « pas d'historique ».
+  {
+    const guard = require('../src/main/test-guard');
+    const errors = guard.state.errors.length;
+    const quick = new OrbeWindow({ incognito: true });
+    const quickUi = quick.ui.webContents;
+    const late = quickUi.listeners('did-finish-load'); // ce qui attend la fin du chargement
+    quick.win.close();
+    await until(() => quick.win.isDestroyed(), 'fenêtre refermée');
+    let thrown = null;
+    for (const fn of late) { try { fn.call(quickUi); } catch (err) { thrown = err; } }
+    await sleep(300);
+    check('fenêtre fermée avant la fin du chargement de sa barre : plus rien n’y touche', late.length > 0 && !thrown && guard.state.errors.length === errors, thrown ? thrown.message : `${late.length} écouteur(s), ${guard.state.errors.length - errors} exception(s)`);
+    check('aucune exception non rattrapée dans le processus principal jusqu’ici', guard.state.errors.length === 0, guard.state.errors.map((e) => String(e).split('\n').slice(0, 3).join(' | ')).join(' ; '));
+  }
+
   // Petite fenêtre
   const lw = new little.LittleWindow(base + '/a');
   await until(() => lw.title === 'Page A', 'petite fenêtre chargée');

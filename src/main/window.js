@@ -216,7 +216,11 @@ class OrbeWindow {
     this.syncPeekTimer();
     // La fenêtre paraît sans attendre la barre latérale (60 à 100 ms gagnées).
     if (!process.env.ORBE_HIDE_UNTIL_READY) this.win.show();
+    // La fenêtre peut être fermée avant que sa barre latérale ait fini de se
+    // charger : l'événement arrive alors sur une fenêtre détruite, et y toucher
+    // lève une exception (« Object has been destroyed ») que rien ne rattrape.
     this.ui.webContents.once('did-finish-load', () => {
+      if (this.gone) return;
       this.layout();
       if (!this.win.isVisible()) this.win.show();
       if (process.env.ORBE_TIMING) console.log(`[orbe] fenêtre affichée en ${Math.round(Date.now() - process.getCreationTime())} ms`);
@@ -270,6 +274,13 @@ class OrbeWindow {
   get activeId() {
     const id = this.activeBySpace[this.space.id];
     return id && this.data.tabs[id] ? id : null;
+  }
+
+  // Fenêtre en cours de fermeture ou détruite : plus rien ne doit y toucher.
+  // À vérifier dans tout ce qui s'exécute plus tard (fin de chargement d'une vue,
+  // minuteur, promesse), car une fenêtre se ferme à n'importe quel moment.
+  get gone() {
+    return this.closing || this.win.isDestroyed();
   }
 
   get activeRt() {
@@ -1763,6 +1774,7 @@ class OrbeWindow {
   askRename(id) {
     if (!this.sidebarVisible && !this.peek) this.toggleSidebar(true);
     setTimeout(() => {
+      if (this.gone) return;
       const view = this.shellView;
       if (view.webContents.isDestroyed()) return;
       view.webContents.focus();
@@ -2113,7 +2125,7 @@ class OrbeWindow {
     const ms = motion(MOTION.peekIn);
     if (!this.peekChrome) {
       this.peekChrome = this.makeUiView('overlay.html#peek');
-      this.peekChrome.webContents.once('did-finish-load', () => { if (this.peekState) this.peekOverlay({ ms }); });
+      this.peekChrome.webContents.once('did-finish-load', () => { if (!this.gone && this.peekState) this.peekOverlay({ ms }); });
     } else {
       this.peekOverlay({ ms });
     }
@@ -2269,7 +2281,7 @@ class OrbeWindow {
     const items = this.suggestLocal(q);
     if (!this.incognito) {
       suggest.remote(q, ctrl.signal).then((more) => {
-        if (ctrl.signal.aborted || !more.length || this.modalMode !== 'command') return;
+        if (ctrl.signal.aborted || !more.length || this.modalMode !== 'command' || this.gone || this.modal.webContents.isDestroyed()) return;
         const seen = new Set(items.map((i) => i.title.toLowerCase()));
         this.modal.webContents.send('suggest-more', { q, items: more.filter((m) => !seen.has(m.title.toLowerCase())) });
       });
@@ -2376,7 +2388,11 @@ class OrbeWindow {
     this.win.contentView.addChildView(this.findView);
     this.layout();
     this.findView.setVisible(true);
-    const show = () => { this.findView.webContents.send('overlay', typeof text === 'string' ? { mode: 'find', text } : { mode: 'find' }); this.findView.webContents.focus(); };
+    const show = () => {
+      if (this.gone || this.findView.webContents.isDestroyed()) return;
+      this.findView.webContents.send('overlay', typeof text === 'string' ? { mode: 'find', text } : { mode: 'find' });
+      this.findView.webContents.focus();
+    };
     if (this.findView.webContents.isLoading()) this.findView.webContents.once('did-finish-load', show);
     else show();
   }
@@ -2474,7 +2490,7 @@ class OrbeWindow {
     if (this.win.isDestroyed()) return;
     if (sound) this.sound(sound);
     const send = () => {
-      if (this.toastView.webContents.isDestroyed()) return;
+      if (this.gone || this.toastView.webContents.isDestroyed()) return;
       this.win.contentView.addChildView(this.toastView);
       this.layout();
       this.toastView.setVisible(true);
