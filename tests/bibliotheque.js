@@ -262,10 +262,12 @@ module.exports = async function bibliothequeTests(ctx) {
   const copied = nativeImage.createFromBuffer(Buffer.from(await (await typed('image/png')).arrayBuffer()));
   check('« Copier » une image : l’image elle-même est dans le presse-papiers', !copied.isEmpty() && copied.getSize().width === 2 && copied.getSize().height === 2, JSON.stringify(copied.getSize()));
   await clipboard.writeText('avant');
+  // (Selon le système, l'adresse relue peut finir par un caractère nul ou différer par la casse du lecteur.)
+  const samePath = (uri, file) => { try { return path.normalize(require('url').fileURLToPath(String(uri).replace(/[\0\s]+$/g, '').split(/\r?\n/)[0])).toLowerCase() === path.normalize(file).toLowerCase(); } catch { return false; } };
   const how = await downloads.action('dl:copy', 'dl-notes.txt', null);
   const uri = await typed('text/uri-list');
   const uriText = uri ? (typeof uri === 'string' ? uri : await uri.text()) : '';
-  check('« Copier » un autre fichier : le fichier lui-même (à coller dans le Finder ou l’Explorateur)', how === 'file' && uriText.trim() === require('url').pathToFileURL(find('notes.txt').path).href, `${how} ${uriText} ${(await types()).join()}`);
+  check('« Copier » un autre fichier : le fichier lui-même (à coller dans le Finder ou l’Explorateur)', how === 'file' && samePath(uriText, find('notes.txt').path), `${how} ${JSON.stringify(uriText)} ${(await types()).join()}`);
   await clipboard.writeText('avant');
   check('« Copier » un fichier disparu : rien, le presse-papiers reste tel quel', (await downloads.action('dl:copy', 'dl-parti.txt', null)) === false && (await clipboard.readText()) === 'avant');
   if (clip0.length) await clipboard.write(clip0.map((o) => new ClipboardItem(o))).catch(() => {}); else clipboard.clear();
@@ -422,6 +424,78 @@ module.exports = async function bibliothequeTests(ctx) {
     notes.env.reveal = reveal0;
     w.toast = toast0;
     try { fs.rmSync(out, { recursive: true, force: true }); } catch {}
+  }
+
+  // --- Sauvegardes locales de l'état ---------------------------------------------------------
+  {
+    const backups = require('../src/main/backups');
+    const name = (y, mo, da, h = 12, mi = 0) => `orbe-${y}${String(mo).padStart(2, '0')}${String(da).padStart(2, '0')}-${String(h).padStart(2, '0')}${String(mi).padStart(2, '0')}00.json`;
+    const now = new Date(2026, 9, 20, 18, 0, 0);
+    const names = [];
+    for (let h = 1; h <= 14; h++) names.push(name(2026, 10, 20, h));
+    for (let day = 1; day <= 19; day++) { names.push(name(2026, 10, day, 9)); names.push(name(2026, 10, day, 17)); }
+    names.push('autre.json', 'orbe-20261020.json');
+    const kept = [...backups.keep(names, now)].sort();
+    const today = kept.filter((n) => n.startsWith('orbe-20261020-'));
+    const older = kept.filter((n) => !n.startsWith('orbe-20261020-'));
+    check('sauvegardes gardées : les dix dernières du jour, et la dernière de chacun des dix jours précédents',
+      today.length === 10 && today[0] === name(2026, 10, 20, 5) && older.length === 10 && older[0] === name(2026, 10, 10, 17) && older.every((n) => n.endsWith('-170000.json')) && !kept.includes('autre.json'), kept.join(' '));
+
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'orbe-sauvegardes-'));
+    const state = path.join(tmp, 'orbe.json');
+    fs.writeFileSync(state, JSON.stringify({ spaces: [{ id: 'a', name: 'Avant' }], marque: 1 }));
+    const first = backups.snapshot(state, new Date(2026, 9, 20, 8, 0, 0));
+    fs.writeFileSync(state, '{ abîmé');
+    const broken = backups.snapshot(state, new Date(2026, 9, 20, 9, 0, 0));
+    fs.writeFileSync(state, JSON.stringify({ spaces: [{ id: 'a', name: 'Après' }], marque: 2 }));
+    for (let h = 10; h <= 21; h++) backups.snapshot(state, new Date(2026, 9, 20, h, 0, 0));
+    const listed = backups.list(state);
+    check('une copie de l’état par passage, jamais d’un fichier illisible ; au-delà de dix dans la journée, les plus anciennes partent',
+      !!first && broken === null && listed.length === 10 && listed[0].name === name(2026, 10, 20, 21) && listed[9].name === name(2026, 10, 20, 12)
+      && listed[0].at === new Date(2026, 9, 20, 21, 0, 0).getTime() && JSON.parse(fs.readFileSync(listed[0].file, 'utf8')).marque === 2, listed.map((b) => b.name).join(' '));
+
+    // Restauration : sur un état d'essai, sans relancer Orbe.
+    const file0 = store.file;
+    const flush0 = store.flush;
+    const confirm0 = backups.env.confirm;
+    const relaunch0 = backups.env.relaunch;
+    const asked3 = [];
+    let agree3 = false;
+    let relaunched = 0;
+    backups.env.confirm = async (opts) => { asked3.push(opts); return agree3; };
+    backups.env.relaunch = () => { relaunched += 1; };
+    store.flush = () => {};
+    store.file = state;
+    fs.writeFileSync(path.join(backups.dirOf(state), name(2026, 10, 19, 9)), JSON.stringify({ spaces: [{ id: 'a', name: 'Hier' }], marque: 0 }));
+    fs.writeFileSync(path.join(backups.dirOf(state), name(2026, 10, 18, 9)), '{ "spaces": "pas une liste" }');
+    const wanted3 = name(2026, 10, 19, 9);
+    const refused3 = [await backups.restore('../orbe.json'), await backups.restore('inconnue.json'), await backups.restore(name(2026, 10, 18, 9)), await backups.restore(null)];
+    check('restauration : nom inconnu, chemin, ou sauvegarde qui n’est pas un état d’Orbe : refusés sans question', refused3.every((r) => r === false) && asked3.length === 0 && store.file === state, JSON.stringify(refused3));
+    const cancelled = await backups.restore(wanted3);
+    check('« Restaurer une sauvegarde » : la question dit la date ; « Annuler » ne touche à rien', cancelled === false && asked3.length === 1 && asked3[0].message === T('backup.confirm') && /19/.test(asked3[0].detail) && JSON.parse(fs.readFileSync(state, 'utf8')).marque === 2 && relaunched === 0);
+    agree3 = true;
+    const before3 = backups.list(state).length;
+    const done3 = await backups.restore(wanted3);
+    const fileAfter = store.file;
+    store.file = file0;
+    store.flush = flush0;
+    check('restauration acceptée : l’état revient à la sauvegarde, l’état quitté est sauvegardé d’abord, Orbe se relance sans rien réécrire',
+      done3 === true && JSON.parse(fs.readFileSync(state, 'utf8')).marque === 0 && relaunched === 1 && fileAfter === null
+      && backups.list(state).some((b) => JSON.parse(fs.readFileSync(b.file, 'utf8')).marque === 2) && before3 > 0);
+    store.file = state;
+    const items3 = backups.menuItems();
+    store.file = path.join(tmp, 'vide', 'orbe.json');
+    const none3 = backups.menuItems();
+    store.file = file0;
+    const { Menu } = require('electron');
+    const help = Menu.getApplicationMenu().items.find((m) => m.role === 'help' || m.label === T('menu.help'));
+    const trouble = help && help.submenu.items.find((it) => it.label === T('help.troubleshooting'));
+    check('Aide → Dépannage → « Restaurer une sauvegarde » : une ligne par sauvegarde, datée ; sans sauvegarde, une ligne grisée',
+      items3.length >= 2 && items3.every((it) => typeof it.click === 'function' && /\d/.test(it.label)) && none3.length === 1 && none3[0].enabled === false && none3[0].label === T('backup.none')
+      && !!trouble && trouble.submenu.items.some((it) => it.label === T('backup.menu') && !!it.submenu));
+    backups.env.confirm = confirm0;
+    backups.env.relaunch = relaunch0;
+    try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {}
   }
 
   // --- Remise en état ---------------------------------------------------------------------

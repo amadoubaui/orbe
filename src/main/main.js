@@ -345,6 +345,8 @@ app.on('second-instance', (e, argv) => {
 
 app.whenReady().then(async () => {
   store.load(app.getPath('userData'));
+  // Sauvegardes locales de l'état : au lancement, puis toutes les heures (pas pendant les tests).
+  if (!SELFTEST) require('./backups').start();
   // (Sans lire l'historique : il n'est chargé qu'après l'affichage de la fenêtre.)
   const firstRun = !Object.keys(store.state.tabs).length && !store.hadHistory && !store.historyDirty;
   // Moteur avec Widevine (ORBE_DRM) : prépare le module de lecture protégée, sans
