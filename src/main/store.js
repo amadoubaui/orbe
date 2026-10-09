@@ -32,6 +32,9 @@ const DEFAULT_SETTINGS = {
   externalLinks: 'window',
   autoPip: true,
   sounds: true,
+  // Volume des sons (0 à 100) ; sons des gestes (onglets, Espaces, épingle) : coupés par défaut.
+  soundVolume: 50,
+  soundGestures: false,
   // Fenêtre des réglages à volets (validation : src/main/prefs.js).
   showFullUrl: true,
   warnOnQuit: false,
