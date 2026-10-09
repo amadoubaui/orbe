@@ -473,7 +473,9 @@ module.exports = async function fenetresTests(ctx) {
     check('export : un fichier JSON avec chaque Boost (site, nom, CSS, Zap, apparence, script), sans son état', exported.orbeBoosts === 1 && exported.boosts.map((b) => b.host).join() === [host, 'exemple.org'].sort().join() && exported.boosts.every((b) => !('enabled' in b) && !('jsOn' in b)) && exported.boosts.find((b) => b.host === host).js === script);
     await ed(`document.querySelector('#list-items .item[data-host="exemple.org"] [data-act="delete"]').click()`);
     await until(() => !boosts.has('exemple.org'), 'Boost supprimé depuis la liste');
-    check('liste des Boosts : supprimer', await ed(`document.querySelectorAll('#list-items .item').length`) === 1);
+    // La liste se redessine un instant après la suppression : on attend son nouvel état.
+    const listed = await until(async () => (await ed(`document.querySelectorAll('#list-items .item').length`)) === 1, 'liste redessinée').then(() => true, () => false);
+    check('liste des Boosts : supprimer', listed);
     // Fichier importé : données non fiables
     const hostile = {
       orbeBoosts: 1,
