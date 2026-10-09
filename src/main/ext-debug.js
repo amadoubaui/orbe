@@ -15,6 +15,7 @@
 const api = require('./ext-api');
 const panel = require('./ext-panel');
 const { store } = require('./store');
+const unload = require('./unload');
 
 const X = api.internals;
 const CHANNEL = panel.CHANNEL;
@@ -82,6 +83,7 @@ api.extend({
     X.need(ctx, 'debugger');
     const t = debuggee(ctx, target);
     const dbg = t.wc.debugger;
+    unload.unshield(t.wc); // débogueur tenu un instant par Orbe (unload.js) : il le rend
     if (sessions.has(t.id) || dbg.isAttached()) throw X.fail(`Another debugger is already attached to the tab with id: ${t.id}.`);
     try {
       dbg.attach(typeof version === 'string' && /^\d+\.\d+$/.test(version) ? version : '1.3');

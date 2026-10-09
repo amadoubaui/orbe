@@ -1,0 +1,35 @@
+# TEMPORAIRE (branche rester-fiable) : répète « fermer la fenêtre puis Rester »
+# avec et sans le bouclier, pour compter les pages perdues. À retirer avant la fin.
+name: Rester répété
+
+on:
+  push:
+    branches: [rester-fiable]
+  workflow_dispatch:
+
+jobs:
+  repete:
+    name: ${{ matrix.os }} bouclier=${{ matrix.bouclier }} charge=${{ matrix.charge }} n° ${{ matrix.lot }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+        bouclier: ['0', '1']
+        charge: ['0', '8']
+        lot: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Fermer la fenêtre puis « Rester », 150 fois
+        shell: bash
+        env:
+          RESTER_N: '150'
+          RESTER_BOUCLIER: ${{ matrix.bouclier }}
+          RESTER_CHARGE: ${{ matrix.charge }}
+          RESTER_ONGLETS: '14'
+          ORBE_SCENARIO: tests/rester.js
+        run: node scripts/dev.js --selftest 2>&1 | grep -v "^\[orbe\] page détruite" | cut -c1-600
