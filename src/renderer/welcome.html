@@ -48,6 +48,7 @@ h1 { font-size: 28px; margin-bottom: 8px; }
 @keyframes halo-in { from { opacity: 0; transform: scale(0.4) rotate(-90deg); } to { opacity: 0.55; } }
 @keyframes mark-in { from { opacity: 0; transform: scale(0.7); } to { opacity: 1; transform: none; } }
 @keyframes turn { to { rotate: 360deg; } }
+@media (prefers-reduced-motion: reduce) { .demo b { animation: none !important; } }
 @media (prefers-reduced-motion: reduce) { .step, .orb .halo, .orb .mark, .orb .mark i, #music.playing .on { animation: none; } .orb .wave { display: none; } }
 
 #langs { display: flex; gap: 8px; margin: 0; }
@@ -66,6 +67,39 @@ h1 { font-size: 28px; margin-bottom: 8px; }
 .tips .line { border-top: 0.5px solid var(--line); min-height: 48px; }
 .tips .line:nth-child(-n+2) { border-top: 0; }
 .tips .line:nth-child(odd) { border-right: 0.5px solid var(--line); }
+/* Premiers gestes : chaque astuce a sa petite démonstration animée, dessinée ici (aucune
+   vidéo) : une fenêtre d'Orbe en réduction — barre latérale à gauche, page à droite.
+   Boucles de 4,2 s, transformations et opacité seulement ; figées par « Réduire les animations ». */
+.demo { position: relative; flex: none; width: 64px; height: 42px; border-radius: 7px; overflow: hidden; background: color-mix(in srgb, var(--accent) 16%, var(--base)); box-shadow: 0 0 0 0.5px var(--line); }
+.demo b { position: absolute; display: block; }
+.demo .pg { left: 21px; top: 2px; right: 2px; bottom: 2px; border-radius: 4px; background: var(--active); box-shadow: 0 0 0 0.5px var(--line); }
+.demo .r { left: 3px; width: 15px; height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--fg) 26%, transparent); }
+.demo .r1 { top: 6px; } .demo .r2 { top: 13px; } .demo .r3 { top: 23px; } .demo .r4 { top: 30px; }
+.demo .hot { background: var(--accent); }
+.demo .rule { left: 3px; top: 19.500px; width: 15px; height: 1px; background: var(--line); }
+.d-tab .cmd { left: 27px; top: 14px; width: 28px; height: 9px; border-radius: 3px; background: var(--accent); box-shadow: 0 3px 8px rgba(0, 0, 0, 0.25); animation: d-pop 4200ms var(--ease-out, ease-out) infinite both; }
+.d-tab .r3 { animation: d-new 4200ms var(--ease-out, ease-out) infinite both; }
+.d-pin .r3 { animation: d-pin 4200ms var(--ease, ease) infinite both; }
+.d-space .lists { left: 0; top: 0; width: 42px; height: 42px; animation: d-slide 4200ms var(--ease, ease) infinite both; }
+.d-space .lists .two { left: 24px; background: #f59e0b; opacity: 0.75; }
+.d-space .dot { bottom: 3px; width: 3px; height: 3px; border-radius: 50%; background: color-mix(in srgb, var(--fg) 30%, transparent); }
+.d-space .dot.a { left: 6px; animation: d-dot-a 4200ms linear infinite both; } .d-space .dot.b { left: 12px; animation: d-dot-b 4200ms linear infinite both; }
+.d-space .mask { left: 20px; top: 0; width: 44px; height: 42px; background: color-mix(in srgb, var(--accent) 16%, var(--base)); }
+.d-split .p2 { left: 43px; top: 2px; width: 19px; bottom: 2px; border-radius: 4px; background: var(--active); box-shadow: 0 0 0 0.5px var(--line), -1.500px 0 0 color-mix(in srgb, var(--accent) 16%, var(--base)); animation: d-split 4200ms var(--ease, ease) infinite both; }
+.d-side .sb { left: 0; top: 0; width: 21px; height: 42px; animation: d-side 4200ms var(--ease, ease) infinite both; }
+.d-side .pg { transform-origin: 100% 50%; animation: d-grow 4200ms var(--ease, ease) infinite both; }
+.d-little .lw { left: 30px; top: 9px; width: 28px; height: 24px; border-radius: 4px; background: var(--active); box-shadow: 0 0 0 0.5px var(--line), 0 4px 10px rgba(0, 0, 0, 0.3); animation: d-pop 4200ms var(--ease-out, ease-out) infinite both; }
+.d-little .lw::before { content: ''; position: absolute; left: 3px; top: 3px; right: 3px; height: 3px; border-radius: 2px; background: var(--accent); }
+@keyframes d-pop { 0%, 12% { opacity: 0; transform: scale(0.7) translateY(3px); } 22%, 78% { opacity: 1; transform: none; } 88%, 100% { opacity: 0; transform: scale(0.9); } }
+@keyframes d-new { 0%, 48% { opacity: 0; transform: translateY(-5px); } 60%, 88% { opacity: 1; transform: none; } 100% { opacity: 0; transform: none; } }
+@keyframes d-pin { 0%, 22% { transform: none; opacity: 1; } 40%, 84% { transform: translateY(-10px); opacity: 1; } 92% { transform: translateY(-10px); opacity: 0; } 93% { transform: none; opacity: 0; } 100% { transform: none; opacity: 1; } }
+@keyframes d-slide { 0%, 24% { transform: none; } 40%, 80% { transform: translateX(-21px); } 96%, 100% { transform: none; } }
+@keyframes d-dot-a { 0%, 30% { opacity: 1; transform: scale(1.5); } 40%, 84% { opacity: 0.5; transform: none; } 96%, 100% { opacity: 1; transform: scale(1.5); } }
+@keyframes d-dot-b { 0%, 30% { opacity: 0.5; transform: none; } 40%, 84% { opacity: 1; transform: scale(1.5); } 96%, 100% { opacity: 0.5; transform: none; } }
+@keyframes d-split { 0%, 22% { transform: translateX(24px); } 38%, 82% { transform: none; } 96%, 100% { transform: translateX(24px); } }
+@keyframes d-side { 0%, 22% { transform: none; } 36%, 80% { transform: translateX(-22px); } 94%, 100% { transform: none; } }
+@keyframes d-grow { 0%, 22% { transform: none; } 36%, 80% { transform: scaleX(1.46); } 94%, 100% { transform: none; } }
+.tips .line { gap: 10px; }
 .imp-controls { display: flex; align-items: center; gap: 6px; flex: none; flex-wrap: wrap; justify-content: flex-end; }
 .imp-controls select { max-width: 170px; }
 
@@ -120,12 +154,12 @@ footer .btn { height: 32px; padding: 0 16px; }
     <h1 data-t="welcome.readyTitle"></h1>
     <p class="lead" data-t="welcome.readyLead"></p>
     <div class="card tips">
-      <div class="line"><span class="grow" data-t="welcome.tipTab"></span><kbd data-key="newTab">⌘T</kbd></div>
-      <div class="line"><span class="grow" data-t="welcome.tipPin"></span><kbd data-key="togglePin">⌘D</kbd></div>
-      <div class="line"><span class="grow" data-t="welcome.tipSpace"></span><kbd data-key="nextSpace">⌥⌘→</kbd></div>
-      <div class="line"><span class="grow" data-t="welcome.tipSplit"></span><kbd data-key="addSplit">⌃⇧=</kbd></div>
-      <div class="line"><span class="grow" data-t="view.hideSidebar"></span><kbd data-key="toggleSidebar">⌘S</kbd></div>
-      <div class="line"><span class="grow" data-t="file.newLittle"></span><kbd data-key="newLittle">⌥⌘N</kbd></div>
+      <div class="line"><i class="demo d-tab" aria-hidden="true"><b class="pg"></b><b class="r r1"></b><b class="r r2"></b><b class="rule"></b><b class="r r3 hot"></b><b class="cmd"></b></i><span class="grow" data-t="welcome.tipTab"></span><kbd data-key="newTab">⌘T</kbd></div>
+      <div class="line"><i class="demo d-pin" aria-hidden="true"><b class="pg"></b><b class="r r1"></b><b class="rule"></b><b class="r r3 hot"></b><b class="r r4"></b></i><span class="grow" data-t="welcome.tipPin"></span><kbd data-key="togglePin">⌘D</kbd></div>
+      <div class="line"><i class="demo d-space" aria-hidden="true"><b class="lists"><b class="r r1 hot"></b><b class="r r2 hot"></b><b class="r r3 hot"></b><b class="r r1 two"></b><b class="r r2 two"></b><b class="r r3 two"></b></b><b class="mask"></b><b class="pg"></b><b class="dot a"></b><b class="dot b"></b></i><span class="grow" data-t="welcome.tipSpace"></span><kbd data-key="nextSpace">⌥⌘→</kbd></div>
+      <div class="line"><i class="demo d-split" aria-hidden="true"><b class="pg"></b><b class="r r1"></b><b class="r r2 hot"></b><b class="r r3"></b><b class="p2"></b></i><span class="grow" data-t="welcome.tipSplit"></span><kbd data-key="addSplit">⌃⇧=</kbd></div>
+      <div class="line"><i class="demo d-side" aria-hidden="true"><b class="pg"></b><b class="sb"><b class="r r1"></b><b class="r r2 hot"></b><b class="r r3"></b></b></i><span class="grow" data-t="view.hideSidebar"></span><kbd data-key="toggleSidebar">⌘S</kbd></div>
+      <div class="line"><i class="demo d-little" aria-hidden="true"><b class="pg"></b><b class="r r1"></b><b class="r r2"></b><b class="lw"></b></i><span class="grow" data-t="file.newLittle"></span><kbd data-key="newLittle">⌥⌘N</kbd></div>
     </div>
     <p style="margin:12px 0 14px"><button class="btn" data-cmd="shortcuts" data-t="help.shortcuts"></button></p>
     <div class="card support">

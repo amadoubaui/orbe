@@ -319,6 +319,49 @@ module.exports = {
       } finally { await accueil.emulateMedia({ reducedMotion: null }); }
     });
 
+    // --- Accueil : démonstrations animées des premiers gestes --------------------------------
+    await accueil.locator('#skip').click();
+    await jusqua(() => accueil.evaluate(() => document.querySelector('.step.on').dataset.step === 'ready'), 'dernière étape');
+    await t.verifier('accueil, premiers gestes : chacune des six astuces a sa petite démonstration dessinée (aucune vidéo, aucune image)', async () => {
+      if (process.env.ORBE_UI_SHOTS) { await sleep(2600); await ctx.capture('accueil-gestes', accueil); }
+      const vu = await accueil.evaluate(() => ({ demos: [...document.querySelectorAll('.tips .line')].map((l) => { const d = l.querySelector('.demo'); return d ? d.className.replace('demo ', '') + ':' + Math.round(d.getBoundingClientRect().width) + 'x' + Math.round(d.getBoundingClientRect().height) : ''; }), medias: document.querySelectorAll('video, img, canvas').length, large: document.documentElement.scrollWidth <= innerWidth, textes: [...document.querySelectorAll('.tips .line .grow')].every((e) => e.textContent.length > 3 && e.getBoundingClientRect().width > 60) }));
+      assert.deepEqual(vu.demos, ['d-tab:64x42', 'd-pin:64x42', 'd-space:64x42', 'd-split:64x42', 'd-side:64x42', 'd-little:64x42']);
+      assert.equal(vu.medias, 0);
+      assert.ok(vu.large && vu.textes, 'les astuces gardent leur texte et tiennent dans la page');
+    });
+
+    await animer('démonstrations : des boucles de 4,2 s en transformations et opacité seulement, cadence tenue, sans mise en page', async () => {
+      const m = await accueil.evaluate(`[...document.querySelectorAll('.tips .demo')].map((d) => { const as = d.getAnimations({ subtree: true }); return { n: as.length, props: [...new Set(as.flatMap(${PROPS}))].sort().join(), durees: [...new Set(as.map((a) => a.effect.getTiming().duration))].join(), sansFin: as.every((a) => a.effect.getTiming().iterations === Infinity) }; })`);
+      for (const d of m) {
+        assert.ok(d.n >= 1, 'au moins un mouvement par démonstration');
+        assert.ok(d.props.split(',').every((p) => p === 'opacity' || p === 'transform'), d.props);
+        assert.equal(d.durees, '4200');
+        assert.ok(d.sansFin);
+      }
+      const cdpA = await accueil.context().newCDPSession(accueil);
+      await cdpA.send('Performance.enable');
+      const lire = async () => Object.fromEntries((await cdpA.send('Performance.getMetrics')).metrics.map((x) => [x.name, x.value]));
+      await accueil.mouse.move(5, 5);
+      await accueil.evaluate(() => { const p = (window.__img = { t: [], on: true }); const f = () => { p.t.push(performance.now()); if (p.on) requestAnimationFrame(f); }; requestAnimationFrame(f); });
+      const avant = await lire();
+      await sleep(2000);
+      const apres = await lire();
+      const t0 = await accueil.evaluate(() => { window.__img.on = false; return window.__img.t; });
+      const ecarts = t0.slice(1).map((x, i) => x - t0[i]).sort((x, y) => x - y);
+      const mediane = Math.round(ecarts[Math.floor(ecarts.length / 2)] * 10) / 10;
+      const p95 = Math.round(ecarts[Math.floor(ecarts.length * 0.95)] * 10) / 10;
+      console.log(`    démonstrations de l’accueil (six boucles) : ${ecarts.length} images, médiane ${mediane} ms, 95e centile ${p95} ms, ${apres.LayoutCount - avant.LayoutCount} mise(s) en page`);
+      assert.ok(apres.LayoutCount - avant.LayoutCount <= 1, 'mises en page : ' + (apres.LayoutCount - avant.LayoutCount));
+      assert.ok(mediane < 34, 'cadence médiane : ' + mediane);
+    });
+
+    await t.verifier('démonstrations, « Réduire les animations » : images fixes', async () => {
+      await accueil.emulateMedia({ reducedMotion: 'reduce' });
+      try {
+        assert.equal(await accueil.evaluate(() => [...document.querySelectorAll('.tips .demo b')].filter((b) => getComputedStyle(b).animationName !== 'none').length), 0);
+      } finally { await accueil.emulateMedia({ reducedMotion: null }); }
+    });
+
     await t.verifier('aucune sorte cochée, ou rien de récent : le survol ne montre rien', async () => {
       await ctx.principal(({ store }) => { store.state.downloads = []; });
       await shell.mouse.move(700, 300);
