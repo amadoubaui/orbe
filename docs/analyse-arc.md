@@ -16,7 +16,7 @@ suit. Colonne « Orbe » : ✅ fait, 🟡 partiel, ⏳ à venir.
 | Restore Last Closed Tab | ⇧⌘T | ✅ |
 | Open Command Bar | ⌘L | ✅ |
 | New Profile | — | ✅ |
-| New Easel | ⌃⇧E | ⏳ |
+| New Easel | ⌃⇧E | ✅ |
 | Close Window | ⇧⌘W | ✅ |
 | Share… | — | ⏳ |
 | Capture… | ⇧⌘2 | 🟡 capture de la page visible |
@@ -87,7 +87,7 @@ suit. Colonne « Orbe » : ✅ fait, 🟡 partiel, ⏳ à venir.
 | Stay On Top | — | ✅ |
 | Open Library… | ⇧⌘L | ✅ |
 | View Downloads… | ⇧⌘J | ✅ |
-| View Easels / Media / Boosts | — | ⏳ |
+| View Easels / Media / Boosts | — | ✅ sections de la Bibliothèque |
 
 ## Comportements repris
 
