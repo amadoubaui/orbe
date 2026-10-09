@@ -71,7 +71,7 @@ function mountImport(box, opts = {}) {
       cancel.onclick = () => { say(t('impb.hint')); start(); };
       ok.onclick = async () => {
         ok.disabled = true;
-        const done = await O.send('import:apply', { token: r.token, dest: dest.value });
+        const done = await O.send('import:apply', { token: r.token, dest: dest.value, stay: !!opts.stay });
         if (!done || done.error) { say(t('impb.err.' + ((done && done.error) || 'unreadable'))); return start(); }
         notes[b.id] = t('impb.done', { n: done.bookmarks, space: done.spaceName });
         say(notes[b.id]);

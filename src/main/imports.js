@@ -125,7 +125,8 @@ function apply(a) {
   }
   previews.delete(a.token);
   refresh();
-  if (w && space.id !== w.spaceId && !dest.startsWith('space:')) w.switchSpace(space.id);
+  // `stay` (accueil) : on reste sur la page d'où l'import a été lancé.
+  if (w && space.id !== w.spaceId && !dest.startsWith('space:') && !(a && a.stay)) w.switchSpace(space.id);
   // Annulable depuis l'interface d'import, et par Édition → Annuler.
   const entry = { redo: null, done: true };
   entry.undo = () => { if (!entry.done) return false; entry.redo = undo(); entry.done = false; if (last === entry) last = null; return true; };

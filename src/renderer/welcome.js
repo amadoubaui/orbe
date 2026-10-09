@@ -38,6 +38,13 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'ArrowLeft') show(at - 1);
 });
 
+// Langue de l'interface, dès la première étape.
+const drawLangs = () => { for (const b of document.querySelectorAll('#langs [data-lang]')) b.setAttribute('aria-pressed', String(b.dataset.lang === lang)); };
+document.getElementById('langs').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-lang]');
+  if (b) O.send('settings:set', { lang: b.dataset.lang });
+});
+
 function drawColors() {
   const box = document.getElementById('colors');
   box.textContent = '';
@@ -64,8 +71,9 @@ async function refreshInfo() {
   drawDefault();
 }
 
-mountImport(document.getElementById('welcome-browsers'), { preferCurrent: true });
+const browsers = mountImport(document.getElementById('welcome-browsers'), { preferCurrent: true, stay: true });
 refreshInfo();
 show(0);
 window.addEventListener('focus', refreshInfo);
-O.on('settings', (s) => { if (setLang(s.lang)) show(at); });
+O.on('settings', (s) => { if (setLang(s.lang)) { show(at); if (info) drawDefault(); browsers.refresh(); } drawLangs(); });
+drawLangs();

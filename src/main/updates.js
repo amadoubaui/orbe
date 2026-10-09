@@ -296,7 +296,10 @@ async function fetchAsset() {
     if (!((final.protocol === 'https:' && ASSET_HOSTS.has(final.host)) || (local && final.origin === local))) throw new Error('host');
     if (!res.ok || !res.body) throw new Error('http' + res.status);
     fs.mkdirSync(dir, { recursive: true });
-    out = fs.createWriteStream(part, { flags: 'wx', mode: 0o644 });
+    // Fichier ouvert avant la première écriture, refermé avant toute suppression :
+    // un flux d'écriture ouvrirait le fichier plus tard, après un refus déjà traité,
+    // et laisserait un « .part » derrière lui.
+    out = await fs.promises.open(part, 'wx', 0o644);
     const hash = crypto.createHash('sha256');
     const reader = res.body.getReader();
     let n = 0;
@@ -307,11 +310,11 @@ async function fetchAsset() {
       if (n > asset.size) { try { await reader.cancel(); } catch {} throw new Error('size'); }
       const buf = Buffer.from(value);
       hash.update(buf);
-      if (!out.write(buf)) await new Promise((r) => out.once('drain', r));
+      for (let off = 0; off < buf.length;) off += (await out.write(buf, off, buf.length - off)).bytesWritten;
       download.received = n;
       if (Date.now() - lastTick > 250) { lastTick = Date.now(); deps.changed(); }
     }
-    await new Promise((resolve, reject) => { out.once('error', reject); out.end(resolve); });
+    await out.close();
     out = null;
     if (n !== asset.size) throw new Error('size');
     if (asset.digest && hash.digest('hex') !== asset.digest) throw new Error('digest');
@@ -321,7 +324,7 @@ async function fetchAsset() {
     deps.reveal(target);
     return { ok: true, path: target };
   } catch (err) {
-    if (out) { try { out.destroy(); } catch {} }
+    if (out) { try { await out.close(); } catch {} }
     try { fs.rmSync(part, { force: true }); } catch {}
     const code = ['size', 'digest', 'host'].includes(err.message) ? err.message : 'network';
     download = { state: 'error', version: s.latest.version, error: code };

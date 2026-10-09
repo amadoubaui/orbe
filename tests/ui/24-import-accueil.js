@@ -183,9 +183,9 @@ module.exports = {
       await jusqua(async () => (await brave.locator('.imp-apply').count()) === 1, 'aperçu de Brave');
       await brave.locator('.imp-apply').click();
       await jusqua(async () => (await ctx.etat()).espaces.some((s) => s.nom === 'Brave'), 'Espace « Brave »');
-      // L'accueil est resté dans son Espace : on y revient pour continuer.
-      await ctx.principal(({ w, win }) => { for (const [id, rt] of win.live) if (rt.wc.getURL().includes('welcome.html')) { const loc = w.locate(id); w.switchSpace(loc.space.id); w.activate(id); } });
-      await jusqua(async () => (await brave.locator('.imp-undo').isVisible()), 'accueil de nouveau affiché');
+      // L'accueil reste à l'écran : l'import ne change pas d'Espace sous les yeux de qui le suit.
+      assert.equal(await ctx.principal(({ w }) => (w.data.tabs[w.activeId] || {}).url), 'orbe://app/welcome.html');
+      assert.equal(await brave.locator('.imp-undo').isVisible(), true);
       await brave.locator('.imp-undo').click();
       await jusqua(async () => !(await ctx.etat()).espaces.some((s) => s.nom === 'Brave'), 'import annulé');
     });

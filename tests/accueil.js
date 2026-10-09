@@ -37,6 +37,14 @@ module.exports = async function accueilTests(ctx) {
   check('accueil : une étape à la fois, « Commencer », « Passer l’accueil », cinq points',
     hello.step === 'hello' && hello.h1 === 'Bienvenue dans Orbe' && hello.next === 'Commencer' && hello.skip === 'Passer l’accueil' && hello.back && hello.shown === 1, JSON.stringify(hello));
 
+  // Langue : choisie dès la première étape, appliquée tout de suite à toute l'interface.
+  await click('#langs [data-lang="en"]');
+  await until(async () => (await js('document.querySelector(".step.on h1").textContent')) === 'Welcome to Orbe', 'accueil en anglais');
+  const en = { next: await js('document.getElementById("next").textContent'), lang: store.state.settings.lang, pressed: await js('document.querySelector("#langs [aria-pressed=true]").dataset.lang') };
+  await click('#langs [data-lang="fr"]');
+  await until(async () => (await js('document.querySelector(".step.on h1").textContent')) === 'Bienvenue dans Orbe', 'accueil en français');
+  check('première étape : la langue se choisit (français, anglais) et s’applique aussitôt', en.next === 'Get started' && en.lang === 'en' && en.pressed === 'en' && store.state.settings.lang === 'fr', JSON.stringify(en));
+
   await click('#next');
   await until(async () => (await step()) === 'import' && (await js('document.querySelectorAll("#welcome-browsers .imp-row").length')) === 5, 'étape import : navigateurs trouvés');
   const names = await js('[...document.querySelectorAll("#welcome-browsers .imp-name")].map((n) => n.textContent).join()');
@@ -53,8 +61,7 @@ module.exports = async function accueilTests(ctx) {
   await click('#welcome-browsers .imp-row[data-browser="brave"] .imp-undo');
   await until(() => Object.keys(w.data.tabs).length === tabs0 && w.data.spaces.length === spaces0, 'import annulé depuis l’accueil');
   check('« Annuler l’import » depuis l’accueil : rien ne reste', !Object.values(w.data.tabs).some((x) => x.url === 'https://brave.com/'));
-  if (w.spaceId !== before.space) w.switchSpace(before.space);
-  w.activate(tab.id);
+  check('l’import lancé depuis l’accueil ne change pas d’Espace : l’accueil reste à l’écran', w.spaceId === before.space && w.activeId === tab.id);
 
   await click('#next');
   await until(async () => (await step()) === 'theme' && (await js('document.querySelectorAll("#colors button").length')) === 12, 'étape couleur');
