@@ -14,10 +14,11 @@ module.exports = {
     const { shell, jusqua } = ctx;
     const m = shell.mouse;
     const today = () => ctx.titres('#today');
-    // Lignes des listes dont la transformation est en cours d'animation, avec
-    // leur écart à leur place dans la mise en page.
+    // Lignes des listes dont la transformation est en cours d'animation (retour
+    // d'un glisser, ou glissement d'une ligne vers sa nouvelle place quand la liste
+    // change), avec leur écart à leur place dans la mise en page.
     const enMouvement = () => shell.evaluate(() => document.getElementById('scroll').getAnimations({ subtree: true })
-      .filter((a) => a.transitionProperty === 'transform' && a.playState === 'running' && a.effect.target.matches('#today .row'))
+      .filter((a) => (a.transitionProperty === 'transform' || a.id === 'flip') && a.playState === 'running' && a.effect.target.matches('#today .row'))
       .map((a) => ({ titre: a.effect.target.textContent.trim(), dy: Math.round(new DOMMatrix(getComputedStyle(a.effect.target).transform).m42) })));
     const hauts = () => shell.locator('#today .row.tab').evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().top)));
 

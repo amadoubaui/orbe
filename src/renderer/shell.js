@@ -125,15 +125,101 @@ function reconcile(container, items, tile) {
     if (el !== ref) container.insertBefore(el, ref);
     prev = el;
   }
-  // Disparition : la ligne se replie avant d'être retirée.
+  // Disparition : la ligne s'efface sur place pendant que les suivantes remontent (voir `flip`).
   for (const el of old.values()) {
     // Une ligne seulement déplacée (encore présente ailleurs) part sans délai.
-    if (!animate || !el.dataset.key || tile || present.has(el.dataset.key)) { el.remove(); continue; }
+    if (!flip || !el.dataset.key || tile || present.has(el.dataset.key)) { el.remove(); continue; }
     el.dataset.key = '';
     el.removeAttribute('data-id');
-    el.classList.add('out');
-    setTimeout(() => el.remove(), 150);
+    flip.gone.push(el);
   }
+}
+
+// --- Lignes qui glissent ----------------------------------------------------
+// Quand la liste change (onglet ouvert ou fermé, dossier ouvert ou replié,
+// « Effacer »), les lignes ne sautent pas à leur nouvelle place : elles y
+// glissent. Technique « FLIP » : on relève la position des lignes avant le
+// changement (une lecture), on laisse la mise en page se faire d'un coup, on
+// relève les nouvelles positions (une lecture), puis chaque ligne déplacée part
+// de son ancienne place par une transformation animée par le compositeur. Il
+// n'y a donc qu'une mise en page par changement, jamais une par image ; la ligne
+// retirée, elle, s'efface sur place, sortie du flux.
+let flip = null; // relevé en cours, pendant un rendu
+const SPRING = (() => {
+  const m = /^\s*([\d.]+)ms\s+(.+)$/.exec(getComputedStyle(document.documentElement).getPropertyValue('--spring-snappy'));
+  return m ? { duration: Number(m[1]), easing: m[2].trim() } : { duration: 240, easing: 'ease-out' };
+})();
+const FLIP = { id: 'flip', out: 150, cascade: 22, cascadeMax: 10, margin: 240 };
+const flipRows = () => scroller.querySelectorAll('.row, #divider');
+
+function flipFirst() {
+  const tops = new Map();
+  for (const el of flipRows()) {
+    const r = el.getBoundingClientRect();
+    if (r.height) tops.set(el, r.top);
+  }
+  const boxes = new Map();
+  for (const el of scroller.querySelectorAll('.list > [data-key], .children > [data-key]')) boxes.set(el, el.getBoundingClientRect());
+  for (const el of scroller.querySelectorAll('.list, .children')) boxes.set(el, el.getBoundingClientRect());
+  return { tops, boxes, gone: [] };
+}
+
+function flipPlay(f) {
+  // Les lignes retirées quittent le flux et s'effacent là où elles étaient ; plusieurs
+  // à la fois (« Effacer ») : en cascade.
+  f.gone.forEach((el, i) => {
+    const box = f.boxes.get(el);
+    const home = f.boxes.get(el.parentElement);
+    if (!box || !home || !box.height) { el.remove(); return; }
+    const delay = Math.min(i, FLIP.cascadeMax) * FLIP.cascade;
+    el.style.cssText += `;position:absolute;left:${box.left - home.left}px;top:${box.top - home.top}px;width:${box.width}px;animation-delay:${delay}ms`;
+    el.classList.add('out');
+    setTimeout(() => el.remove(), FLIP.out + delay);
+  });
+  // Un glissement encore en cours s'arrête : sa position du moment a été relevée.
+  for (const a of scroller.getAnimations({ subtree: true })) if (a.id === FLIP.id) a.cancel();
+  const view = scroller.getBoundingClientRect();
+  const moves = [];
+  for (const el of flipRows()) {
+    if (el.closest('.out')) continue;
+    const r = el.getBoundingClientRect();
+    if (!r.height) continue;
+    const was = f.tops.get(el);
+    const seen = (y) => y > view.top - FLIP.margin && y < view.bottom + FLIP.margin;
+    if (was === undefined) {
+      // Ligne qui paraît sans être nouvelle (contenu d'un dossier qu'on ouvre).
+      if (!el.closest('.in') && seen(r.top)) moves.push([el, null]);
+    } else if (Math.abs(was - r.top) >= 0.5 && (seen(was) || seen(r.top))) moves.push([el, was - r.top]);
+  }
+  for (const [el, dy] of moves) {
+    const frames = dy === null
+      ? { opacity: [0, 1], transform: ['translateY(-8px)', 'translateY(0)'] }
+      : { transform: [`translateY(${dy}px)`, 'translateY(0)'] };
+    el.animate(frames, { duration: SPRING.duration, easing: SPRING.easing, id: FLIP.id });
+  }
+  return moves.length;
+}
+
+// --- Thème de l'Espace ------------------------------------------------------
+// Fond (une à trois couleurs en dégradé, texture) et couleurs de texte, calculés
+// par theme.js pour rester lisibles sur n'importe quelle couleur. Posés sur
+// <body> pour l'Espace courant ; sur #tint et sur la liste de l'autre Espace
+// pendant un changement d'Espace (fondu enchaîné).
+function themeVars(space, s) {
+  const p = OrbeTheme.palette(space, s.dark);
+  // Barre translucide : le fond laisse passer un peu du bureau.
+  return { p, vars: OrbeTheme.cssVars(p, FLOATING ? 0.96 : (s.translucent ? 0.8 : 1)) };
+}
+function paintTheme(el, space, s, only) {
+  const sig = JSON.stringify([space.color, space.color2, space.color3, space.plain, space.intensity, space.grain, space.texture, space.mode, s.dark, s.translucent, only ? 1 : 0]);
+  if (el._theme === sig) return;
+  el._theme = sig;
+  const { p, vars } = themeVars(space, s);
+  for (const k of only || Object.keys(vars)) el.style.setProperty(k, vars[k]);
+  if (only) return;
+  el.classList.toggle('grainy', p.grain > 0);
+  el.classList.toggle('gradient', p.stops.length > 1);
+  if (el === document.body) document.documentElement.dataset.family = p.family;
 }
 
 // Pastilles des Espaces, en bas : un point par Espace, l'icône pour l'Espace courant.
@@ -169,10 +255,7 @@ function render(s) {
   // Vue flottante : la barre n'y apparaît qu'au survol du bord, barre masquée.
   const open = FLOATING ? s.sidebar.peek && !s.sidebar.visible : s.sidebar.visible;
   if (FLOATING && !open && prev && !(prev.sidebar.peek && !prev.sidebar.visible)) { S = s; b.classList.remove('open'); return; }
-  b.style.setProperty('--accent', s.space.color);
-  b.style.setProperty('--accent2', s.space.color2 || s.space.color);
-  b.style.setProperty('--grain', String(s.space.grain || 0));
-  b.classList.toggle('gradient', !!s.space.color2);
+  paintTheme(b, s.space, s);
   b.style.setProperty('--sw', s.sidebar.width + 'px');
   b.classList.toggle('open', open);
   b.classList.toggle('docked', s.sidebar.visible);
@@ -186,6 +269,8 @@ function render(s) {
   $('url-text').textContent = label || t('side.search');
   $('url-text').classList.toggle('placeholder', !label);
   $('url').classList.toggle('loading', s.nav.loading);
+  // Lueur de chargement le long du bord haut de la page.
+  b.classList.toggle('loading', !!s.nav.loading && !!s.activeId);
   $('url').title = s.nav.internal ? '' : s.nav.url;
   const shield = $('shield');
   shield.hidden = !s.activeId || s.nav.internal || false;
@@ -217,6 +302,8 @@ function render(s) {
   if (editing !== s.space.id) $('space-name').textContent = s.space.name;
   $('space-icon').textContent = s.space.icon;
 
+  // La forme des listes change : relevé des lignes avant, glissement après (voir `flip`).
+  flip = animate && prev && !reducedMotion.matches && document.body.classList.contains('open') && structSig(prev) !== structSig(s) ? flipFirst() : null;
   reconcile($('fav'), s.favorites, true);
   // Comme dans Arc (relevé sur l'application) : jusqu'à 4 favoris sur une ligne,
   // puis une grille aussi carrée que possible (9 favoris = 3 × 3), 4 colonnes au plus.
@@ -224,6 +311,7 @@ function render(s) {
   $('fav').style.gridTemplateColumns = `repeat(${nf <= 4 ? Math.max(nf, 1) : Math.min(4, Math.ceil(Math.sqrt(nf)))}, 1fr)`;
   reconcile($('pinned'), s.pinned);
   reconcile($('today'), s.today);
+  if (flip) { const f = flip; flip = null; flipPlay(f); }
   $('b-clear').classList.toggle('can', s.today.length > (s.today.some((x) => x.active) ? 1 : 0));
 
   drawSpaces(s.spaces, s.space.id);
@@ -459,7 +547,13 @@ $('b-plus').onclick = () => send('sidebarMenu');
 for (const p of ['b', 'tb']) {
   $(p + '-back').onclick = () => send('command', 'back');
   $(p + '-forward').onclick = () => send('command', 'forward');
-  $(p + '-reload').onclick = () => send('command', S && S.nav.loading ? 'stop' : 'reload');
+  $(p + '-reload').onclick = (e) => {
+    const stop = S && S.nav.loading;
+    // L'icône fait un tour (animation relancée à chaque clic).
+    const svg = e.currentTarget.querySelector('svg');
+    if (!stop && svg) { svg.classList.remove('spin'); void svg.getBoundingClientRect(); svg.classList.add('spin'); }
+    send('command', stop ? 'stop' : 'reload');
+  };
 }
 
 // --- Changement d'Espace : deux listes côte à côte ---------------------------
@@ -561,10 +655,11 @@ function slideGhost(vm, dir) {
   if (!vm) return;
   slide.ghost = ghostPanel(vm);
   slide.targetId = vm.space.id;
+  slide.targetSpace = vm.space;
   pagerEl.appendChild(slide.ghost);
-  tintEl.style.setProperty('--accent', vm.space.color);
-  tintEl.style.setProperty('--accent2', vm.space.color2 || vm.space.color);
-  tintEl.classList.toggle('gradient', !!vm.space.color2);
+  // La teinte porte le fond de l'autre Espace ; sa liste, ses couleurs de texte.
+  paintTheme(tintEl, vm.space, S);
+  paintTheme(slide.ghost, vm.space, S, OrbeTheme.TEXT_VARS);
 }
 
 function slideBegin() {
@@ -605,6 +700,13 @@ function slideFly(to, done) {
     move(slide.ghost, slide.dir * W - from, slide.dir * W - to);
     slide.anims.push(tintEl.animate({ opacity: [Math.min(1, Math.abs(from) / W), Math.min(1, Math.abs(to) / W)] }, opts));
   }
+  // Changement décidé : à mi-course, quand la teinte de l'autre Espace domine, le
+  // reste de la barre (adresse, favoris, pastilles) prend ses couleurs de texte.
+  clearTimeout(slide.swap);
+  if (to !== 0 && slide.commit && slide.targetSpace) {
+    const space = slide.targetSpace;
+    slide.swap = setTimeout(() => { if (slide && S) paintTheme(document.body, space, S, OrbeTheme.TEXT_VARS); }, timing.duration * 0.4);
+  }
   // La fin est donnée par une minuterie plutôt que par l'animation : celle-ci ne
   // « finit » pas dans une vue qui n'est pas affichée.
   slide.timer = setTimeout(done, timing.duration);
@@ -615,13 +717,16 @@ function slideEnd() {
   if (!slide) return;
   const { pending, other, after, ghost } = slide;
   slideStop();
+  clearTimeout(slide.swap);
   slide = null;
+  document.body._theme = ''; // les couleurs de l'Espace affiché sont reposées par le rendu
   if (ghost) ghost.remove();
   scroller.style.transform = '';
   tintEl.style.opacity = '';
   pagerEl.classList.remove('sliding');
   const next = pending || other;
   if (next) render(next);
+  else if (S) paintTheme(document.body, S.space, S);
   for (const fn of after) fn();
 }
 
@@ -725,6 +830,55 @@ sidebar.addEventListener('wheel', (e) => {
   if (far || brisk) slideCommit();
 }, { passive: false });
 
+// --- Rebond élastique de la liste ---------------------------------------------
+// Au bout de la liste (en haut ou en bas), continuer de faire défiler la tire un
+// peu, de moins en moins, puis elle revient au ressort — comme les listes de
+// macOS. Le moteur ne le fait de lui-même que pour le défilement principal d'une
+// page, pas pour un bloc défilant interne comme celui-ci. Seule la propriété
+// `translate` de la liste change (aucune mise en page) ; elle est distincte de
+// `transform`, que le changement d'Espace utilise.
+const BOUNCE = { max: 72, stiff: 0.45, idle: 70, back: 360 };
+const bounce = { raw: 0, y: 0, timer: null, anim: null };
+
+function bounceReset() {
+  clearTimeout(bounce.timer);
+  if (bounce.anim) { try { bounce.anim.cancel(); } catch {} bounce.anim = null; }
+  if (bounce.raw || bounce.y) scroller.style.translate = '';
+  bounce.raw = 0;
+  bounce.y = 0;
+}
+
+function bounceRelease() {
+  const from = bounce.y;
+  bounceReset();
+  if (Math.abs(from) < 0.5) return;
+  bounce.anim = scroller.animate({ translate: [`0 ${from}px`, '0 0'] }, { duration: BOUNCE.back, easing: SPRING.easing, id: 'bounce' });
+  bounce.anim.onfinish = () => { bounce.anim = null; };
+}
+
+scroller.addEventListener('wheel', (e) => {
+  if (slide || drag || editing || e.ctrlKey || reducedMotion.matches || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+  const top = scroller.scrollTop <= 0;
+  const end = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 1;
+  const pulling = (e.deltaY < 0 && top) || (e.deltaY > 0 && end);
+  if (!bounce.raw) {
+    if (!pulling) return;
+    // Molette à crans (grand saut d'un coup, par crans entiers) : elle ne tire pas la liste.
+    if (e.deltaMode !== 0 || (Math.abs(e.deltaY) >= 50 && Math.abs(e.wheelDeltaY) >= 120 && Math.abs(e.wheelDeltaY) % 120 === 0)) return;
+    if (bounce.anim) { try { bounce.anim.cancel(); } catch {} bounce.anim = null; }
+  } else if (Math.sign(e.deltaY) === Math.sign(bounce.raw)) {
+    // Défilement dans l'autre sens : la liste est rendue aussitôt.
+    return bounceRelease();
+  }
+  // Ce qui a été tiré se relâche peu à peu (l'inertie du pavé s'éteint).
+  bounce.raw = bounce.raw * 0.9 - e.deltaY;
+  bounce.y = Math.sign(bounce.raw) * BOUNCE.max * (1 - 1 / ((Math.abs(bounce.raw) * BOUNCE.stiff) / BOUNCE.max + 1));
+  scroller.style.translate = `0 ${bounce.y.toFixed(1)}px`;
+  clearTimeout(bounce.timer);
+  bounce.timer = setTimeout(bounceRelease, BOUNCE.idle);
+  return undefined;
+}, { passive: true });
+
 // --- Redimensionnement ------------------------------------------------------
 $('resize').addEventListener('pointerdown', (e) => {
   const el = e.currentTarget;
@@ -803,8 +957,9 @@ function structSig(s) {
 // d'une de ces animations (geste enchaîné, machine chargée), il plaçait les
 // lignes là où elles n'étaient que de passage, et le dépôt tombait à côté.
 function settleRows() {
+  bounceReset(); // le rebond élastique décale toute la liste
   for (const a of scroller.getAnimations({ subtree: true })) {
-    if (a.transitionProperty === 'transform' || a.animationName === 'row-in' || a.animationName === 'row-out') {
+    if (a.transitionProperty === 'transform' || a.animationName === 'row-in' || a.animationName === 'row-out' || a.id === FLIP.id) {
       try { a.finish(); } catch {}
     }
   }
@@ -1153,11 +1308,15 @@ O.on('state', onState);
 // Renommer pendant un glissement (nouvel Espace) : après l'arrivée.
 O.on('edit', (id) => (slide && slide.commit ? slide.after.push(() => startRename(id)) : startRename(id)));
 // Sons d'interface (fichiers originaux, src/renderer/sons).
+// Chaque son est chargé à sa première demande, puis rejoué depuis le début.
+// `mute` (pendant les essais) : le fichier est chargé, rien n'est joué.
 const sounds = {};
-O.on('sound', (name) => {
+O.on('sound', (p) => {
+  const { name, volume = 0.5, mute = false } = typeof p === 'string' ? { name: p } : (p || {});
   if (!/^[a-z-]+$/.test(String(name))) return;
   const a = sounds[name] || (sounds[name] = new Audio(`sons/${name}.wav`));
-  a.volume = 0.5;
+  a.volume = Math.max(0, Math.min(1, Number(volume) || 0));
+  if (mute) { a.load(); return; }
   a.currentTime = 0;
   a.play().catch(() => {});
 });

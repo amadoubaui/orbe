@@ -185,6 +185,7 @@ function run(win, name, arg) {
   if (!cmd) return undefined;
   if (!win && !cmd.global) win = hooks.newWindow({});
   try {
+    require('./sounds').arm(win); // une commande est un geste : le son du changement peut suivre
     return cmd.run(win, arg);
   } catch (err) {
     console.error('[orbe] commande', name, err);

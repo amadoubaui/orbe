@@ -11,6 +11,7 @@ const permissions = require('./permissions');
 const displayMedia = require('./display-media');
 const certs = require('./certs');
 const downloads = require('./downloads');
+const swipe = require('./swipe');
 
 const RENDERER_DIR = path.join(__dirname, '../renderer');
 const configured = new WeakSet();
@@ -58,6 +59,7 @@ function configure(ses, { persist }) {
   displayMedia.attach(ses);
   certs.attach(ses);
   downloads.attach(ses, { persist, hooks });
+  swipe.attach(ses); // balayage à deux doigts : précédent / suivant
   // Extensions installées : rechargées dans chaque profil à chaque démarrage.
   if (persist) {
     extApi.attach(ses); // API chrome.* manquantes, avant le premier chargement
