@@ -252,6 +252,9 @@ function noteDownload(phase, d, wc) {
   if (!downloading.has(wc.id)) downloading.set(wc.id, new Set());
   downloading.get(wc.id).add(d.id);
 }
+// Pastille de l'adresse du lien survolé : largeur courte, délai avant qu'elle ne s'étende,
+// durées de ses mouvements, marge autour d'elle où le pointeur la fait s'écarter.
+const STATUS = { short: 420, expandAfter: 1500, grow: 160, dodge: 140, margin: 10, poll: 90, height: 26 };
 // Lecteurs miniatures de la barre latérale (src/main/media.js).
 const media = require('./media').make({ live, pushAll: () => OrbeWindow.pushAll(), windows: () => OrbeWindow.all, strip: (u) => suggest.strip(u) });
 const prewoken = new Map(); // origine -> instant de la dernière pré-connexion (voir `prewake`)
@@ -3121,26 +3124,70 @@ class OrbeWindow {
   linkStatus(rt, url) {
     if (this.win.isDestroyed() || !this.visibleIds().includes(rt.id)) return;
     clearTimeout(this.statusTimer);
+    clearTimeout(this.statusGrow);
     const hide = () => {
+      clearInterval(this.statusPoll);
+      this.statusPoll = null;
+      this.status = null;
       if (!this.statusView || this.win.isDestroyed()) return;
       this.statusView.setVisible(false);
       try { this.win.contentView.removeChildView(this.statusView); } catch {}
     };
     if (!url) { this.statusTimer = setTimeout(hide, 120); return; }
+    // La pastille : courte d'abord ; le pointeur resté sur le lien, elle s'étend à
+    // toute l'adresse ; et elle s'écarte quand le pointeur vient sur elle.
+    const rect = (st) => {
+      const b = boundsOf(st.rt.view);
+      const width = Math.round(Math.min(st.width, b.width - 16));
+      return { x: st.side === 'left' ? b.x + 6 : b.x + b.width - 6 - width, y: b.y + b.height - STATUS.height - 4, width, height: STATUS.height };
+    };
+    const dodge = () => {
+      const st = this.status;
+      if (!st || this.win.isDestroyed() || st.rt.wc.isDestroyed()) return hide();
+      const p = this.statusPointer();
+      const r = rect(st);
+      if (!p || p.x < r.x - STATUS.margin || p.x > r.x + r.width + STATUS.margin || p.y < r.y - STATUS.margin || p.y > r.y + r.height + STATUS.margin) return;
+      // Trop large pour s'écarter d'un côté à l'autre : elle redevient courte d'abord.
+      if (r.width > boundsOf(st.rt.view).width / 2 - STATUS.margin) st.width = st.short;
+      st.side = st.side === 'left' ? 'right' : 'left';
+      st.dodged += 1;
+      place(this.statusView, rect(st), motion(STATUS.dodge));
+    };
     const show = () => {
-      if (this.win.isDestroyed() || this.statusView.webContents.isDestroyed()) return;
+      if (this.win.isDestroyed() || this.statusView.webContents.isDestroyed() || rt.wc.isDestroyed()) return;
       const b = boundsOf(rt.view);
-      const width = Math.min(b.width - 16, Math.max(120, 14 + url.length * 6.6));
-      this.statusView.setBounds({ x: b.x + 6, y: b.y + b.height - 30, width: Math.round(width), height: 26 });
+      const full = Math.min(b.width - 16, Math.max(120, 14 + url.length * 6.6));
+      const short = Math.min(full, STATUS.short);
+      const was = this.status;
+      const st = (this.status = { rt, url, full, short, width: short, side: was && was.rt === rt ? was.side : 'left', dodged: 0 });
+      place(this.statusView, rect(st));
       this.win.contentView.addChildView(this.statusView);
       this.statusView.setVisible(true);
       this.statusView.webContents.send('overlay', { mode: 'status', text: url });
+      if (full > short) {
+        this.statusGrow = setTimeout(() => {
+          if (this.status !== st || this.win.isDestroyed() || this.statusView.webContents.isDestroyed()) return;
+          st.width = full;
+          place(this.statusView, rect(st), motion(STATUS.grow));
+        }, STATUS.expandAfter);
+      }
+      if (!this.statusPoll) { this.statusPoll = setInterval(dodge, STATUS.poll); if (this.statusPoll.unref) this.statusPoll.unref(); }
+      dodge();
     };
     if (!this.statusView) {
       this.statusView = this.makeUiView('overlay.html#status');
       this.statusView.setVisible(false);
       this.statusView.webContents.once('did-finish-load', show);
     } else if (!this.statusView.webContents.isLoading()) show();
+  }
+
+  // Pointeur dans le repère du contenu de la fenêtre (null s'il est ailleurs).
+  statusPointer() {
+    try {
+      const p = screen.getCursorScreenPoint();
+      const c = this.win.getContentBounds();
+      return { x: p.x - c.x, y: p.y - c.y };
+    } catch { return null; }
   }
 
   // `sound` : son qui accompagne le message (« error » pour un refus).
@@ -4013,4 +4060,4 @@ function archiveStale() {
   if (count) { store.save(); for (const w of windows.values()) w.layout(); OrbeWindow.pushAll(); }
 }
 
-module.exports = { OrbeWindow, windows, live, media, trusted, hooks, lostAfterStay: () => lastLost, applyBoosts, cleanUrl, mdLink, isMeetingUrl, SPLIT_BAR, archiveStale, tabMemory, noteDownload, uiRetryDelay, UI_PREFS, STATUS_MAX, ICON_MAX, thumbs: { keep: keepThumb, MAX: THUMBS }, INTERNAL, UI_PRELOAD, isInternal, MOTION, motion, place, forceMotion, motionStats: stats, boundsOf, inFlight, resumed };
+module.exports = { OrbeWindow, windows, live, media, STATUS, trusted, hooks, lostAfterStay: () => lastLost, applyBoosts, cleanUrl, mdLink, isMeetingUrl, SPLIT_BAR, archiveStale, tabMemory, noteDownload, uiRetryDelay, UI_PREFS, STATUS_MAX, ICON_MAX, thumbs: { keep: keepThumb, MAX: THUMBS }, INTERNAL, UI_PRELOAD, isInternal, MOTION, motion, place, forceMotion, motionStats: stats, boundsOf, inFlight, resumed };

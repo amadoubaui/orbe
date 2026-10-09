@@ -116,6 +116,50 @@ module.exports = async function detailsTests(ctx) {
     Object.assign(s, saved);
   }
 
+  // === Pastille de l'adresse du lien survolé ============================================
+  {
+    const tab = w.newTab('http://127.0.0.1:9/liens');
+    const rt = win.live.get(tab.id);
+    await until(() => !rt.wc.isLoading(), 'onglet chargé');
+    const S = win.STATUS;
+    const saved = { ...S, pointer: w.statusPointer };
+    let pointer = { x: -500, y: -500 };
+    w.statusPointer = () => pointer;
+    S.expandAfter = 120;
+    win.forceMotion(false);
+    const page = win.boundsOf(rt.view);
+    const long = 'https://exemple.invalid/' + 'chemin/'.repeat(40);
+    const shortUrl = 'https://exemple.invalid/a';
+    const box = () => win.boundsOf(w.statusView);
+    w.linkStatus(rt, long);
+    await until(() => w.status && w.statusView && w.statusView.getVisible(), 'pastille affichée');
+    const b0 = box();
+    check('adresse longue survolée : la pastille est d’abord courte, en bas à gauche de la page', b0.width === Math.min(S.short, page.width - 16) && b0.x === page.x + 6 && b0.y === page.y + page.height - 30 && b0.height === 26, JSON.stringify([b0, page]));
+    await until(() => box().width > b0.width, 'pastille étendue', 3000);
+    const full = Math.round(Math.min(page.width - 16, 14 + long.length * 6.6));
+    check('pointeur resté sur le lien : elle s’étend à toute l’adresse (dans la limite de la page)', page.width - 16 <= S.short || box().width === full, JSON.stringify([box(), full]));
+    // Le pointeur vient sur la pastille : elle passe de l'autre côté (et redevient courte si elle tenait toute la largeur).
+    const b1 = box();
+    pointer = { x: b1.x + 20, y: b1.y + 10 };
+    await until(() => w.status.side === 'right', 'pastille écartée', 3000);
+    const b2 = box();
+    check('pointeur sur la pastille : elle s’écarte de l’autre côté de la page, hors du pointeur', b2.x + b2.width === page.x + page.width - 6 && (pointer.x < b2.x - S.margin || b2.width >= page.width / 2) && w.status.dodged === 1, JSON.stringify([b1, b2, pointer]));
+    pointer = { x: -500, y: -500 };
+    // Adresse courte : jamais étendue.
+    w.linkStatus(rt, shortUrl);
+    await until(() => w.status && w.status.url === shortUrl, 'adresse courte');
+    const b3 = box();
+    await sleep(S.expandAfter + 150);
+    check('adresse courte : la pastille prend sa largeur et n’en change plus ; elle reste du côté où elle s’est écartée', box().width === b3.width && b3.width < S.short && w.status.side === 'right');
+    w.linkStatus(rt, '');
+    await until(() => !w.status && !w.statusView.getVisible() && !w.statusPoll, 'pastille retirée');
+    check('lien quitté : la pastille disparaît et plus rien ne surveille le pointeur', true);
+    Object.assign(S, { short: saved.short, expandAfter: saved.expandAfter });
+    w.statusPointer = saved.pointer;
+    win.forceMotion(null);
+    w.close(tab.id, { silent: true, ask: false });
+  }
+
   await sleep(30);
   return failed;
 };
