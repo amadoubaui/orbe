@@ -208,7 +208,9 @@ class Store {
     }
     if (!h || typeof h !== 'object') return {};
     // Copie de secours : une fois par lancement, à partir d'un fichier lisible.
-    fs.copyFile(this.historyFile, this.historyFile + '.bak', () => {});
+    // (Copie faite sur-le-champ : en arrière-plan, elle tenait le fichier ouvert et faisait
+    // échouer sous Windows une écriture arrivant au même moment.)
+    try { fs.copyFileSync(this.historyFile, this.historyFile + '.bak'); } catch {}
     return h;
   }
 
