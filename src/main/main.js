@@ -1,5 +1,5 @@
 // Point d'entrée d'Orbe.
-const { app, ipcMain, BrowserWindow, nativeTheme, shell, webContents, dialog, net } = require('electron');
+const { app, ipcMain, BrowserWindow, nativeTheme, shell, webContents, dialog, net, session } = require('electron');
 const { pathToFileURL } = require('url');
 const path = require('path');
 const os = require('os');
@@ -26,6 +26,9 @@ const downloads = require('./downloads');
 const prefs = require('./prefs');
 const shortcuts = require('./shortcuts');
 const panes = require('./panes');
+const updates = require('./updates');
+const imports = require('./imports');
+const extUi = require('./ext-ui');
 
 platform.adaptLocales(locales);
 
@@ -197,10 +200,7 @@ function profileList() {
 }
 
 function extensionList() {
-  return extensions.list().map((x) => ({
-    id: x.id, name: x.name, version: x.version, description: (x.description || '').slice(0, 160),
-    enabled: extensions.isEnabled(x.id), popup: !!extensions.popupFor(x.id),
-  }));
+  return extUi.list();
 }
 
 function shortcutGroups() {
@@ -277,9 +277,10 @@ async function globalAction(action, a, sender) {
       return { list: extensionList() };
     }
     case 'ext:remove':
-      await extensions.remove(String(a)).catch(() => {});
-      extApi.forget(String(a));
-      return extensionList();
+      return extUi.remove(String(a));
+    // Page d'options, bouton épinglé ou non, mise à jour, menu contextuel du bouton (src/main/ext-ui.js).
+    case 'ext:options': case 'ext:pin': case 'ext:update': case 'ext:menu':
+      return extUi.action(action, a, sender);
     case 'ext:toggle':
       extensions.setEnabled(String(a.id), !!a.enabled);
       return extensionList();
@@ -342,6 +343,56 @@ async function globalAction(action, a, sender) {
   }
 }
 
+// Mises à jour (src/main/updates.js) : la question part d'une session à part, en
+// mémoire, sans cookie ni identifiant. Jamais de vérification automatique en
+// test ni depuis les sources.
+function setupUpdates() {
+  let ses = null;
+  const updateSession = () => {
+    if (!ses) { ses = session.fromPartition('orbe-mises-a-jour', { cache: false }); ses.setUserAgent('Orbe', 'en'); }
+    return ses;
+  };
+  updates.configure({
+    version: app.getVersion(),
+    fetch: (url, init) => updateSession().fetch(url, init),
+    state: () => store.state.updates,
+    save: () => store.save(),
+    enabled: () => store.state.settings.updateCheck !== false,
+    auto: app.isPackaged && !SELFTEST && !process.argv.includes('--orbe-test') && !process.env.ORBE_NO_UPDATE_CHECK,
+    test: SELFTEST || (!app.isPackaged && process.env.ORBE_UI_TEST === '1'),
+    downloadsDir: () => prefs.downloadDirFor('default') || app.getPath('downloads'),
+    reveal: (file) => shell.showItemInFolder(file),
+    show: () => openSettings('advanced'),
+    open: (url) => { const w = OrbeWindow.primary || newWindow(); w.newTab(url); w.win.focus(); },
+    changed: () => {
+      const st = updates.status();
+      for (const wc of webContents.getAllWebContents()) if (trusted.has(wc) && !wc.isDestroyed()) wc.send('update', st);
+      OrbeWindow.pushAll();
+    },
+  });
+  win.hooks.updateNote = () => updates.note();
+  commands.hooks.checkUpdates = () => { openSettings('advanced'); updates.check({ manual: true }); };
+  updates.start();
+}
+
+// Page d'accueil (welcome.html) : ce qu'elle affiche, et sa fermeture.
+function welcomeAction(action, sender) {
+  const w = OrbeWindow.ownerOf(sender) || OrbeWindow.primary;
+  if (action === 'welcome:info') {
+    return { arc: require('./import-arc').available(), colors: require('./store').SPACE_COLORS, color: w ? w.space.color : '', isDefault: panes.isDefaultBrowser() };
+  }
+  if (action === 'welcome:done' && w) {
+    store.state.window.welcomed = true;
+    store.save();
+    const rt = [...win.live.values()].find((x) => x.wc === sender);
+    if (rt) w.close(rt.id);
+    // Plus aucun onglet : la barre de commande s'ouvre pour le premier.
+    if (!w.activeId && !SELFTEST) w.openCommand('new');
+    return true;
+  }
+  return undefined;
+}
+
 function setupIpc() {
   const ok = (e) => trusted.has(e.sender) && e.senderFrame && e.senderFrame.url.startsWith(INTERNAL);
   ipcMain.on('i18n', (e) => {
@@ -354,7 +405,9 @@ function setupIpc() {
     if (action.startsWith('easel:')) return easels.action(action, payload, e.sender);
     if (action.startsWith('sheet:')) return essentials.sheets.action(action, payload, e.sender);
     if (action.startsWith('dl:')) return downloads.action(action, payload, e.sender);
-    if (action === 'welcome:info') return { arc: require('./import-arc').available() };
+    if (action.startsWith('update:')) return updates.action(action, payload, e.sender);
+    if (action.startsWith('import:')) return imports.action(action, payload, e.sender);
+    if (action.startsWith('welcome:')) return welcomeAction(action, e.sender);
     if (/^(lib|settings|shortcuts|ext|notes):/.test(action)) return globalAction(action, payload, e.sender);
     const owner = OrbeWindow.ownerOf(e.sender) || little.LittleWindow.ownerOf(e.sender) || OrbeWindow.primary;
     return owner ? owner.handle(action, payload) : undefined;
@@ -372,7 +425,8 @@ app.on('second-instance', (e, argv) => {
 app.whenReady().then(async () => {
   store.load(app.getPath('userData'));
   // (Sans lire l'historique : il n'est chargé qu'après l'affichage de la fenêtre.)
-  const firstRun = !Object.keys(store.state.tabs).length && !store.hadHistory && !store.historyDirty;
+  // Accueil : une seule fois, au tout premier lancement (profil vide, jamais accueilli).
+  const firstRun = !Object.keys(store.state.tabs).length && !store.hadHistory && !store.historyDirty && !store.state.window.welcomed;
   // Moteur avec Widevine (ORBE_DRM) : prépare le module de lecture protégée, sans
   // retarder l'ouverture (premier lancement : téléchargement en arrière-plan).
   const { components } = require('electron');
@@ -433,12 +487,19 @@ app.whenReady().then(async () => {
     OrbeWindow.pushAll();
   };
   nativeTheme.on('updated', () => OrbeWindow.pushAll());
+  setupUpdates();
+  // Import depuis un navigateur installé. En test, aucun vrai profil n'est lu :
+  // les essais désignent eux-mêmes un dossier d'essai (import-browsers.configure).
+  if (SELFTEST || process.env.ORBE_UI_TEST === '1') require('./import-browsers').configure({ home: '', local: '', roaming: '' });
+  imports.hooks.refreshMenu = () => menu.refresh(true);
+  extUi.hooks.openSettings = openSettings;
+  extUi.hooks.changed = () => { for (const wc of webContents.getAllWebContents()) if (trusted.has(wc) && !wc.isDestroyed()) wc.send('settings', store.state.settings); menu.refresh(true); };
 
   app.setAboutPanelOptions({ applicationName: 'Orbe', applicationVersion: app.getVersion(), copyright: 'Logiciel libre — licence MIT', credits: `Chromium ${process.versions.chrome}` });
   menu.build();
 
   const first = newWindow();
-  if (firstRun && !SELFTEST && !process.env.ORBE_NO_WELCOME) first.openInternal('welcome.html');
+  if (firstRun && !SELFTEST && !process.env.ORBE_NO_WELCOME) { store.state.window.welcomed = true; first.openInternal('welcome.html'); }
   for (const url of pendingUrls.splice(0)) openUrl(url);
 
   // L'historique se charge une fois la fenêtre affichée et la coque peinte.
@@ -454,7 +515,7 @@ app.whenReady().then(async () => {
     // (Un scénario qui n'avance plus est arrêté par la garde : src/main/test-guard.js.)
     try {
       // ORBE_SCENARIO : autre scénario de test (ex. tests/sites.js, sites réels).
-      await require(process.env.ORBE_SCENARIO ? path.resolve(process.env.ORBE_SCENARIO) : '../../tests/selftest')({ first, OrbeWindow, store, win, little, commands, menu, openSettings, openUrl, extensions, extApi, extHost, passwords, panes, prefs, shortcuts, globalAction, essentials });
+      await require(process.env.ORBE_SCENARIO ? path.resolve(process.env.ORBE_SCENARIO) : '../../tests/selftest')({ first, OrbeWindow, store, win, little, commands, menu, openSettings, openUrl, extensions, extApi, extHost, passwords, panes, prefs, shortcuts, globalAction, essentials, updates, imports, extUi });
       store.flush();
       if (uncaught.length) throw new Error(`${uncaught.length} exception(s) non rattrapée(s) dans le processus principal pendant le scénario :\n${uncaught.join('\n')}`);
       const asked = testGuard.state.dialogs;

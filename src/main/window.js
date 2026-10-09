@@ -75,6 +75,8 @@ const hooks = {
   // Raccords posés par essentials.js (feuilles d'onglet, certificats, « quitter la page ? », fenêtres surgissantes…).
   sheetFocus: () => null, leave: () => true, closeAll: async () => true, quitState: { quitting: false }, shield: () => false, unshield: () => {}, stayed: () => Infinity, input: () => {}, popup: () => true, navigated: () => {},
   busy: () => false, tabState: () => [], navState: () => ({}), failed: () => false, gone: () => {}, hung: () => {}, action: () => undefined, siteMenu: () => [],
+  // Note « mise à jour disponible » de la barre latérale ({ version } ou null) : posée par main.js.
+  updateNote: () => null,
 };
 
 const t = (key, vars) => store.t(key, null, vars);
@@ -3430,9 +3432,10 @@ class OrbeWindow {
         // Connexion (cadenas, « Non sécurisé »), fenêtres surgissantes bloquées, captures en cours.
         ...hooks.navState(this, this.activeRt, tab),
       },
+      update: this.incognito ? null : hooks.updateNote(),
       // Boutons des extensions, sous l'adresse.
       extensions: (() => {
-        try { return (require('./ext-host').actionsFor(this) || []).map((x) => ({ id: x.id, title: x.title, icon: typeof x.icon === 'string' ? x.icon : '', badge: x.badgeText, badgeColor: x.badgeColor, badgeTextColor: x.badgeTextColor, enabled: x.enabled })); } catch { return []; }
+        try { return (require('./ext-host').actionsFor(this) || []).filter((x) => !(settings.extHidden || []).includes(x.id)).map((x) => ({ id: x.id, title: x.title, icon: typeof x.icon === 'string' ? x.icon : '', badge: x.badgeText, badgeColor: x.badgeColor, badgeTextColor: x.badgeTextColor, enabled: x.enabled })); } catch { return []; }
       })(),
       dividers: (() => {
         const ids = this.visibleIds();

@@ -63,6 +63,7 @@ function build() {
       label: 'Orbe',
       submenu: [
         { label: t('app.about'), role: 'about' },
+        item('checkUpdates'),
         sep,
         item('settings'),
         item('passwords'),

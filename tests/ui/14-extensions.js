@@ -74,5 +74,47 @@ module.exports = {
       const fantomes = await gestion.evaluate(() => [...document.querySelectorAll('[hidden]')].filter((el) => el.getClientRects().length).map((el) => el.id || el.className));
       assert.deepEqual(fantomes, []);
     });
+
+    // --- Raccourci d'une commande d'extension, enregistré avec de vraies touches (EXT-7) ---
+    await t.verifier('Réglages → Raccourcis : le raccourci d’une commande d’extension s’enregistre au clavier, puis se rétablit', async () => {
+      const mac = process.platform === 'darwin';
+      await ctx.menu('Cmd+,');
+      const r = await ctx.attendrePage('settings.html');
+      await r.click('#tab-shortcuts');
+      const ligne = r.locator(`.key-row[data-name="ext:${id}/essai"]`);
+      await jusqua(async () => (await ligne.count()) === 1, 'ligne de la commande d’extension');
+      await ligne.scrollIntoViewIfNeeded();
+      assert.match(await ligne.locator('.label').textContent(), /Commande d'essai/);
+      assert.equal((await ligne.locator('.key-btn').textContent()).trim(), mac ? '⌥⇧Y' : 'Alt+Shift+Y');
+      await ligne.locator('.key-btn').click();
+      await jusqua(async () => (await ligne.locator('.key-btn').textContent()).trim() === 'Appuie sur les touches…', 'enregistrement en cours');
+      await r.keyboard.press('Control+Alt+F9');
+      const nouvelle = r.locator(`.key-row[data-name="ext:${id}/essai"]`);
+      await jusqua(async () => (await nouvelle.locator('.key-btn').textContent()).trim() === (mac ? '⌃⌥F9' : 'Ctrl+Alt+F9'), 'nouveau raccourci affiché');
+      assert.equal(await ctx.principal(({ req }, x) => req('ext-more.js').shortcutOf(req('sessions.js').mainSession(), x, 'essai'), id), mac ? '⌃⌥F9' : 'Ctrl+Alt+F9');
+      assert.ok(await nouvelle.evaluate((el) => el.classList.contains('changed')), 'la ligne est marquée comme modifiée');
+      await nouvelle.locator('.key-reset').click();
+      await jusqua(async () => (await r.locator(`.key-row[data-name="ext:${id}/essai"] .key-btn`).textContent()).trim() === (mac ? '⌥⇧Y' : 'Alt+Shift+Y'), 'raccourci proposé par l’extension rétabli');
+      assert.deepEqual(await ctx.principal(({ store }) => store.state.settings.extShortcuts), {});
+      // Échap ferme la fenêtre : la page disparaît pendant la frappe.
+      await r.keyboard.press('Escape').catch(() => {});
+      await jusqua(() => !ctx.page('settings.html'), 'réglages refermés');
+    });
+
+    // --- Clic droit sur le bouton : détacher (EXT-3, EXT-5) -------------------------------
+    await t.verifier('clic droit sur le bouton de l’extension : son menu ; « Détacher » retire le bouton, qui revient une fois épinglé', async () => {
+      // Le menu natif ne se pilote pas : il est relevé, puis son article actionné.
+      await ctx.principal(({ w }) => { global.__menuExt = null; w.__popup = w.popup; w.popup = (tpl) => { global.__menuExt = tpl; }; });
+      await shell.locator('#exts .ext').click({ button: 'right' });
+      await jusqua(() => ctx.principal(() => !!global.__menuExt), 'menu de l’extension');
+      const articles = await ctx.principal(() => global.__menuExt.filter((i) => i.type !== 'separator').map((i) => i.label));
+      assert.deepEqual(articles.slice(1), ['Options', 'Détacher de la barre latérale', 'Gérer les extensions…']);
+      await ctx.principal(() => { global.__menuExt.find((i) => i.label === 'Détacher de la barre latérale').click(); });
+      await jusqua(() => shell.evaluate(() => document.querySelectorAll('#exts .ext').length === 0), 'bouton détaché');
+      const boites = await shell.evaluate(() => document.getElementById('exts').getBoundingClientRect().height);
+      assert.equal(boites, 0, 'la rangée vide ne garde pas de place');
+      await ctx.principal(({ req, w }, x) => { req('ext-ui.js').setPinned(x, true); w.popup = w.__popup; }, id);
+      await jusqua(() => shell.evaluate(() => document.querySelectorAll('#exts .ext').length === 1), 'bouton revenu');
+    });
   },
 };
