@@ -21,6 +21,10 @@ const env = {
   clearArchive: (w) => require('./commands').clearArchive(w),
   // Relecture d'un Boost importé avant sa première activation : posé par main.js.
   reviewBoost: () => {},
+  // Menu natif (clic droit sur l'icône de la Bibliothèque) ; remplacé pendant les tests.
+  popup: (w, tpl) => { if (w) w.popup(tpl); },
+  // Dossier où Orbe enregistre ses captures ; remplacé pendant les tests.
+  captureDir: () => app.getPath('downloads'),
 };
 
 const t = (key, vars) => store.t(key, null, vars);
@@ -130,6 +134,64 @@ function drag(sender, id) {
   return true;
 }
 
+// --- Fichiers récents (survol de l'icône de la Bibliothèque) -----------------------
+// Trois sortes, au choix de l'utilisateur (clic droit sur l'icône) : captures d'Orbe,
+// médias téléchargés (images, vidéos, sons), autres téléchargements.
+const PEEK_KINDS = ['captures', 'downloads', 'media'];
+const PEEK_MAX = 5;
+const kindOf = (d) => (d.capture ? 'captures' : (MEDIA.test(d.name || '') ? 'media' : 'downloads'));
+
+function peekKinds() {
+  const v = store.state.settings.libraryPeek;
+  return Array.isArray(v) ? PEEK_KINDS.filter((k) => v.includes(k)) : [...PEEK_KINDS];
+}
+
+// Les derniers fichiers encore présents sur le disque, du plus récent au plus ancien.
+// Ce qui part vers la barre latérale : un identifiant, un nom, une sorte, une date —
+// jamais de chemin. Le nom vient d'un site : la barre le pose comme du texte.
+function recent() {
+  const kinds = peekKinds();
+  const rows = [];
+  for (const d of store.state.downloads) {
+    if (d.state !== 'completed' || !kinds.includes(kindOf(d))) continue;
+    if (!d.path || !fs.existsSync(d.path)) continue;
+    warmIcon(d.path, d);
+    rows.push({ id: d.id, name: String(d.name || '').slice(0, 200), kind: kindOf(d), at: d.at || 0, danger: !!d.danger });
+    if (rows.length >= PEEK_MAX) break;
+  }
+  return rows;
+}
+
+// Clic droit sur l'icône : ce que le survol montre.
+function peekMenuTemplate() {
+  const kinds = peekKinds();
+  const toggle = (k) => {
+    const now = peekKinds();
+    const next = now.includes(k) ? now.filter((x) => x !== k) : PEEK_KINDS.filter((x) => x === k || now.includes(x));
+    store.state.settings.libraryPeek = next;
+    store.save();
+  };
+  return [
+    { label: t('peek.show'), enabled: false },
+    ...PEEK_KINDS.map((k) => ({ label: t('peek.kind.' + k), type: 'checkbox', checked: kinds.includes(k), click: () => toggle(k) })),
+  ];
+}
+
+// Une capture enregistrée par Orbe rejoint la Bibliothèque (pas en navigation privée).
+// `done(fiche)` : appelé une fois le fichier écrit (essais).
+function keepCapture(name, png, { incognito = false, done = null } = {}) {
+  const file = path.join(env.captureDir(), name);
+  fs.writeFile(file, png, (err) => {
+    let d = null;
+    if (!err && !incognito) {
+      d = { id: uid(), name, path: file, url: '', total: png.length, received: png.length, state: 'completed', at: Date.now(), mime: 'image/png', capture: true };
+      store.addDownload(d);
+    }
+    if (done) done(d);
+  });
+  return file;
+}
+
 // --- Espaces, Boosts --------------------------------------------------------------
 const count = (nodes) => nodes.reduce((n, x) => n + (x.type === 'folder' ? count(x.children) : 1), 0);
 
@@ -205,6 +267,12 @@ async function action(name, a, sender) {
       return downloads.action('dl:open', a, sender);
     case 'lib:drag':
       return drag(sender, String(a));
+    case 'lib:recent':
+      return recent();
+    case 'lib:peekMenu':
+      if (!w) return false;
+      env.popup(w, [...peekMenuTemplate(), { type: 'separator' }, { label: t('peek.open'), click: () => w.run('library') }]);
+      return true;
     case 'lib:space': {
       const o = a && typeof a === 'object' ? a : {};
       const sp = s.spaces.find((x) => x.id === o.id);
@@ -241,4 +309,4 @@ async function action(name, a, sender) {
   }
 }
 
-module.exports = { action, env, SECTIONS, HOW, MEDIA, archive, restore, removeArchived, drag, internals: { icons, dragIcon, warmIcon } };
+module.exports = { action, env, SECTIONS, HOW, MEDIA, PEEK_KINDS, archive, restore, removeArchived, drag, recent, keepCapture, peekMenuTemplate, internals: { icons, dragIcon, warmIcon } };

@@ -430,6 +430,26 @@ body.incognito #incognito, body.blank-window #blank-note { display: flex; }
 }
 #b-library.gulp > svg.i:first-child { animation: dl-gulp var(--spring-bouncy); }
 @keyframes dl-gulp { 0% { transform: scale(1); } 30% { transform: scale(1.32) translateY(1px); } 100% { transform: scale(1); } }
+/* Survol de l'icône de la Bibliothèque : fichiers récents (src/renderer/libpeek.js).
+   Surface = fond de l'Espace + voile de survol : le contraste du texte y est garanti (theme.js). */
+#lib-peek { position: absolute; left: 8px; right: 8px; bottom: 46px; z-index: 5; display: flex; flex-direction: column; gap: 1px; padding: 5px; border-radius: 13px; background: linear-gradient(var(--hover), var(--hover)), var(--bg); box-shadow: 0 0 0 0.5px var(--line), 0 10px 30px rgba(0, 0, 0, 0.22), 0 2px 6px rgba(0, 0, 0, 0.1); transform-origin: 14px 100%; animation: lp-in var(--spring-bouncy) both; contain: layout; -webkit-app-region: no-drag; }
+#lib-peek.out { animation: lp-out 120ms var(--ease-in) both; pointer-events: none; }
+@keyframes lp-in { from { opacity: 0; transform: translateY(6px) scale(0.94); } }
+@keyframes lp-out { to { opacity: 0; transform: translateY(4px) scale(0.97); } }
+.lp-head { display: flex; align-items: center; height: 22px; padding: 0 6px 0 7px; font-size: 11px; font-weight: 600; color: var(--dim); }
+.lp-all { height: 18px; padding: 0 6px; border-radius: 6px; font-size: 11px; color: var(--dim); transition: background 120ms, color 120ms; }
+.lp-all:hover { background: var(--hover); color: var(--fg); }
+.lp-row { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 6px; border-radius: 9px; text-align: left; opacity: 0; animation: lp-row var(--spring-snappy) both; animation-delay: calc(var(--n, 0) * 22ms + 40ms); transition: transform var(--spring-snappy); }
+.lp-row:nth-child(3) { --n: 1; } .lp-row:nth-child(4) { --n: 2; } .lp-row:nth-child(5) { --n: 3; } .lp-row:nth-child(6) { --n: 4; }
+@keyframes lp-row { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; } }
+.lp-row:hover { background: var(--hover); }
+.lp-row:active { transform: scale(0.98); transition: transform var(--press); }
+.lp-ic { width: 28px; height: 28px; flex: none; display: grid; place-items: center; border-radius: 7px; background: var(--hover); color: var(--dim); }
+.lp-row.danger .lp-ic { color: var(--warn); }
+.lp-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.lp-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12.5px; font-weight: 550; line-height: 16px; color: var(--fg); }
+.lp-sub { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 11px; line-height: 14px; color: var(--dim); }
+#b-library.peeking { background: var(--hover); color: var(--fg); }
 /* Premier affichage : un reflet traverse la barre, une fois. */
 #shimmer { position: absolute; inset: 0; overflow: hidden; pointer-events: none; border-radius: inherit; }
 #shimmer > i { position: absolute; top: -20%; bottom: -20%; left: 0; width: 55%; background: linear-gradient(100deg, transparent, color-mix(in srgb, #fff 13%, transparent) 45%, color-mix(in srgb, var(--accent) 16%, transparent) 55%, transparent); transform: translateX(-110%) skewX(-12deg); animation: shimmer 900ms 120ms var(--ease) both; }

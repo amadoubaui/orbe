@@ -1,0 +1,201 @@
+// Sensations : fichiers récents au survol de l'icône de la Bibliothèque (vraie
+// souris : survol, clic, glisser hors d'Orbe, clic droit), mouvement et cadence
+// du panneau, « Réduire les animations ».
+// Les gestes du système (ouverture d'un fichier, glisser réel, menu natif) sont
+// remplacés par des témoins dans le processus principal.
+const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
+
+const PROPS = `(a) => [...new Set(a.effect.getKeyframes().flatMap((k) => Object.keys(k)))].filter((k) => !['offset', 'easing', 'composite', 'computedOffset'].includes(k)).sort()`;
+const HOSTILE = '<img src=x onerror="window.pwned=1"><b>gras</b>.txt';
+
+module.exports = {
+  nom: 'Sensations',
+  async test(ctx, t) {
+    const { shell, jusqua, sleep } = ctx;
+    const reduit = await shell.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches);
+    const animer = (titre, fn) => (reduit ? t.ignorer(titre, '« Réduire les animations » est actif') : t.avecEcran('verifier', titre, fn));
+    const cdp = await shell.context().newCDPSession(shell);
+    await cdp.send('Performance.enable');
+    const compteurs = async () => Object.fromEntries((await cdp.send('Performance.getMetrics')).metrics.map((x) => [x.name, x.value]));
+    const mesurer = async (ms) => {
+      await shell.evaluate(() => { const p = (window.__img = { t: [], on: true }); const f = () => { p.t.push(performance.now()); if (p.on) requestAnimationFrame(f); }; requestAnimationFrame(f); });
+      const avant = await compteurs();
+      await sleep(ms);
+      const apres = await compteurs();
+      const t0 = await shell.evaluate(() => { window.__img.on = false; return window.__img.t; });
+      const ecarts = t0.slice(1).map((x, i) => x - t0[i]).sort((a, b) => a - b);
+      return { misesEnPage: apres.LayoutCount - avant.LayoutCount, images: ecarts.length, mediane: Math.round(ecarts[Math.floor(ecarts.length / 2)] * 10) / 10, p95: Math.round(ecarts[Math.floor(ecarts.length * 0.95)] * 10) / 10 };
+    };
+
+    await ctx.ouvrir('/a', 'Page A');
+
+    // --- Fichiers récents -----------------------------------------------------------
+    const dossier = path.join(ctx.userData, 'recents-essai');
+    fs.mkdirSync(dossier, { recursive: true });
+    for (const n of ['hostile.txt', 'photo.png', 'capture.png', 'rapport.pdf']) fs.writeFileSync(path.join(dossier, n), 'contenu de ' + n);
+    await ctx.principal(({ req, store }, a) => {
+      const rec = (file, name, extra = {}) => ({ id: 'r-' + file, name, path: a.dir + '/' + file, url: 'https://fichiers.exemple.fr/' + file, total: 20, received: 20, state: 'completed', at: Date.now() - 3 * 60e3, profile: 'default', marked: true, ...extra });
+      store.state.downloads = [rec('hostile.txt', a.hostile), rec('photo.png', 'photo.png'), rec('capture.png', 'Orbe 2026-10-09.png', { capture: true, url: '' }), rec('rapport.pdf', 'rapport.pdf', { at: Date.now() - 26 * 3600e3 }), rec('absent.txt', 'absent.txt')];
+      const downloads = req('downloads.js');
+      const library = req('library.js');
+      global.__recents = { ouverts: [], glisses: [], menus: [], choix: null };
+      downloads.env.openPath = (f) => { global.__recents.ouverts.push(f); };
+      downloads.env.openInTab = () => false;
+      library.env.startDrag = (wc, item) => { global.__recents.glisses.push({ file: item.file, icone: !item.icon.isEmpty(), coque: wc.getURL().includes('shell.html') }); };
+      library.env.popup = (w, tpl) => {
+        global.__recents.menus.push(tpl.map((x) => (x.type === 'separator' ? '-' : x.label + (x.type === 'checkbox' ? (x.checked ? ' ✓' : ' ·') : ''))).join('|'));
+        const it = tpl.find((x) => x.label === global.__recents.choix);
+        if (it) it.click();
+      };
+    }, { dir: dossier.split(path.sep).join('/'), hostile: HOSTILE });
+    const temoin = () => ctx.principal(() => global.__recents);
+    const icone = shell.locator('#b-library');
+    const panneau = shell.locator('#lib-peek');
+    const fiche = (nom) => panneau.locator('.lp-row').filter({ has: shell.locator('.lp-name', { hasText: nom }) }).first();
+    // Vrai survol : le pointeur de la personne assise devant ce Mac peut traverser la fenêtre ; on réessaie.
+    const survoler = () => jusqua(async () => { await icone.hover(); await sleep(60); return (await panneau.count()) === 1 && !(await panneau.evaluate((el) => el.classList.contains('out'))); }, 'panneau des fichiers récents', 8000);
+    const quitter = async () => { await shell.mouse.move(700, 300); await jusqua(async () => (await panneau.count()) === 0, 'panneau refermé'); };
+    const posee = () => jusqua(() => panneau.evaluate((el) => !el.getAnimations({ subtree: true }).some((a) => a.playState === 'running')), 'panneau posé');
+
+    await t.verifier('survol de l’icône de la Bibliothèque : après un court instant, les fichiers récents paraissent juste au-dessus, dans la barre', async () => {
+      await shell.mouse.move(700, 300);
+      await icone.hover();
+      assert.equal(await panneau.count(), 0, 'rien avant le délai de survol');
+      await survoler();
+      await posee();
+      const vu = await shell.evaluate(() => {
+        const p = document.getElementById('lib-peek').getBoundingClientRect();
+        const s = document.getElementById('sidebar').getBoundingClientRect();
+        const b = document.getElementById('bottom').getBoundingClientRect();
+        return { noms: [...document.querySelectorAll('#lib-peek .lp-name')].map((e) => e.textContent), subs: [...document.querySelectorAll('#lib-peek .lp-sub')].map((e) => e.textContent), dedans: p.left >= s.left && p.right <= s.right && p.top >= 0, ecart: Math.round(b.top - p.bottom), tete: document.querySelector('#lib-peek .lp-head span').textContent };
+      });
+      assert.deepEqual(vu.noms, [HOSTILE, 'photo.png', 'Orbe 2026-10-09.png', 'rapport.pdf'], 'fichier absent du disque : pas montré');
+      assert.equal(vu.tete, 'Récents');
+      assert.ok(vu.dedans, 'le panneau tient dans la barre latérale');
+      assert.ok(vu.ecart >= 0 && vu.ecart <= 12, 'juste au-dessus de la rangée du bas : ' + vu.ecart);
+      assert.match(vu.subs[0], /^Téléchargements · /);
+      assert.match(vu.subs[1], /^Médias · /);
+      assert.match(vu.subs[2], /^Captures · /);
+      assert.match(vu.subs[3], /hier|1 j/);
+    });
+
+    await t.verifier('nom de fichier hostile : posé comme du texte, aucune balise n’en naît, rien ne s’exécute', async () => {
+      const vu = await shell.evaluate(() => ({ enfants: [...document.querySelectorAll('#lib-peek .lp-name')].reduce((n, e) => n + e.childElementCount, 0), images: document.querySelectorAll('#lib-peek img, #lib-peek b').length, pwned: window.pwned === 1 }));
+      assert.deepEqual(vu, { enfants: 0, images: 0, pwned: false });
+    });
+
+    await t.verifier('le pointeur passe de l’icône au panneau : il reste ouvert ; il s’en va : le panneau se referme', async () => {
+      await fiche('photo.png').hover();
+      await sleep(400);
+      assert.equal(await panneau.count(), 1);
+      assert.equal(await panneau.evaluate((el) => el.classList.contains('out')), false);
+      await quitter();
+      assert.equal(await icone.evaluate((el) => el.classList.contains('peeking')), false);
+    });
+
+    await animer('le panneau paraît au ressort et se retire en 120 ms : transformation et opacité seulement, cadence tenue, sans mise en page par image', async () => {
+      await ctx.vitesseAnimations(0.25);
+      try {
+        await icone.hover();
+        const a = await jusqua(() => shell.evaluate(`(() => { const el = document.getElementById('lib-peek'); const a = el && el.getAnimations()[0]; const r = el && el.querySelector('.lp-row'); const b = r && r.getAnimations().find((x) => x.animationName === 'lp-row'); return a && b ? { nom: a.animationName, props: (${PROPS})(a), duree: a.effect.getTiming().duration, ligne: (${PROPS})(b), dureeLigne: b.effect.getTiming().duration } : null; })()`), 'panneau en cours d’apparition', 8000);
+        assert.deepEqual(a, { nom: 'lp-in', props: ['opacity', 'transform'], duree: 340, ligne: ['opacity', 'transform'], dureeLigne: 240 });
+        const m = await mesurer(700);
+        console.log(`    fichiers récents (apparition) : ${m.images} images, médiane ${m.mediane} ms, 95e centile ${m.p95} ms, ${m.misesEnPage} mise(s) en page`);
+        assert.ok(m.misesEnPage <= 1, 'mises en page pendant l’apparition : ' + m.misesEnPage);
+        assert.ok(m.mediane < 34, 'cadence médiane : ' + m.mediane);
+        await posee();
+        await shell.mouse.move(700, 300);
+        const s = await jusqua(() => shell.evaluate(`(() => { const el = document.querySelector('#lib-peek.out'); const a = el && el.getAnimations().find((x) => x.animationName === 'lp-out'); return a ? { props: (${PROPS})(a), duree: a.effect.getTiming().duration, clic: getComputedStyle(el).pointerEvents } : null; })()`), 'panneau qui se retire', 8000);
+        assert.deepEqual(s, { props: ['opacity', 'transform'], duree: 120, clic: 'none' });
+      } finally { await ctx.vitesseAnimations(1); }
+      await jusqua(async () => (await panneau.count()) === 0, 'panneau retiré');
+    });
+
+    await t.verifier('clic sur une fiche : le fichier s’ouvre, le panneau se referme', async () => {
+      await survoler();
+      await posee();
+      await ctx.clic(shell, fiche('photo.png'));
+      await jusqua(async () => (await temoin()).ouverts.length === 1, 'fichier ouvert');
+      assert.equal(path.basename((await temoin()).ouverts[0]), 'photo.png');
+      await jusqua(async () => (await panneau.count()) === 0, 'panneau refermé');
+    });
+
+    await t.verifier('glisser une fiche à la souris : le système reçoit le vrai fichier (glisser hors d’Orbe), la barre latérale ne déplace rien', async () => {
+      await shell.mouse.move(700, 300);
+      await survoler();
+      await posee();
+      const avant = await ctx.titres();
+      const box = await fiche('rapport.pdf').boundingBox();
+      const m = shell.mouse;
+      await m.move(box.x + 40, box.y + box.height / 2);
+      await m.down();
+      const geste = (async () => { await m.move(box.x + 60, box.y - 30, { steps: 4 }); await m.move(box.x + 420, box.y - 200, { steps: 6 }); await m.up(); })();
+      // Le glisser est repris par le système (ici, par le témoin) : la page l'annule, la souris peut rester en attente.
+      await ctx.delai(geste, 5000, 'début du glisser').catch(() => {});
+      await jusqua(async () => (await temoin()).glisses.length >= 1, 'glisser confié au système');
+      const g = (await temoin()).glisses[0];
+      assert.equal(path.basename(g.file), 'rapport.pdf');
+      assert.equal(g.icone, true, 'une icône accompagne le fichier');
+      assert.equal(g.coque, true, 'le glisser part de la barre latérale');
+      assert.deepEqual(await ctx.titres(), avant);
+      assert.equal(await shell.evaluate(() => document.body.classList.contains('dragging')), false, 'pas de glisser de ligne dans la barre');
+      await m.up().catch(() => {});
+      await shell.mouse.move(700, 300);
+      await jusqua(async () => (await panneau.count()) === 0, 'panneau refermé');
+    });
+
+    await t.verifier('clic droit sur l’icône : menu des sortes montrées ; « Téléchargements » décoché, le survol ne montre plus que médias et captures', async () => {
+      await ctx.principal(() => { global.__recents.choix = 'Téléchargements'; });
+      await icone.click({ button: 'right' });
+      await jusqua(async () => (await temoin()).menus.length === 1, 'menu ouvert');
+      assert.equal((await temoin()).menus[0], 'Au survol, montrer|Captures ✓|Téléchargements ✓|Médias ✓|-|Ouvrir la Bibliothèque');
+      assert.equal(await panneau.count(), 0, 'le clic droit n’ouvre pas le panneau');
+      await shell.mouse.move(700, 300);
+      await survoler();
+      assert.deepEqual(await panneau.locator('.lp-name').allTextContents(), ['photo.png', 'Orbe 2026-10-09.png']);
+      await quitter();
+      // Remis : les trois sortes.
+      await icone.click({ button: 'right' });
+      await jusqua(async () => (await temoin()).menus.length === 2, 'menu rouvert');
+      assert.equal((await temoin()).menus[1], 'Au survol, montrer|Captures ✓|Téléchargements ·|Médias ✓|-|Ouvrir la Bibliothèque');
+      await ctx.principal(() => { global.__recents.choix = null; });
+    });
+
+    await t.verifier('« Réduire les animations » : le panneau paraît et se retire sans mouvement', async () => {
+      await shell.emulateMedia({ reducedMotion: 'reduce' });
+      try {
+        await shell.mouse.move(700, 300);
+        await survoler();
+        const d = await shell.evaluate(() => { const el = document.getElementById('lib-peek'); return [el, ...el.querySelectorAll('.lp-row')].map((e) => parseFloat(getComputedStyle(e).animationDuration) * 1000).reduce((a, b) => Math.max(a, b), 0); });
+        assert.ok(d <= 0.011, 'durée la plus longue : ' + d + ' ms');
+        await posee();
+        assert.equal(await fiche('photo.png').evaluate((el) => getComputedStyle(el).opacity), '1');
+        await quitter();
+      } finally { await shell.emulateMedia({ reducedMotion: null }); }
+    });
+
+    await t.verifier('Échap referme le panneau ; un clic sur l’icône ouvre la Bibliothèque, comme avant', async () => {
+      await shell.mouse.move(700, 300);
+      await survoler();
+      await shell.keyboard.press('Escape');
+      await jusqua(async () => (await panneau.count()) === 0, 'panneau refermé par Échap');
+      await shell.mouse.move(700, 300);
+      await survoler();
+      await ctx.clic(shell, '#b-library');
+      const lib = await ctx.attendrePage('library.html');
+      assert.ok(lib);
+      await jusqua(async () => (await panneau.count()) === 0, 'panneau refermé par le clic');
+    });
+
+    await t.verifier('aucune sorte cochée, ou rien de récent : le survol ne montre rien', async () => {
+      await ctx.principal(({ store }) => { store.state.downloads = []; });
+      await shell.mouse.move(700, 300);
+      await icone.hover();
+      await sleep(900);
+      assert.equal(await panneau.count(), 0);
+      await shell.mouse.move(700, 300);
+    });
+  },
+};

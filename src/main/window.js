@@ -3794,7 +3794,7 @@ class OrbeWindow {
     const copy = () => { clipboard.write([new ClipboardItem({ 'image/png': new Blob([png], { type: 'image/png' }) })]).catch(() => {}); };
     const save = () => {
       const stamp = captureStamp();
-      fs.writeFile(path.join(app.getPath('downloads'), `Orbe ${stamp}.png`), png, () => {});
+      require('./library').keepCapture(`Orbe ${stamp}.png`, png, { incognito: this.incognito });
     };
     const done = (what) => {
       if (what === 'copy') { copy(); this.toast(t('capture.copied')); }
@@ -3834,7 +3834,7 @@ class OrbeWindow {
     const png = out.toPNG();
     if (opts.write !== false) {
       clipboard.write([new ClipboardItem({ 'image/png': new Blob([png], { type: 'image/png' }) })]).catch(() => {});
-      fs.writeFile(path.join(app.getPath('downloads'), `Orbe ${captureStamp()}.png`), png, () => {});
+      require('./library').keepCapture(`Orbe ${captureStamp()}.png`, png, { incognito: this.incognito });
     }
     this.toast(t('toast.captured'));
     return out;
@@ -3859,7 +3859,7 @@ class OrbeWindow {
       const png = Buffer.from(shot.data, 'base64');
       clipboard.write([new ClipboardItem({ 'image/png': new Blob([png], { type: 'image/png' }) })]).catch(() => {});
       const stamp = captureStamp();
-      fs.writeFile(path.join(app.getPath('downloads'), `Orbe ${stamp}.png`), png, () => {});
+      require('./library').keepCapture(`Orbe ${stamp}.png`, png, { incognito: this.incognito });
       this.toast(t('toast.captured'));
     } catch (err) {
       console.error('[orbe] capture', err);
