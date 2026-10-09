@@ -152,6 +152,47 @@ module.exports = {
       await ctx.menu('Cmd+W');
     });
 
+    await t.verifier('clic droit sur le dossier → « Transformer en Espace » : un Espace à son nom et à son icône s’affiche, avec ses onglets épinglés ; ⌘Z le refait dossier', async () => {
+      await menuContextuel(tete, 'tabs.folderToSpace');
+      await jusqua(async () => (await ctx.etat()).espace === 'Lot', 'Espace « Lot » affiché');
+      await jusqua(async () => (await shell.locator('#spaces .sp').count()) === 2, 'deux pastilles d’Espace');
+      await jusqua(() => shell.evaluate(() => !slide && !document.querySelector('#pager .ghost')), 'listes au repos'); // eslint-disable-line no-undef
+      assert.equal(await shell.locator('#space-icon').textContent(), '🚀');
+      assert.deepEqual(await ctx.titres('#pinned'), ['Page A']);
+      assert.equal(await shell.locator('#pinned .folder').count(), 0);
+      await ctx.menu('Cmd+Z');
+      await jusqua(async () => (await ctx.etat()).espaces.length === 1, 'un seul Espace');
+      await jusqua(async () => (await ctx.titres('#pinned .folder .children')).join() === 'Page A', 'dossier revenu avec son onglet');
+      await jusqua(() => shell.evaluate(() => !slide && !document.querySelector('#pager .ghost')), 'listes au repos'); // eslint-disable-line no-undef
+      assert.equal(await tete.locator('.ic .emoji').textContent(), '🚀');
+    });
+
+    await t.verifier('favori : pastille de notification lue dans le titre de la page ; « Modifier l’adresse épinglée… » ouvre la barre d’adresse sur l’adresse du favori', async () => {
+      const page = await ctx.ouvrir('/c', 'Page C');
+      await menuContextuel(ctx.ligne('Page C', '#today'), 'tabs.addFavorite');
+      const tuile = shell.locator('#fav .tile').first();
+      await jusqua(() => tuile.count(), 'tuile du favori');
+      await page.evaluate(() => { document.title = '(3) Page C'; });
+      const pastille = tuile.locator('.count');
+      await jusqua(async () => (await pastille.isVisible()) && (await pastille.textContent()) === '3', 'pastille « 3 »');
+      const t0 = await tuile.boundingBox();
+      const p0 = await pastille.boundingBox();
+      assert.ok(p0.x + p0.width <= t0.x + t0.width && p0.y >= t0.y && p0.x > t0.x + t0.width / 2, 'pastille dans le coin haut droit de la tuile : ' + JSON.stringify([t0, p0]));
+      await page.evaluate(() => { document.title = 'Page C'; });
+      await jusqua(async () => !(await pastille.isVisible()), 'pastille retirée');
+      await menuContextuel(tuile, 'tabs.editPinned');
+      await jusqua(ctx.commandeOuverte, 'barre d’adresse ouverte');
+      await jusqua(async () => (await modal.inputValue('#cmd-input')) === ctx.url('/c'), 'adresse du favori dans le champ, sélectionnée');
+      await modal.keyboard.type(ctx.hote + '/d', { delay: 12 });
+      await modal.keyboard.press('Enter');
+      await jusqua(async () => (await ctx.etat()).favoris[0].url === ctx.url('/d'), 'le favori affiche la nouvelle page');
+      assert.equal(await ctx.principal(({ w }) => w.data.tabs[w.favorites[0]].homeUrl), ctx.url('/d'), 'la nouvelle adresse est celle du favori');
+      await menuContextuel(tuile, 'tabs.removeFavorite');
+      await jusqua(async () => (await ctx.etat()).favoris.length === 0, 'favori retiré');
+      await ctx.menu('Cmd+W');
+      await jusqua(async () => !(await ctx.etat()).aujourdhui.some((x) => x.url === ctx.url('/d')), 'onglet refermé');
+    });
+
     await t.verifier('⌘S sans aucun onglet : la barre latérale reste (comme dans Arc) ; avec un onglet, elle se masque', async () => {
       await ctx.clic(shell, ctx.ligne('Page B', '#today'));
       await jusqua(async () => (await ctx.etat()).actifUrl === ctx.url('/b'), 'B actif');
@@ -172,8 +213,36 @@ module.exports = {
       await jusqua(async () => (await ctx.etat()).lateraleVisible === true, 'barre revenue');
     });
 
+    await t.verifier('⌥⌘F : « Rechercher et remplacer » — recherche tapée, ⇥, texte de remplacement, Entrée : le mot du champ de saisie est remplacé', async () => {
+      const page = await ctx.ouvrir('/saisie', 'Page Saisie');
+      await page.locator('#champ').click();
+      await page.keyboard.type('un chat, deux chats', { delay: 10 });
+      await ctx.menu('Alt+Cmd+F');
+      const barre = await ctx.attendrePage('overlay.html#find');
+      await jusqua(() => barre.locator('#find-with').isVisible(), 'ligne « Remplacer par »');
+      const o = await ctx.origine(barre);
+      assert.equal(o.height, 90);
+      const b1 = await barre.locator('#find-input').boundingBox();
+      const b2 = await barre.locator('#find-with').boundingBox();
+      const bouton = await barre.locator('#find-all').boundingBox();
+      assert.ok(b2.y >= b1.y + b1.height && b2.y + b2.height <= o.height && bouton.x + bouton.width <= o.width, 'la seconde ligne tient dans la barre : ' + JSON.stringify([b1, b2, bouton, o]));
+      await barre.keyboard.type('chat', { delay: 15 });
+      await jusqua(async () => (await barre.textContent('#find-count')) === '1/2', 'deux occurrences');
+      await barre.keyboard.press('Tab');
+      await jusqua(() => barre.evaluate(() => document.activeElement.id === 'find-with'), 'clavier dans « Remplacer par »');
+      await barre.keyboard.type('loup', { delay: 15 });
+      await barre.keyboard.press('Enter');
+      await jusqua(async () => (await page.inputValue('#champ')) === 'un loup, deux chats', 'première occurrence remplacée');
+      await jusqua(async () => (await barre.textContent('#find-count')) === '1/1', 'une occurrence restante');
+      await ctx.clic(barre, '#find-all');
+      await jusqua(async () => (await page.inputValue('#champ')) === 'un loup, deux loups', 'tout remplacé');
+      assert.equal(await barre.evaluate(() => document.activeElement.id), 'find-with', 'le bouton n’a pas pris le clavier');
+      await barre.keyboard.press('Escape');
+      await jusqua(async () => (await ctx.etat()).recherche === false, 'barre refermée');
+    });
+
     await t.verifier('⌃⌘N (élément de menu) : une fenêtre vierge s’ouvre, hors des Espaces, sur la barre de commande', async () => {
-      const avant = ctx.pages().filter((p) => p.url().includes('shell.html')).length;
+      const avant = ctx.pages().filter((p) => p.url().endsWith('shell.html')).length;
       await ctx.menu('Ctrl+Cmd+N');
       await jusqua(() => ctx.pages().filter((p) => p.url().endsWith('shell.html')).length === avant + 1, 'seconde coque');
       const coque = ctx.pages().filter((p) => p.url().endsWith('shell.html')).find((p) => p !== shell);

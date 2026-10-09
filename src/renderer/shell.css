@@ -210,6 +210,9 @@ body.dragging #fav:empty { min-height: 40px; border: 1.5px dashed var(--line); b
 .tile:not(.live) .favicon { opacity: 0.85; }
 .tile .dot { position: absolute; bottom: 5px; width: 4px; height: 4px; border-radius: 2px; background: var(--accent); opacity: 0; }
 .tile.audible .dot { opacity: 1; }
+/* Pastille de notification d'un favori : le nombre annoncé par le titre de sa page. */
+.tile .count { position: absolute; top: 3px; right: 3px; min-width: 14px; height: 14px; padding: 0 4px; box-sizing: border-box; border-radius: 7px; background: #e5484d; color: #fff; font-size: 9.5px; font-weight: 700; line-height: 14px; text-align: center; pointer-events: none; }
+.tile .count[hidden] { display: none; }
 
 #space-head, .g-head {
   display: flex;

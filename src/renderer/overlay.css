@@ -203,6 +203,13 @@
 /* Recherche dans la page */
 #find { inset: 4px; display: flex; align-items: center; gap: 4px; padding: 0 6px 0 12px; border-radius: 11px; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.22); }
 #find-input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font-size: 13.5px; user-select: text; }
+/* Rechercher et remplacer : seconde ligne, sous un filet. */
+#find.replace { flex-wrap: wrap; align-content: space-evenly; }
+#find-replace { flex-basis: 100%; display: flex; align-items: center; gap: 4px; padding-top: 5px; border-top: 0.5px solid var(--panel-line); }
+#find-replace[hidden] { display: none; }
+#find-with { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font-size: 13.5px; user-select: text; }
+.fr { height: 24px; padding: 0 9px; border-radius: 7px; background: var(--pill); font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+.fr:hover { background: var(--hover); }
 #find-count { color: var(--dim); font-size: 11.5px; white-space: nowrap; padding: 0 4px; font-variant-numeric: tabular-nums; }
 .fb { width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; color: var(--dim); transition: transform var(--spring-bouncy); }
 .fb:active { transform: scale(0.88); transition: transform var(--press); }

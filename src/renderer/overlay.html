@@ -84,6 +84,12 @@
   <button class="fb" id="find-prev"><svg class="i"><use href="#i-up"/></svg></button>
   <button class="fb" id="find-next"><svg class="i"><use href="#i-down"/></svg></button>
   <button class="fb" id="find-close"><svg class="i"><use href="#i-x"/></svg></button>
+  <!-- « Rechercher et remplacer » (⌥⌘F) : seconde ligne. -->
+  <div id="find-replace" hidden>
+    <input id="find-with" spellcheck="false" autocomplete="off" data-t-ph="find.replaceWith">
+    <button class="fr" id="find-one" data-t="find.replace"></button>
+    <button class="fr" id="find-all" data-t="find.replaceAll"></button>
+  </div>
 </div>
 
 <div id="peek" hidden>

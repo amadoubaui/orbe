@@ -563,7 +563,20 @@ findInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') { e.preventDefault(); send('find', { text: findInput.value, forward: !e.shiftKey, next: true }); }
 });
 // Les boutons ne prennent pas le clavier : on continue de taper dans le champ.
-for (const id of ['find-next', 'find-prev']) $(id).addEventListener('mousedown', (e) => e.preventDefault());
+for (const id of ['find-next', 'find-prev', 'find-one', 'find-all']) $(id).addEventListener('mousedown', (e) => e.preventDefault());
+// Remplacer : l'occurrence désignée (Entrée dans « Remplacer par », ou le bouton), ou toutes.
+const findWith = $('find-with');
+const replaceFound = (all) => { if (findInput.value) send('findReplace', { text: findInput.value, with: findWith.value, all }); };
+findWith.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); replaceFound(false); }
+  // ⇥ et ⇧⇥ passent d'un champ à l'autre, sans s'arrêter sur les boutons.
+  if (e.key === 'Tab') { e.preventDefault(); findInput.focus(); findInput.select(); }
+});
+findInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Tab' && !$('find-replace').hidden) { e.preventDefault(); findWith.focus(); findWith.select(); }
+});
+$('find-one').onclick = () => replaceFound(false);
+$('find-all').onclick = () => replaceFound(true);
 $('find-next').onclick = () => send('find', { text: findInput.value, forward: true, next: true });
 $('find-prev').onclick = () => send('find', { text: findInput.value, forward: false, next: true });
 $('find-close').onclick = () => send('findClose');
@@ -577,8 +590,14 @@ O.on('overlay', (p) => {
   else if (p.mode === 'switcher') openSwitcher(p);
   else if (p.mode === 'theme') openTheme(p);
   else if (p.mode === 'icons') openIcons(p);
+  else if (p.mode === 'command-value') {
+    // Barre de commande déjà ouverte : une autre adresse à modifier (adresse d'un épinglé).
+    if (mode === 'command' && typeof p.value === 'string') { input.value = p.value; input.select(); input.dispatchEvent(new Event('input')); }
+  }
   else if (p.mode === 'find') {
     show('find');
+    $('find').classList.toggle('replace', !!p.replace);
+    $('find-replace').hidden = !p.replace;
     $('find-count').textContent = '';
     // « Utiliser la sélection pour rechercher » : le texte vient de la page.
     if (typeof p.text === 'string') findInput.value = p.text;

@@ -44,12 +44,14 @@ const COMMANDS = [
   { name: 'copyUrlMarkdown', label: 'edit.copyUrlMarkdown', accel: 'Alt+Shift+Cmd+C', keys: '⌥⇧⌘C', run: (w) => w.copyUrl(true) },
   { name: 'copyUrlQuote', label: 'edit.copyUrlQuote', accel: 'Ctrl+Shift+Cmd+C', keys: '⌃⇧⌘C', run: (w) => w.copyQuote() },
   { name: 'find', label: 'edit.find', accel: 'Cmd+F', keys: '⌘F', run: (w) => w.openFind() },
+  // « Find and Replace » d'Arc (⌥⌘F) : la barre de recherche, avec « Remplacer par ».
+  { name: 'findReplace', label: 'edit.findReplace', accel: 'Alt+Cmd+F', keys: '⌥⌘F', run: (w) => w.openFind(undefined, { replace: true }) },
   { name: 'findNext', label: 'edit.findNext', accel: 'Cmd+G', keys: '⌘G', palette: false, run: (w) => w.findStep(true) },
   { name: 'findPrev', label: 'edit.findPrev', accel: 'Shift+Cmd+G', keys: '⇧⌘G', palette: false, run: (w) => w.findStep(false) },
   { name: 'useSelectionFind', label: 'edit.useSelection', palette: false, run: (w) => findSelection(w) },
   // ⌥⌘V, comme dans Arc : l'adresse du presse-papiers s'ouvre dans un nouvel onglet.
   // « Jump to Selection » d'Arc (⌘J) : la sélection de la page revient au milieu de l'écran.
-  { name: 'jumpToSelection', label: 'edit.jumpToSelection', accel: 'Cmd+J', keys: '⌘J', palette: false, run: (w) => wc(w) && wc(w).centerSelection() },
+  { name: 'jumpToSelection', label: 'edit.jumpToSelection', accel: 'Cmd+J', keys: '⌘J', palette: false, run: (w) => jumpToSelection(wc(w)) },
   // Format → Police : gras, italique, souligné, dans le champ où l'on écrit. Aucun raccourci n'est
   // attaché à ces articles : ⌘B, ⌘I et ⌘U restent aux pages (les éditeurs en ligne les gèrent
   // eux-mêmes, et Chromium les applique déjà dans les zones de texte enrichi). Le menu ne peut
@@ -70,6 +72,8 @@ const COMMANDS = [
   { name: 'clearCookies', label: 'view.clearCookies', run: (w) => w.clearAndReload('cookies') },
   { name: 'clearCache', label: 'view.clearCache', run: (w) => w.clearAndReload('cache') },
   { name: 'addSplit', label: 'view.addSplit', accel: 'Ctrl+Shift+=', keys: '⌃⇧=', run: (w) => w.addSplit() },
+  // « Add Right/Left/Top/Bottom Split » d'Arc : la page choisie ensuite se place de ce côté.
+  ...['right', 'left', 'top', 'bottom'].map((side) => ({ name: 'addSplit' + side[0].toUpperCase() + side.slice(1), label: 'view.addSplit.' + side, run: (w) => w.addSplit(side) })),
   ...[1, 2, 3, 4].map((n) => ({ name: 'pane' + n, label: 'view.pane', accel: `Ctrl+Shift+${n}`, keys: `⌃⇧${n}`, palette: false, run: (w) => w.focusPane(n) })),
   { name: 'splitDirection', label: 'view.splitDirection', run: (w) => w.toggleSplitDirection() },
   { name: 'closeSplit', label: 'view.closeSplit', accel: 'Ctrl+Shift+-', keys: '⌃⇧-', run: (w) => w.closeSplitPane() },
@@ -229,6 +233,23 @@ function noteBeside(w) {
 
 function makeDefault() {
   return platform.makeDefault();
+}
+
+// « Aller à la sélection » : la commande du moteur n'agit que si la page a le clavier (ce
+// n'est pas toujours le cas, sous Windows notamment) ; la page fait donc aussi défiler
+// elle-même le début de sa sélection (ou le champ où l'on écrit) au milieu de l'écran.
+function jumpToSelection(page) {
+  if (!page || page.isDestroyed()) return false;
+  page.centerSelection();
+  page.executeJavaScript(`(() => {
+    const s = getSelection();
+    const e = document.activeElement;
+    const node = s && s.rangeCount && !s.isCollapsed ? s.getRangeAt(0).startContainer : null;
+    const el = node ? (node.nodeType === 1 ? node : node.parentElement) : (e && /^(INPUT|TEXTAREA)$/.test(e.tagName) ? e : null);
+    if (el) el.scrollIntoView({ block: 'center', inline: 'nearest' });
+    return !!el;
+  })()`).catch(() => {});
+  return true;
 }
 
 // Gras, italique, souligné : commande d'édition du champ en cours de saisie (sans effet ailleurs).

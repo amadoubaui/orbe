@@ -148,6 +148,15 @@ function tileEl(el, it) {
   }
   el.className = 'tile' + (it.active ? ' active' : '') + (it.live ? ' live' : '') + (it.audible ? ' audible' : '') + (sel.has(it.id) ? ' sel' : '') + (flashId === it.id ? ' flash' : '');
   el.title = it.title;
+  // Pastille de notification : le nombre que le site annonce en tête de son titre (« (3) Boîte de
+  // réception »), tant que sa page est vivante — un titre resté d'une session passée ne dit rien.
+  const n = it.live ? (/^\((\d{1,4})\+?\)/.exec(it.title) || [])[1] || '' : '';
+  if ((el._n || '') !== n) {
+    el._n = n;
+    if (!el._badge) { el._badge = Object.assign(document.createElement('span'), { className: 'count' }); el.appendChild(el._badge); }
+    el._badge.textContent = n.length > 2 ? '99+' : n;
+    el._badge.hidden = !n;
+  }
   setIcon(el, it);
   keepRow(el, it);
 }

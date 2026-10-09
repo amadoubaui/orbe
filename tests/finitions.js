@@ -378,6 +378,164 @@ module.exports = async function finitionsTests(ctx) {
   w.undoStack.length = 0;
   w.redoStack.length = 0;
 
+  // --- Texte ou lien déposé sur la barre latérale ----------------------------------------------------
+  const suggest = require('../src/main/suggest');
+  const opened = [];
+  const newTab0 = w.newTab;
+  w.newTab = (url) => { opened.push(url); return null; };
+  const dropOn = (types) => ui(`(() => {
+    const dt = new DataTransfer();
+    for (const [k, v] of ${JSON.stringify(types)}) dt.setData(k, v);
+    const box = document.getElementById('sidebar').getBoundingClientRect();
+    document.getElementById('sidebar').dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt, clientX: box.left + 40, clientY: box.bottom - 80 }));
+    return true;
+  })()`);
+  await dropOn([['text/plain', 'recette de crêpes']]);
+  await until(() => opened.length === 1, 'texte déposé reçu');
+  check('glisser du texte sur la barre latérale : une recherche s’ouvre dans un nouvel onglet', opened[0] === suggest.searchUrl('recette de crêpes'), opened[0]);
+  await dropOn([['text/uri-list', 'https://exemple.org/page\nhttps://autre.org/'], ['text/plain', 'ignoré']]);
+  await until(() => opened.length === 2, 'lien déposé reçu');
+  check('glisser un lien : sa page s’ouvre (la première adresse de la liste)', opened[1] === 'https://exemple.org/page');
+  await dropOn([['text/plain', 'javascript:alert(1)']]);
+  await dropOn([['text/plain', 'file:///etc/hosts']]);
+  await dropOn([['application/x-orbe-item', 'x'], ['text/plain', 'https://exemple.org/autre']]);
+  await sleep(200);
+  check('… jamais une adresse javascript: ou file:, ni une ligne venue d’une autre fenêtre', opened.length === 2, opened.join(' | '));
+  w.newTab = newTab0;
+
+  // --- Deux fenêtres, mêmes Espaces : les mêmes onglets --------------------------------------------------
+  const before2 = OrbeWindow.all.length;
+  commands.run(w, 'newWindow');
+  await until(() => OrbeWindow.all.length === before2 + 1, 'seconde fenêtre');
+  const w2 = OrbeWindow.all.find((x) => x !== w && x.shared);
+  w2.hideModal();
+  w2.switchSpace(space.id);
+  const [X1, X2] = make('XY');
+  w.togglePin(X2);
+  const ui2 = (js2) => w2.ui.webContents.executeJavaScript(js2);
+  await until(() => ui2(`typeof S === 'object' && !!S && S.space.id === '${space.id}' && S.today.some((x) => x.id === '${X1}') && S.pinned.some((x) => x.id === '${X2}')`), 'seconde fenêtre à jour');
+  check('deux fenêtres sur le même Espace montrent les mêmes onglets : un onglet ouvert ou épinglé dans l’une paraît dans l’autre',
+    await ui2(`document.querySelectorAll('#today [data-id="${X1}"], #pinned [data-id="${X2}"]').length`) === 2 && w2.data === w.data);
+  w2.rename(X1, 'Renommé ailleurs');
+  await until(() => ui(`document.querySelector('#today [data-id="${X1}"] .title')?.textContent === 'Renommé ailleurs'`), 'renommage vu dans la première fenêtre');
+  check('… et un changement fait dans la seconde revient dans la première', true);
+  w2.win.close();
+  await until(() => OrbeWindow.all.length === before2, 'seconde fenêtre refermée');
+  for (const id of [X1, X2]) { const loc = w.locate(id); if (loc) loc.arr.splice(loc.index, 1); OrbeWindow.destroyView(id); delete d.tabs[id]; }
+  w.undoStack.length = 0;
+  w.win.focus();
+
+  // --- Vue scindée : côté du nouveau volet, groupe épinglé ---------------------------------------------
+  const [S1, S2, S3, S4] = make('1234');
+  w.activate(S1);
+  const order = () => (w.groupOf(S1) || []).map((id) => d.tabs[id].title).join('');
+  const addSide = async (side, id) => {
+    commands.run(w, 'addSplit' + side[0].toUpperCase() + side.slice(1));
+    await until(() => w.modalMode === 'command' && w.commandMode === 'split', 'barre de commande (vue scindée)');
+    w.runItem({ kind: 'tab', tabId: id });
+  };
+  await addSide('left', S2);
+  check('« Ajouter un volet à gauche » : la page choisie se place avant la page affichée, côte à côte', order() === '21' && !w.isVertical(w.groupOf(S1)), order());
+  w.activate(S1);
+  await addSide('right', S3);
+  check('« Ajouter un volet à droite » : juste après la page affichée', order() === '213' && !w.isVertical(w.groupOf(S1)), order());
+  w.activate(S1);
+  await addSide('top', S4);
+  check('« Ajouter un volet en haut » : avant la page affichée, et la vue devient empilée', order() === '2413' && w.isVertical(w.groupOf(S1)), order());
+  w.separateSplit(S4);
+  w.activate(S1);
+  await addSide('bottom', S4);
+  check('« Ajouter un volet en bas » : après la page affichée, vue empilée', order() === '2143' && w.isVertical(w.groupOf(S1)), order());
+  check('barre de commande : les quatre côtés y sont proposés', ['right', 'left', 'top', 'bottom'].every((k) => w.suggestLocal(T('view.addSplit.' + k)).some((i) => i.command === 'addSplit' + k[0].toUpperCase() + k.slice(1))));
+  toasts.length = 0;
+  commands.run(w, 'addSplitLeft');
+  check('quatre volets déjà : pas de cinquième, un message le dit', w.modalMode !== 'command' && toasts[0] === T('toast.splitMax'));
+  w.separateAll(S1);
+  w.activate(S1);
+  commands.run(w, 'addSplitLeft');
+  await until(() => w.modalMode === 'command', 'barre ouverte');
+  w.hideModal();
+  commands.run(w, 'addSplit');
+  await until(() => w.modalMode === 'command', 'barre ouverte (sans côté)');
+  w.runItem({ kind: 'tab', tabId: S2 });
+  check('côté demandé puis abandonné : la vue scindée suivante reprend la place habituelle (à droite)', order() === '12' && !w.isVertical(w.groupOf(S1)), order());
+  // Le groupe est une seule ligne : il s'épingle, se renomme et se déplace d'un bloc.
+  const head = w.groupOf(S1)[0];
+  w.togglePin(head);
+  w.rename(head, 'Mon duo');
+  await until(() => ui(`(() => { const r = document.querySelector('#pinned [data-id="${head}"]'); return !!r && r.classList.contains('split') && r.querySelectorAll('.more > *').length === 1; })()`), 'vue scindée épinglée, une seule ligne');
+  check('vue scindée épinglée : une seule ligne dans les épinglés, avec l’icône de l’autre volet ; l’autre onglet n’a pas de ligne à lui',
+    w.locate(head).list === 'pinned' && (w.groupOf(head) || []).length === 2 && await ui(`!document.querySelector('#today [data-id="${S2}"]') || getComputedStyle(document.querySelector('#today [data-id="${S2}"]')).display === 'none'`));
+  check('… renommée : le nom choisi s’affiche sur la ligne du groupe', await ui(`document.querySelector('#pinned [data-id="${head}"] .title').textContent.startsWith('Mon duo')`));
+  w.activate(S3);
+  w.activate(head);
+  check('… un clic la rouvre avec ses deux volets', w.visibleIds().length === 2);
+  w.separateAll(head);
+  for (const id of [S1, S2, S3, S4]) { const loc = w.locate(id); if (loc) loc.arr.splice(loc.index, 1); OrbeWindow.destroyView(id); OrbeWindow.forget(id, d); delete d.tabs[id]; }
+  w.undoStack.length = 0;
+
+  // --- Plein écran (⌃⌘F), archivage d'office expliqué une fois ---------------------------------------------
+  const full0 = w.win.setFullScreen;
+  const asked2 = [];
+  w.win.setFullScreen = (v) => asked2.push(v);
+  commands.run(w, 'fullscreen');
+  w.win.setFullScreen = full0;
+  check('« Plein écran » (⌃⌘F) demande le plein écran de la fenêtre', asked2.length === 1 && asked2[0] === !w.win.isFullScreen() && commands.byName.get('fullscreen').accel === platform.accel('Ctrl+Cmd+F'));
+  const noticed0 = store.state.window.archiveNoticed;
+  delete store.state.window.archiveNoticed;
+  const hours = require('../src/main/prefs').get('archiveAfterHours', space.profileId);
+  if (hours) {
+    const [O1, O2, O3] = make('OPQ');
+    d.tabs[O1].url = 'https://exemple.test/fin-vieux1';
+    d.tabs[O2].url = 'https://exemple.test/fin-vieux2';
+    w.activate(O3);
+    d.tabs[O1].lastActiveAt = Date.now() - (hours + 1) * 36e5;
+    toasts.length = 0;
+    win.archiveStale();
+    check('premier archivage d’office : un message l’explique (nombre d’onglets, délai) et mène au réglage', !d.tabs[O1] && toasts.length === 1 && toasts[0] === T('toast.autoArchive', { n: 1, hours }) && store.state.window.archiveNoticed === true, toasts.join('|'));
+    d.tabs[O2].lastActiveAt = Date.now() - (hours + 1) * 36e5;
+    win.archiveStale();
+    check('… une seule fois : les archivages suivants se font sans message', !d.tabs[O2] && toasts.length === 1);
+    w.close(O3, { silent: true });
+    store.state.archive = store.state.archive.filter((x) => !/exemple\.test\/fin-/.test(x.url) && !mine(x));
+  }
+  if (noticed0 === undefined) delete store.state.window.archiveNoticed; else store.state.window.archiveNoticed = noticed0;
+  w.closed.length = 0;
+  w.undoStack.length = 0;
+
+  // --- Onglet déplacé vers un autre Espace : message cliquable ; favoris jamais chargés d'avance ------------
+  const away = store.makeSpace('Ailleurs', '📦', '#f97316');
+  d.spaces.push(away);
+  const [G1, G2, G3] = make('GHI');
+  w.activate(G3);
+  toasts.length = 0;
+  w.moveToSpace(G1, away.id);
+  check('onglet déplacé vers un autre Espace : un message le dit, avec le nom de l’Espace', toasts.length === 1 && toasts[0] === T('toast.tabMoved', { space: 'Ailleurs' }) && away.today.includes(G1) && w.spaceId === space.id);
+  w.toastClick();
+  check('… un clic sur le message mène à l’onglet, dans son nouvel Espace', w.spaceId === away.id && w.activeId === G1);
+  w.switchSpace(space.id);
+  toasts.length = 0;
+  w.selection = [G2, G3];
+  w.moveManyToSpace([G2, G3], away.id);
+  check('plusieurs onglets déplacés : un seul message, qui dit combien', toasts.length === 1 && toasts[0] === T('toast.tabsMoved', { space: 'Ailleurs', n: 2 }), toasts.join('|'));
+  toasts.length = 0;
+  w.replay('undo');
+  check('⌘Z (retour des onglets) ne rejoue pas le message', toasts.length === 0 && space.today.includes(G2));
+  const [FV] = make('J');
+  w.toggleFavorite(FV);
+  w.changed();
+  await until(() => ui(`!!document.querySelector('#fav [data-id="${FV}"]')`), 'tuile du favori');
+  check('favori jamais affiché : sa page n’est pas chargée d’avance (ni vue, ni processus) ; elle l’est au clic', !win.live.has(FV) && await ui(`!document.querySelector('#fav [data-id="${FV}"]').classList.contains('live')`)
+    && (w.activate(FV), win.live.has(FV)));
+  w.toggleFavorite(FV);
+  for (const sp of [space, away]) for (const id of [...sp.today]) { OrbeWindow.destroyView(id); OrbeWindow.forget(id, d); delete d.tabs[id]; }
+  space.today = [];
+  d.spaces.splice(d.spaces.indexOf(away), 1);
+  delete w.activeBySpace[away.id];
+  w.hideToast();
+  w.undoStack.length = 0;
+  w.redoStack.length = 0;
+
   // --- Sites qui restent vivants, message de création d'Espace, menu d'un volet ----------------------
   const keepalive = require('../src/main/keepalive');
   check('sites qui restent vivants : messageries, courrier, agendas, musique — sur le nom d’hôte et le début du chemin',
@@ -420,7 +578,9 @@ module.exports = async function finitionsTests(ctx) {
   const server = await new Promise((resolve) => {
     const srv = http.createServer((req, res) => {
       res.setHeader('content-type', 'text/html; charset=utf-8');
-      res.end(`<!doctype html><meta charset="utf-8"><title>Édition</title><body style="font:16px sans-serif;margin:0">
+      const etape = /^\/h(\d)$/.exec(req.url);
+      if (etape) return res.end(`<!doctype html><meta charset="utf-8"><title>Étape ${etape[1]}</title><h1>Étape ${etape[1]}</h1>`);
+      return res.end(`<!doctype html><meta charset="utf-8"><title>Édition</title><body style="font:16px sans-serif;margin:0">
         <textarea id="zone" style="width:300px;height:60px">l’été à saint-malo</textarea>
         <div id="riche" contenteditable style="min-height:30px">texte riche</div>
         <div style="height:4000px"></div><p id="bas">tout en bas de la page</p></body>`);
@@ -458,6 +618,34 @@ module.exports = async function finitionsTests(ctx) {
   await until(() => js('window.vuB === 1'), 'la page a reçu ⌘B');
   await sleep(150);
   check('⌘B dans une page qui le gère elle-même : la touche lui arrive et sa décision tient (aucune mise en gras par Orbe)', (await js('document.getElementById("riche").innerHTML')) === 'simple');
+  // Rechercher et remplacer (⌥⌘F) : dans un champ de saisie, jamais dans le texte fixe de la page.
+  await js('document.getElementById("zone").value = "chat et chat, puis Chat"; document.getElementById("riche").textContent = "un chat riche"; document.getElementById("bas").textContent = "un chat en bas"; document.activeElement.blur(); getSelection().removeAllRanges();');
+  commands.run(w, 'findReplace');
+  await until(() => w.findOpen && w.findView && !w.findView.webContents.isLoading(), 'barre de recherche ouverte');
+  const fv = (code) => w.findView.webContents.executeJavaScript(code);
+  await until(() => fv('!document.getElementById("find").hidden && !document.getElementById("find-replace").hidden'), 'ligne « Remplacer par » affichée');
+  check('« Rechercher et remplacer… » (⌥⌘F) : la barre de recherche gagne une ligne « Remplacer par », avec « Remplacer » et « Tout »',
+    menuItem('edit.findReplace').accelerator === platform.accel('Alt+Cmd+F') && w.findView.getBounds().height === 90 && await fv('document.getElementById("find-with").placeholder') === T('find.replaceWith')
+    && await fv('[...document.querySelectorAll("#find-replace .fr")].map((b) => b.textContent).join("|")') === [T('find.replace'), T('find.replaceAll')].join('|'));
+  check('… la ligne tient dans la barre, sous le champ de recherche', await fv('(() => { const a = document.getElementById("find-input").getBoundingClientRect(); const b = document.getElementById("find-with").getBoundingClientRect(); return b.top >= a.bottom && b.bottom <= innerHeight && b.height > 10; })()'));
+  w.handle('find', { text: 'chat' });
+  await until(() => w.findLast && w.findLast.matches === 5, 'cinq occurrences trouvées');
+  toasts.length = 0;
+  let replaced = await w.handle('findReplace', { text: 'chat', with: 'loup' });
+  check('« Remplacer » : l’occurrence désignée, dans le champ de saisie, est remplacée ; la recherche passe à la suivante', replaced === 1 && (await js('document.getElementById("zone").value')) === 'loup et chat, puis Chat' && w.findLast.matches === 4, JSON.stringify([replaced, await js('document.getElementById("zone").value'), w.findLast]));
+  replaced = await w.handle('findReplace', { text: 'chat', with: 'loup', all: true });
+  check('« Tout » : toutes les occurrences des zones modifiables (champ de saisie, texte enrichi), sans tenir compte de la casse',
+    replaced === 3 && (await js('document.getElementById("zone").value')) === 'loup et loup, puis loup' && (await js('document.getElementById("riche").textContent')) === 'un loup riche', JSON.stringify([replaced, await js('document.getElementById("zone").value'), await js('document.getElementById("riche").textContent')]));
+  check('… le texte fixe de la page n’est jamais modifié, et un message dit le nombre de remplacements', (await js('document.getElementById("bas").textContent')) === 'un chat en bas' && toasts.includes(T('find.replaced', { n: 3 })), toasts.join('|'));
+  replaced = await w.handle('findReplace', { text: 'chat', with: 'loup' });
+  check('occurrence hors d’une zone modifiable : rien n’est remplacé, un message l’explique', replaced === 0 && (await js('document.getElementById("bas").textContent')) === 'un chat en bas' && toasts[toasts.length - 1] === T('find.replacedNone', { n: 0 }));
+  check('remplacement refusé sans barre « Remplacer » ouverte, ou avec une demande mal formée', (await w.handle('findReplace', null)) === 0 && (await w.handle('findReplace', { text: '' })) === 0);
+  w.closeFind();
+  commands.run(w, 'find');
+  await until(() => w.findOpen, 'recherche simple');
+  await until(() => fv('document.getElementById("find-replace").hidden'), 'ligne de remplacement masquée');
+  check('⌘F rouvre la recherche simple : une seule ligne, et le remplacement n’y est pas accepté', w.findView.getBounds().height === 50 && (await w.handle('findReplace', { text: 'chat', with: 'x', all: true })) === 0 && (await js('document.getElementById("bas").textContent')) === 'un chat en bas');
+  w.closeFind();
   // Aller à la sélection.
   await js('(() => { getSelection().selectAllChildren(document.getElementById("bas")); scrollTo(0, 0); })()');
   check('la sélection est hors de l’écran', (await js('scrollY')) === 0);
@@ -504,6 +692,76 @@ module.exports = async function finitionsTests(ctx) {
     found(T('file.newBlank'), 'newBlank') && found(T('spaces.manage'), 'manageSpaces') && found(T('boost.edit'), 'boost') && found(T('boost.list'), 'boosts'));
   w.close(page.id);
   store.state.archive = store.state.archive.filter((x) => !x.url.endsWith('/edition'));
+
+  // ⇧⌘T : l'onglet rouvert retrouve son parcours (précédent, suivant).
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const trail = w.newTab(origin + '/h1');
+  await until(() => d.tabs[trail.id] && d.tabs[trail.id].title === 'Étape 1', 'étape 1');
+  for (const n of [2, 3]) { win.live.get(trail.id).wc.loadURL(`${origin}/h${n}`); await until(() => d.tabs[trail.id].title === 'Étape ' + n, 'étape ' + n); }
+  win.live.get(trail.id).wc.navigationHistory.goBack();
+  await until(() => d.tabs[trail.id].title === 'Étape 2', 'retour à l’étape 2');
+  w.close(trail.id);
+  check('onglet fermé : son parcours est gardé avec la trace de fermeture (adresses et titres seulement)',
+    !d.tabs[trail.id] && w.closed[w.closed.length - 1].history.index === 1 && w.closed[w.closed.length - 1].history.entries.map((e) => e.url.slice(-3)).join() === '/h1,/h2,/h3' && w.closed[w.closed.length - 1].history.entries.every((e) => Object.keys(e).join() === 'url,title'));
+  w.reopenClosed();
+  await until(() => d.tabs[trail.id] && win.live.get(trail.id) && d.tabs[trail.id].title === 'Étape 2' && !win.live.get(trail.id).loading, 'onglet rouvert sur l’étape 2');
+  const back = win.live.get(trail.id).wc;
+  check('⇧⌘T : l’onglet revient sur la page où il était, avec ses pages précédentes et suivantes', back.getURL() === origin + '/h2' && back.navigationHistory.canGoBack() && back.navigationHistory.canGoForward());
+  back.navigationHistory.goBack();
+  await until(() => d.tabs[trail.id].title === 'Étape 1', 'précédent après réouverture');
+  back.navigationHistory.goForward();
+  await until(() => d.tabs[trail.id].title === 'Étape 2', 'suivant');
+  back.navigationHistory.goForward();
+  await until(() => d.tabs[trail.id].title === 'Étape 3', 'suivant encore');
+  check('… « précédent » et « suivant » y mènent réellement', true);
+  w.close(trail.id);
+  w.replay('undo');
+  await until(() => d.tabs[trail.id] && win.live.get(trail.id) && d.tabs[trail.id].title === 'Étape 3' && !win.live.get(trail.id).loading, 'onglet rétabli par ⌘Z');
+  check('⌘Z après une fermeture rend aussi le parcours', win.live.get(trail.id).wc.navigationHistory.canGoBack());
+  w.close(trail.id, { silent: true });
+  w.closed.length = 0;
+  w.undoStack.length = 0;
+
+  // Épinglé : « Modifier l'adresse épinglée… » ; favori : pastille de notification lue dans le titre.
+  const pin = w.newTab(origin + '/h1');
+  await until(() => d.tabs[pin.id].title === 'Étape 1', 'page à épingler');
+  w.togglePin(pin.id);
+  w.undoStack.length = 0;
+  const [plain] = make('T');
+  check('menu d’un épinglé : « Modifier l’adresse épinglée… » (absent pour un onglet du jour)', labels(w.tabMenuTemplate(pin.id)).includes(T('tabs.editPinned')) && !labels(w.tabMenuTemplate(plain)).includes(T('tabs.editPinned')));
+  w.close(plain, { silent: true });
+  pick(w.tabMenuTemplate(pin.id), 'tabs.editPinned').click();
+  await until(() => w.modalMode === 'command' && w.commandMode === 'edit', 'barre d’adresse ouverte');
+  await until(() => modal('document.getElementById("cmd-input").value') .then((v) => v === origin + '/h1'), 'adresse épinglée dans le champ');
+  w.runItem({ kind: 'raw', url: origin + '/h2', title: origin + '/h2' });
+  await until(() => d.tabs[pin.id].title === 'Étape 2', 'épinglé rendu à sa nouvelle adresse');
+  check('adresse validée : elle devient celle de l’épinglé, qui s’y rend ; ⌘Z rend l’ancienne', d.tabs[pin.id].homeUrl === origin + '/h2' && pending() === 'undo.editPinned' && (w.replay('undo'), d.tabs[pin.id].homeUrl === origin + '/h1') && (w.replay('redo'), d.tabs[pin.id].homeUrl === origin + '/h2'));
+  commands.run(w, 'commandBar');
+  await until(() => w.modalMode === 'command', 'barre d’adresse ordinaire');
+  w.runItem({ kind: 'raw', url: origin + '/h3', title: origin + '/h3' });
+  await until(() => d.tabs[pin.id].title === 'Étape 3', 'navigation ordinaire');
+  check('une navigation ordinaire (⌘L) ne touche pas à l’adresse épinglée', d.tabs[pin.id].homeUrl === origin + '/h2');
+  w.toggleFavorite(pin.id);
+  d.tabs[pin.id].title = '(3) Boîte de réception';
+  w.changed();
+  await until(() => ui(`(() => { const c = document.querySelector('#fav [data-id="${pin.id}"] .count'); return !!c && !c.hidden && c.textContent === '3'; })()`), 'pastille « 3 » sur le favori');
+  check('favori : le nombre annoncé en tête du titre de sa page paraît en pastille', await ui(`(() => { const t = document.querySelector('#fav [data-id="${pin.id}"]').getBoundingClientRect(); const c = document.querySelector('#fav [data-id="${pin.id}"] .count').getBoundingClientRect(); return c.width >= 14 && c.right <= t.right && c.top >= t.top && c.bottom < t.top + t.height / 2; })()`));
+  d.tabs[pin.id].title = '(1234) Fil';
+  w.changed();
+  await until(() => ui(`document.querySelector('#fav [data-id="${pin.id}"] .count').textContent === '99+'`), 'pastille plafonnée');
+  d.tabs[pin.id].title = 'Boîte de réception';
+  w.changed();
+  await until(() => ui(`document.querySelector('#fav [data-id="${pin.id}"] .count').hidden`), 'pastille retirée');
+  d.tabs[pin.id].title = '(7) Boîte';
+  OrbeWindow.destroyView(pin.id);
+  w.changed();
+  await until(() => ui(`!document.querySelector('#fav [data-id="${pin.id}"]').classList.contains('live')`), 'favori endormi');
+  check('… plafonnée à « 99+ », retirée quand le titre n’en annonce plus, et absente d’un favori dont la page n’est pas chargée', await ui(`document.querySelector('#fav [data-id="${pin.id}"] .count').hidden`));
+  w.toggleFavorite(pin.id);
+  { const loc = w.locate(pin.id); if (loc) loc.arr.splice(loc.index, 1); OrbeWindow.destroyView(pin.id); OrbeWindow.forget(pin.id, d); delete d.tabs[pin.id]; }
+  w.undoStack.length = 0;
+  w.redoStack.length = 0;
+  store.state.archive = store.state.archive.filter((x) => !x.url.startsWith(origin));
   if (server.closeAllConnections) server.closeAllConnections();
   server.close();
 

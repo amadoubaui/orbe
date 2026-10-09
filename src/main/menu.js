@@ -106,7 +106,7 @@ function build() {
         item('pasteUrl'),
         { label: t('edit.selectAll'), role: 'selectAll' },
         sep,
-        item('find'), item('findNext'), item('findPrev'), item('useSelectionFind'), item('jumpToSelection'),
+        item('find'), item('findReplace'), item('findNext'), item('findPrev'), item('useSelectionFind'), item('jumpToSelection'),
         sep,
         // Orthographe, substitutions, transformations, parole, police : comme le menu Édition d'Arc.
         { label: t('edit.spelling'), submenu: [{ label: t('edit.spellCheck'), role: 'toggleSpellChecker' }] },

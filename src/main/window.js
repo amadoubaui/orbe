@@ -65,6 +65,8 @@ const loadingUi = new WeakSet(); // vues de l'interface créées à part, dont l
 // Une page détruite hors d'Orbe moins de quinze secondes après « Rester » n'est pas une page
 // qui s'est fermée d'elle-même : son onglet reste (voir `wire`, événement `destroyed`).
 const STAY_GUARD = 15000;
+const HISTORY_MAX = 50; // pages du parcours rendues à un onglet rouvert
+const REPLACE_MAX = 500; // « Tout remplacer » : nombre d'occurrences traitées au plus en une fois
 const SLEEP_WAIT = 4000; // temps laissé à une page pour répondre à une veille avant de la reproposer
 let lastLost = null; // dernière page ainsi perdue (diagnostic)
 // Journal court, par page, de ce qui a mené à sa fermeture : qui l'a consultée, ce qu'elle a
@@ -305,6 +307,7 @@ class OrbeWindow {
     this.spaceId = resume.spaceId;
     this.activeBySpace = resume.activeBySpace;
     this.closed = [];
+    this.histories = new Map(); // onglet rouvert, pas encore affiché : son parcours à rendre (voir `historyOf`)
     this.undoStack = [];
     this.redoStack = [];
     this.sidebarVisible = restore ? saved.sidebarVisible !== false : true;
@@ -824,7 +827,7 @@ class OrbeWindow {
     if (this.findOpen && this.findView) {
       const i = Math.max(0, ids.indexOf(this.activeId));
       const right = panes[i] ? panes[i].x + panes[i].width : rect.x + paneW;
-      this.findView.setBounds({ x: Math.round(right - 372), y: (panes[i] ? panes[i].y + panes[i].bar : rect.y) + 10, width: 360, height: 50 });
+      this.findView.setBounds({ x: Math.round(right - 372), y: (panes[i] ? panes[i].y + panes[i].bar : rect.y) + 10, width: 360, height: this.findReplace ? 90 : 50 });
     }
     if (this.toastView) {
       // Au-dessus du volet concerné (le volet actif), pas au milieu de la vue scindée.
@@ -971,7 +974,13 @@ class OrbeWindow {
     rt = { id, view, wc: view.webContents, owner: this, loading: false, lastUsed: Date.now(), internal };
     live.set(id, rt);
     this.wire(rt, tab);
-    if (!viewOptions && !existing) rt.wc.loadURL(tab.url).catch(() => {});
+    if (!viewOptions && !existing) {
+      // Onglet rouvert (⇧⌘T, ⌘Z) : il retrouve son parcours — précédent et suivant fonctionnent.
+      const past = this.histories.get(id);
+      this.histories.delete(id);
+      if (past && past.entries[past.index] && past.entries[past.index].url === tab.url) rt.wc.navigationHistory.restore(past).catch(() => { if (!rt.wc.isDestroyed()) rt.wc.loadURL(tab.url).catch(() => {}); });
+      else rt.wc.loadURL(tab.url).catch(() => {});
+    }
     return rt;
   }
 
@@ -1497,7 +1506,8 @@ class OrbeWindow {
     let rec = null;
     if (loc.list === 'today') {
       loc.arr.splice(loc.index, 1);
-      rec = { tab: { ...tab }, spaceId: space.id, index: loc.index, active: wasActive, split };
+      rec = { tab: { ...tab }, spaceId: space.id, index: loc.index, active: wasActive, split, history: this.historyOf(id) || this.histories.get(id) || null };
+      this.histories.delete(id);
       this.closed.push(rec);
       if (this.closed.length > 50) this.closed.shift();
       if (!this.incognito) store.archive({ ...tab, spaceId: space.id, by: auto ? 'auto' : 'manual' });
@@ -1518,6 +1528,21 @@ class OrbeWindow {
     this.remember();
     this.changed();
     return undefined;
+  }
+
+  // Parcours d'un onglet qu'on ferme (pages précédentes et suivantes), pour le lui rendre
+  // s'il est rouvert. Gardé en mémoire seulement, avec la trace de fermeture ; adresses et
+  // titres, sans le contenu des formulaires. Rien si l'onglet n'a qu'une page, ou si son
+  // parcours passe par autre chose que des pages web.
+  historyOf(id) {
+    const rt = live.get(id);
+    if (!rt || rt.internal || rt.wc.isDestroyed() || this.incognito) return null;
+    let entries;
+    let index;
+    try { entries = rt.wc.navigationHistory.getAllEntries(); index = rt.wc.navigationHistory.getActiveIndex(); } catch { return null; }
+    if (!Array.isArray(entries) || entries.length < 2 || entries.length > HISTORY_MAX || !entries[index]) return null;
+    if (!entries.every((e) => e && webUrl(e.url))) return null;
+    return { entries: entries.map((e) => ({ url: e.url, title: String(e.title || '').slice(0, 300) })), index };
   }
 
   // ⇧⌘T : le dernier onglet (ou aperçu) fermé revient, à sa place.
@@ -1781,6 +1806,18 @@ class OrbeWindow {
     this.recordPlaces('undo.moveToSpace', before);
     for (const w of windows.values()) if (w.data === this.data) w.layout();
     this.changed();
+    if (!this.replaying) this.movedToast(id, target);
+  }
+
+  // « Tab moved! Click to go there. » d'Arc : l'onglet a quitté l'Espace affiché ; un clic sur
+  // le message mène à lui, dans son nouvel Espace.
+  movedToast(id, target, n = 1) {
+    if (target === this.space) return;
+    this.toast(t(n > 1 ? 'toast.tabsMoved' : 'toast.tabMoved', { space: target.name, n }), null, () => {
+      if (!this.data.spaces.includes(target) || !this.locate(id)) return;
+      this.switchSpace(target.id);
+      this.activate(id);
+    });
   }
 
   // --- Sélection multiple ---------------------------------------------------
@@ -1904,6 +1941,7 @@ class OrbeWindow {
     this.recordPlaces('undo.moveToSpace', before);
     this.dropSelection();
     this.changed();
+    this.movedToast(ids[0], this.data.spaces.find((s) => s.id === spaceId), ids.length);
   }
 
   copyLinks(ids) {
@@ -2092,6 +2130,7 @@ class OrbeWindow {
       if (d.tabs[id]) continue;
       const space = d.spaces.find((s) => s.id === rec.spaceId) || this.space;
       d.tabs[id] = { ...rec.tab, lastActiveAt: Date.now() };
+      if (rec.history) this.histories.set(id, rec.history);
       space.today.splice(clamp(rec.index, 0, space.today.length), 0, id);
       const i = this.closed.indexOf(rec);
       if (i >= 0) this.closed.splice(i, 1);
@@ -2708,11 +2747,31 @@ class OrbeWindow {
     if (!quiet) this.activate(b);
   }
 
-  addSplit() {
+  // `side` (« Add Right/Left/Top/Bottom Split » d'Arc) : où se place le volet qu'on va choisir
+  // par rapport à la page affichée ; sans côté, à sa droite (ou dessous, vue empilée).
+  addSplit(side) {
     if (!this.activeId) return this.openCommand('new');
     const g = this.groupOf(this.activeId);
     if (g && g.length >= 4) return this.toast(t('toast.splitMax'), 'error');
+    const closing = this.modalMode === 'command' && this.commandMode === 'split'; // second appel : la barre se referme
     this.openCommand('split');
+    this.splitSide = !closing && ['left', 'right', 'top', 'bottom'].includes(side) ? side : null;
+    return undefined;
+  }
+
+  // Place le volet `added` du côté voulu de `anchor` : avant ou après lui, et la vue
+  // passe côte à côte (gauche, droite) ou empilée (haut, bas).
+  placeSplit(anchor, added, side) {
+    const g = this.groupOf(anchor);
+    if (!side || !g || !g.includes(added) || anchor === added) return;
+    const vertical = side === 'top' || side === 'bottom';
+    this.setVertical(g, false);
+    g.splice(g.indexOf(added), 1);
+    g.splice(g.indexOf(anchor) + (side === 'left' || side === 'top' ? 0 : 1), 0, added);
+    delete g.ratios;
+    this.setVertical(g, vertical);
+    this.layout();
+    this.changed();
   }
 
   focusPane(n) {
@@ -3060,6 +3119,7 @@ class OrbeWindow {
   // 'new' : nouvel onglet ; 'edit' : modifie l'adresse de l'onglet actif ;
   // 'split' : ouvre le résultat dans un nouveau volet.
   openCommand(mode = 'new') {
+    this.pinEdit = null; // voir `editPinned`
     if (mode === 'edit' && !this.activeId) mode = 'new';
     if (this.modalMode === 'command' && this.commandMode === mode) return this.hideModal();
     this.commandMode = mode;
@@ -3073,6 +3133,19 @@ class OrbeWindow {
       centerX: Math.round(W / 2),
       anchor: mode === 'edit' && this.sidebarVisible ? { x: 8, y: 46, width: Math.max(460, this.sidebarWidth + 220) } : null,
     });
+  }
+
+  // « Edit Pinned Page → Edit… » d'Arc : la barre d'adresse s'ouvre sur l'adresse épinglée ;
+  // l'adresse validée devient celle de l'épinglé (ou du favori), qui s'y rend.
+  editPinned(id) {
+    const tab = this.data.tabs[id];
+    const loc = this.locate(id);
+    if (!tab || !loc || loc.list === 'today' || !tab.homeUrl) return;
+    if (this.activeId !== id) this.activate(id);
+    if (this.modalMode === 'command') this.hideModal();
+    this.openCommand('edit');
+    this.sendUi(this.modal, 'overlay', { mode: 'command-value', value: tab.homeUrl }, () => this.modalMode === 'command');
+    this.pinEdit = id;
   }
 
   commandList() {
@@ -3110,21 +3183,35 @@ class OrbeWindow {
 
   runItem(item, { background = false } = {}) {
     const mode = this.commandMode;
+    const side = mode === 'split' ? this.splitSide : null;
+    this.splitSide = null;
+    const anchor = this.activeId;
+    const pinEdit = mode === 'edit' && this.pinEdit === this.activeId ? this.pinEdit : null;
     this.hideModal();
+    this.pinEdit = null;
     if (!item) return;
     if (item.kind === 'command') return this.run(String(item.command), item.arg);
     if (item.kind === 'tab' && this.locate(item.tabId)) {
-      if (mode === 'split' && this.activeId) return this.splitWith(this.activeId, item.tabId);
+      if (mode === 'split' && this.activeId) { this.splitWith(this.activeId, item.tabId); return this.placeSplit(anchor, item.tabId, side); }
       return this.activate(item.tabId);
     }
     const target = item.url || item.title;
     if (!target) return;
     if (mode === 'edit' && this.activeId && !background) {
       // ⌘L puis Entrée sans rien changer : la page est actualisée, comme dans Arc.
+      const home = pinEdit && item.kind !== 'tab' ? webUrl(suggest.resolve(target)) : null;
+      if (home) {
+        const tab = this.data.tabs[pinEdit];
+        const before = tab.homeUrl;
+        const put = (v) => { const x = this.data.tabs[pinEdit]; if (x) { x.homeUrl = v; this.changed(); } };
+        if (before !== home) { put(home); this.record('undo.editPinned', () => put(before), () => put(home)); }
+        return this.navigate(home);
+      }
       if (item.kind === 'raw' && target === this.data.tabs[this.activeId].url && live.has(this.activeId)) return this.reload(false);
       return this.navigate(target);
     }
-    this.newTab(target, { background, split: mode === 'split' });
+    const tab = this.newTab(target, { background, split: mode === 'split' });
+    if (tab && side) this.placeSplit(anchor, tab.id, side);
   }
 
   run(name, arg) {
@@ -3220,9 +3307,11 @@ class OrbeWindow {
   }
 
   // `text` : recherche posée d'avance dans le champ (« Utiliser la sélection pour rechercher »).
-  openFind(text) {
+  // `replace` : la barre montre aussi « Remplacer par » (⌥⌘F, « Find and Replace » d'Arc).
+  openFind(text, { replace = false } = {}) {
     const wc = this.activeWc;
     if (!wc) return;
+    this.findReplace = !!replace;
     if (!this.findView) {
       this.findView = this.makeUiView('overlay.html#find');
       this.findView.setVisible(false);
@@ -3233,7 +3322,7 @@ class OrbeWindow {
     this.findView.setVisible(true);
     const show = () => {
       if (this.gone || this.findView.webContents.isDestroyed()) return;
-      this.findView.webContents.send('overlay', typeof text === 'string' ? { mode: 'find', text } : { mode: 'find' });
+      this.findView.webContents.send('overlay', { mode: 'find', replace: this.findReplace, ...(typeof text === 'string' ? { text } : null) });
       this.findView.webContents.focus();
     };
     if (this.findView.webContents.isLoading()) this.findView.webContents.once('did-finish-load', show);
@@ -3254,13 +3343,83 @@ class OrbeWindow {
     if (this.findText) this.find(this.findText, { forward, next: true });
   }
 
+  // Recherche dont on attend le résultat complet (remplacement) ; null si la page ne répond pas.
+  findAwait(wc, text, options) {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => { this.findWaiter = null; resolve(null); }, 2000);
+      this.findWaiter = (r) => { clearTimeout(timer); resolve(r); };
+      wc.findInPage(text, options);
+    });
+  }
+
+  // « Remplacer » : l'occurrence désignée par la recherche devient la sélection de la page ;
+  // si elle se trouve dans un champ de saisie ou une zone de texte modifiable, la commande
+  // d'édition « remplacer » y met le nouveau texte (annulable par ⌘Z dans la page), puis la
+  // recherche passe à la suivante. Hors d'une zone modifiable, rien n'est changé.
+  // `all` : toutes les occurrences, une à une, au plus autant qu'il y en avait au départ.
+  // Renvoie le nombre de remplacements.
+  async replaceFound(a) {
+    const rt = this.activeRt;
+    if (!rt || rt.wc.isDestroyed() || !this.findOpen || !this.findReplace || this.replacing || !a || typeof a !== 'object') return 0;
+    const wc = rt.wc;
+    const text = String(a.text || '').slice(0, 500);
+    const by = String(a.with == null ? '' : a.with).slice(0, 5000);
+    if (!text) return 0;
+    this.replacing = true;
+    let done = 0;
+    try {
+      let found = this.findText === text && this.findLast && this.findLast.matches ? this.findLast : await this.findAwait(wc, text, { forward: true, findNext: true });
+      this.findText = text;
+      const total = found ? found.matches : 0;
+      const turns = a.all ? Math.min(total, REPLACE_MAX) : Math.min(total, 1);
+      for (let i = 0; i < turns && found && found.matches; i++) {
+        wc.stopFindInPage('keepSelection');
+        // La sélection est-elle l'occurrence, dans une zone modifiable ? Sinon on se place juste après.
+        const selected = (skip) => wc.executeJavaScript(`(() => {
+          const want = ${JSON.stringify(text.toLowerCase())};
+          const e = document.activeElement;
+          if (e && /^(INPUT|TEXTAREA)$/.test(e.tagName) && !e.readOnly && !e.disabled && typeof e.selectionStart === 'number' && e.value.slice(e.selectionStart, e.selectionEnd).toLowerCase() === want) return true;
+          const s = getSelection();
+          const node = s.rangeCount ? s.getRangeAt(0).commonAncestorContainer : null;
+          const host = node && (node.nodeType === 1 ? node : node.parentElement);
+          if (host && host.isContentEditable && String(s).toLowerCase() === want) return true;
+          if (${skip ? 'true' : 'false'} && s.rangeCount) s.collapseToEnd();
+          return false;
+        })()`).catch(() => false);
+        // (Quelques essais : la fin de la recherche, elle aussi, peut arriver un instant après.)
+        let editable = false;
+        for (let k = 0; k < 4 && editable !== true && !wc.isDestroyed(); k++) editable = await selected(k === 3);
+        if (wc.isDestroyed() || this.activeRt !== rt || !this.findOpen) break;
+        if (editable === true) {
+          wc.replace(by);
+          // La commande d'édition et la recherche suivante ne voyagent pas par le même canal : la
+          // recherche pouvait arriver la première et laisser l'occurrence en place. On attend donc
+          // que la page ait remplacé (la sélection n'est plus l'occurrence) avant de chercher la suite.
+          let gone = false;
+          for (let k = 0; k < 40 && !gone && !wc.isDestroyed(); k++) gone = (await selected(false)) !== true;
+          if (gone) done += 1;
+          if (wc.isDestroyed() || this.activeRt !== rt || !this.findOpen) break;
+        }
+        found = await this.findAwait(wc, text, { forward: true, findNext: true });
+      }
+    } finally { this.replacing = false; }
+    if (!this.gone && (a.all || !done)) this.toast(t(done ? 'find.replaced' : 'find.replacedNone', { n: done }));
+    return done;
+  }
+
   sendFind(result) {
+    if (result && result.finalUpdate) {
+      this.findLast = result;
+      if (this.findWaiter) { const done = this.findWaiter; this.findWaiter = null; done(result); }
+    }
     if (this.findOpen && this.findView) this.findView.webContents.send('find-result', { matches: result.matches, current: result.activeMatchOrdinal });
   }
 
   closeFind() {
     if (!this.findOpen) return;
     this.findOpen = false;
+    this.findReplace = false;
+    this.findLast = null;
     this.findText = '';
     this.findView.setVisible(false);
     try { this.win.contentView.removeChildView(this.findView); } catch {}
@@ -3739,6 +3898,7 @@ class OrbeWindow {
         { label: t('tabs.resetPinned'), click: () => this.resetPinned(id) },
         { label: t('tabs.replacePinned'), click: () => { tab.homeUrl = tab.url; this.changed(); } });
     }
+    if (tab.homeUrl && loc.list !== 'today') tpl.push({ label: t('tabs.editPinned'), click: () => this.editPinned(id) });
     // Un épinglé ou un favori ne s'archive pas : sa page se ferme, il reste dans la barre.
     const kept = loc.list !== 'today';
     tpl.push({ type: 'separator' }, { label: t(kept ? 'tabs.closeKeep' : 'tabs.close'), enabled: !kept || live.has(id), click: () => this.close(id) });
@@ -4180,6 +4340,7 @@ class OrbeWindow {
       case 'switcherCommit': return this.switcherCommit();
       case 'find': return this.find(String(a.text || ''), a);
       case 'findClose': return this.closeFind();
+      case 'findReplace': return this.replaceFound(a);
       case 'icon': return this.chooseIcon(a);
       case 'theme': return this.setTheme(a);
       case 'themeExtra': return this.setThemeExtra(a || {});
@@ -4240,6 +4401,7 @@ function archiveStale() {
     for (const g of w.splits) for (const id of g) activeIds.add(id);
   }
   let count = 0;
+  let delay = 0;
   for (const space of store.state.spaces) {
     // Délai du profil de l'Espace, sinon délai général ; 0 : jamais.
     const hours = prefs.get('archiveAfterHours', space.profileId);
@@ -4252,7 +4414,14 @@ function archiveStale() {
       if (rt && !rt.wc.isDestroyed() && rt.wc.isCurrentlyAudible()) continue;
       any.close(id, { silent: true, ask: false, auto: true });
       count += 1;
+      delay = hours;
     }
+  }
+  // La première fois seulement (comme le bandeau d'Arc) : un message explique l'archivage
+  // d'office et mène au réglage du délai.
+  if (count && store.state.window && !store.state.window.archiveNoticed) {
+    store.state.window.archiveNoticed = true;
+    any.toast(t('toast.autoArchive', { n: count, hours: delay }), null, () => hooks.openSettings());
   }
   if (count) { store.save(); for (const w of windows.values()) w.layout(); OrbeWindow.pushAll(); }
 }
