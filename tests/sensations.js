@@ -175,6 +175,54 @@ module.exports = async function sensationsTests(ctx) {
     ctx.OrbeWindow.pushAll();
   }
 
+  // === Accueil : musique et vague du logo (SON-3, IMP-2, ANI-28) ============================
+  {
+    const { win } = ctx;
+    const gen = require('../scripts/make-sounds');
+    const sounds = require('../src/main/sounds');
+    const file = path.join(__dirname, '..', 'src', 'renderer', 'musique', 'welcome.wav');
+    const buf = fs.readFileSync(file);
+    const { samples, rate, channels } = gen.read(buf);
+    let peak = 0; let power = 0; let jump = 0;
+    for (let i = 0; i < samples.length; i++) { const v = samples[i]; peak = Math.max(peak, Math.abs(v)); power += v * v; if (i) jump = Math.max(jump, Math.abs(v - samples[i - 1])); }
+    const facts = { seconds: samples.length / rate, rate, channels, peak, rms: Math.sqrt(power / samples.length), edges: Math.max(Math.abs(samples[0]), Math.abs(samples[samples.length - 1])), jump, ko: Math.round(buf.length / 1024) };
+    check('musique de l’accueil : exactement ce que produit le script de synthèse (aucun fichier tiers), seule dans son dossier',
+      buf.equals(gen.wav([...gen.MUSIC.welcome()], gen.MUSIC_RATE)) && fs.readdirSync(path.dirname(file)).join() === 'welcome.wav');
+    check('musique de l’accueil : sept secondes, mono, plus basse que les sons d’interface, crête à −6 dB au plus, début et fin à zéro, aucun claquement',
+      facts.seconds === 7 && facts.channels === 1 && facts.rate === 22050 && facts.peak <= gen.PEAK + 0.001 && facts.rms < gen.LEVEL && facts.rms > 0.02 && facts.edges < 0.001 && facts.jump < 0.2 && facts.ko < 400, JSON.stringify(facts));
+    const S0 = { sounds: store.state.settings.sounds, soundVolume: store.state.settings.soundVolume, welcomed: store.state.window.welcomed };
+    store.state.settings.sounds = true;
+    store.state.settings.soundVolume = 50;
+    const m = sounds.music();
+    store.state.settings.soundVolume = 0;
+    const m0 = sounds.music();
+    store.state.settings.soundVolume = 50;
+    check('musique : permise par le réglage « Sons », à 70 % du volume des sons ; volume à zéro : coupée ; jamais jouée pendant les essais', m.on === true && m.volume === 0.35 && m.mute === sounds.QUIET && m0.on === false, JSON.stringify([m, m0]));
+    const home = w.activeId;
+    const open = async () => {
+      const tab = w.openInternal('welcome.html');
+      const js = (code) => win.live.get(tab.id).wc.executeJavaScript(code);
+      await until(async () => (await js('typeof music === "object" && music.asked === true').catch(() => false)), 'accueil chargé');
+      return { tab, js };
+    };
+    const a = await open();
+    const seen = JSON.parse(await a.js(`JSON.stringify({ hidden: music.button.hidden, pressed: music.button.getAttribute('aria-pressed'), title: music.button.title, src: music.audio ? music.audio.src : '', volume: music.audio ? music.audio.volume : -1, paused: music.audio ? music.audio.paused : null, waves: document.querySelectorAll('.orb .wave').length })`));
+    check('accueil : la musique est chargée au volume réglé (muette pendant les essais), un bouton permet de la couper',
+      seen.hidden === false && seen.pressed === 'true' && seen.title === store.t('welcome.music') && seen.src.endsWith('musique/welcome.wav') && Math.abs(seen.volume - 0.35) < 1e-6 && seen.paused === (sounds.QUIET ? true : seen.paused) && seen.waves === 3, JSON.stringify(seen));
+    await a.js('music.button.click()');
+    const off = JSON.parse(await a.js(`JSON.stringify({ pressed: music.button.getAttribute('aria-pressed'), paused: music.audio.paused })`));
+    check('bouton de la musique : un clic la coupe', off.pressed === 'false' && off.paused === true, JSON.stringify(off));
+    w.close(a.tab.id, { ask: false });
+    store.state.settings.sounds = false;
+    const b = await open();
+    const quiet = JSON.parse(await b.js(`JSON.stringify({ hidden: music.button.hidden, audio: !!music.audio })`));
+    check('réglage « Sons » coupé : l’accueil reste silencieux, sans bouton ni fichier chargé', quiet.hidden === true && quiet.audio === false, JSON.stringify(quiet));
+    w.close(b.tab.id, { ask: false });
+    Object.assign(store.state.settings, { sounds: S0.sounds, soundVolume: S0.soundVolume });
+    if (S0.welcomed === undefined) delete store.state.window.welcomed; else store.state.window.welcomed = S0.welcomed;
+    if (home) w.activate(home);
+  }
+
   // === Changement d'onglet : coupe franche (ANI-24) ========================================
   {
     const { win } = ctx;

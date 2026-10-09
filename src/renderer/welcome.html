@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; media-src 'self'">
 <title>Orbe</title>
 <link rel="stylesheet" href="base.css">
 <link rel="stylesheet" href="page.css">
@@ -25,11 +25,30 @@ h1 { font-size: 28px; margin-bottom: 8px; }
 .orb { position: relative; width: 84px; height: 84px; margin: 4vh 0 30px; }
 .orb .halo { position: absolute; inset: -34px; border-radius: 50%; background: conic-gradient(from 0deg, #7c6cf0, #06b6d4, #10b981, #f59e0b, #ec4899, #7c6cf0); filter: blur(30px); opacity: 0.55; animation: halo-in 1400ms var(--ease-out, ease-out) both, turn 14s linear infinite; }
 .orb .mark { position: absolute; inset: 0; border-radius: 22px; background: linear-gradient(140deg, #8f7dff, #2a1f8f); display: grid; place-items: center; box-shadow: 0 10px 30px rgba(60, 40, 180, 0.35); animation: mark-in 700ms var(--ease-out, ease-out) both; }
-.orb .mark i { width: 38px; height: 38px; border-radius: 50%; border: 7px solid #fff; border-top-color: transparent; transform: rotate(8deg); }
+.orb .mark i { width: 38px; height: 38px; border-radius: 50%; border: 7px solid #fff; border-top-color: transparent; transform: rotate(8deg); animation: ring-in 1100ms cubic-bezier(0.3, 1.4, 0.5, 1) 120ms both, ring-breathe 5200ms ease-in-out 1300ms infinite; }
+/* La vague : trois anneaux partent du logo à l'ouverture, l'un après l'autre (transformation et opacité). */
+.orb .wave { position: absolute; inset: 0; border-radius: 22px; border: 1.5px solid color-mix(in srgb, var(--accent) 70%, #fff); opacity: 0; pointer-events: none; animation: wave 1800ms var(--ease-out, ease-out) both; }
+.orb .wave:nth-child(2) { animation-delay: 260ms; }
+.orb .wave:nth-child(3) { animation-delay: 520ms; }
+.orb .wave:nth-child(4) { animation-delay: 780ms; }
+@keyframes wave { 0% { opacity: 0; transform: scale(0.9); } 18% { opacity: 0.55; } 100% { opacity: 0; transform: scale(2.3); } }
+@keyframes ring-in { from { transform: rotate(-262deg) scale(0.6); opacity: 0; } to { transform: rotate(8deg); opacity: 1; } }
+@keyframes ring-breathe { 0%, 100% { transform: rotate(8deg) scale(1); } 50% { transform: rotate(20deg) scale(1.05); } }
+/* Musique de l'accueil : un bouton pour la couper, en haut à droite. */
+#music { position: fixed; top: 14px; right: 16px; width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; color: var(--dim); transition: background 120ms, color 120ms, transform var(--spring-bouncy); }
+#music[hidden] { display: none; }
+#music:hover { background: var(--hover); color: var(--fg); }
+#music:active { transform: scale(0.9); transition: transform var(--press); }
+#music svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+#music .off { display: none; }
+#music[aria-pressed=false] .on { display: none; }
+#music[aria-pressed=false] .off { display: inline; }
+#music.playing .on { animation: music-beat 900ms ease-in-out infinite; transform-box: fill-box; transform-origin: 0 50%; }
+@keyframes music-beat { 0%, 100% { transform: scaleX(1); opacity: 1; } 50% { transform: scaleX(0.6); opacity: 0.55; } }
 @keyframes halo-in { from { opacity: 0; transform: scale(0.4) rotate(-90deg); } to { opacity: 0.55; } }
 @keyframes mark-in { from { opacity: 0; transform: scale(0.7); } to { opacity: 1; transform: none; } }
 @keyframes turn { to { rotate: 360deg; } }
-@media (prefers-reduced-motion: reduce) { .step, .orb .halo, .orb .mark { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .step, .orb .halo, .orb .mark, .orb .mark i, #music.playing .on { animation: none; } .orb .wave { display: none; } }
 
 #langs { display: flex; gap: 8px; margin: 0; }
 #langs .btn[aria-pressed=true] { background: var(--accent); color: #fff; }
@@ -62,9 +81,10 @@ footer .btn { height: 32px; padding: 0 16px; }
 </style>
 </head>
 <body>
+<button id="music" aria-pressed="true" data-t-title="welcome.music" hidden><svg viewBox="0 0 16 16"><path d="M3 6.4h2L7.800 4v8L5 9.600H3z"/><path class="on" d="M10 6.200a2.600 2.600 0 0 1 0 3.600M11.600 4.600a4.800 4.800 0 0 1 0 6.800"/><path class="off" d="m10.400 6.400 3.200 3.200m0-3.200-3.200 3.200"/></svg></button>
 <main>
   <section class="step on" data-step="hello">
-    <div class="orb"><div class="halo"></div><div class="mark"><i></i></div></div>
+    <div class="orb"><div class="halo"></div><div class="wave"></div><div class="wave"></div><div class="wave"></div><div class="mark"><i></i></div></div>
     <h1 data-t="welcome.title"></h1>
     <p class="lead" data-t="welcome.lead"></p>
     <p class="lead" data-t="welcome.tour"></p>

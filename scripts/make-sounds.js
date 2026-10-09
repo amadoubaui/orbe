@@ -15,13 +15,13 @@ const PEAK = 0.5; // crête que nul son ne dépasse (−6 dB)
 const LEVEL = 0.075; // puissance moyenne visée (valeur efficace)
 const TAU = 2 * Math.PI;
 
-function wav(samples) {
+function wav(samples, rate = RATE) {
   const data = Buffer.alloc(samples.length * 2);
   samples.forEach((v, i) => data.writeInt16LE(Math.round(Math.max(-1, Math.min(1, v)) * 32767), i * 2));
   const head = Buffer.alloc(44);
   head.write('RIFF', 0); head.writeUInt32LE(36 + data.length, 4); head.write('WAVEfmt ', 8);
   head.writeUInt32LE(16, 16); head.writeUInt16LE(1, 20); head.writeUInt16LE(1, 22);
-  head.writeUInt32LE(RATE, 24); head.writeUInt32LE(RATE * 2, 28); head.writeUInt16LE(2, 32); head.writeUInt16LE(16, 34);
+  head.writeUInt32LE(rate, 24); head.writeUInt32LE(rate * 2, 28); head.writeUInt16LE(2, 32); head.writeUInt16LE(16, 34);
   head.write('data', 36); head.writeUInt32LE(data.length, 40);
   return Buffer.concat([head, data]);
 }
@@ -129,7 +129,67 @@ const SOUNDS = {
   },
 };
 
+// --- Musique de l'accueil ---------------------------------------------------------
+// Une phrase de sept secondes, composée ici : quatre accords tenus (nappe douce),
+// un arpège de notes claires par-dessus, une dernière note qui s'éteint. Rien n'est
+// repris d'une autre application. Mono, 22,05 kHz (rien n'y dépasse 5 kHz) : le
+// fichier reste léger. Niveau plus bas que les sons d'interface : c'est un fond.
+const MUSIC_RATE = 22050;
+const MUSIC_LEVEL = 0.05;
+const MUSIC = {
+  welcome() {
+    const seconds = 7;
+    const n = Math.round(MUSIC_RATE * seconds);
+    const out = new Float32Array(n);
+    const hz = (semi) => 293.66 * 2 ** (semi / 12); // ré 4 = 0
+    // Accords (demi-tons depuis ré) : ré add9, si mineur 7, sol majeur 7, la sus — puis ré.
+    const chords = [[-12, 0, 4, 7, 14], [-15, -3, 0, 4, 9], [-19, -5, 2, 6, 11], [-17, -5, 2, 4, 9], [-12, 0, 7, 12, 16]];
+    const BAR = 1.3;
+    const notes = []; // [instant, fréquence, force]
+    chords.forEach((c, k) => {
+      const at = k * BAR;
+      const up = [c[1], c[2], c[3], c[4], c[3], c[2]];
+      if (k < 4) up.forEach((semi, j) => notes.push([at + 0.12 + j * 0.2, hz(semi + 12), 0.5 + 0.12 * (j % 3)]));
+      else [c[1], c[2], c[3], c[4]].forEach((semi, j) => notes.push([at + 0.1 + j * 0.16, hz(semi + 12), 0.7]));
+    });
+    for (let i = 0; i < n; i++) {
+      const t = i / MUSIC_RATE;
+      let v = 0;
+      // Nappe : chaque accord monte et retombe lentement, en se fondant dans le suivant.
+      chords.forEach((c, k) => {
+        const d = t - k * BAR;
+        if (d < -0.25 || d > BAR + 1.2) return;
+        const env = Math.min(1, Math.max(0, (d + 0.25) / 0.6)) * Math.min(1, Math.max(0, (BAR + 1.2 - d) / 1.2)) * (k === 4 ? 1.1 : 1);
+        for (const semi of c) {
+          const f = hz(semi);
+          v += env * 0.11 * (Math.sin(TAU * f * t) + 0.5 * Math.sin(TAU * f * 1.004 * t + 1.3) + 0.12 * Math.sin(TAU * f * 2 * t));
+        }
+      });
+      // Arpège : notes claires qui s'éteignent.
+      for (const [at, f, force] of notes) {
+        const d = t - at;
+        if (d < 0 || d > 1.6) continue;
+        v += force * 0.2 * Math.min(1, d / 0.006) * Math.exp(-d * 3.4) * (Math.sin(TAU * f * d) + 0.28 * Math.sin(TAU * f * 2 * d) * Math.exp(-d * 5) + 0.08 * Math.sin(TAU * f * 3 * d) * Math.exp(-d * 9));
+      }
+      // Entrée en 250 ms, sortie sur la dernière seconde et demie.
+      out[i] = v * Math.min(1, t / 0.25) * Math.min(1, Math.max(0, (seconds - t) / 1.5)) ** 1.5;
+    }
+    let max = 0;
+    let power = 0;
+    for (const v of out) { max = Math.max(max, Math.abs(v)); power += v * v; }
+    const gain = Math.min(PEAK / max, MUSIC_LEVEL / Math.sqrt(power / n));
+    return out.map((v) => v * gain);
+  },
+};
+
 if (require.main === module) {
+  const music = path.join(__dirname, '..', 'src', 'renderer', 'musique');
+  fs.mkdirSync(music, { recursive: true });
+  for (const [name, make] of Object.entries(MUSIC)) {
+    const file = wav([...make()], MUSIC_RATE);
+    fs.writeFileSync(path.join(music, name + '.wav'), file);
+    console.log(`musique/${name}.wav  ${(file.length / 1024).toFixed(1)} Ko`);
+  }
   const dir = path.join(__dirname, '..', 'src', 'renderer', 'sons');
   fs.mkdirSync(dir, { recursive: true });
   for (const [name, make] of Object.entries(SOUNDS)) {
@@ -140,4 +200,4 @@ if (require.main === module) {
   console.log('Sons écrits dans ' + dir);
 }
 
-module.exports = { RATE, PEAK, LEVEL, SOUNDS, wav, read };
+module.exports = { RATE, PEAK, LEVEL, SOUNDS, MUSIC, MUSIC_RATE, MUSIC_LEVEL, wav, read };

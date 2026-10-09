@@ -267,6 +267,58 @@ module.exports = {
       }
     });
 
+    // --- Accueil : la vague du logo, le bouton de la musique --------------------------------
+    await ctx.principal(({ w }) => { w.openInternal('welcome.html'); });
+    const accueil = await ctx.attendrePage('welcome.html');
+    accueil.setDefaultTimeout(6000);
+    await jusqua(() => accueil.evaluate(() => typeof music === 'object' && music.asked === true), 'accueil chargé');
+    const mouvements = () => accueil.evaluate(`(() => { const de = (sel) => [...document.querySelectorAll(sel)].flatMap((el) => el.getAnimations().map((a) => ({ nom: a.animationName, props: (${PROPS})(a), duree: a.effect.getTiming().duration, retard: a.effect.getTiming().delay }))); return { vagues: de('.orb .wave'), anneau: de('.orb .mark i'), halo: de('.orb .halo').map((x) => x.nom).sort() }; })()`);
+
+    await animer('accueil : trois anneaux partent du logo l’un après l’autre, l’anneau blanc s’enroule puis respire, le halo de couleurs tourne — transformations et opacité seulement', async () => {
+      await accueil.reload();
+      await jusqua(() => accueil.evaluate(() => typeof music === 'object' && document.querySelectorAll('.orb .wave').length === 3), 'accueil rechargé');
+      const m = await mouvements();
+      assert.deepEqual(m.vagues, [260, 520, 780].map((retard) => ({ nom: 'wave', props: ['opacity', 'transform'], duree: 1800, retard })));
+      assert.deepEqual(m.anneau.map((x) => x.nom).sort(), ['ring-breathe', 'ring-in']);
+      assert.ok(m.anneau.every((x) => x.props.every((p) => p === 'opacity' || p === 'transform')), JSON.stringify(m.anneau));
+      assert.deepEqual(m.halo, ['halo-in', 'turn']);
+      const cdpA = await accueil.context().newCDPSession(accueil);
+      await cdpA.send('Performance.enable');
+      const lire = async () => Object.fromEntries((await cdpA.send('Performance.getMetrics')).metrics.map((x) => [x.name, x.value]));
+      await accueil.evaluate(() => { const p = (window.__img = { t: [], on: true }); const f = () => { p.t.push(performance.now()); if (p.on) requestAnimationFrame(f); }; requestAnimationFrame(f); });
+      const avant = await lire();
+      await sleep(1200);
+      const apres = await lire();
+      const t0 = await accueil.evaluate(() => { window.__img.on = false; return window.__img.t; });
+      const ecarts = t0.slice(1).map((x, i) => x - t0[i]).sort((x, y) => x - y);
+      const mediane = Math.round(ecarts[Math.floor(ecarts.length / 2)] * 10) / 10;
+      const p95 = Math.round(ecarts[Math.floor(ecarts.length * 0.95)] * 10) / 10;
+      console.log(`    accueil (vague, anneau, halo) : ${ecarts.length} images, médiane ${mediane} ms, 95e centile ${p95} ms, ${apres.LayoutCount - avant.LayoutCount} mise(s) en page`);
+      assert.ok(apres.LayoutCount - avant.LayoutCount <= 1, 'mises en page : ' + (apres.LayoutCount - avant.LayoutCount));
+      assert.ok(mediane < 34, 'cadence médiane : ' + mediane);
+    });
+
+    await t.verifier('accueil : le bouton de la musique se voit, un vrai clic la coupe, un second la remet', async () => {
+      const bouton = accueil.locator('#music');
+      assert.equal(await bouton.isVisible(), true);
+      if (process.env.ORBE_UI_SHOTS) { await sleep(1500); await ctx.capture('accueil', accueil); }
+      assert.equal(await bouton.getAttribute('aria-pressed'), 'true');
+      await bouton.click();
+      assert.equal(await bouton.getAttribute('aria-pressed'), 'false');
+      assert.equal(await accueil.evaluate(() => getComputedStyle(document.querySelector('#music .off')).display !== 'none' && getComputedStyle(document.querySelector('#music .on')).display === 'none'), true, 'haut-parleur barré');
+      assert.equal(await accueil.evaluate(() => music.audio.paused), true);
+      await bouton.click();
+      assert.equal(await bouton.getAttribute('aria-pressed'), 'true');
+    });
+
+    await t.verifier('accueil, « Réduire les animations » : ni vague ni anneau en mouvement', async () => {
+      await accueil.emulateMedia({ reducedMotion: 'reduce' });
+      try {
+        const m = await accueil.evaluate(() => ({ vagues: [...document.querySelectorAll('.orb .wave')].filter((el) => getComputedStyle(el).display !== 'none').length, anneau: getComputedStyle(document.querySelector('.orb .mark i')).animationName, halo: getComputedStyle(document.querySelector('.orb .halo')).animationName }));
+        assert.deepEqual(m, { vagues: 0, anneau: 'none', halo: 'none' });
+      } finally { await accueil.emulateMedia({ reducedMotion: null }); }
+    });
+
     await t.verifier('aucune sorte cochée, ou rien de récent : le survol ne montre rien', async () => {
       await ctx.principal(({ store }) => { store.state.downloads = []; });
       await shell.mouse.move(700, 300);

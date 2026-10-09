@@ -77,4 +77,12 @@ function observe(win) {
   play(win, name);
 }
 
-module.exports = { NAMES, GESTURES, QUIET, requested, wanted, play, arm, observe, diff, snapshot };
+// Musique de l'accueil (src/renderer/musique/welcome.wav, sept secondes) : jouée une
+// fois à l'ouverture de l'accueil si le réglage « Sons » le permet, plus bas que les
+// sons d'interface ; un bouton de l'accueil la coupe. Jamais jouée pendant les essais.
+function music() {
+  const on = !!store.state.settings.sounds && volume() > 0;
+  return { on, volume: Math.round(volume() * 0.7 * 100) / 100, mute: QUIET };
+}
+
+module.exports = { music, NAMES, GESTURES, QUIET, requested, wanted, play, arm, observe, diff, snapshot };
