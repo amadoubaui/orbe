@@ -155,9 +155,15 @@ module.exports = async function essentielsTests(ctx) {
   const inSheet = async (sheet, code) => {
     const vwc = sheet.view.webContents;
     await until(() => vwc.executeJavaScript('!document.getElementById("card").hidden'), 'feuille affichée');
-    return vwc.executeJavaScript(code);
+    // Borné : si la feuille se ferme pendant l'appel, sa réponse n'arrive jamais.
+    return Promise.race([vwc.executeJavaScript(code), sleep(10000).then(() => { throw new Error('Délai dépassé : script dans la feuille'); })]);
   };
-  const press = (sheet, id) => inSheet(sheet, `shownAt = 0; document.getElementById(${JSON.stringify(id)}).click(); 1`);
+  // Clic sur un bouton qui referme la feuille : le clic part après le retour du
+  // script (la vue est détruite par la réponse), puis on attend la fermeture.
+  const press = async (sheet, id) => {
+    await inSheet(sheet, `shownAt = 0; setTimeout(() => document.getElementById(${JSON.stringify(id)}).click(), 0); 1`);
+    await until(() => sheet.closed, 'feuille refermée par « ' + id + ' »');
+  };
   const origin = (url) => new URL(url).origin;
 
   // ---------------------------------------------------------------- Autorisations
@@ -306,7 +312,7 @@ module.exports = async function essentielsTests(ctx) {
   permissions.os.status = saved.osStatus;
   pending = js(share.wc, 'navigator.mediaDevices.getDisplayMedia({ video: true }).then(() => "flux", (e) => "err:" + e.name)', true);
   sheet = await sheetOf(share.wc, 'picker');
-  await inSheet(sheet, 'window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })); 1');
+  await inSheet(sheet, 'setTimeout(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })), 0); 1');
   check('Échap annule le partage : la page reçoit une erreur', (await pending).startsWith('err:'));
   check('aucune autorisation de partage n’est retenue', !store.state.permissions[A] || !Object.keys(store.state.permissions[A]).some((k) => /display|screen/.test(k)));
   pending = js(priv.wc, 'navigator.mediaDevices.getDisplayMedia({ video: true }).then(() => "flux", (e) => "err:" + e.name)', true);
