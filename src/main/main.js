@@ -441,7 +441,7 @@ app.whenReady().then(async () => {
   commands.hooks.newLittle = (url) => new little.LittleWindow(url);
   commands.hooks.openSettings = openSettings;
   commands.hooks.openBoost = (w, mode) => boostEditor.open(w, mode);
-  boostEditor.hooks.openSettings = () => openSettings('advanced');
+  boostEditor.hooks.openSettings = () => openSettings('privacy');
   commands.hooks.openPasswords = () => passwords.openManager();
   passwords.configure({ trusted, uiPreload: UI_PRELOAD, internal: INTERNAL, toast: (wc, text) => { const o = OrbeWindow.ownerOf(wc); if (o) o.toast(text); } });
   commands.hooks.settingsChanged = broadcastSettings;
