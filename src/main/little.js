@@ -20,22 +20,44 @@ const easeOut = (x) => 1 - (1 - x) ** 3;
 
 // Profil retenu pour un site : celui de l'Espace où une petite fenêtre de ce site
 // a été envoyée (« Ouvrir dans un Espace »). La suivante s'ouvre avec ses connexions.
-const siteOf = (url) => { try { const u = new URL(url); return /^https?:$/.test(u.protocol) ? u.hostname.replace(/^www\./, '').toLowerCase() : ''; } catch { return ''; } };
+// Nom d'hôte tel qu'on accepte de le retenir : des labels de lettres, chiffres et
+// tirets, ou une adresse IPv6 entre crochets. `__proto__` et ses semblables n'en sont pas.
+const HOST = /^(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$|^\[[0-9a-f:.]{2,45}\]$/;
+const siteOf = (url) => {
+  try {
+    const u = new URL(url);
+    const host = /^https?:$/.test(u.protocol) ? u.hostname.replace(/^www\./, '').toLowerCase() : '';
+    return HOST.test(host) ? host : '';
+  } catch { return ''; }
+};
+// Table site -> profil, sans prototype (aucun nom de site ne peut y désigner autre chose
+// qu'une entrée). Ce qui vient du fichier d'état est relu : seules les entrées dont la
+// clé est un nom d'hôte et la valeur un identifiant de profil sont gardées.
+function profileMap() {
+  const w = store.state.window || (store.state.window = {});
+  const raw = w.littleProfiles;
+  if (raw && typeof raw === 'object' && Object.getPrototypeOf(raw) === null) return raw;
+  const map = Object.create(null);
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    for (const k of Object.keys(raw).slice(-PROFILES_MAX)) if (HOST.test(k) && typeof raw[k] === 'string' && raw[k].length <= 64) map[k] = raw[k];
+  }
+  w.littleProfiles = map;
+  return map;
+}
 function rememberedProfile(url) {
-  const map = store.state.window && store.state.window.littleProfiles;
-  const id = map && typeof map === 'object' ? map[siteOf(url)] : null;
+  const site = siteOf(url);
+  if (!site) return null;
+  const id = profileMap()[site];
   return typeof id === 'string' && hooks.profiles().includes(id) ? id : null;
 }
 function rememberProfile(url, profileId) {
   const site = siteOf(url);
-  if (!site || typeof profileId !== 'string') return false;
-  const w = store.state.window || (store.state.window = {});
-  const map = w.littleProfiles && typeof w.littleProfiles === 'object' ? w.littleProfiles : {};
+  if (!site || typeof profileId !== 'string' || !profileId || profileId.length > 64) return false;
+  const map = profileMap();
   delete map[site];
   map[site] = profileId; // le dernier retenu en dernier
   const keys = Object.keys(map);
   for (const k of keys.slice(0, Math.max(0, keys.length - PROFILES_MAX))) delete map[k];
-  w.littleProfiles = map;
   store.save();
   return true;
 }
@@ -294,4 +316,4 @@ class LittleWindow {
   }
 }
 
-module.exports = { LittleWindow, hooks, savedSize, OPEN, HINT, rememberedProfile, rememberProfile, siteOf };
+module.exports = { LittleWindow, hooks, savedSize, OPEN, HINT, rememberedProfile, rememberProfile, siteOf, profileMap };

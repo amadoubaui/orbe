@@ -342,6 +342,7 @@ function render(s) {
   b.classList.toggle('docked', s.sidebar.visible);
   b.classList.toggle('translucent', s.translucent);
   b.classList.toggle('incognito', s.incognito);
+  b.classList.toggle('blank-window', !!s.blank);
   b.classList.toggle('toolbar', s.toolbar);
   b.classList.toggle('dev-site', !!s.devMode); // liseré jaune et noir sous l'adresse (mode développeur du site)
   fxToolbar(s.pageColor);
@@ -431,6 +432,7 @@ function render(s) {
   }
 
   // Mise à jour disponible : une ligne discrète ; le détail est dans les réglages.
+  $('trace-note').hidden = !s.tracing;
   const upd = $('update-note');
   upd.hidden = !s.update;
   if (s.update) $('update-open').textContent = t('update.note', { version: s.update.version });
@@ -743,6 +745,7 @@ sidebar.addEventListener('contextmenu', (e) => {
   else send('sidebarMenu');
 });
 
+$('trace-note').onclick = () => send('trace:stop');
 $('update-open').onclick = () => send('update:show');
 $('update-close').onclick = () => send('update:dismiss');
 $('exts').addEventListener('contextmenu', (e) => {

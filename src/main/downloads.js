@@ -427,13 +427,10 @@ const IMAGE_BYTES = 32 * 1024 * 1024;
 const IMAGE_SIDE = 16384;
 const IMAGE_PIXELS = 64e6;
 
-// Dimensions annoncées par l'en-tête d'une image (PNG, JPEG, GIF, WebP, BMP), ou null.
-function imageSize(file) {
-  let fd = null;
+// Dimensions annoncées par l'en-tête d'une image déjà en mémoire (PNG, JPEG, GIF, WebP,
+// BMP), ou null. `n` : nombre d'octets valides de `b`. Rien n'est décodé.
+function imageSizeOf(b, n = b ? b.length : 0) {
   try {
-    fd = fs.openSync(file, 'r');
-    const b = Buffer.alloc(512 * 1024);
-    const n = fs.readSync(fd, b, 0, b.length, 0);
     if (n < 30) return null;
     if (b.readUInt32BE(0) === 0x89504e47 && b.readUInt32BE(4) === 0x0d0a1a0a && b.toString('latin1', 12, 16) === 'IHDR') return { width: b.readUInt32BE(16), height: b.readUInt32BE(20) };
     if (b.toString('latin1', 0, 4) === 'GIF8') return { width: b.readUInt16LE(6), height: b.readUInt16LE(8) };
@@ -456,6 +453,17 @@ function imageSize(file) {
       }
     }
     return null;
+  } catch { return null; }
+}
+
+// Les mêmes, lues dans le début d'un fichier.
+function imageSize(file) {
+  let fd = null;
+  try {
+    fd = fs.openSync(file, 'r');
+    const b = Buffer.alloc(512 * 1024);
+    const n = fs.readSync(fd, b, 0, b.length, 0);
+    return imageSizeOf(b, n);
   } catch { return null; } finally { if (fd !== null) { try { fs.closeSync(fd); } catch {} } }
 }
 
@@ -553,4 +561,4 @@ async function action(name, a, sender) {
   return undefined;
 }
 
-module.exports = { saveFrom, mark, markTree, rename, cleared, dragAllowed, unmarked, decodable, imageSize, findRecord, confirmQuit, quarantine, beforeQuit, attach, bindProfile, action, resume, cancel, openFile, copyFile, trash, forget, menuTemplate, downloadDir, isDangerous, isPdfFile, safeName, env, internals: { items, resuming, DANGEROUS, asked, extOf, track, accepted, volatileRecords } };
+module.exports = { saveFrom, mark, markTree, rename, cleared, dragAllowed, unmarked, decodable, imageSize, imageSizeOf, findRecord, confirmQuit, quarantine, beforeQuit, attach, bindProfile, action, resume, cancel, openFile, copyFile, trash, forget, menuTemplate, downloadDir, isDangerous, isPdfFile, safeName, env, internals: { items, resuming, DANGEROUS, asked, extOf, track, accepted, volatileRecords } };

@@ -300,28 +300,12 @@ function showNetwork(page) {
   page.openDevTools({ mode: 'bottom', activate: true });
 }
 
-// Trace de Chromium : premier appel, l'enregistrement commence ; second appel, il s'arrête
-// et le fichier est montré dans le dossier des téléchargements.
-const trace = { on: false };
-async function recordTrace(w) {
-  const { contentTracing } = require('electron');
-  const say = (key, vars) => { if (w && !w.gone) w.toast(store.t(key, null, vars)); };
-  try {
-    if (!trace.on) {
-      await contentTracing.startRecording({ included_categories: ['*'] });
-      trace.on = true;
-      say('toast.traceOn');
-    } else {
-      trace.on = false;
-      const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-      const file = await contentTracing.stopRecording(require('path').join(app.getPath('downloads'), `orbe-trace-${stamp}.json`));
-      say('toast.traceSaved');
-      shell.showItemInFolder(file);
-    }
-  } catch (err) { trace.on = false; console.error('[orbe] trace', err.message); }
-  hooks.menuChanged();
-  return trace.on;
-}
+// Trace de Chromium (src/main/trace.js) : premier appel, la question est posée puis
+// l'enregistrement commence ; second appel, il s'arrête et le fichier est montré dans
+// le dossier des téléchargements.
+const trace = require('./trace');
+trace.hooks.changed = () => hooks.menuChanged();
+const recordTrace = (w) => trace.toggle(w);
 
 // « Utiliser la sélection pour rechercher » : le texte sélectionné dans la page
 // devient la recherche de la barre « Rechercher dans la page ».
@@ -432,4 +416,4 @@ function run(win, name, arg) {
   }
 }
 
-module.exports = { TRANSFORMS, tracing: () => trace.on, minimizeAll, COMMANDS, byName, run, hooks, makeDefault, setSetting, appInfo, clearArchive, LIBRARY_SECTIONS, librarySection, REPO_URL };
+module.exports = { TRANSFORMS, tracing: () => trace.state.on, minimizeAll, COMMANDS, byName, run, hooks, makeDefault, setSetting, appInfo, clearArchive, LIBRARY_SECTIONS, librarySection, REPO_URL };

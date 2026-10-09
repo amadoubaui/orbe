@@ -326,8 +326,8 @@ class OrbeWindow {
 
   // `blank` : fenêtre vierge, comme dans Arc — hors des Espaces. Elle a ses propres
   // onglets, que rien n'enregistre dans la barre latérale des autres fenêtres, mais
-  // garde la session ordinaire (cookies, historique, archive), à la différence de
-  // la navigation privée.
+  // garde la session ordinaire (cookies, historique), à la différence de la navigation
+  // privée. Ses onglets fermés ne rejoignent pas l'archive (voir `archives`).
   constructor({ incognito = false, blank = false } = {}) {
     this.incognito = incognito;
     this.blank = !incognito && !!blank;
@@ -337,6 +337,8 @@ class OrbeWindow {
     this.data = apart
       ? { spaces: [incognito ? store.makeSpace(t('incognito.title'), '🕶️', '#52525b') : store.makeSpace(t('blank.title'), '◻️', '#71717a')], tabs: {}, favs: { default: [] }, profiles: [{ id: 'default', name: '' }] }
       : store.state;
+    // Une trace de Chromium en cours porterait sur cette fenêtre aussi : elle est arrêtée et jetée.
+    if (incognito) require('./trace').discard(OrbeWindow.focused || OrbeWindow.primary);
     this.session = incognito ? sessions.incognitoSession() : sessions.mainSession();
     const restore = !apart && first;
     const resume = resumed(saved, this.data.spaces, restore && store.state.settings.restoreSession !== false);
@@ -614,6 +616,13 @@ class OrbeWindow {
   // Fenêtre ordinaire : elle montre les Espaces enregistrés, partagés entre fenêtres
   // (ni navigation privée, ni fenêtre vierge).
   get shared() {
+    return !this.incognito && !this.blank;
+  }
+
+  // Les onglets fermés ici rejoignent-ils l'archive enregistrée (et donc les sauvegardes) ?
+  // Pas en navigation privée, pas dans une fenêtre vierge : celle-ci promet des onglets
+  // qui ne sont pas gardés. Ils restent rouvrables par ⇧⌘T tant que la fenêtre est ouverte.
+  get archives() {
     return !this.incognito && !this.blank;
   }
 
@@ -1150,6 +1159,9 @@ class OrbeWindow {
       touch();
     };
     wc.on('did-navigate', (e, url) => { rt.typed = false; rt.objected = false; rt.sleeping = false; hooks.navigated(rt); navigated(url); });
+    // Nouveau document : titre, artiste et pochette annoncés par le précédent ne valent
+    // plus rien (le lecteur miniature ne montre jamais ceux d'un autre site).
+    wc.on('did-navigate', () => { rt.media = null; });
     // Boost du site : son CSS, puis son script s'il y est permis (une fois par chargement).
     if (!incognito) wc.on('dom-ready', () => { boosts.apply(wc); boosts.runScript(wc); });
     // Changement de site : le CSS du Boost de l'ancien site est retiré dès que le nouveau document est en place.
@@ -1587,7 +1599,7 @@ class OrbeWindow {
       this.histories.delete(id);
       this.closed.push(rec);
       if (this.closed.length > 50) this.closed.shift();
-      if (!this.incognito) store.archive({ ...tab, spaceId: space.id, by: auto ? 'auto' : 'manual' });
+      if (this.archives) store.archive({ ...tab, spaceId: space.id, by: auto ? 'auto' : 'manual' });
       delete this.data.tabs[id];
     } else if (tab.homeUrl) {
       tab.url = tab.homeUrl;
@@ -2218,7 +2230,7 @@ class OrbeWindow {
       space.today.splice(clamp(rec.index, 0, space.today.length), 0, id);
       const i = this.closed.indexOf(rec);
       if (i >= 0) this.closed.splice(i, 1);
-      if (!this.incognito) {
+      if (this.archives) {
         const a = store.state.archive.findIndex((x) => x.url === rec.tab.url);
         if (a >= 0) store.state.archive.splice(a, 1);
       }
@@ -2407,7 +2419,7 @@ class OrbeWindow {
     for (const tid of ids) {
       const tab = this.data.tabs[tid];
       tabs[tid] = tab;
-      if (!this.incognito) {
+      if (this.archives) {
         const top = store.state.archive[0];
         store.archive({ ...tab, title: tab.customTitle || tab.title, spaceId: space.id });
         if (store.state.archive[0] !== top) archived.push(store.state.archive[0]);
@@ -2750,7 +2762,7 @@ class OrbeWindow {
       const tab = this.data.tabs[tid];
       tabs[tid] = tab;
       // Comme dans Arc : tout va dans l'archive, les épinglés et le contenu des dossiers aussi.
-      if (!this.incognito) {
+      if (this.archives) {
         const top = store.state.archive[0];
         store.archive({ ...tab, title: tab.customTitle || tab.title, spaceId: space.id });
         if (store.state.archive[0] !== top) archived.push(store.state.archive[0]);
@@ -4371,6 +4383,7 @@ class OrbeWindow {
       dark: nativeTheme.shouldUseDarkColors,
       incognito: this.incognito,
       blank: this.blank,
+      tracing: require('./trace').state.on, // trace de Chromium en cours : la barre le montre
       sidebar: { visible: this.sidebarVisible, peek: this.peek, width: this.sidebarWidth },
       toolbar,
       fullUrl: settings.showFullUrl !== false || (!!tab && prefs.devMode(tab.url)),
@@ -4490,6 +4503,7 @@ class OrbeWindow {
         return a && Array.isArray(a.ids) ? this.moveMany(a) : this.move(a);
       }
       case 'toggleMute': return this.toggleMute(a);
+      case 'trace:stop': return require('./trace').stop(this);
       case 'mediaToggle': return this.mediaToggle();
       case 'mediaAct': return this.mediaAct(a);
       case 'resetPinned': return this.resetPinned(a);

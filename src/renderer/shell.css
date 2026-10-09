@@ -365,14 +365,18 @@ body.parting #scroll .row, body.parting #divider { transform: translateY(0); tra
 
 #blank { flex: 1; min-height: 40px; }
 
-#incognito { display: none; flex-direction: column; gap: 3px; padding: 10px 12px; margin-bottom: 4px; border-radius: 12px; background: var(--hover); color: var(--dim); font-size: 11.5px; flex: none; }
-#incognito b { color: var(--fg); font-size: 12px; }
-body.incognito #incognito { display: flex; }
+#incognito, #blank-note { display: none; flex-direction: column; gap: 3px; padding: 10px 12px; margin-bottom: 4px; border-radius: 12px; background: var(--hover); color: var(--dim); font-size: 11.5px; flex: none; }
+#incognito b, #blank-note b { color: var(--fg); font-size: 12px; }
+body.incognito #incognito, body.blank-window #blank-note { display: flex; }
 
 /* Note « mise à jour disponible » : discrète, au-dessus des Espaces. */
 /* Mise à jour disponible : une ligne discrète, un cœur qui bat ; au survol, la ligne
    devient le bouton — dégradé aux couleurs de l'Espace — et la croix paraît.
    Fondu et transformations seulement : la ligne ne change pas de taille. */
+#trace-note { display: flex; align-items: center; gap: 8px; width: 100%; margin-bottom: 4px; padding: 7px 10px; border-radius: 10px; background: var(--hover); color: var(--fg); font-size: 11.5px; text-align: left; flex: none; }
+#trace-note[hidden] { display: none; }
+#trace-note i { width: 8px; height: 8px; border-radius: 50%; background: #ff453a; flex: none; }
+#trace-note span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #update-note { position: relative; display: flex; align-items: center; gap: 2px; margin-bottom: 4px; border-radius: 10px; background: var(--hover); flex: none; overflow: hidden; }
 #update-note[hidden] { display: none; }
 #update-note::before { content: ''; position: absolute; inset: 0; background: linear-gradient(105deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #ff5fa2) 60%, color-mix(in srgb, var(--accent) 40%, #ffb347)); opacity: 0; transition: opacity 180ms var(--ease-out); pointer-events: none; }
