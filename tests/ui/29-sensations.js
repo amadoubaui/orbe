@@ -239,6 +239,34 @@ module.exports = {
       } finally { await lib.emulateMedia({ reducedMotion: null }); await lib.mouse.move(600, 500); }
     });
 
+    // --- Barre translucide : texte lisible sur le fond tel qu'il s'affiche -----------------
+    await t.verifier('barre translucide, thème gris moyen : titres et texte discret gardent 4,5 de contraste sur le fond affiché, quel que soit l’arrière-plan', async () => {
+      const Theme = require('../../src/renderer/theme');
+      const avant = await ctx.principal(({ w, store }) => { const sp = w.space; const a = { translucent: store.state.settings.translucent, theme: { colors: [sp.color, sp.color2, sp.color3].filter(Boolean), intensity: sp.intensity, grain: sp.grain || 0, texture: sp.texture || 'grain', mode: sp.mode || 'auto' } }; store.state.settings.translucent = true; w.setTheme({ colors: ['#8a8f98'], intensity: 0.9, grain: 0, texture: 'grain', mode: 'light' }); return a; });
+      try {
+        const sombre = await ctx.principal(({ electron }) => electron.nativeTheme.shouldUseDarkColors);
+        const vu = await jusqua(() => shell.evaluate(() => {
+          const cs = getComputedStyle(document.body);
+          if (!document.body.classList.contains('translucent') || !/0\.8\)$/.test(cs.getPropertyValue('--paint').trim())) return null;
+          const nombres = (c) => c.match(/[\d.]+/g).map(Number);
+          const titre = document.querySelector('#today .row.tab .title');
+          const discret = document.getElementById('space-name');
+          return { fond: nombres(cs.getPropertyValue('--paint')), titre: nombres(getComputedStyle(titre).color), discret: nombres(getComputedStyle(discret).color) };
+        }), 'barre translucide peinte');
+        assert.equal(vu.fond[3], 0.8, 'fond peint à 80 % d’opacité');
+        for (const derriere of Theme.BACKDROP[sombre ? 'dark' : 'light']) {
+          const fond = Theme.over(vu.fond.slice(0, 3), 0.8, derriere);
+          for (const [nom, c] of [['titre', vu.titre], ['texte discret', vu.discret]]) {
+            const texte = Theme.over(c.slice(0, 3), c.length > 3 ? c[3] : 1, fond);
+            const k = Theme.contrast(texte, fond);
+            assert.ok(k >= 4.5, `${nom} sur un arrière-plan ${derriere.join(',')} : contraste ${k.toFixed(2)}`);
+          }
+        }
+      } finally {
+        await ctx.principal(({ w, store, win }, a) => { store.state.settings.translucent = a.translucent; w.setTheme(a.theme); win.OrbeWindow.pushAll(); }, avant);
+      }
+    });
+
     await t.verifier('aucune sorte cochée, ou rien de récent : le survol ne montre rien', async () => {
       await ctx.principal(({ store }) => { store.state.downloads = []; });
       await shell.mouse.move(700, 300);

@@ -108,6 +108,73 @@ module.exports = async function sensationsTests(ctx) {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 
+  // === Barre translucide : contraste sur le fond tel qu'il s'affiche (THM-13) ===============
+  {
+    const Theme = require('../src/renderer/theme');
+    const SHOW = 0.2; // la barre translucide est peinte à 80 % d'opacité
+    let seed = 20261010;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    const alphaOf = (c) => Number(c.match(/, ([\d.]+)\)$/)[1]);
+    // Recalcul indépendant : le texte principal et le texte discret, sur le fond nu et sur le
+    // voile de survol, pour chaque arrêt mêlé aux deux extrêmes de ce qui peut être derrière.
+    const seenWorst = (p, dark) => {
+      const ink = p.family === 'dark' ? [255, 255, 255] : [0, 0, 0];
+      const fg = Theme.rgb(p.fg);
+      let min = Infinity;
+      for (const stop of p.stops.map(Theme.rgb)) {
+        for (const back of Theme.BACKDROP[dark ? 'dark' : 'light']) {
+          const bg = Theme.over(back, SHOW, stop).map(Math.round);
+          for (const surface of [bg, Theme.over(ink, alphaOf(p.hover), bg)]) {
+            min = Math.min(min, Theme.contrast(fg, surface), Theme.contrast(Theme.over(ink, alphaOf(p.dim), surface), surface));
+          }
+        }
+      }
+      return min;
+    };
+    let worst = Infinity;
+    let worstOf = '';
+    let before = Infinity;
+    let failing = 0;
+    const N = 3000;
+    for (let i = 0; i < N; i++) {
+      const colors = Array.from({ length: 1 + Math.floor(rnd() * 3) }, () => Theme.hex([rnd() * 255, rnd() * 255, rnd() * 255]));
+      const theme = { colors, accent: colors[0], intensity: rnd(), grain: 0, texture: 'grain', mode: Theme.MODES[i % 3] };
+      const dark = i % 2 === 0;
+      const opaque = seenWorst(Theme.palette(theme, dark), dark);
+      if (opaque < 4.5) failing += 1;
+      before = Math.min(before, opaque);
+      const c = seenWorst(Theme.palette(theme, dark, SHOW), dark);
+      if (c < worst) { worst = c; worstOf = JSON.stringify([colors, theme.intensity, theme.mode, dark]); }
+    }
+    console.log(`  – barre translucide, ${N} thèmes au hasard : contraste le plus faible ${worst.toFixed(2)} (calculé pour un fond opaque : ${before.toFixed(2)}, ${failing} thème(s) sous 4,5)`);
+    check('barre translucide : texte lisible (4,5 au moins) sur le fond tel qu’il s’affiche, du plus sombre au plus clair de ce qui peut être derrière — 3 000 thèmes au hasard',
+      worst >= 4.5 && failing > 0, `${worst.toFixed(3)} pour ${worstOf} ; avant : ${failing} en défaut`);
+    const base = { color: '#7c6cf0' };
+    check('barre translucide : le thème d’origine garde son fond ; fond opaque : palette inchangée',
+      Theme.palette(base, true, SHOW).stops.join() === Theme.palette(base, true).stops.join() && Theme.palette(base, false, SHOW).stops.join() === Theme.palette(base, false).stops.join()
+      && JSON.stringify(Theme.palette(base, true, 0)) === JSON.stringify(Theme.palette(base, true)));
+    // La barre latérale applique bien ce calcul selon le réglage.
+    const dark = require('electron').nativeTheme.shouldUseDarkColors;
+    const translucent0 = store.state.settings.translucent;
+    const theme0 = { colors: [w.space.color, w.space.color2, w.space.color3].filter(Boolean), intensity: w.space.intensity, grain: w.space.grain, texture: w.space.texture, mode: w.space.mode, plain: w.space.plain };
+    w.setTheme({ colors: ['#8a8f98'], intensity: 0.9, grain: 0, texture: 'grain', mode: 'light' });
+    const read = () => ui('({ dim: getComputedStyle(document.body).getPropertyValue("--dim").trim(), bg: getComputedStyle(document.body).getPropertyValue("--bg").trim(), paint: getComputedStyle(document.body).getPropertyValue("--paint").trim() })');
+    store.state.settings.translucent = true;
+    ctx.OrbeWindow.pushAll();
+    const through = Theme.palette(w.space, dark, SHOW);
+    await until(async () => { const r = await read(); return r.bg === through.stops[0] && r.dim === through.dim && /0\.8\)$/.test(r.paint); }, 'palette de la barre translucide');
+    store.state.settings.translucent = false;
+    ctx.OrbeWindow.pushAll();
+    const opaque = Theme.palette(w.space, dark);
+    await until(async () => { const r = await read(); return r.bg === opaque.stops[0] && r.dim === opaque.dim && r.paint === opaque.stops[0]; }, 'palette de la barre opaque');
+    check('la barre latérale prend la palette calculée pour son fond : translucide (80 %) ou opaque, selon le réglage', true);
+    check('thème gris moyen : translucide, il est éloigné du texte plus que le même thème opaque', through.contrast >= 4.5 && (through.stops[0] !== opaque.stops[0] || through.dim !== opaque.dim), JSON.stringify([through.stops, through.dim, opaque.stops, opaque.dim]));
+    store.state.settings.translucent = translucent0;
+    w.setTheme(theme0.plain ? { colors: [] } : theme0);
+    if (theme0.plain) w.setTheme({ intensity: theme0.intensity, grain: theme0.grain, texture: theme0.texture, mode: theme0.mode });
+    ctx.OrbeWindow.pushAll();
+  }
+
   // === Changement d'onglet : coupe franche (ANI-24) ========================================
   {
     const { win } = ctx;
@@ -118,14 +185,18 @@ module.exports = async function sensationsTests(ctx) {
     await until(() => win.live.has(a) && win.live.has(b) && !win.inFlight(win.live.get(b).view), 'deux onglets vivants');
     const shown = (id) => w.win.contentView.children.includes(win.live.get(id).view);
     const same = (x, y) => x.x === y.x && x.y === y.y && x.width === y.width && x.height === y.height;
+    // Les deux lignes viennent de naître (elles glissent en place) : on attend qu'elles soient posées.
+    const quiet = "document.getAnimations().filter((x) => x.playState === 'running' && x.effect && x.effect.target && x.effect.target.closest && x.effect.target.closest('#today')).map((x) => x.animationName || x.transitionProperty)";
+    await until(async () => (await ui(`document.querySelectorAll('#today .row.tab').length >= 2 && ${quiet}.length === 0`)), 'lignes posées');
     const before = win.motionStats.animated;
     w.activate(a);
     // Lu dans le même tour : rien n'a le temps de s'animer.
     const cut = { a: shown(a), b: shown(b), flight: win.inFlight(win.live.get(a).view), animated: win.motionStats.animated - before, rect: same(win.live.get(a).view.getBounds(), w.contentRect()) };
     check('changement d’onglet : coupe franche — la page choisie est à sa place entière dans le même tour, l’autre est retirée, aucun trajet animé',
       cut.a && !cut.b && !cut.flight && cut.animated === 0 && cut.rect, JSON.stringify(cut));
-    const row = await ui(`(async () => { await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))); const el = document.querySelector('#today .row.tab.active'); return el ? el.getAnimations().filter((x) => x.playState === 'running').length : -1; })()`);
-    check('changement d’onglet : la ligne choisie de la barre latérale change d’état sans animation', row === 0, String(row));
+    await until(() => ui(`(() => { const el = document.querySelector('#today .row.tab.active'); return !!el && el.dataset.id === ${JSON.stringify('ID')}; })()`.replace('"ID"', JSON.stringify(a))), 'ligne choisie');
+    const row = await ui(`(async () => { await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))); return ${quiet}; })()`);
+    check('changement d’onglet : dans la barre latérale rien ne bouge — au plus le fondu de 150 ms du fond des deux lignes', row.every((x) => x === 'background-color') && row.length <= 2, JSON.stringify(row));
     win.forceMotion(motion0);
     w.close(a, { ask: false });
     w.close(b, { ask: false });
