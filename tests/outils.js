@@ -79,10 +79,34 @@ async function mesurer(sonde) {
   }
   return j;
 }
+// Session verrouillée, dit par le système.
+function verrouillee() {
+  // macOS : l'état de la session figure au registre du système (powerMonitor ne le
+  // voit pas quand Orbe est lancé hors de la session graphique, par un terminal distant).
+  if (process.platform === 'darwin') {
+    try {
+      const out = require('child_process').execFileSync('/usr/sbin/ioreg', ['-n', 'Root', '-d1'], { encoding: 'utf8', timeout: 5000 });
+      if (/"CGSSessionScreenIsLocked"\s*=\s*Yes/.test(out)) return true;
+    } catch {}
+  }
+  try { return require('electron').powerMonitor.getSystemIdleState(24 * 3600) === 'locked'; } catch { return false; }
+}
 async function milieu(w) {
   if (measured) return measured;
   measured = await mesurer(() => w.ui.webContents.executeJavaScript(PROBE));
-  console.log(`  – milieu de l’essai : ${measured.resume}`);
+  // Session verrouillée : même si la coque présente encore des images, les pages
+  // des onglets ne sont plus peintes ni capturées, et aucun son n'est joué.
+  // `images` : la coque présente des images (ses animations se vérifient).
+  // `vivant` : de plus, la session n'est pas verrouillée (pages peintes, capturables, son joué).
+  measured.images = measured.vivant;
+  measured.sansImages = measured.raison;
+  measured.verrouille = verrouillee();
+  if (measured.verrouille) {
+    measured.vivant = false;
+    measured.raison = 'session verrouillée : pages ni peintes ni capturées, aucun son joué';
+  }
+  measured.muet = measured.raison;
+  console.log(`  – milieu de l’essai : ${measured.resume}${measured.verrouille ? ' ; SESSION VERROUILLÉE : les vérifications qui ont besoin d’un écran vivant ou du son seront ignorées' : ''}`);
   return measured;
 }
 

@@ -510,10 +510,10 @@ module.exports = async function selftest(ctx) {
     const SLOW = ['balayage lent : les deux listes suivent les doigts, côte à côte, la teinte se fond au même pas', 'doigts levés avant le seuil : la liste revient, l’Espace ne change pas', 'au bout de la rangée : la liste résiste, sans autre liste à côté', 'au bout de la rangée : rien ne change'];
     if (reduced) {
       for (const n of SLOW) ignorer(n, '« Réduire les animations » actif');
-    } else if (!env.vivant) {
+    } else if (!env.images) {
       // Le geste simulé est une suite d'événements espacés de 30 ms : minuteries
       // ralenties, la coque le croit fini entre deux événements.
-      for (const n of SLOW) ignorer(n, env.raison);
+      for (const n of SLOW) ignorer(n, env.sansImages);
     } else {
       await swipe(-12, 4, 30); // lent et court : en dessous du seuil
       const mid = await look();
@@ -537,7 +537,7 @@ module.exports = async function selftest(ctx) {
     check('balayage franc : l’Espace change une seule fois, la liste est rendue à l’arrivée', w.space === firstSpace && w.activeId === a.id && !done.ghost && done.live === 0 && done.tint === 0);
     await sleep(200);
     w.spaceAt(2);
-    if (reduced || !env.vivant) ignorer('changement par raccourci : même glissement, dans le bon sens', reduced ? '« Réduire les animations » actif' : env.raison);
+    if (reduced || !env.images) ignorer('changement par raccourci : même glissement, dans le bon sens', reduced ? '« Réduire les animations » actif' : env.sansImages);
     else {
       await until(() => ui('!!slide'), 'glissement lancé par le raccourci');
       const fly = await look();
@@ -855,9 +855,9 @@ module.exports = async function selftest(ctx) {
   await vwc.executeJavaScript('start()', true);
   // Session verrouillée : le système ne joue aucun son, l'onglet n'est jamais « audible ».
   const audible = await until(() => vwc.isCurrentlyAudible(), 'vidéo audible', 8000).then(() => true, () => false);
-  if (!audible && env.vivant) throw new Error('Délai dépassé : vidéo audible');
+  if (!audible && !env.muet) throw new Error('Délai dépassé : vidéo audible');
   if (!audible) {
-    for (const n of ['la vidéo en cours passe en image dans l’image en quittant l’onglet', 'elle revient dans la page au retour sur l’onglet']) ignorer(n, 'aucun son n’est joué — ' + env.raison);
+    for (const n of ['la vidéo en cours passe en image dans l’image en quittant l’onglet', 'elle revient dans la page au retour sur l’onglet']) ignorer(n, env.muet);
   } else {
     w.activate(a.id);
     await until(() => vwc.executeJavaScript('!!document.pictureInPictureElement'), 'vidéo passée en image dans l’image');
