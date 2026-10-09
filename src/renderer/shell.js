@@ -7,6 +7,8 @@ let editing = null; // id en cours de renommage
 let drag = null;
 let animate = false;
 let present = new Set();
+let flashId = null; // ligne mise en évidence par « Afficher l'onglet dans la barre latérale »
+let flashTimer = null;
 // Sélection multiple (⌘clic, ⇧clic) : identifiants d'onglets ; `anchor` est le
 // point de départ d'une plage ⇧clic.
 const sel = new Set();
@@ -53,7 +55,7 @@ function tabRow(el, it) {
   el.className = 'row tab' + (it.active ? ' active' : '') + (it.shown ? ' shown' : '') + (it.live ? ' live' : '')
     + (it.audible ? ' audible' : '') + (it.muted ? ' muted' : '') + (it.changed ? ' changed' : '') + (it.partners ? ' split' : '') + (it.grouped ? ' grouped' : '')
     + (it.capture && it.capture.length ? ' capturing' : '')
-    + (sel.has(it.id) ? ' sel' : '');
+    + (sel.has(it.id) ? ' sel' : '') + (flashId === it.id ? ' flash' : '');
   // Témoin de capture : écran, caméra ou micro (le premier de la liste).
   const cap = (it.capture && it.capture[0]) || '';
   if (el._c !== cap) { el._c = cap; if (cap) { el._cap.setAttribute('href', '#i-' + cap); el._cap.closest('button').title = it.capture.map((k) => t('capture.' + k)).join(' · '); } }
@@ -96,7 +98,7 @@ function tileEl(el, it) {
     el._ic = el.firstChild;
     el.draggable = true;
   }
-  el.className = 'tile' + (it.active ? ' active' : '') + (it.live ? ' live' : '') + (it.audible ? ' audible' : '') + (sel.has(it.id) ? ' sel' : '');
+  el.className = 'tile' + (it.active ? ' active' : '') + (it.live ? ' live' : '') + (it.audible ? ' audible' : '') + (sel.has(it.id) ? ' sel' : '') + (flashId === it.id ? ' flash' : '');
   el.title = it.title;
   setIcon(el, it);
 }
@@ -306,13 +308,17 @@ function showRow(id) {
   const el = document.querySelector(`#sidebar [data-id="${CSS.escape(id)}"]`);
   if (!el) return;
   el.scrollIntoView({ block: 'center', behavior: reducedMotion.matches ? 'auto' : 'smooth' });
-  // Relance l'animation si la ligne vient déjà d'être montrée (sans attendre une
-  // image : une fenêtre recouverte n'en dessine pas).
+  // La mise en évidence tient d'un rendu à l'autre (chaque rendu réécrit les
+  // classes de la ligne) ; elle repart de zéro si la ligne vient d'être montrée.
+  flashId = id;
   el.classList.remove('flash');
   void el.offsetWidth;
   el.classList.add('flash');
-  clearTimeout(el._flash);
-  el._flash = setTimeout(() => el.classList.remove('flash'), 1200);
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => {
+    flashId = null;
+    for (const x of document.querySelectorAll('#sidebar .flash')) x.classList.remove('flash');
+  }, 1200);
 }
 
 // Repère en haut ou en bas de la liste quand la ligne de l'onglet affiché a
