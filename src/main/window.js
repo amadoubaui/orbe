@@ -4,7 +4,9 @@
 const { app, BaseWindow, WebContentsView, Menu, clipboard, ClipboardItem, screen, dialog, nativeTheme } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const { store, uid, SPACE_COLORS, DEFAULT_SETTINGS } = require('./store');
+const veille = require('./veille');
 const Theme = require('../renderer/theme');
 const sounds = require('./sounds');
 const sessions = require('./sessions');
@@ -24,6 +26,23 @@ const SIDEBAR_MIN = 200;
 const SIDEBAR_MAX = 420;
 const UI_PRELOAD = path.join(__dirname, '../preload/ui.js');
 const INTERNAL = 'orbe://app/';
+// Tout ce qui compte pour la sécurité est écrit ici, sans rien laisser à l'héritage : ces
+// préférences servent aussi aux vues que la coque ouvre elle-même (`adoptSpare`).
+// (Figées, et toujours passées en copie : Electron écrit dans l'objet qu'il reçoit.)
+const UI_PREFS = Object.freeze({
+  preload: UI_PRELOAD, sandbox: true, contextIsolation: true, nodeIntegration: false, nodeIntegrationInSubFrames: false,
+  nodeIntegrationInWorker: false, webviewTag: false, webSecurity: true, allowRunningInsecureContent: false, experimentalFeatures: false,
+});
+// Textes venus d'une page web et montrés par l'interface : bornés avant de lui être envoyés.
+const STATUS_MAX = 2000;
+const ICON_MAX = 65536;
+// Processus de la coque perdu : délai avant de la recharger, selon le nombre de pertes dans la minute.
+const uiRetryDelay = (n) => (n <= 3 ? 150 : Math.min(60000, 5000 * 2 ** (n - 4)));
+// Vues d'appoint tenues prêtes par la coque (voir `fillSpares`).
+const RESERVE = 'overlay.html#reserve';
+const FLOAT = 'shell.html#flottant';
+const SPARES = 3;
+const AUX = ['modal', 'findView', 'toastView', 'peekChrome', 'floatView', 'statusView', 'dropView', 'swipeView'];
 const UNDO_MAX = 50; // actions de la barre latérale que ⌘Z peut défaire, par fenêtre
 const FAVORITES_MAX = 12; // favoris par profil, comme dans Arc
 const NAV_MENU_MAX = 15; // pages proposées par le menu de précédent / suivant
@@ -32,6 +51,8 @@ const windows = new Map(); // id BaseWindow -> OrbeWindow
 const live = new Map(); // id onglet -> { view, wc, owner, loading, lastUsed }
 const trusted = new WeakSet(); // webContents autorisés à parler au processus principal
 const wcOwner = new Map(); // id webContents (coque, flottants) -> OrbeWindow
+let spareSeq = 0;
+const loadingUi = new WeakSet(); // vues de l'interface créées à part, dont la page charge encore
 // `rightInset(fenêtre)` : place réservée à droite des pages (panneau latéral d'une
 // extension) ; `layout(fenêtre)` : appelé à la fin de chaque mise en page.
 const hooks = {
@@ -107,6 +128,59 @@ function samePage(a, b) {
   }
 }
 
+// Mémoire des processus d'onglets, en Mo (`app.getAppMetrics`). Un onglet peut
+// occuper plusieurs processus (cadres d'autres sites) et un processus servir
+// plusieurs onglets : `total` compte chaque processus une fois, `of(id)` ne rend
+// que ce qui est propre à l'onglet. Sous Windows la mémoire privée est connue ;
+// ailleurs c'est la mémoire résidente, qui compte aussi les pages partagées
+// (relevé sur macOS : 60 Mo de trop par processus léger, voir docs/suivi/ameliorations.md).
+function tabMemory() {
+  const byPid = new Map(app.getAppMetrics().map((m) => [m.pid, (m.memory.privateBytes || m.memory.workingSetSize || 0) / 1024]));
+  const users = new Map(); // pid -> nombre d'onglets qui s'en servent
+  const pidsOf = new Map(); // id d'onglet -> pids
+  for (const rt of live.values()) {
+    if (rt.wc.isDestroyed()) continue;
+    const pids = new Set();
+    try { for (const f of rt.wc.mainFrame.framesInSubtree) pids.add(f.osProcessId); } catch {}
+    pidsOf.set(rt.id, pids);
+    for (const pid of pids) users.set(pid, (users.get(pid) || 0) + 1);
+  }
+  let total = 0;
+  for (const pid of users.keys()) total += byPid.get(pid) || 0;
+  const of = (id) => { let mb = 0; for (const pid of pidsOf.get(id) || []) if (users.get(pid) === 1) mb += byPid.get(pid) || 0; return mb; };
+  return { total, of };
+}
+
+// Vignettes de la bascule ⌃Tab : elle ne montre que huit onglets, seules les
+// huit dernières vignettes prises sont donc gardées (23 Ko pièce).
+const THUMBS = 8;
+const thumbIds = [];
+function keepThumb(rt, data) {
+  rt.thumb = data;
+  const i = thumbIds.indexOf(rt.id);
+  if (i >= 0) thumbIds.splice(i, 1);
+  thumbIds.push(rt.id);
+  while (thumbIds.length > THUMBS) {
+    const old = live.get(thumbIds.shift());
+    if (old) old.thumb = null;
+  }
+}
+
+const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'AltGraph', 'NumLock', 'ScrollLock', 'Fn', 'Hyper', 'Super']);
+// Téléchargements en cours, par page d'origine : son onglet ne s'endort pas (voir `trimLive`).
+const downloading = new Map(); // id webContents -> identifiants des téléchargements
+function noteDownload(phase, d, wc) {
+  if (!d) return;
+  if (phase === 'done' || (d.state && d.state !== 'progressing')) {
+    for (const [id, set] of downloading) { set.delete(d.id); if (!set.size) downloading.delete(id); }
+    return;
+  }
+  if (!wc || wc.isDestroyed()) return;
+  if (!downloading.has(wc.id)) downloading.set(wc.id, new Set());
+  downloading.get(wc.id).add(d.id);
+}
+const prewoken = new Map(); // origine -> instant de la dernière pré-connexion (voir `prewake`)
+
 let pushScheduled = false;
 
 class OrbeWindow {
@@ -176,11 +250,15 @@ class OrbeWindow {
     windows.set(this.win.id, this);
     this.id = this.win.id;
 
+    this.spares = []; // vues d'appoint prêtes, nées de la coque : { view, page, ready }
+    this.wanted = []; // adresses que la coque a reçu l'ordre d'ouvrir
     this.ui = this.makeUiView('shell.html');
     this.win.contentView.addChildView(this.ui);
-    this.modal = this.makeUiView('overlay.html#modal');
-    this.modal.setVisible(false);
-    this.win.contentView.addChildView(this.modal);
+    this.ui.webContents.setWindowOpenHandler((details) => this.adoptSpare(details));
+    this.ui.webContents.on('did-finish-load', () => this.fillSpares());
+    this.ui.webContents.on('render-process-gone', (e, details) => this.uiGone(details));
+    // La vue modale (barre de commande) ne naît qu'une fois la coque affichée : `spareReady`.
+    this.modal = null;
     this.findView = null;
     this.toastView = null;
 
@@ -237,17 +315,152 @@ class OrbeWindow {
     platform.setButtons(this.win, visible, TRAFFIC);
   }
 
-  makeUiView(page) {
-    const view = new WebContentsView({ webPreferences: { preload: UI_PRELOAD, sandbox: true, contextIsolation: true } });
+  // Écouteurs et garde-fous communs à toutes les vues de l'interface.
+  // `first` : adresse de son premier chargement, pour une vue ouverte par la coque
+  // (ce chargement-là passe par `will-navigate` ; tout autre reste interdit).
+  equipUiView(view, first = null) {
     view.setBackgroundColor('#00000000');
     const wc = view.webContents;
+    const id = wc.id;
     trusted.add(wc);
-    wcOwner.set(wc.id, this);
+    wcOwner.set(id, this);
     wc.on('before-input-event', (e, input) => this.onInput(e, input, true));
-    wc.on('will-navigate', (e) => e.preventDefault());
+    wc.on('will-navigate', (e, url) => {
+      if (first && url === first) { first = null; return; }
+      e.preventDefault();
+    });
     wc.setWindowOpenHandler(() => ({ action: 'deny' }));
-    wc.loadURL(INTERNAL + page);
+    wc.once('destroyed', () => this.uiViewGone(view, id));
     return view;
+  }
+
+  makeUiView(page) {
+    // Une vue d'appoint tenue prête par la coque : même processus de rendu, page
+    // déjà chargée. À défaut (coque pas encore chargée, réserve vide), la vue
+    // naît à part, dans son propre processus, comme avant.
+    const kind = page.startsWith('overlay.html#') ? RESERVE : page;
+    const i = this.spares ? this.spares.findIndex((s) => s.ready && s.page === kind && !s.view.webContents.isDestroyed()) : -1;
+    if (i >= 0) {
+      const { view } = this.spares.splice(i, 1)[0];
+      const wc = view.webContents;
+      // L'adresse dit le rôle de la vue (outils de développement, tests d'interface).
+      if (kind !== page) wc.executeJavaScript(`history.replaceState(null, '', ${JSON.stringify(page.slice(page.indexOf('#')))})`).catch(() => {});
+      // Chargée d'avance, elle a pris les couleurs de l'Espace d'alors : elle reçoit celles de maintenant.
+      wc.send('theme', this.themeNow());
+      // Les appelants attendent « did-finish-load » d'une vue qu'ils viennent de créer : celle-ci
+      // est déjà chargée, l'événement leur est donc rejoué au tour suivant.
+      setImmediate(() => { if (!wc.isDestroyed()) wc.emit('did-finish-load'); this.fillSpares(); });
+      return view;
+    }
+    const view = this.equipUiView(new WebContentsView({ webPreferences: { ...UI_PREFS } }));
+    loadingUi.add(view.webContents);
+    view.webContents.once('did-finish-load', () => loadingUi.delete(view.webContents));
+    view.webContents.loadURL(INTERNAL + page);
+    return view;
+  }
+
+  // --- Vues d'appoint nées de la coque --------------------------------------
+  // Chaque vue de l'interface créée à part démarre son propre processus de rendu
+  // (18 à 25 Mo, 80 à 100 ms). Ouvertes par la coque (`window.open`), elles
+  // partagent le sien : 2 Mo et une quinzaine de millisecondes. Toutes ont déjà
+  // la même origine (orbe://app), le même script de préchargement et les mêmes
+  // droits (`trusted`) : aucune frontière de confiance ne passe entre elles. Les
+  // vues qui portent davantage (mots de passe, feuilles d'autorisation, pages
+  // internes des onglets) ne passent pas par ici et gardent leur processus.
+  //
+  // La coque n'ouvre rien d'elle-même : seules les adresses que le processus
+  // principal vient de lui demander (`wanted`) sont acceptées, une fois chacune.
+  adoptSpare(details) {
+    const i = this.wanted.findIndex((x) => x.url === details.url);
+    if (i < 0 || this.win.isDestroyed()) return { action: 'deny' };
+    const { url, page } = this.wanted.splice(i, 1)[0];
+    return {
+      action: 'allow',
+      overrideBrowserWindowOptions: { webPreferences: { ...UI_PREFS } },
+      createWindow: (options) => {
+        const view = this.equipUiView(new WebContentsView({ webContents: options.webContents, webPreferences: options.webPreferences }), url);
+        const spare = { view, page, ready: false };
+        this.spares.push(spare);
+        view.webContents.once('did-finish-load', () => { spare.ready = true; this.spareReady(); });
+        return view.webContents;
+      },
+    };
+  }
+
+  // Tient prêtes quelques vues d'appoint, et la barre flottante quand la barre latérale est masquée.
+  fillSpares() {
+    if (this.win.isDestroyed() || this.closing) return;
+    const ui = this.ui.webContents;
+    if (ui.isDestroyed() || ui.isCrashed() || loadingUi.has(ui)) return;
+    const count = (page) => this.spares.filter((s) => s.page === page).length + this.wanted.filter((x) => x.page === page).length;
+    const ask = [];
+    // Jamais plus de vues en réserve qu'il ne reste de rôles à pourvoir.
+    const roles = AUX.filter((k) => k !== 'floatView' && !this[k]).length;
+    for (let n = count(RESERVE); n < Math.min(SPARES, roles); n++) ask.push(RESERVE);
+    if (!this.sidebarVisible && !this.floatView && !count(FLOAT)) ask.push(FLOAT);
+    for (const page of ask) {
+      // Une adresse par demande : chacune n'est acceptée qu'une fois.
+      const want = { page, url: INTERNAL + page + (page === RESERVE ? '-' + (spareSeq += 1) : '') };
+      this.wanted.push(want);
+      // `window.open` est synchrone : au retour, la demande a été servie ou refusée.
+      ui.executeJavaScript(`void window.open(${JSON.stringify(want.url)})`, true).catch(() => {}).then(() => {
+        const i = this.wanted.indexOf(want);
+        if (i >= 0) this.wanted.splice(i, 1);
+      });
+    }
+  }
+
+  spareReady() {
+    if (this.win.isDestroyed() || this.closing) return;
+    if (!this.modal) this.makeModal();
+  }
+
+  makeModal() {
+    this.modal = this.makeUiView('overlay.html#modal');
+    this.modal.setVisible(false);
+    this.win.contentView.addChildView(this.modal);
+    return this.modal;
+  }
+
+  // Message pour une vue de l'interface ; si sa page charge encore, il attend la fin.
+  sendUi(view, channel, payload, still = () => true) {
+    const wc = view.webContents;
+    if (wc.isDestroyed()) return;
+    if (loadingUi.has(wc)) wc.once('did-finish-load', () => { if (!wc.isDestroyed() && still()) wc.send(channel, payload); });
+    else wc.send(channel, payload);
+  }
+
+  // Une vue de l'interface a disparu (processus de rendu perdu, fenêtre fermée).
+  uiViewGone(view, id) {
+    if (wcOwner.get(id) === this) wcOwner.delete(id);
+    this.spares = this.spares.filter((s) => s.view !== view);
+    if (this.modal === view) { this.modalMode = null; this.switcher = null; }
+    if (this.findView === view) this.findOpen = false;
+    if (this.toastView === view) clearTimeout(this.toastTimer);
+    for (const k of AUX) if (this[k] === view) this[k] = null;
+  }
+
+  // Le processus de la coque est tombé : il emporte les vues nées d'elle. Elles
+  // sont fermées (elles renaîtront à la demande) et la coque est rechargée.
+  uiGone(details) {
+    if (this.win.isDestroyed() || this.closing || (details && details.reason === 'clean-exit')) return;
+    const pid = (wc) => { try { return wc.getOSProcessId(); } catch { return 0; } };
+    for (const view of [...AUX.map((k) => this[k]), ...this.spares.map((s) => s.view)]) {
+      if (!view || view.webContents.isDestroyed()) continue;
+      if (view.webContents.isCrashed() || !pid(view.webContents)) view.webContents.close();
+    }
+    this.wanted = []; // les demandes en cours sont parties avec le processus
+    const now = Date.now();
+    this.uiCrashes = (this.uiCrashes || []).filter((at) => now - at < 60000);
+    this.uiCrashes.push(now);
+    // Pertes en rafale : on espace les reprises (5 s, 10 s… une minute au plus), sans jamais renoncer.
+    clearTimeout(this.uiRetry);
+    this.uiRetry = setTimeout(() => {
+      if (this.win.isDestroyed() || this.ui.webContents.isDestroyed()) return;
+      loadingUi.add(this.ui.webContents);
+      this.ui.webContents.once('did-finish-load', () => { loadingUi.delete(this.ui.webContents); if (this.gone) return; this.layout(); this.focusContent(); this.fillSpares(); });
+      this.ui.webContents.loadURL(INTERNAL + 'shell.html');
+    }, uiRetryDelay(this.uiCrashes.length));
   }
 
   // La plus ancienne fenêtre normale encore ouverte mémorise son état.
@@ -532,6 +745,7 @@ class OrbeWindow {
     const needed = !this.sidebarVisible && !this.win.isDestroyed();
     if (needed && !this.peekTimer) this.peekTimer = setInterval(() => this.pollPeek(), 80);
     else if (!needed && this.peekTimer) { clearInterval(this.peekTimer); this.peekTimer = null; }
+    if (needed) this.fillSpares(); // la barre flottante se prépare dès que la barre latérale est masquée
   }
 
   setPeek(on) {
@@ -600,7 +814,8 @@ class OrbeWindow {
     this.growing = null;
     clearTimeout(this.floatTimer);
     clearTimeout(this.statusTimer);
-    for (const v of [this.ui, this.modal, this.findView, this.toastView, this.peekChrome, this.floatView, this.statusView, this.dropView]) {
+    clearTimeout(this.uiRetry);
+    for (const v of [...AUX.map((k) => this[k]), ...this.spares.map((sp) => sp.view), this.ui]) {
       if (v && !v.webContents.isDestroyed()) { wcOwner.delete(v.webContents.id); v.webContents.close(); }
     }
     if (this.incognito) this.session.clearStorageData().catch(() => {});
@@ -662,6 +877,7 @@ class OrbeWindow {
       wc.on('before-mouse-event', (e, mouse) => {
         // Vraie entrée de l'utilisateur : compte comme geste (fenêtres surgissantes, beforeunload).
         if (mouse.type === 'mouseDown' || mouse.type === 'mouseUp') hooks.input(rt, mouse);
+        if (mouse.type === 'mouseDown') rt.typed = true; // voir `typed` plus bas
         if (mouse.type !== 'mouseUp' || mouse.button !== 'left') return;
         lastClick = Date.now();
         rt.click = { x: mouse.x, y: mouse.y, at: lastClick }; // d'où partira un éventuel aperçu
@@ -683,6 +899,13 @@ class OrbeWindow {
       if (live.get(rt.id) !== rt) return;
       // Fermeture de la fenêtre : la page s'en va, l'onglet reste dans la barre.
       if (rt.windowClosing) { live.delete(rt.id); return; }
+      // Mise en veille automatique : la ligne reste dans la barre latérale.
+      if (rt.sleeping) {
+        live.delete(rt.id);
+        const o = rt.owner;
+        if (!o.win.isDestroyed()) { if (o.visibleIds().includes(rt.id)) o.layout(); OrbeWindow.pushAll(); }
+        return;
+      }
       const owner = rt.owner;
       if (owner.htmlFullscreen) owner.htmlFullscreen = false;
       if (!owner.win.isDestroyed()) owner.close(rt.id);
@@ -697,7 +920,7 @@ class OrbeWindow {
       touch(true); // un titre peut attendre la prochaine écriture
     });
     wc.on('page-favicon-updated', (e, icons) => {
-      tab.favicon = icons[0] || '';
+      tab.favicon = icons[0] && icons[0].length <= ICON_MAX ? icons[0] : '';
       if (!incognito) store.touchHistory(tab.url, { favicon: tab.favicon });
       touch(true);
     });
@@ -712,10 +935,10 @@ class OrbeWindow {
       if (!incognito) store.visit(url, tab.title, tab.favicon);
       touch();
     };
-    wc.on('did-navigate', (e, url) => { hooks.navigated(rt); navigated(url); });
+    wc.on('did-navigate', (e, url) => { rt.typed = false; rt.objected = false; hooks.navigated(rt); navigated(url); });
     if (!incognito) wc.on('dom-ready', () => boosts.apply(wc));
     wc.on('did-navigate-in-page', (e, url, isMainFrame) => { if (isMainFrame) navigated(url); });
-    wc.on('update-target-url', (e, url) => rt.owner.linkStatus(rt, url));
+    wc.on('update-target-url', (e, url) => rt.owner.linkStatus(rt, String(url || '').slice(0, STATUS_MAX)));
     // Pincer pour zoomer la page (coupé par défaut dans Electron).
     wc.setVisualZoomLevelLimits(1, 5).catch(() => {});
     wc.on('audio-state-changed', () => {
@@ -727,7 +950,13 @@ class OrbeWindow {
     wc.on('before-input-event', (e, input) => { if (input.type === 'keyDown' && !rt.internal) hooks.input(rt, input); rt.owner.onInput(e, input); });
     // ⌥ tenue pendant un clic : les événements de souris ne disent pas les touches
     // de modification, on suit donc la touche elle-même.
-    wc.on('before-input-event', (e, input) => { rt.alt = !!input.alt; });
+    wc.on('before-input-event', (e, input) => {
+      rt.alt = !!input.alt;
+      // `typed` : l'utilisateur a agi dans la page depuis son chargement (touche autre qu'un
+      // simple modificateur et que la page a reçue — lettre, AltGr, ⌘V, Suppr, Entrée, saisie
+      // assistée — ou bouton de souris). La veille automatique épargne alors l'onglet (veille.js).
+      if (input.type === 'keyDown' && !e.defaultPrevented && !MODIFIER_KEYS.has(input.key)) rt.typed = true;
+    });
     wc.on('blur', () => { rt.alt = false; });
     wc.on('found-in-page', (e, result) => rt.owner.sendFind(result));
     wc.on('focus', () => rt.owner.paneFocused(rt.id));
@@ -789,6 +1018,18 @@ class OrbeWindow {
     if (data.tabs[rt.id] && tab.muted) wc.setAudioMuted(true);
   }
 
+  // Mise en veille décidée sans l'utilisateur (ancienneté, mémoire) : la page est consultée
+  // (beforeunload). Si elle s'y oppose elle reste vivante, sans boîte de dialogue, et n'est
+  // plus proposée jusqu'à sa prochaine navigation ; si elle ne répond pas, elle reste aussi.
+  static sleepView(id) {
+    const rt = live.get(id);
+    if (!rt) return;
+    if (rt.wc.isDestroyed()) { live.delete(id); return; }
+    rt.sleeping = true;
+    rt.wc.close({ waitForBeforeUnload: true });
+    setTimeout(() => { if (rt.sleeping && !rt.wc.isDestroyed()) rt.sleeping = false; }, 4000).unref();
+  }
+
   static destroyView(id) {
     const rt = live.get(id);
     if (!rt) return;
@@ -809,6 +1050,8 @@ class OrbeWindow {
   // La page refuse d'être quittée (beforeunload) : la question est posée. Pour un
   // onglet en cours de fermeture, « Rester » le fait revenir, page intacte.
   pageObjects(e, rt) {
+    // Veille automatique refusée par la page (beforeunload) : elle reste, sans aucune question.
+    if (rt.sleeping) { rt.sleeping = false; rt.objected = true; return; }
     const leave = hooks.leave(this, rt.wc);
     if (leave) { e.preventDefault(); return; }
     const pending = rt.pendingClose;
@@ -859,16 +1102,40 @@ class OrbeWindow {
     return true;
   }
 
-  // Met en veille les onglets les plus anciens au-delà de la limite.
-  static trimLive() {
-    const max = store.state.settings.maxLiveTabs;
-    if (live.size <= max) return;
+  // Met en veille des onglets (règles : src/main/veille.js). À chaque activation,
+  // seule la limite en nombre joue. `deep` (toutes les minutes) : s'y ajoutent
+  // l'ancienneté et la mémoire relevée des processus d'onglets.
+  // Renvoie [{ id, why }].
+  static trimLive({ deep = false } = {}) {
+    const s = store.state.settings;
+    if (!deep && live.size <= s.maxLiveTabs) return [];
     const visible = new Set();
     for (const w of windows.values()) for (const id of w.visibleIds()) visible.add(id);
-    const idle = [...live.values()]
-      .filter((rt) => !visible.has(rt.id) && !rt.wc.isDestroyed() && !rt.wc.isCurrentlyAudible() && !rt.wc.isDevToolsOpened() && !hooks.busy(rt))
-      .sort((a, b) => a.lastUsed - b.lastUsed);
-    while (live.size > max && idle.length) OrbeWindow.destroyView(idle.shift().id);
+    // « Dernière utilisation » veut dire dernière fois affiché, pas dernière activation : un
+    // onglet resté quatre heures à l'écran (ou dans un volet) n'est pas ancien.
+    const now = Date.now();
+    for (const id of visible) { const rt = live.get(id); if (rt) rt.lastUsed = now; }
+    const mem = deep ? tabMemory() : null;
+    const tabs = [...live.values()].filter((rt) => !rt.wc.isDestroyed()).map((rt) => ({
+      id: rt.id,
+      lastUsed: rt.lastUsed,
+      mb: mem ? mem.of(rt.id) : 0,
+      // Épargné par les règles automatiques : l'utilisateur y a agi, la page charge, ou elle a refusé une veille.
+      typed: !!rt.typed || !!rt.loading || !!rt.objected,
+      kept: visible.has(rt.id) || rt.wc.isCurrentlyAudible() || rt.wc.isDevToolsOpened() || hooks.busy(rt)
+        // Image dans l'image, page filmée par une autre, téléchargement en cours, veille déjà demandée.
+        || !!rt.pip || rt.wc.isBeingCaptured() || downloading.has(rt.wc.id) || !!rt.sleeping,
+    }));
+    const picked = veille.pick(tabs, {
+      max: s.maxLiveTabs,
+      idleMs: deep ? (Number(s.sleepAfterHours) || 0) * 36e5 : 0,
+      budgetMb: deep && Number(s.memoryBudget) ? veille.budget(os.totalmem(), Number(s.memoryBudget)) : 0,
+      totalMb: mem ? mem.total : 0,
+    });
+    // La limite en nombre s'applique tout de suite ; ancienneté et mémoire consultent la page.
+    for (const p of picked) { if (p.why === 'count') OrbeWindow.destroyView(p.id); else OrbeWindow.sleepView(p.id); }
+    if (deep && picked.length) OrbeWindow.pushAll();
+    return picked;
   }
 
   // --- Onglets --------------------------------------------------------------
@@ -908,10 +1175,11 @@ class OrbeWindow {
     // En quittant un onglet qui joue du son, il passe dans le lecteur miniature.
     for (const prevId of this.visibleIds()) {
       const prevRt = live.get(prevId);
+      if (prevRt) prevRt.lastUsed = Date.now(); // il était affiché jusqu'à maintenant
       // Vignette pour la bascule ⌃Tab, prise au moment de quitter la page.
       if (prevId !== id && prevRt && !prevRt.wc.isDestroyed() && !this.incognito) {
         prevRt.wc.capturePage().then((img) => {
-          if (!img.isEmpty()) prevRt.thumb = img.resize({ width: 320, quality: 'good' }).toJPEG(70).toString('base64');
+          if (!img.isEmpty()) keepThumb(prevRt, img.resize({ width: 320, quality: 'good' }).toJPEG(70).toString('base64'));
         }).catch(() => {});
       }
       if (prevId !== id && prevRt && !prevRt.wc.isDestroyed() && prevRt.wc.isCurrentlyAudible()) {
@@ -938,6 +1206,25 @@ class OrbeWindow {
     this.changed();
   }
 
+  // Onglet en veille survolé dans la barre latérale : la connexion à son site est
+  // préparée (DNS, TCP, TLS), si bien que le clic qui suit trouve le chemin ouvert
+  // (relevé sur dix sites : première réponse en 160 ms au lieu de 450). Rien
+  // n'est demandé au site : ni page, ni cookie, et rien n'entre dans l'historique.
+  // La page elle-même n'est pas chargée d'avance : un survol n'est pas une visite.
+  // Jamais en navigation privée ; une seule fois par site toutes les dix secondes.
+  prewake(id) {
+    const tab = typeof id === 'string' ? this.data.tabs[id] : null;
+    if (!tab || this.incognito || live.has(id) || !/^https:\/\//i.test(tab.url)) return false;
+    let origin = '';
+    try { origin = new URL(tab.url).origin; } catch { return false; }
+    const now = Date.now();
+    if (now - (prewoken.get(origin) || 0) < 10000) return false;
+    if (prewoken.size > 200) prewoken.clear();
+    prewoken.set(origin, now);
+    try { this.sessionFor(id).preconnect({ url: origin, numSockets: 1 }); } catch { return false; }
+    return true;
+  }
+
   paneFocused(id) {
     if (this.activeId === id || !this.visibleIds().includes(id)) return;
     this.activeBySpace[this.space.id] = id;
@@ -945,6 +1232,7 @@ class OrbeWindow {
   }
 
   focusContent() {
+    if (this.gone) return undefined;
     if (this.modalMode) return this.modal.webContents.focus();
     if (this.peekState) return this.peekState.view.webContents.focus();
     // Une feuille posée sur l'onglet actif (question, avertissement) garde le clavier.
@@ -2223,6 +2511,8 @@ class OrbeWindow {
 
   // --- Vues flottantes ------------------------------------------------------
   showModal(mode, payload, focus = true) {
+    // Demandée avant que la coque ait fini de charger : elle naît tout de suite, à part.
+    if (!this.modal) this.makeModal();
     const shown = !!this.modalMode;
     this.modalMode = mode;
     const [W, H] = this.win.getContentSize();
@@ -2230,7 +2520,7 @@ class OrbeWindow {
     if (!shown) this.win.contentView.addChildView(this.modal); // repasse au premier plan
     this.modal.setBounds({ x: 0, y: 0, width: W, height: H });
     this.modal.setVisible(true);
-    this.modal.webContents.send('overlay', { mode, ...payload });
+    this.sendUi(this.modal, 'overlay', { mode, ...payload }, () => this.modalMode === mode);
     if (focus && !(shown && this.modal.webContents.isFocused())) this.modal.webContents.focus();
   }
 
@@ -3115,6 +3405,7 @@ class OrbeWindow {
     if (!QUIET_ACTIONS.has(action)) sounds.arm(this); // un geste dans l'interface
     switch (action) {
       case 'ready': return this.sendState();
+      case 'hoverTab': return this.prewake(a);
       // Clic sur l'onglet déjà affiché : rien à faire, et surtout ne pas
       // reprendre le clavier (second clic d'un double-clic pour renommer).
       case 'activate': return a === this.activeId && live.has(a) && !this.peekState ? undefined : this.activate(a);
@@ -3206,4 +3497,4 @@ function archiveStale() {
   if (count) { store.save(); for (const w of windows.values()) w.layout(); OrbeWindow.pushAll(); }
 }
 
-module.exports = { OrbeWindow, windows, live, trusted, hooks, archiveStale, INTERNAL, UI_PRELOAD, isInternal, MOTION, motion, forceMotion, motionStats: stats, boundsOf, inFlight, resumed };
+module.exports = { OrbeWindow, windows, live, trusted, hooks, archiveStale, tabMemory, noteDownload, uiRetryDelay, UI_PREFS, STATUS_MAX, ICON_MAX, thumbs: { keep: keepThumb, MAX: THUMBS }, INTERNAL, UI_PRELOAD, isInternal, MOTION, motion, forceMotion, motionStats: stats, boundsOf, inFlight, resumed };

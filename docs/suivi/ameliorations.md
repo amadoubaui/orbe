@@ -7,7 +7,8 @@ M = un à deux jours, L = plus) et un état.
 
 États : ✅ fait et vérifié · 🟡 partiel ou non vérifié · ⬜ à faire · ➖ écarté (avec la raison).
 
-Ce document est un travail de recherche : aucun fichier source d'Orbe n'a été modifié.
+Ce document est d'abord un travail de recherche ; les points cochés ont été réalisés depuis
+(mesures avant / après : sections 8 bis et 9).
 
 ## 1. Comment les chiffres ont été pris
 
@@ -163,7 +164,7 @@ Même comparaison, lancements espacés de 25 s (6 tours, plus bruité) :
   chargement, et que la couleur de fond de l'Espace est posée avant (sinon éclair de couleur).
   *Effort* : S.
 
-- ⬜ **DEM-2 — Servir les fichiers de l'interface sans `net.fetch`, depuis la mémoire.**
+- ✅ **DEM-2 — Servir les fichiers de l'interface sans `net.fetch`, depuis la mémoire.** *(fait le 9 oct. : pages, scripts et styles servis depuis la mémoire ; les cinq fichiers de la coque en 0,9 ms au lieu de 1,7–2,0 ; aucun effet mesurable sur le démarrage à chaud (coque chargée 300 → 298 ms))*
   *Problème* : `serveInternal` (`sessions.js`) répond par `net.fetch(file://…)` : une requête
   réseau interne par fichier, 5 fichiers pour la coque, 4 pour chaque vue d'appoint. À chaud
   cela ne coûte rien de mesurable (62 → 57 ms pour charger la coque) ; refroidi, la coque met
@@ -175,7 +176,7 @@ Même comparaison, lancements espacés de 25 s (6 tours, plus bruité) :
   −119 ms, première page −176 ms (la part exacte de DEM-2 n'a pas été isolée refroidi : **à mesurer**).
   *Risque* : faible (types MIME à déclarer à la main ; 6 extensions de fichier). *Effort* : S.
 
-- ⬜ **DEM-3 — Ne créer la vue modale qu'après l'affichage de la coque.**
+- ✅ **DEM-3 — Ne créer la vue modale qu'après l'affichage de la coque.** *(fait le 9 oct. avec MEM-1 : la vue modale naît de la coque après son chargement ; un processus de moins au démarrage (6 → 5), −89 Mo résidents, première barre de commande en 14 ms au lieu de 25 ; ⌘T avant la fin du chargement : le message attend)*
   *Problème* : `overlay.html#modal` est créée dans le constructeur, en même temps que la coque :
   un second processus de rendu démarre en concurrence au pire moment (18 Mo, voir MEM-1).
   *Changement* : la créer dans `did-finish-load` de la coque (`setTimeout(…, 0)`), ou mieux la
@@ -184,13 +185,13 @@ Même comparaison, lancements espacés de 25 s (6 tours, plus bruité) :
   tapé dans les 100 premières millisecondes doit attendre la vue (file d'attente d'un message).
   *Effort* : S.
 
-- ⬜ **DEM-4 — Sortir l'historique du fichier lu au démarrage.**
+- ✅ **DEM-4 — Sortir l'historique du fichier lu au démarrage.** *(fait le 9 oct. : history.json lu au premier accès ; store.load avec 4 Mo d’historique : 12,4 ms → 0,11 ms avant la fenêtre)*
   *Problème* : avec 8 500 visites (plafond de `store.js`), `store.load` passe de 1 ms à
   **17 ms**, en bloquant, avant toute fenêtre. *Changement* : voir PERF-1 (historique dans un
   fichier à part, lu après l'affichage). *Gain* : ≈ −17 ms sur les profils anciens.
   *Risque / effort* : ceux de PERF-1.
 
-- ⬜ **DEM-5 — Ne rien faire pour les extensions quand il n'y en a pas.**
+- ➖ **DEM-5 — Ne rien faire pour les extensions quand il n'y en a pas.** *(écarté le 9 oct. : la synchronisation sans extension coûte 0,15 ms ; les 70–140 ms relevés étaient le temps de création de la fenêtre, pendant lequel la promesse attendait son tour)*
   *Problème* : `extensions.loadInto` prend 70–140 ms (asynchrone) sur un profil sans extension.
   Il ne bloque pas le fil principal, mais il occupe le disque et la session pendant le
   chargement de la première page. *Changement* : sortir tout de suite de `sync(ses)` si le
@@ -208,7 +209,7 @@ Même comparaison, lancements espacés de 25 s (6 tours, plus bruité) :
 - ➖ **DEM-7 — Retirer `vibrancy` pour démarrer plus vite.** Écarté : aucune différence
   mesurée (369 contre 369 ms) ; la création de la fenêtre native coûte le même prix sans.
 
-- ⬜ **DEM-8 — Mesurer le paquet distribué.** Les chiffres ci-dessus viennent des sources.
+- ✅ **DEM-8 — Mesurer le paquet distribué.** Les chiffres ci-dessus viennent des sources. *(mesuré le 9 oct. : paquet 246 ms contre 243 ms depuis les sources pour la fenêtre, 304 contre 300 ms pour la coque chargée ; l’archive et les fusibles ne coûtent rien de mesurable)*
   *À mesurer* : même scénario sur `Orbe.app` fabriquée, avec `--orbe-test` et un profil à part
   (prévu par `testModeAllowed()`), pour vérifier l'effet de l'archive `asar` et des fusibles.
   *Effort* : S.
@@ -277,7 +278,7 @@ Résultat mesuré pour six vues (modale, toast, recherche, statut, dépôt, aper
 
 ### Points
 
-- ⬜ **MEM-1 — Un seul processus de rendu pour toute l'interface d'Orbe.**
+- ✅ **MEM-1 — Un seul processus de rendu pour toute l'interface d'Orbe.** *(fait le 9 oct. : vues d’appoint nées de la coque ; quatre vues ouvertes : 10 → 5 processus, 979 → 536 Mo résidents ; première ouverture 125–156 ms → 4–19 ms)*
   *Problème* : chaque vue d'appoint (`makeUiView`) démarre son propre processus : +18 à 25 Mo
   chacune, ≈ 130 Mo pour les sept, et 80–100 ms d'attente à la première ouverture.
   *Changement* : dans `makeUiView(page)`, pour tout sauf la coque, demander à la coque
@@ -295,14 +296,14 @@ Résultat mesuré pour six vues (modale, toast, recherche, statut, dépôt, aper
   origine `orbe://app`, pas de fuite). La barre latérale flottante peut rester à part ou suivre.
   *Effort* : M.
 
-- ⬜ **MEM-2 — À défaut de MEM-1 : détruire les vues d'appoint inactives.**
+- ➖ **MEM-2 — À défaut de MEM-1 : détruire les vues d'appoint inactives.** *(sans objet depuis MEM-1 : les vues d’appoint ne coûtent plus un processus)*
   *Problème* : toast, recherche, statut, dépôt, habillage d'aperçu et barre flottante vivent
   jusqu'à la fermeture de la fenêtre. *Changement* : fermer chaque vue 60 s après son dernier
   usage (`webContents.close()`), sauf la modale. *Gain* : jusqu'à ≈ 110 Mo rendus ; *coût* :
   80–100 ms à la réouverture suivante (mesuré), sensible pour l'adresse du lien survolé.
   *Risque* : faible. *Effort* : S. Sans objet si MEM-1 est fait.
 
-- ⬜ **MEM-3 — Mettre en veille selon la mémoire et l'ancienneté, pas seulement le nombre.**
+- ✅ **MEM-3 — Mettre en veille selon la mémoire et l'ancienneté, pas seulement le nombre.** *(fait le 9 oct. : veille après 3 h sans affichage et au-delà de 25 % de la mémoire ; 12 onglets lourds, 2 196 Mo pour un budget de 1 638 : 6 endormis, 13 → 7 processus ; les pages où l’on a écrit sont épargnées)*
   *Problème* : `trimLive()` ne compte que les onglets (`maxLiveTabs` = 30 par défaut). Trente
   vrais sites = 3,86 Go ; un seul onglet va de 30 à 243 Mo. Sur un Mac de 8 Go, 30 est trop.
   *Changement* : (a) à l'activation et toutes les 60 s, lire `app.getAppMetrics()` et mettre
@@ -315,7 +316,7 @@ Résultat mesuré pour six vues (modale, toast, recherche, statut, dépôt, aper
   réseau) et perd un formulaire en cours : ne pas mettre en veille un onglet dont un champ a
   été modifié (drapeau posé par le script de page) — **à concevoir**. *Effort* : M.
 
-- ⬜ **MEM-4 — Vérifier les processus qui survivent à la mise en veille.**
+- ✅ **MEM-4 — Vérifier les processus qui survivent à la mise en veille.** *(vérifié le 9 oct. sur 20 sites : 5 processus sans vue (860 Mo) juste après la veille, 1 à +33 s, 0 à +73 s ; ce sont des service workers, que Chromium arrête seul ; rien à changer)*
   *Problème* : après `trimLive` (23 vues détruites), **4 processus de rendu sans vue** restent,
   pour 249 Mo ; il y en avait déjà 3 (219 Mo) avec 30 sites ouverts. Probablement des cadres
   d'autres sites ou des service workers encore actifs. *À mesurer* : relever leur adresse
@@ -323,7 +324,7 @@ Résultat mesuré pour six vues (modale, toast, recherche, statut, dépôt, aper
   seuls. *Changement possible* : arrêter les service workers d'un site quand son dernier onglet
   est mis en veille. *Effort* : S pour le diagnostic.
 
-- ⬜ **MEM-5 — Capture pour ⌃Tab : ne garder qu'un nombre borné de vignettes.**
+- ✅ **MEM-5 — Capture pour ⌃Tab : ne garder qu'un nombre borné de vignettes.** *(fait le 9 oct. : huit vignettes au plus (184 Ko au lieu de 690 Ko pour 30 onglets))*
   *Mesure* : une vignette pèse 23 Ko en base64 (JPEG 320 px) : négligeable par onglet, et
   `resize` + `toJPEG` bloquent le fil principal 3,1 ms par changement d'onglet. Rien d'urgent ;
   borner à 8 (la bascule n'en montre pas plus) évite tout de même de garder des chaînes pour
@@ -335,6 +336,11 @@ Résultat mesuré pour six vues (modale, toast, recherche, statut, dépôt, aper
   force le partage au-delà de N processus. *À mesurer* : mémoire et fluidité avec une limite de
   12 puis 20 sur les 30 sites réels ; risque connu : un onglet lourd ralentit ses voisins.
   Ne pas livrer sans mesure. *Effort* : S pour l'essai.
+  *Mesuré le 9 oct.* (dix onglets d'un même site local, 800 cartes et 200 000 objets chacun) :
+  sans limite, 10 processus et 804–893 Mo résidents ; avec `--renderer-process-limit=4`,
+  3 processus et 383–464 Mo. Le gain ne vaut que pour des onglets d'un même site (deux sites
+  différents ne partagent jamais un processus). La fluidité entre voisins n'a pas pu être
+  mesurée (écran verrouillé pendant la séance) : **à refaire avant de livrer**.
 
 - ➖ **MEM-7 — `backgroundThrottling: false`.** Écarté : le réglage par défaut (ralentissement
   des vues cachées) est le bon pour un navigateur ; le couper augmenterait la consommation des
@@ -371,7 +377,7 @@ Lecture :
 
 ### Points
 
-- ⬜ **PERF-10 — `ext.js` : ne plus l'exécuter dans les pages web.**
+- ✅ **PERF-10 — `ext.js` : ne plus l'exécuter dans les pages web.** *(fait le 9 oct. : script enregistré seulement sur une session qui porte une extension ; page à 12 cadres 39,1 → 37,6 ms sans extension ; inchangé avec)*
   *Problème* : `ext-api.js` enregistre `ext.js` (555 lignes) comme script de préchargement de
   type `frame` sur toute la session ; il se charge donc dans **chaque cadre de chaque page**
   pour constater, à sa dernière ligne, qu'il n'est pas dans une page d'extension. Coût mesuré :
@@ -384,7 +390,7 @@ Lecture :
   d'extension ouvertes dans un onglet gardent le script (à tester avec `tests/ext-api.js`).
   *Effort* : S.
 
-- ⬜ **PERF-11 — `page.js` : rester inerte tant qu'aucun champ de mot de passe n'existe.**
+- ➖ **PERF-11 — `page.js` : rester inerte tant qu'aucun champ de mot de passe n'existe.** *(écarté le 9 oct. : sur 12 cadres, page.js coûte 2,2 ms dont environ 1 ms pour livrer le fichier et au plus 1 ms pour ses écouteurs, soit moins de 0,1 ms par cadre, dans le bruit de la mesure ; risque moyen sur les mots de passe pour un gain non mesurable)*
   *Problème* : dans chaque cadre, le script pose 12 écouteurs globaux (dont `scroll` en capture,
   `mousedown`, `keydown`, `input`, `click`) ; coût mesuré ≈ 3 ms sur 12 cadres. Chaque défilement
   de chaque page appelle `hide`.
@@ -395,14 +401,14 @@ Lecture :
   *Risque* : moyen (les mots de passe ont une batterie de tests : `tests/passwords.js`,
   `passwords-sites.js`). *Effort* : M.
 
-- ⬜ **PERF-12 — `nodeIntegrationInSubFrames` : confirmer qu'il reste nécessaire.**
+- ✅ **PERF-12 — `nodeIntegrationInSubFrames` : confirmer qu'il reste nécessaire.** *(confirmé le 9 oct. : nécessaire (connexion dans un cadre, pages d’extension en cadre) ; il coûte 8 ms sur 12 cadres, dont nos scripts ne font que 3)*
   *Mesure* : le retirer gagne 8 ms sur la page à 12 cadres (49,3 → 41,5), 5 ms sur la page
   mixte. Il sert à remplir les formulaires de connexion placés dans un cadre.
   *Changement possible* : le garder (la fonction prime), mais combiner avec PERF-10 et PERF-11
   pour que ce qui s'exécute dans chaque sous-cadre soit minimal ; re-mesurer ensuite.
   *Effort* : S (mesure).
 
-- ⬜ **PERF-13 — Bloqueur : réduire le nombre de requêtes qui montent jusqu'au JavaScript.**
+- ➖ **PERF-13 — Bloqueur : réduire le nombre de requêtes qui montent jusqu'au JavaScript.** *(écarté le 9 oct. : Electron 44.7 charge une extension à règles declarativeNetRequest mais ne les applique pas (essai : les deux requêtes à bloquer sont arrivées au serveur))*
   *Problème* : chaque requête http(s)/ws de chaque page fait un aller-retour par le fil
   principal : 0,09 ms pièce, et surtout autant de travail sur le fil qui anime les vues
   (une page d'actualité fait 200 à 400 requêtes).
@@ -516,13 +522,13 @@ Deux séries (les fourchettes donnent les deux médianes) ; elles concordent.
   l'application, où s'ajoutent l'archive et les onglets, attendre 15 → environ 3 ms.
   *Risque* : faible. *Effort* : S.
 
-- ⬜ **PERF-5 — Barre de commande : recherche incrémentale.**
+- ✅ **PERF-5 — Barre de commande : recherche incrémentale.** *(fait le 9 oct. : calcul par frappe 4,9 → 0,45 ms (médiane, 8 000 visites) ; frappe → liste à jour 5,8 → 1,9 ms ; la première lettre reste à 6 ms)*
   *Problème* : taper « navig » relance cinq recherches complètes. *Changement* : si la nouvelle
   saisie prolonge la précédente, ne filtrer que les résultats de la précédente (garder la liste
   des entrées retenues, pas seulement les 8 premières). *Gain attendu* : chaque frappe après la
   première passe sous 1 ms ; **à mesurer** après PERF-4. *Risque* : faible. *Effort* : S.
 
-- ⬜ **PERF-6 — Ne pas attendre le processus principal pour afficher la frappe complétée.**
+- ➖ **PERF-6 — Ne pas attendre le processus principal pour afficher la frappe complétée.** *(écarté le 9 oct. : après PERF-5 la liste est à jour 1,9 ms après la frappe, bien sous une image)*
   *Constat* : l'aller-retour `invoke('suggest')` coûte 5 ms hors calcul. Une fois PERF-4 et
   PERF-5 faits, la frappe → peinture devrait tomber vers 8 ms (une image). Si ce n'est pas le
   cas, envoyer à la vue modale, à l'ouverture, les 300 entrées les plus fréquentes pour une
@@ -531,7 +537,7 @@ Deux séries (les fourchettes donnent les deux médianes) ; elles concordent.
 - ➖ **PERF-7 — Accélérer le changement d'onglet.** Écarté : 5,4 ms + 3,5 ms, c'est une image.
   Rien à gagner tant que l'onglet est vivant ; le sujet est la veille (MEM-3).
 
-- ⬜ **PERF-8 — Pré-réveiller l'onglet survolé.**
+- ✅ **PERF-8 — Pré-réveiller l'onglet survolé.** *(fait le 9 oct., en pré-connexion seulement : première réponse en 148–175 ms au lieu de 452–467 (dix sites) ; la page n’est pas chargée d’avance)*
   *Problème* : un onglet en veille met 167 ms (local) à plusieurs secondes (réseau) à revenir.
   *Changement* : quand le pointeur reste 150 ms sur une ligne d'onglet en veille, créer sa vue
   en arrière-plan (`ensureView`) sans l'afficher. *Gain attendu* : le clic qui suit trouve la
@@ -572,7 +578,7 @@ réconciliation par clé de `shell.js` et `content-visibility: auto` font leur t
 - ➖ **PERF-21 — Retirer `color-mix`, le grain ou la translucidité pour la vitesse.** Écarté :
   aucun effet mesuré.
 
-- ⬜ **PERF-22 — État envoyé : ne transmettre que ce qui a changé au-delà de 300 onglets.**
+- ➖ **PERF-22 — État envoyé : ne transmettre que ce qui a changé au-delà de 300 onglets.** *(écarté le 9 oct. après essai complet : l’envoi par morceaux réduit l’état de 279 Ko à 1,2 Ko à 1 000 onglets, mais l’aller-retour ne bouge pas (8,2 → 9,7 ms) ; le temps est dans le rendu de la coque, voir PERF-26)*
   *Problème* : 144 Ko (400 onglets) à 359 Ko (1 000) sérialisés, envoyés et désérialisés à
   chaque changement, même pour un compteur de publicités bloquées ; la tâche complète monte à
   5 ms à 1 000 onglets. *Changement* : ne pas envoyer deux fois de suite un état identique
@@ -587,7 +593,7 @@ réconciliation par clé de `shell.js` et `content-visibility: auto` font leur t
   seconde**, 1 à 3 en moyenne. Le regroupement par `setImmediate` et les 250 ms du compteur du
   bloqueur suffisent.
 
-- ⬜ **PERF-24 — Icônes : ne pas demander `/favicon.ico` aux sites jamais chargés.**
+- ✅ **PERF-24 — Icônes : ne pas demander `/favicon.ico` aux sites jamais chargés.** *(fait le 9 oct. : un échec est retenu par site ; 40 onglets sans icône, six changements d’Espace : 369 requêtes → 49)*
   *Constat* : `guessIcon` fait demander par la coque `origine/favicon.ico` pour chaque onglet
   sans icône connue ; avec 400 onglets restaurés, c'est autant de requêtes réseau (et d'erreurs)
   au fil du défilement, et c'est l'observateur d'intersection de ces images qui pèse le plus
@@ -624,6 +630,209 @@ réconciliation par clé de `shell.js` et `content-visibility: auto` font leur t
   chiffres : il a lieu une fois par glisser. *Reste* : avec des favoris vides, leur zone de
   dépôt s'ouvre au départ du glisser et décale toute la colonne de 52 points sous le pointeur
   (comportement antérieur, non modifié) ; les épinglés vides, eux, ne s'agrandissent plus.
+
+## 8 bis. Réalisé (branche `performances`, 9 oct.) : mesures avant / après
+
+**Méthode.** Les mesures se refont par `node scripts/mesures.js <mesure> --arbre <avant> --arbre .`
+(scénarios dans `tests/mesures.js`) : un petit serveur local, un profil temporaire par arbre de
+sources, des lancements **en alternance** (avant, après, avant, après…) et la médiane de chaque
+valeur avec son étendue et la charge moyenne relevée. « Avant » est le commit `13ff947`
+(version 0.11.1) extrait à part ; « après », cette branche. La mémoire vient de
+`app.getAppMetrics()` (mémoire résidente, qui compte les pages partagées : environ 60 Mo de plus
+que l'empreinte réelle par processus léger ; les écarts entre avant et après restent valables,
+les totaux sont majorés). Machine : celle de la section 1.
+
+**Limite de cette séance.** À partir de 2 h 50 l'écran de la machine était verrouillé : plus
+aucune image n'est présentée (une par seconde au mieux), et le son n'est plus « audible ». Les
+temps **de peinture** du démarrage (coque peinte, première page peinte) n'ont donc pas pu être
+comparés et restent **à refaire**, écran déverrouillé ; les temps sans peinture (fenêtre créée,
+coque chargée, calculs, nombre de processus, mémoire, requêtes) n'en dépendent pas. La charge a
+varié de 4 à 56 (tâches de fond du système) : elle est donnée avec chaque série.
+
+### Mémoire et processus de l'interface (MEM-1, DEM-3)
+
+Quatre vues d'appoint ouvertes l'une après l'autre (notification, recherche, adresse survolée,
+zone de dépôt), 4 tours alternés, charge 27 :
+
+| | Avant | Après |
+| --- | --- | --- |
+| Processus au repos (fenêtre + 1 onglet) | 6 | **5** |
+| Mémoire résidente au repos | 592 Mo | **515 Mo** |
+| Processus après les quatre vues | 10 | **5** |
+| Mémoire résidente après les quatre vues | 979 Mo (885–979) | **536 Mo** (482–544) |
+| Première ouverture : notification | 146 ms | **17 ms** |
+| Première ouverture : recherche dans la page | 156 ms | **4 ms** |
+| Première ouverture : adresse du lien survolé | 125 ms | **19 ms** |
+| Première ouverture : zone de dépôt | 139 ms | **18 ms** |
+
+Série au calme (charge 5), mêmes rapports : 963 → 569 Mo, 85–118 ms → 3–17 ms.
+
+*Comment.* Après le chargement de la coque, le processus principal lui demande d'ouvrir
+(`window.open`) quelques vues « de réserve » (`overlay.html#reserve-N`) ; `setWindowOpenHandler`
+les adopte dans des `WebContentsView` (`createWindow`). Elles partagent le processus de la coque
+et sont déjà chargées : `makeUiView` en prend une, lui donne son adresse de rôle (`#toast`,
+`#find`…) et la réserve se regarnit (trois au plus, jamais plus qu'il ne reste de rôles). Barre
+latérale masquée, la barre flottante (`shell.html#flottant`) est préparée de la même façon.
+Réserve vide (coque pas encore chargée, rafale) : la vue naît à part, comme avant.
+
+*Sécurité.* Aucune frontière de confiance n'est franchie : toutes ces vues avaient déjà la même
+origine (`orbe://app`), le même script de préchargement, les mêmes droits (`trusted`) et le même
+canal vers le processus principal ; une seule compromise avait déjà tous les droits des autres.
+Les vues qui portent davantage — liste des mots de passe (`pw-overlay.html`), feuilles
+d'autorisation (`sheet.html`), réglages, pages internes ouvertes dans un onglet — ne passent pas
+par `makeUiView` et gardent chacune leur processus. La coque n'ouvre rien d'elle-même : seules les
+adresses que le processus principal vient de demander sont acceptées, une fois chacune ; une vue
+d'appoint ne peut ni naviguer ni ouvrir de fenêtre ; bac à sable et isolation du contexte sont
+imposés à la création. Tout cela est vérifié par `tests/performances.js`.
+
+*Ce que cela coûte.* Un seul fil pour toute l'interface d'une fenêtre, et un plantage de ce
+processus emporte toutes ses vues : la coque est alors rechargée et les vues renaissent à la
+demande (trois reprises par minute au plus) ; avant, une coque plantée restait morte.
+
+### Démarrage (DEM-2, DEM-3, DEM-4, DEM-8)
+
+Lancements alternés, profil d'un onglet, charge 5 ; en ms depuis la création du processus :
+
+| | Avant | Après |
+| --- | --- | --- |
+| À chaud (10 tours) : fenêtre créée | 238 (230–253) | 242 (230–255) |
+| À chaud : coque chargée (`did-finish-load`) | 300 (293–357) | 298 (287–320) |
+| Espacés de 25 s (5 tours) : fenêtre créée | 500 (486–550) | 509 (481–622) |
+| Espacés de 25 s : coque chargée | 634 (609–681) | 617 (579–740) |
+| Barre de commande, première ouverture | 25 (19–28) | **14** (11–16) |
+| Processus / mémoire résidente au démarrage | 6 / 620 Mo | **5 / 531 Mo** |
+| Les cinq fichiers de la coque servis par `orbe://` | 1,7–2,0 ms | **0,9 ms** |
+| `store.load` avec 4 Mo d'historique (8 000 visites) | 12,4 ms (11,2–15,3) | **0,11 ms** |
+
+Lecture honnête : **le temps jusqu'à la coque chargée ne change pas** (les écarts sont dans le
+bruit). Ce qui est acquis au démarrage, c'est un processus et 89 Mo de moins, une barre de
+commande prête plus tôt, et 12 ms de blocage en moins avant la fenêtre sur un vieux profil.
+L'effet sur la peinture reste à mesurer (voir la limite ci-dessus).
+
+Paquet distribué (DEM-8), même scénario, 8 tours, charge 8 : fenêtre **246 ms** contre 243 depuis
+les sources, coque chargée **304 ms** contre 300. L'archive `asar` et les fusibles ne coûtent rien
+de mesurable ; les chiffres pris sur les sources valent pour l'application.
+
+DEM-5 : `extensions.loadInto` sans extension coûte **0,15 ms** (dossier 0,10, liste 0,03). Les
+70–140 ms de la section 3 étaient le délai avant que la promesse soit servie, c'est-à-dire la
+création de la fenêtre.
+
+### Coût par navigation (PERF-10, PERF-11, PERF-12)
+
+Variantes dans un même processus, 40 tours alternés, deux séries, charge 4,5–6,6 ; page à
+12 cadres avec formulaire de connexion, `loadURL` → `did-finish-load`, médianes en ms :
+
+| Variante | Série 1 | Série 2 |
+| --- | --- | --- |
+| Tel que livré avant (les deux scripts) | 46,6 | 47,0 |
+| Sans `page.js` | 44,3 | 44,9 |
+| Sans `ext.js` (avec `page.js`) | 48,8 | 45,7 |
+| Sans aucun script | 43,4 | 43,8 |
+| Sans `nodeIntegrationInSubFrames` (scripts gardés) | **38,3** | **38,8** |
+| `page.js` vide (une ligne) | 45,3 | 44,1 |
+| `page.js` entier, `start()` non appelé | 45,9 | 46,9 |
+
+- `nodeIntegrationInSubFrames` coûte **8 ms pour 12 cadres** (0,65 ms par cadre), scripts ou non :
+  c'est la mise en place du préchargement dans chaque cadre. Il reste nécessaire (PERF-12) :
+  sans lui, plus de remplissage des connexions placées dans un cadre, et plus de complément
+  `chrome.*` pour les pages d'extension affichées en cadre. Il est gardé.
+- `ext.js` : environ 1 ms pour 12 cadres. Il n'est plus enregistré tant que la session ne porte
+  aucune extension (PERF-10) ; avant / après sur la même page, 6 tours, charge 36 :
+  **39,1 → 37,6 ms** ; page légère 5,84 → 5,79 ; page à 150 ressources inchangée. Avec une
+  extension installée, rien ne change : Electron n'offre pas de filtre par adresse pour un script
+  de session, et un script de bac à sable ne peut pas en charger un autre.
+- `page.js` : 2,2 ms pour 12 cadres, dont la moitié pour livrer le fichier ; ses écouteurs pèsent
+  moins de 0,1 ms par cadre, ce que la mesure ne distingue pas du bruit. PERF-11 n'est donc pas
+  livré : un risque moyen sur les mots de passe pour un gain invisible.
+
+*Sécurité.* PERF-10 retire du code des pages web (et des service workers des sites) au lieu d'en
+ajouter ; l'enregistrement a lieu avant le chargement de la première extension
+(`extensions.hooks.equip`), avec un filet sur `extension-loaded`. PERF-11 et PERF-12 : rien n'est
+modifié ; les garanties de `docs/mots-de-passe.md` sont intactes.
+
+### Barre de commande (PERF-5, PERF-6)
+
+8 000 visites variées, 174 frappes rejouées, 3 tours alternés, charge 4,5 :
+
+| | Avant | Après |
+| --- | --- | --- |
+| Calcul dans le processus principal, médiane | 4,89 ms | **0,45 ms** |
+| Calcul, 90ᵉ centile (première lettre : parcours complet) | 6,98 ms | 5,93 ms |
+| Frappe → liste à jour dans la vue, médiane | 5,8 ms | **1,9 ms** |
+| Frappe → image suivante | 8,2 ms | 7,3 ms (une image à 120 Hz dans les deux cas) |
+
+### État envoyé à la coque (PERF-22, écarté)
+
+Essai complet (état en morceaux JSON, seuls les morceaux changés transmis, recomposition dans
+la coque), puis retiré. 1 000 onglets, 3 tours alternés, charge 4,4 :
+
+| | État entier | État par morceaux |
+| --- | --- | --- |
+| Octets par envoi (un titre change) | 278 715 | 1 203 |
+| `sendState` côté principal | 0,68 ms | 0,80 ms |
+| Envoi → retour de la coque après rendu | 8,2 ms (7,6–8,2) | 9,7 ms (9,1–10,1) |
+| Travail de la coque par envoi (tâches) | 9,2 ms | 8,8 ms |
+
+Le transport n'est pas le poste qui coûte : c'est `render()`, qui repasse sur toutes les lignes
+(2,1–2,8 ms à 1 000 onglets, 0,8 ms à 300, 0,6 ms à 50), et la production de l'image.
+
+- ⬜ **PERF-26 — `render()` : ne pas repasser sur les lignes inchangées.**
+  *Constat* : à 1 000 onglets, chaque état reçu coûte 2,1 à 2,8 ms de script dans la coque même
+  quand rien n'a changé (0,38 ms annoncé en section 8 : c'était sous-estimé), 5 ms de tâche au
+  total. *Changement possible* : garder par ligne le texte JSON de sa dernière description et
+  sauter `tabRow` quand il est identique, en tenant compte de la sélection et du renommage en
+  cours. *Gain attendu* : 2 ms par envoi à 1 000 onglets, rien sous 300. *Risque* : faible.
+  *Effort* : S. Priorité basse.
+
+### Icônes (PERF-24), réveil (PERF-8)
+
+| | Avant | Après |
+| --- | --- | --- |
+| Requêtes `/favicon.ico`, 40 onglets sans icône, à l'affichage | 41 | 41 |
+| … après six changements d'Espace | 369 (287–369) | **49** (47–49) |
+| Onglet en veille, dix vrais sites : `loadURL` → première réponse | 452–467 ms | **148–175 ms** (pré-connexion faite 300 ms plus tôt) |
+
+PERF-8 ne charge pas la page d'avance : un survol n'est pas une visite (historique, lecture
+automatique, mémoire). Seule la connexion au site est préparée (`session.preconnect`), une fois
+par site toutes les dix secondes, jamais en navigation privée, en https seulement.
+
+### Veille des onglets (MEM-3, MEM-4, MEM-5, MEM-6)
+
+- MEM-3 : douze onglets lourds, 2 196 Mo résidents pour un budget de 1 638 Mo (10 % de 16 Go
+  pour l'essai ; 25 % par défaut) : **6 endormis, 13 → 7 processus de rendu**, 1 458 Mo ensuite.
+  Le passage de fond (une fois par minute) coûte 1,1 à 3,1 ms. Réglages `sleepAfterHours`
+  (3 par défaut, 0 = jamais) et `memoryBudget` (25, 0 = sans limite), sans interface pour l'instant.
+- *Après relecture de sécurité (9 oct.)* : l'ancienneté se compte depuis le dernier instant où
+  l'onglet était **à l'écran** (volets d'une vue scindée compris), plus depuis sa dernière
+  activation ; les règles automatiques épargnent tout onglet où l'utilisateur a agi depuis le
+  chargement (touche reçue par la page — lettre, AltGr, coller, Suppr, Entrée — ou bouton de
+  souris), ceux qui chargent, sont en image dans l'image, filmés par une autre page ou d'où part
+  un téléchargement ; la page est consultée (`beforeunload`) et reste si elle s'y oppose, sans
+  question. Seuls les onglets lus ou jamais touchés s'endorment donc d'eux-mêmes : la portée de
+  MEM-3 en est réduite, c'est le prix d'un formulaire jamais perdu. Non couvert : une page
+  modifiée sans clavier ni souris et sans `beforeunload` (détail en tête de `src/main/veille.js`).
+- La mémoire résidente compte de moins en moins un onglet caché (macOS la compresse : 1 453 Mo
+  → 1 025 Mo en dix secondes sans rien faire) : le budget se déclenche donc plutôt trop tard que
+  trop tôt.
+- MEM-4 : vingt vrais sites, veille à quatre : 5 processus sans vue (860 Mo) trois secondes après,
+  **1 (117 Mo) à +33 s, 0 à +73 s**. Ce sont les service workers de Reddit, YouTube, Amazon et
+  Spotify ; Chromium les arrête de lui-même.
+
+- ⬜ **MEM-8 — Budget mémoire : relever l'empreinte réelle plutôt que la mémoire résidente.**
+  *Constat* : `app.getAppMetrics()` ne donne sur macOS que la mémoire résidente (un onglet
+  léger : 80 Mo résidents pour 20 Mo d'empreinte ; Wikipédia : 105 pour 168). *Piste* : `footprint`
+  ou `top -stats mem` une fois par minute, hors du fil principal. *Effort* : S.
+
+- ⬜ **MEM-9 — Veille automatique : réglages dans la fenêtre des réglages.** `sleepAfterHours` et
+  `memoryBudget` existent et sont validés, mais n'ont pas d'interface. *Effort* : S.
+
+### Essais : fenêtre recouverte ou écran verrouillé
+
+Constat de la séance : une fenêtre d'essai recouverte voit ses minuteries ralenties à une par
+seconde (« balayage lent » échoue), et sous écran verrouillé la vidéo d'essai n'est jamais
+« audible » et la capture de page entière n'aboutit pas — sur `main` comme sur cette branche.
+`--selftest` pose désormais `disable-backgrounding-occluded-windows`, ce qui règle le premier
+cas ; les deux autres demandent un écran déverrouillé (l'intégration continue n'est pas concernée).
 
 ## 9. Animations des vues natives (ANIM)
 

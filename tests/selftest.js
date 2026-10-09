@@ -44,6 +44,7 @@ function serve() {
 
 module.exports = async function selftest(ctx) {
   const { first: w, OrbeWindow, store, win, little, commands, openSettings, openUrl } = ctx;
+  const modalAtStart = w.modal; // relevé avant toute attente (tests/performances.js)
   const results = [];
   let failed = 0;
   const check = (name, ok, detail = '') => {
@@ -1060,6 +1061,9 @@ module.exports = async function selftest(ctx) {
 
   // Réglages à volets, raccourcis modifiables, import de signets (tests/reglages.js)
   await require('./reglages')({ ...ctx, check });
+
+  // Vitesse et mémoire : vues d'appoint, veille, recherche… (tests/performances.js)
+  await require('./performances')({ ...ctx, check, modalAtStart });
 
   // Persistance
   await shot('final');
