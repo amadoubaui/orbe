@@ -3,7 +3,7 @@
 //
 // Ce que la page annonce — titre, artiste, pochette (`navigator.mediaSession`),
 // position et durée de son élément <audio>/<video> — est lu par une question
-// posée à la page (`INFO`) : tout y est tenu pour hostile. Les textes sont bornés
+// posée à la page (`infoCode`) : tout y est tenu pour hostile. Les textes sont bornés
 // et ne voyagent que comme du texte (la coque les pose par `textContent`) ; la
 // pochette n'est acceptée qu'en http(s) ou `data:image`, téléchargée dans la
 // session de la page elle-même (ses témoins, son profil, son bloqueur), bornée
@@ -11,9 +11,10 @@
 // l'adresse de la page, seulement l'image recodée.
 //
 // Précédent / suivant : ce sont les gestionnaires que la page a elle-même
-// déclarés (`mediaSession.setActionHandler`), retenus par src/preload/media.js.
+// déclarés (`mediaSession.setActionHandler`), retenus par src/preload/media.js
+// dans une fermeture qu'une clé propre au document ouvre (`keyOf`).
 const path = require('path');
-const { nativeImage } = require('electron');
+const { nativeImage, ipcMain } = require('electron');
 
 const PRELOAD = path.join(__dirname, '../preload/media.js');
 const LIMITS = {
@@ -31,11 +32,17 @@ const LIMITS = {
 const GESTURE = new Set(['toggle', 'prev', 'next']);
 const ACTIONS = new Set(['toggle', 'prev', 'next', 'back', 'forward', 'seek', 'close', 'mute', 'open']);
 const attached = new WeakSet();
+// Clé du document affiché par chaque onglet : elle ouvre la table des gestionnaires
+// `mediaSession` que src/preload/media.js garde hors de portée de la page.
+const KEY_CHANNEL = 'orbe:media-key';
+const keys = new WeakMap(); // webContents -> clé
+let listening = false;
+const keyOf = (wc) => keys.get(wc) || '';
 
 // Élément qui compte dans la page : celui qui joue, sinon le dernier entamé.
 const PICK = `const all = [...document.querySelectorAll('video, audio')];
   const m = all.find((x) => !x.paused && !x.ended) || all.filter((x) => x.currentTime > 0).sort((a, b) => b.currentTime - a.currentTime)[0] || all[0] || null;`;
-const INFO = `(() => { try {
+const infoCode = (key) => `(() => { try {
   ${PICK}
   const ms = navigator.mediaSession;
   const md = ms && ms.metadata;
@@ -47,7 +54,7 @@ const INFO = `(() => { try {
     if (best) art = String(best.src || '');
   } catch {}
   let acts = [];
-  try { acts = ms && ms.__orbeActions ? [...ms.__orbeActions.keys()].map(String) : []; } catch {}
+  try { const l = ${/^[0-9a-f]{32}$/.test(key) ? `ms.setActionHandler(${JSON.stringify(key)}, null)` : 'null'}; acts = Array.isArray(l) ? l.slice(0, 16).map((x) => String(x).slice(0, 32)) : []; } catch {}
   const num = (v) => (typeof v === 'number' && isFinite(v) ? v : 0);
   return {
     has: !!m, paused: m ? !!m.paused : true, t: m ? num(m.currentTime) : 0, d: m ? num(m.duration) : 0,
@@ -56,7 +63,7 @@ const INFO = `(() => { try {
 } catch { return null; } })()`;
 const TOGGLE = `(() => { ${PICK} if (m) { if (m.paused) m.play().catch(() => {}); else m.pause(); } return !!m && !m.paused; })()`;
 const seekCode = (expr) => `(() => { ${PICK} if (!m || !isFinite(m.duration)) return false; m.currentTime = Math.max(0, Math.min(m.duration, ${expr})); return true; })()`;
-const actCode = (name) => `(() => { try { const h = navigator.mediaSession.__orbeActions.get(${JSON.stringify(name)}); if (typeof h !== 'function') return false; h({ action: ${JSON.stringify(name)} }); return true; } catch { return false; } })()`;
+const actCode = (key, name) => (/^[0-9a-f]{32}$/.test(key) ? `(() => { try { return navigator.mediaSession.setActionHandler(${JSON.stringify(key)}, ${JSON.stringify(name)}) === true; } catch { return false; } })()` : 'false');
 
 const text = (v) => (typeof v === 'string' ? v.replace(/[\u0000-\u001f\u007f‪-‮⁦-⁩]/g, ' ').trim().slice(0, LIMITS.text) : '');
 const num = (v, max = 360000) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.min(v, max) : 0);
@@ -154,7 +161,7 @@ function make(env) {
     if (!rt || rt.mediaBusy) return null;
     rt.mediaBusy = true;
     let raw = null;
-    try { raw = await Promise.race([rt.wc.executeJavaScript(INFO), new Promise((r) => setTimeout(() => r(null), 3000))]); } catch {}
+    try { raw = await Promise.race([rt.wc.executeJavaScript(infoCode(keyOf(rt.wc))), new Promise((r) => setTimeout(() => r(null), 3000))]); } catch {}
     rt.mediaBusy = false;
     if (rt.wc.isDestroyed()) return null;
     const info = clean(raw);
@@ -254,8 +261,8 @@ function make(env) {
         if (rt.media) { const m = rt.media; if (!m.paused && m.at) m.position = Math.min(m.duration || 360000, m.position + (Date.now() - m.at) / 1000); m.at = Date.now(); m.paused = !rt.playing; }
         pushAll();
         return run(TOGGLE);
-      case 'prev': return run(actCode('previoustrack'));
-      case 'next': return run(actCode('nexttrack'));
+      case 'prev': return run(actCode(keyOf(rt.wc), 'previoustrack'));
+      case 'next': return run(actCode(keyOf(rt.wc), 'nexttrack'));
       case 'back': return run(seekCode(`m.currentTime - ${LIMITS.step}`));
       case 'forward': return run(seekCode(`m.currentTime + ${LIMITS.step}`));
       case 'seek': {
@@ -276,6 +283,16 @@ function attach(ses) {
   if (!ses || attached.has(ses)) return;
   attached.add(ses);
   ses.registerPreloadScript({ type: 'frame', filePath: PRELOAD, id: 'orbe-media' });
+  if (listening) return;
+  listening = true;
+  // La clé n'est acceptée que du cadre principal, et seulement si elle en a la forme.
+  ipcMain.on(KEY_CHANNEL, (e, key) => {
+    try {
+      const main = e.sender.mainFrame;
+      if (typeof key !== 'string' || !/^[0-9a-f]{32}$/.test(key) || !main || e.frameId !== main.routingId || e.processId !== main.processId) return;
+      keys.set(e.sender, key);
+    } catch {}
+  });
 }
 
-module.exports = { make, attach, clean, artworkKind, loadArtwork, shrink, LIMITS, INFO, GESTURE };
+module.exports = { make, attach, clean, artworkKind, loadArtwork, shrink, LIMITS, infoCode, keyOf, GESTURE };

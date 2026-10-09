@@ -165,6 +165,25 @@ module.exports = async function mediasTests(ctx) {
     const okPrev = await w.mediaAct({ id: p1, act: 'prev' });
     check('piste suivante puis précédente : les gestionnaires de la page sont appelés', okNext === true && okPrev === true && (await js(p1, 'calls.join()')) === 'next,prev');
 
+    // Ce que la page peut voir du relevé de ses gestionnaires : rien qui trahisse Orbe.
+    const quiet = (code) => wcOf(p1).executeJavaScript(code, false);
+    const seen = await quiet(`(() => { const ms = navigator.mediaSession; const f = ms.setActionHandler; const d = Object.getOwnPropertyDescriptor(MediaSession.prototype, 'setActionHandler');
+      let wrong = ''; try { ms.setActionHandler('0'.repeat(32), null); } catch (e) { wrong = e.name; }
+      let bad = ''; try { f.call({}, 'play', null); } catch (e) { bad = e.name; }
+      return { own: Object.getOwnPropertyNames(ms).concat(Object.getOwnPropertySymbols(ms).map(String)).join(), old: '__orbeActions' in ms, name: f.name, length: f.length,
+        text: Function.prototype.toString.call(f), flags: [d.enumerable, d.writable, d.configurable, 'get' in d].join(), wrong, bad, globals: Object.keys(window).filter((k) => /orbe/i.test(k)).join() }; })()`);
+    check('gestionnaires de la page : rien de posé sur `navigator.mediaSession` (plus de `__orbeActions`), aucune variable d’Orbe dans la page', seen.own === '' && seen.old === false && seen.globals === '', JSON.stringify(seen));
+    check('`setActionHandler` garde l’allure de la fonction d’origine : nom, nombre d’arguments, texte « [native code] », mêmes attributs, mêmes erreurs',
+      seen.name === 'setActionHandler' && seen.length === 2 && /\[native code\]/.test(seen.text) && !/table|KEY|apply/.test(seen.text) && seen.flags === 'true,true,true,false' && seen.wrong === 'TypeError' && seen.bad === 'TypeError', JSON.stringify(seen));
+    // Un autre cadre qui emprunte la fonction n'écrit ni ne lit la table du cadre principal.
+    const cross = await quiet(`(() => { const f = document.createElement('iframe'); document.body.append(f); const other = f.contentWindow.navigator.mediaSession; const set = navigator.mediaSession.setActionHandler;
+      set.call(other, 'seekto', () => calls.push('intrus'));
+      let read = 'rien'; try { read = String(set.call(other, ${JSON.stringify(mediaLib.keyOf(wcOf(p1)))}, null)); } catch (e) { read = e.name; }
+      f.remove(); return read; })()`);
+    const acts = (await quiet(mediaLib.infoCode(mediaLib.keyOf(wcOf(p1))))).acts;
+    check('autre cadre : il ne lit pas les gestionnaires du cadre principal, même avec la clé, et n’en ajoute pas', cross === 'TypeError' && acts.slice().sort().join() === 'nexttrack,previoustrack' && /^[0-9a-f]{32}$/.test(mediaLib.keyOf(wcOf(p1))), cross + ' ' + acts.join());
+    check('sans la clé du document : aucune action n’est lue ni déclenchée', (await quiet(mediaLib.infoCode(''))).acts.length === 0 && (await quiet(mediaLib.infoCode('f'.repeat(32)))).acts.length === 0 && (await quiet('calls.join()')) === 'next,prev');
+
     // Geste prêté à la page : lecture / pause et pistes seulement.
     const flagOf = (id, a) => {
       const wc = wcOf(id);
