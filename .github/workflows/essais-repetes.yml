@@ -40,13 +40,6 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/captures"
           echo "ORBE_SHOTS=$RUNNER_TEMP/captures" >> "$GITHUB_ENV"
-      - name: Vol d'une vue (expérience, lot 1)
-        if: matrix.lot == 1
-        continue-on-error: true
-        shell: bash
-        run: |
-          node -e "require('./scripts/dev.js').ensure()"
-          node "$HOME/.orbe-dev/node_modules/electron/cli.js" tests/tmp-vol.js
       - name: Tests de bout en bout, quatre passages
         shell: bash
         run: |
@@ -75,26 +68,3 @@ jobs:
           name: repete-${{ matrix.os }}-${{ matrix.lot }}
           path: ${{ runner.temp }}/captures
           if-no-files-found: ignore
-
-  premiere:
-    name: première page ${{ matrix.os }} n° ${{ matrix.lot }}
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [windows-latest]
-        lot: [1, 2, 3, 4, 5, 6]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: Quarante démarrages
-        shell: bash
-        run: |
-          set +e
-          for i in $(seq 1 40); do
-            ORBE_TEST_STALL=100 ORBE_SCENARIO=tests/tmp-premiere.js node scripts/dev.js --selftest 2>&1 | grep -E "^(LENT|ok) |ÉCHEC" | sed "s/^/$i : /"
-          done
-          exit 0

@@ -76,14 +76,6 @@ if (SELFTEST) {
   testGuard.install({ app, dialog, limit: Number(process.env.ORBE_TEST_LIMIT) || 480, stall: Number(process.env.ORBE_TEST_STALL) || 150 });
   // Les tests ne touchent jamais au vrai trousseau du système.
   app.commandLine.appendSwitch('use-mock-keychain');
-  // Sous Windows, « Détecter automatiquement les paramètres » (réglage par défaut du
-  // système) fait chercher un proxy au démarrage (WPAD : DHCP puis DNS). Relevé dans
-  // le journal du réseau : la toute première page pouvait rester huit secondes en
-  // attente de cette recherche, jusqu'à sa relance. Les essais ne servent que des
-  // pages locales : ils se passent du proxy du système, sauf les scénarios sur des
-  // sites réels (ou ORBE_TEST_SYSTEM_PROXY=1).
-  const realSites = /sites|reelles/.test(path.basename(process.env.ORBE_SCENARIO || ''));
-  if (!realSites && !process.env.ORBE_TEST_SYSTEM_PROXY) app.commandLine.appendSwitch('no-proxy-server');
   // ORBE_NETLOG : journal du réseau de Chromium, pour une page qui ne se charge pas.
   if (process.env.ORBE_NETLOG) app.commandLine.appendSwitch('log-net-log', process.env.ORBE_NETLOG);
   // Caméra et micro factices : aucun vrai appareil n'est ouvert pendant les tests.
@@ -461,6 +453,16 @@ app.whenReady().then(async () => {
   if (SELFTEST) {
     // (Un scénario qui n'avance plus est arrêté par la garde : src/main/test-guard.js.)
     try {
+      // Profil prêt avant la première page. Une requête n'est envoyée qu'une fois le
+      // magasin de témoins de la session ouvert (relevé sur 240 démarrages sous
+      // Windows : la page arrive toujours après lui, 70 ms plus tard en médiane) ;
+      // son ouverture prend d'ordinaire moins d'une seconde, parfois plus de huit
+      // sur une machine d'intégration, et la première page d'un scénario dépassait
+      // alors son délai. Le scénario attend donc le profil, et le dit s'il tarde.
+      const t0 = Date.now();
+      const ready = await Promise.race([first.session.cookies.get({}).then(() => true, () => true), new Promise((r) => { setTimeout(() => r(false), 60000); })]);
+      if (!ready) throw new Error('Délai dépassé : magasin de témoins du profil toujours fermé après 60 s');
+      if (Date.now() - t0 > 3000) console.log(`  – profil prêt après ${Date.now() - t0} ms (magasin de témoins lent à s’ouvrir)`);
       // ORBE_SCENARIO : autre scénario de test (ex. tests/sites.js, sites réels).
       await require(process.env.ORBE_SCENARIO ? path.resolve(process.env.ORBE_SCENARIO) : '../../tests/selftest')({ first, OrbeWindow, store, win, little, commands, menu, openSettings, openUrl, extensions, extApi, extHost, passwords, panes, prefs, shortcuts, globalAction, essentials });
       store.flush();
