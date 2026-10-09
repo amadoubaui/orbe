@@ -624,9 +624,13 @@ module.exports = async function finitionsTests(ctx) {
   const mod = platform.isMac ? 'meta' : 'control';
   pwc.sendInputEvent({ type: 'keyDown', keyCode: 'b', modifiers: [mod] });
   pwc.sendInputEvent({ type: 'keyUp', keyCode: 'b', modifiers: [mod] });
-  await until(() => js('window.vuB === 1'), 'la page a reçu ⌘B');
-  await sleep(150);
-  check('⌘B dans une page qui le gère elle-même : la touche lui arrive et sa décision tient (aucune mise en gras par Orbe)', (await js('document.getElementById("riche").innerHTML')) === 'simple');
+  // Session verrouillée : la page ne reçoit aucune touche (pas de fenêtre au premier plan).
+  const vuB = await until(() => js('window.vuB === 1'), 'la page a reçu ⌘B', 4000).then(() => true, () => false);
+  if (!vuB && (await outils.milieu(w)).verrouille) outils.ignorer('⌘B dans une page qui le gère elle-même', 'session verrouillée : la page ne reçoit pas les touches');
+  else {
+    await sleep(150);
+    check('⌘B dans une page qui le gère elle-même : la touche lui arrive et sa décision tient (aucune mise en gras par Orbe)', vuB && (await js('document.getElementById("riche").innerHTML')) === 'simple');
+  }
   // Rechercher et remplacer (⌥⌘F) : dans un champ de saisie, jamais dans le texte fixe de la page.
   await js('document.getElementById("zone").value = "chat et chat, puis Chat"; document.getElementById("riche").textContent = "un chat riche"; document.getElementById("bas").textContent = "un chat en bas"; document.activeElement.blur(); getSelection().removeAllRanges();');
   commands.run(w, 'findReplace');

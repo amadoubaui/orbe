@@ -114,6 +114,10 @@ module.exports = async function easelTests(ctx) {
     const round0 = s0.items.find((it) => it.type === 'ellipse');
     const at = (it, fx = 0.5, fy = 0.5) => ({ x: (it.x + it.w * fx) * s0.view.z + s0.view.x, y: (it.y + it.h * fy) * s0.view.z + s0.view.y });
     await js('E.setSel([])');
+    // Les autres éléments du tableau (images collées plus haut, dont la place dépend de la
+    // taille de la fenêtre) sont écartés le temps de l'essai : leurs bords et leurs milieux
+    // sont aussi des repères, et l'un d'eux pouvait se trouver par hasard à portée.
+    await js(`(() => { for (const it of E.items) if (it.id !== ${JSON.stringify(box.id)} && it.id !== ${JSON.stringify(round0.id)}) { it.x += 9000; it.y += 9000; it.__ecarte = true; } })()`);
     // L'ellipse est amenée à 4 points du bord gauche du rectangle, loin de tout repère horizontal (y = 500).
     const from = at(round0);
     const dx = box.x + 4 - round0.x;
@@ -142,6 +146,7 @@ module.exports = async function easelTests(ctx) {
     await sleep(80);
     const s3 = await state();
     check('⌘ maintenu : déplacement libre à 3 points du bord, sans guide', Math.abs(s3.items.find((it) => it.id === round0.id).x - (box.x + 3)) <= 1 && freeGuide === true, JSON.stringify(s3.items.find((it) => it.id === round0.id)));
+    await js(`(() => { for (const it of E.items) if (it.__ecarte) { it.x -= 9000; it.y -= 9000; delete it.__ecarte; } })()`);
     check('milieux et bords : le calcul propose le repère le plus proche sur chaque axe', await js(`(() => {
       const d = { gx: [100, 150, 200], gy: [50], base: { x: 0, y: 0, w: 40, h: 20 } };
       const a = E.snapMove(d, 127, 43);   // milieu du lot (147) à 3 de 150 ; milieu vertical (53) à 3 de 50
