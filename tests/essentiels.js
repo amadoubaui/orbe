@@ -942,7 +942,7 @@ module.exports = async function essentielsTests(ctx) {
   const libWc = () => rtOf(libTab.id).wc;
   await until(() => libWc().executeJavaScript('document.querySelectorAll("#list .line").length > 0'), 'liste des téléchargements');
   const firstLine = await libWc().executeJavaScript('(() => { const l = document.querySelector("#list .line"); return { state: l.dataset.state, sub: l.querySelector(".sub").textContent, buttons: [...l.querySelectorAll("button")].map((b) => b.dataset.do) }; })()');
-  check('Bibliothèque : un téléchargement interrompu affiche où il en est et propose « Reprendre »', firstLine.state === 'interrupted' && firstLine.sub.includes(t('lib.failed')) && firstLine.sub.includes('40 %') && firstLine.buttons.join() === 'resume', firstLine);
+  check('Bibliothèque : un téléchargement interrompu affiche où il en est et propose « Reprendre » (et son menu « ··· »)', firstLine.state === 'interrupted' && firstLine.sub.includes(t('lib.failed')) && firstLine.sub.includes('40 %') && firstLine.buttons.join() === 'resume,menu', firstLine);
   store.state.downloads.shift();
   w.close(libTab.id, { ask: false });
 

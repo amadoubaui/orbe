@@ -1083,6 +1083,13 @@ module.exports = async function selftest(ctx) {
   // Vitesse et mémoire : vues d'appoint, veille, recherche… (tests/performances.js)
   await require('./performances')({ ...ctx, check, modalAtStart });
 
+  // Barre de commande : actions, portées, suppression d'une suggestion… (tests/commande.js)
+  // (Après les mesures : cet essai charge une extension, dont le script de complément reste en place.)
+  await require('./commande')({ ...ctx, check });
+
+  // Bibliothèque : archive, téléchargements, Espaces, Boosts ; notes (tests/bibliotheque.js)
+  await require('./bibliotheque')({ ...ctx, check });
+
   // Persistance
   await shot('final');
   w.remember();

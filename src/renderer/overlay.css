@@ -42,6 +42,11 @@
   user-select: text;
 }
 #cmd-input::placeholder { color: var(--faint); }
+/* Portée : pastille devant le champ (« Actions », « YouTube »). */
+#cmd-scope { flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 4px 10px; border-radius: 8px; background: var(--accent); color: var(--on-accent, #fff); font-size: 13.5px; font-weight: 600; }
+/* Les actions seules : la liste entière défile dans le panneau. */
+#cmd-list { max-height: min(60vh, 428px); overflow-y: auto; scrollbar-width: none; }
+#cmd-list::-webkit-scrollbar { display: none; }
 #cmd-list:not(:empty) { border-top: 0.5px solid var(--panel-line); padding-top: 6px; margin-top: 2px; }
 .cmd {
   display: flex;
@@ -59,6 +64,11 @@
 .cmd.sel { background: var(--accent); color: var(--on-accent, #fff); }
 .cmd.sel .sub, .cmd.sel .hint, .cmd.sel .ic { color: color-mix(in srgb, var(--on-accent, #fff) 82%, transparent); }
 .cmd.sel .hint { opacity: 1; }
+/* Croix « oublier cette suggestion » : au survol de la ligne (historique, archive). */
+.cmd .del { flex: none; width: 24px; height: 24px; margin-right: -4px; border: 0; border-radius: 7px; background: none; color: inherit; display: none; place-items: center; padding: 0; }
+.cmd .del svg { width: 14px; height: 14px; }
+.cmd:hover .del { display: grid; }
+.cmd .del:hover { background: color-mix(in srgb, currentColor 18%, transparent); }
 
 /* Bascule ⌃Tab */
 #switcher {

@@ -220,7 +220,7 @@ function build() {
         sep, { label: t('window.front'), role: 'front' },
       ],
     },
-    { label: t('menu.help'), role: 'help', submenu: [item('welcome'), item('shortcuts'), item('support'), item('github'), sep, { label: t('help.troubleshooting'), submenu: [item('revealData'), item('copyInfo')] }] },
+    { label: t('menu.help'), role: 'help', submenu: [item('welcome'), item('shortcuts'), item('helpCenter'), item('whatsNew'), item('reportIssue'), item('support'), item('github'), sep, { label: t('help.troubleshooting'), submenu: [item('revealData'), item('copyInfo')] }] },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(platform.menuTemplate(template)));
   if (platform.isMac && app.dock) app.dock.setMenu(Menu.buildFromTemplate(dockTemplate()));

@@ -301,7 +301,10 @@ class Store {
 
   archive(entry) {
     if (!/^https?:/i.test(entry.url || '')) return;
-    this.state.archive.unshift({ url: entry.url, title: entry.title || entry.url, favicon: entry.favicon || '', spaceId: entry.spaceId, at: Date.now() });
+    // `by` : fermé à la main ('manual'), archivé d'office après le délai ('auto'), ou venu d'une
+    // petite fenêtre ('little', sans Espace). Sert aux filtres de l'archive (Bibliothèque).
+    const by = ['manual', 'auto', 'little'].includes(entry.by) ? entry.by : (entry.spaceId ? 'manual' : 'little');
+    this.state.archive.unshift({ id: uid(), url: entry.url, title: entry.title || entry.url, favicon: entry.favicon || '', spaceId: entry.spaceId, by, at: Date.now() });
     if (this.state.archive.length > ARCHIVE_MAX) this.state.archive.length = ARCHIVE_MAX;
     this.save();
   }

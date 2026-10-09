@@ -17,6 +17,17 @@
 .board .del { position: absolute; top: 8px; right: 8px; opacity: 0; background: var(--panel); }
 .board:hover .del { opacity: 1; }
 .line .sub.danger { color: #c2410c; }
+.tabs { flex-wrap: wrap; }
+/* Archive : filtres (façon de fermer, Espace) ; croix d'une entrée, visible au survol. */
+#filters { display: flex; gap: 8px; margin: -4px 0 14px; }
+.line .x { opacity: 0; width: 26px; padding: 0; }
+.line:hover .x, .line .x:focus-visible { opacity: 1; }
+.line .tag { flex: none; color: var(--dim); font-size: 11.5px; background: var(--pill); border-radius: 6px; padding: 2px 7px; }
+.line[draggable=true] { cursor: default; }
+.line .more { width: 28px; padding: 0; font-weight: 700; letter-spacing: 1px; }
+.line .dot { width: 18px; height: 18px; border-radius: 6px; flex: none; display: grid; place-items: center; font-size: 13px; }
+.line.off .name { color: var(--dim); }
+.empty .hint { margin-top: 6px; font-size: 12.5px; color: var(--faint); }
 </style>
 </head>
 <body>
@@ -28,10 +39,17 @@
     <button data-tab="downloads" data-t="lib.downloads"></button>
     <button data-tab="media" data-t="lib.media"></button>
     <button data-tab="easels" data-t="lib.easels"></button>
+    <button data-tab="spaces" data-t="lib.spaces"></button>
+    <button data-tab="boosts" data-t="lib.boosts"></button>
     <span style="flex:1"></span>
     <button id="clear"></button>
   </div>
   <input class="search" id="q" data-t-ph="lib.search" spellcheck="false">
+  <!-- Archive : « How was the tab closed? », « Where was the tab? » d'Arc. -->
+  <div id="filters" hidden>
+    <select id="f-how"></select>
+    <select id="f-space"></select>
+  </div>
   <div id="list"></div>
 </main>
 <script src="common.js"></script>

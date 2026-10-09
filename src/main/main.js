@@ -23,6 +23,7 @@ const easels = require('./easels');
 const platform = require('./platform');
 const essentials = require('./essentials');
 const downloads = require('./downloads');
+const library = require('./library');
 const prefs = require('./prefs');
 const shortcuts = require('./shortcuts');
 const panes = require('./panes');
@@ -225,34 +226,6 @@ function shortcutGroups() {
 async function globalAction(action, a, sender) {
   const s = store.state;
   switch (action) {
-    case 'lib:get': {
-      const q = String((a && a.q) || '').toLowerCase();
-      const match = (x) => !q || (x.title || '').toLowerCase().includes(q) || (x.url || x.name || '').toLowerCase().includes(q);
-      return {
-        history: Object.values(s.history).filter(match).sort((x, y) => y.last - x.last).slice(0, 400)
-          .map((h) => ({ url: h.url, title: h.title || h.url, favicon: h.favicon || '', at: h.last })),
-        archive: s.archive.filter(match).slice(0, 400),
-        downloads: s.downloads.filter(match).slice(0, 200).map((d) => ({ ...d, exists: d.state === 'completed' && fs.existsSync(d.path) })),
-        // Médias : images, vidéos et sons téléchargés, plus les captures d'Orbe.
-        media: s.downloads.filter((d) => d.state === 'completed' && /\.(png|jpe?g|gif|webp|avif|svg|mp4|mov|webm|mp3|wav|m4a)$/i.test(d.name) && match(d)).slice(0, 200)
-          .map((d) => ({ ...d, exists: fs.existsSync(d.path) })).filter((d) => d.exists),
-      };
-    }
-    case 'lib:clear':
-      if (a === 'history') { s.history = {}; store.historyCount = 0; store.saveHistory(true); }
-      if (a === 'archive') s.archive = [];
-      if (a === 'downloads') s.downloads = s.downloads.filter((d) => d.state === 'progressing');
-      store.save();
-      return true;
-    case 'lib:reveal': {
-      const d = s.downloads.find((x) => x.id === a);
-      if (d) shell.showItemInFolder(d.path);
-      return true;
-    }
-    case 'lib:openFile': {
-      // Un PDF s'ouvre dans un onglet ; un fichier exécutable demande confirmation.
-      return downloads.action('dl:open', a, sender);
-    }
     case 'notes:list':
       return s.notes.slice().sort((x, y) => y.at - x.at);
     case 'notes:save': {
@@ -355,7 +328,8 @@ function setupIpc() {
     if (action.startsWith('sheet:')) return essentials.sheets.action(action, payload, e.sender);
     if (action.startsWith('dl:')) return downloads.action(action, payload, e.sender);
     if (action === 'welcome:info') return { arc: require('./import-arc').available() };
-    if (/^(lib|settings|shortcuts|ext|notes):/.test(action)) return globalAction(action, payload, e.sender);
+    if (action.startsWith('lib:')) return library.action(action, payload, e.sender);
+    if (/^(settings|shortcuts|ext|notes):/.test(action)) return globalAction(action, payload, e.sender);
     const owner = OrbeWindow.ownerOf(e.sender) || little.LittleWindow.ownerOf(e.sender) || OrbeWindow.primary;
     return owner ? owner.handle(action, payload) : undefined;
   });
@@ -424,6 +398,7 @@ app.whenReady().then(async () => {
   };
   little.hooks.profileId = () => { const w = OrbeWindow.primary; return w ? w.space.profileId : 'default'; };
   little.hooks.spaces = () => store.state.spaces.map((sp) => ({ id: sp.id, name: sp.name, icon: sp.icon }));
+  library.env.window = (sender) => (sender && OrbeWindow.ownerOf(sender)) || OrbeWindow.focused || OrbeWindow.primary;
   sessions.hooks.ownerWindow = (wc) => { const o = wc && OrbeWindow.ownerOf(wc); return o ? o.win : null; };
   sessions.hooks.onDownload = (phase, d, wc) => {
     win.noteDownload(phase, d, wc);
