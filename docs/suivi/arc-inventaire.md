@@ -178,9 +178,9 @@ Règle appliquée pour ✅ : le code existe **et** un test nommé le couvre. Du 
 | BL-129 | Dossier : Delete | HC 19228419623447 | ✅ | self « dossier supprimé » | |
 | BL-130 | Dossier : Duplicate, Change Icon, Copy All Links, Copy All Links as Markdown, New Nested Folder, Paste URL as New Tab, Close This Folder | HC 20498377604887 ; binaire | ✅ | W:folderMenuTemplate | Tout y est, « Changer l’icône… » compris (voir BL-75) ; self lat (12 vérifications), self fin ; ui 23, ui 28 |
 | BL-131 | Espace : Rename, Edit Theme Color, Change Space Icon, Profile, Delete | HC 19228534606743 ; binaire | ✅ | W:spaceMenu (renommer, thème, supprimer) ; aucun test du menu | Renommer, thème, icône (ouvre l’éditeur de thème), profil, en-tête, supprimer ; self lat ; ui 22 |
-| BL-132 | Espace : Show/Hide Space Header, Manage Spaces, Export | binaire | 🟡 | W:spaceMenuTemplate | En-tête affiché ou masqué (self lat, ESP-18) ; « Gérer les Espaces… » ouvre la section Espaces de la Bibliothèque (self fin ; ui 28) ; « Export » reste à faire |
+| BL-132 | Espace : Show/Hide Space Header, Manage Spaces, Export | binaire | ✅ | W:spaceMenuTemplate | En-tête affiché ou masqué (self lat, ESP-18) ; « Gérer les Espaces… » (self fin ; ui 28) ; « Exporter l’Espace… » écrit un fichier de signets HTML (épinglés avec leurs dossiers, onglets du jour ; titres et adresses échappés, pages d’Orbe écartées), que l’import d’Orbe relit ; self fin2 (5 vérifications) ; ui 29 « clic droit sur l’en-tête de l’Espace → « Exporter l’Espace… »… » |
 | BL-133 | Zone vide : thème, profil | HC 19228064149143 | ✅ | W:sidebarMenu | Thème, profil, dossiers à déplier ou replier ; self lat ; ui 22 (clic droit réel) |
-| BL-134 | Favori : Show Unread Badge, Show Hover Preview | binaire | ⬜ | | |
+| BL-134 | Favori : Show Unread Badge, Show Hover Preview | binaire | 🟡 | | « Afficher la pastille de notification » : case du menu d’un favori, par favori (self fin2, 3 vérifications ; ui 29 « favori : la pastille montre le nombre… »). « Show Hover Preview » : pas d’aperçu au survol des favoris dans Orbe, donc pas de case |
 
 ## CMD — Barre de commande
 
@@ -272,7 +272,7 @@ Actions de la barre de commande relevées dans Arc (libellés du binaire et du c
 | ESP-21 | Attribuer un profil à un Espace | menu « Change Profile » | ✅ | self « nouveau profil attribué à l'Espace » | |
 | ESP-22 | File → New Profile | menu | ✅ | M | |
 | ESP-23 | Supprimer un profil seulement s'il n'est lié à aucun Espace ; le profil par défaut ne se supprime pas | binaire | ✅ | Réglages ; self « les réglages listent les profils » | self « profils : renommer ; supprimer seulement si aucun Espace ne l’utilise… » (tests/reglages.js) |
-| ESP-24 | Pastille de profil dans les menus | binaire « profile indicator » | ⬜ | | |
+| ESP-24 | Pastille de profil dans les menus | binaire « profile indicator » | ✅ | | Dès qu’il existe plusieurs profils, le nom d’un Espace dans un menu (« Déplacer vers », menu Espaces) est suivi du nom de son profil (W:spaceLabel) ; self fin2 (3 vérifications) ; ui 29 « plusieurs profils : « Déplacer vers » rappelle le profil… ». Le libellé « profile indicator » du binaire d’Arc ne dit pas où Arc l’affiche |
 
 ## ONG — Vie des onglets
 

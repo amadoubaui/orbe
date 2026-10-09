@@ -20,6 +20,7 @@ module.exports = async function finitions2Tests(ctx) {
   const T = (k, v) => store.t(k, null, v);
   const dead = (n) => `http://127.0.0.1:9/fin2-${n}`;
   const mine = (x) => String(x.url || '').startsWith(dead(''));
+  const walkTabs = function* walkTabs(sp) { const go = function* go(nodes) { for (const n of nodes) { if (n.type === 'folder') yield* go(n.children); else yield n.id; } }; yield* go(sp.pinned); yield* sp.today; };
 
   await until(() => ui('typeof S === "object" && S !== null'), 'coque chargée');
   const home = w.spaceId;
@@ -296,6 +297,107 @@ module.exports = async function finitions2Tests(ctx) {
     w.changed();
     await until(() => ui('document.getElementById("dls").hidden && document.querySelectorAll("#dls .dl").length === 0'), 'ligne retirée');
     check('téléchargement terminé : la ligne s’en va', true);
+  }
+
+  // --- Profil rappelé dans les menus (ESP-24) ---------------------------------------------------
+  {
+    const other = store.makeSpace('Travail <b>', '💼', '#f59e0b');
+    d.spaces.push(other);
+    const profiles0 = d.profiles.slice();
+    const labelsOf = () => { const m = w.tabMenuTemplate(B).find((x) => x.label === T('tabs.moveTo')); return m ? m.submenu.map((x) => x.label) : []; };
+    d.profiles.length = 1;
+    const single = win.spaceLabel(other, d);
+    check('un seul profil : le nom d’un Espace dans un menu ne dit rien du profil', single === '💼 Travail <b>' && labelsOf().includes(single), single);
+    d.profiles.splice(0, d.profiles.length, ...profiles0);
+    const pro = { id: 'fin2-pro', name: 'Bureau' };
+    d.profiles.push(pro);
+    d.favs[pro.id] = [];
+    other.profileId = pro.id;
+    check('plusieurs profils : le profil de l’Espace est rappelé à la suite de son nom (« Déplacer vers », menu Espaces)',
+      win.spaceLabel(other, d) === '💼 Travail <b>  ·  Bureau' && labelsOf().includes('💼 Travail <b>  ·  Bureau') && win.spaceLabel(other, d, '  ') === '💼  Travail <b>  ·  Bureau'
+      && win.spaceLabel({ icon: 'x', name: 'y', profileId: 'inconnu' }, d) === 'x y', JSON.stringify(labelsOf()));
+    w.selection = [B, C];
+    const many = w.tabsMenuTemplate([B, C]).find((x) => x.label === T('tabs.moveTo'));
+    check('… aussi dans le menu d’une sélection', !!many && many.submenu.some((x) => x.label === '💼 Travail <b>  ·  Bureau'));
+    w.selection = [];
+    d.profiles.splice(d.profiles.indexOf(pro), 1);
+    delete d.favs[pro.id];
+    d.spaces.splice(d.spaces.indexOf(other), 1);
+    w.changed();
+  }
+
+  // --- Pastille de notification d'un favori (BL-134) ---------------------------------------------
+  {
+    const full = w.favorites.length >= 12;
+    if (full) outils.ignorer('favori : « Afficher la pastille de notification » la coupe pour ce site', 'grille des favoris pleine dans ce profil');
+    else {
+      w.activate(A);
+      w.toggleFavorite(A);
+      d.tabs[A].title = '(3) Boîte';
+      w.changed();
+      const badge = () => ui(`(() => { const el = document.querySelector('#fav [data-id=${JSON.stringify(A)}] .count'); return el && !el.hidden ? el.textContent : ''; })()`);
+      await until(async () => (await badge()) === '3', 'pastille du favori');
+      const item = () => w.tabMenuTemplate(A).find((x) => x.label === T('tabs.showBadge'));
+      check('menu d’un favori : « Afficher la pastille de notification », cochée ; absente du menu d’un onglet ordinaire', !!item() && item().type === 'checkbox' && item().checked === true && item().visible === true
+        && w.tabMenuTemplate(B).find((x) => x.label === T('tabs.showBadge')).visible === false);
+      item().click();
+      await until(async () => (await badge()) === '', 'pastille coupée');
+      check('case décochée : la pastille de ce favori disparaît, le choix est retenu avec l’onglet', d.tabs[A].noBadge === true && item().checked === false);
+      item().click();
+      await until(async () => (await badge()) === '3', 'pastille revenue');
+      check('case recochée : la pastille revient', !('noBadge' in d.tabs[A]));
+      d.tabs[A].title = 'A';
+      w.toggleFavorite(A);
+      w.changed();
+    }
+  }
+
+  // --- Exporter un Espace (BL-132) -----------------------------------------------------------------
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const os = require('os');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orbe-export-'));
+    const file = path.join(dir, 'espace.html');
+    const save0 = win.hooks.saveFile;
+    let asked = null;
+    win.hooks.saveFile = async (parent, options) => { asked = options; return file; };
+    const evil = w.createTab('https://exemple.test/fin2-x?a="1"&b=<2>', { space, index: 0 });
+    evil.title = '<script>alert(1)</script> & "co"';
+    const inner = w.createTab('orbe://app/shortcuts.html', { space, index: 0 });
+    inner.internal = true;
+    const pinnedTab = w.createTab('https://exemple.test/fin2-epingle', { space, index: 0 });
+    pinnedTab.title = 'Épinglé';
+    space.today.splice(space.today.indexOf(pinnedTab.id), 1);
+    const exportFolder = { type: 'folder', id: 'fin2-export', name: 'Lot & Cie', open: true, children: [{ type: 'tab', id: pinnedTab.id }] };
+    space.pinned.unshift(exportFolder);
+    check('menu de l’Espace : « Exporter l’Espace… »', w.spaceMenuTemplate().some((x) => x.label === T('spaces.export') && x.visible !== false));
+    const toasts = [];
+    const toast0 = w.toast;
+    w.toast = (text) => { toasts.push(text); };
+    const out = await w.spaceMenuTemplate().find((x) => x.label === T('spaces.export')).click();
+    await until(() => fs.existsSync(file), 'fichier exporté');
+    const html = fs.readFileSync(file, 'utf8');
+    const webCount = [...walkTabs(space)].filter((id) => /^https?:/i.test(d.tabs[id].homeUrl || d.tabs[id].url)).length;
+    check('export : un fichier de signets au nom de l’Espace est proposé, avec ses dossiers et « Aujourd’hui »',
+      !!asked && /Finitions 2\.html$/.test(asked.defaultPath) && html.startsWith('<!DOCTYPE NETSCAPE-Bookmark-file-1>') && html.includes('<H3>Finitions 2</H3>') && html.includes('<H3>Lot &amp; Cie</H3>') && html.includes(`<H3>${T('spaces.exportToday')}</H3>`) && html.includes('fin2-epingle">Épinglé</A>'));
+    check('export : titres et adresses échappés (aucune balise du site ne passe), pages d’Orbe écartées',
+      !html.includes('<script>') && html.includes('&lt;script&gt;alert(1)&lt;/script&gt; &amp; &quot;co&quot;') && html.includes('a=&quot;1&quot;&amp;b=&lt;2&gt;') && !html.includes('orbe://'));
+    const parsed = require('../src/main/import-bookmarks').parse(html);
+    const flat = JSON.stringify(parsed);
+    check('export : le fichier se relit par l’import de signets d’Orbe, toutes les adresses web y sont', flat.includes('fin2-epingle') && flat.includes('Lot & Cie') && (html.match(/<DT><A /g) || []).length === webCount
+      && toasts.join() === T('spaces.exported', { n: webCount }), `${(html.match(/<DT><A /g) || []).length}/${webCount} ${toasts.join()}`);
+    win.hooks.saveFile = async () => null;
+    check('export annulé : rien n’est écrit ; chemin relatif refusé ; fenêtre privée : pas d’export', (await w.exportSpace()) === null
+      && (await (async () => { win.hooks.saveFile = async () => 'relatif.html'; return w.exportSpace(); })()) === null && !fs.existsSync('relatif.html')
+      && !new Proxy(w, { get: (o, k) => (k === 'shared' ? false : o[k]) }).spaceMenuTemplate().some((x) => x.label === T('spaces.export') && x.visible !== false));
+    void out;
+    w.toast = toast0;
+    win.hooks.saveFile = save0;
+    fs.rmSync(dir, { recursive: true, force: true });
+    for (const tab of [evil, inner, pinnedTab]) { const i = space.today.indexOf(tab.id); if (i >= 0) space.today.splice(i, 1); delete d.tabs[tab.id]; }
+    space.pinned.splice(space.pinned.indexOf(exportFolder), 1);
+    w.changed();
   }
 
   // --- Remise en état ---------------------------------------------------------------------

@@ -211,6 +211,61 @@ module.exports = {
       }
     });
 
+    // --- Menus : pastille d'un favori, export d'un Espace, profil rappelé ---------------------
+    // (Un menu natif ne se pilote pas : il est relevé au moment où Orbe l'ouvre, après un vrai clic droit.)
+    await ctx.principal(({ w }) => { w.popup = (tpl) => { w.menuVu = tpl; }; });
+    const menuContextuel = async (loc) => {
+      await ctx.principal(({ w }) => { w.menuVu = null; });
+      await ctx.clic(shell, loc, { button: 'right' });
+      await jusqua(() => ctx.principal(({ w }) => !!w.menuVu), 'menu contextuel');
+    };
+    const choisir = (cle) => ctx.principal(({ w, store }, k) => { const it = w.menuVu.find((x) => x.label === store.t(k) && x.visible !== false); if (!it) throw new Error('article absent : ' + k); return it.click(); }, cle);
+
+    await t.verifier('favori : la pastille montre le nombre annoncé par le site ; « Afficher la pastille de notification » décochée la retire', async () => {
+      await ctx.clic(shell, ctx.ligne('Page A'));
+      await jusqua(async () => (await volets()).actif === 'Page A', 'Page A affichée');
+      await menuContextuel(ctx.ligne('Page A'));
+      await choisir('tabs.addFavorite');
+      const tuile = shell.locator('#fav .tile').first();
+      await jusqua(async () => (await tuile.count()) === 1, 'tuile du favori');
+      await ctx.onglet('/a').evaluate(() => { document.title = '(3) Boîte de réception'; });
+      const pastille = tuile.locator('.count');
+      await jusqua(async () => (await pastille.count()) === 1 && (await pastille.isVisible()) && (await pastille.textContent()) === '3', 'pastille « 3 »');
+      await menuContextuel(tuile);
+      assert.equal(await ctx.principal(({ w, store }) => w.menuVu.find((x) => x.label === store.t('tabs.showBadge')).checked), true);
+      await choisir('tabs.showBadge');
+      await jusqua(async () => !(await pastille.isVisible()), 'pastille retirée');
+      await menuContextuel(tuile);
+      assert.equal(await ctx.principal(({ w, store }) => w.menuVu.find((x) => x.label === store.t('tabs.showBadge')).checked), false);
+      await choisir('tabs.removeFavorite');
+      await jusqua(async () => (await shell.locator('#fav .tile').count()) === 0, 'favori retiré');
+      await ctx.onglet('/a').evaluate(() => { document.title = 'Page A'; });
+      await jusqua(async () => (await ctx.titres()).includes('Page A'), 'titre rétabli');
+    });
+
+    await t.verifier('clic droit sur l’en-tête de l’Espace → « Exporter l’Espace… » : un fichier de signets est écrit, avec les onglets', async () => {
+      const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'orbe-ui-export-'));
+      const fichier = path.join(dossier, 'espace.html');
+      try {
+        await ctx.principal(({ win }, f) => { win.hooks.saveFile0 = win.hooks.saveFile; win.hooks.saveFile = async () => f; }, fichier);
+        await menuContextuel(shell.locator('#space-head'));
+        await choisir('spaces.export');
+        await jusqua(() => fs.existsSync(fichier), 'fichier écrit');
+        const html = fs.readFileSync(fichier, 'utf8');
+        assert.ok(html.includes(`<A HREF="${ctx.url('/b')}">Page B</A>`) && html.includes(`<A HREF="${ctx.url('/d')}">Page D</A>`) && html.includes('<H3>Fermé</H3>'), html);
+      } finally {
+        await ctx.principal(({ win }) => { win.hooks.saveFile = win.hooks.saveFile0; });
+        try { fs.rmSync(dossier, { recursive: true, force: true }); } catch {}
+      }
+    });
+
+    await t.verifier('plusieurs profils : « Déplacer vers » rappelle le profil de chaque Espace', async () => {
+      await ctx.principal(({ w, store }) => { const sp = store.makeSpace('Travail', '💼', '#f59e0b'); w.data.profiles.push({ id: 'pro', name: 'Bureau' }); w.data.favs.pro = []; sp.profileId = 'pro'; w.data.spaces.push(sp); w.changed(); });
+      await menuContextuel(ctx.ligne('Page B'));
+      const noms = await ctx.principal(({ w, store }) => w.menuVu.find((x) => x.label === store.t('tabs.moveTo')).submenu.map((x) => x.label));
+      assert.ok(noms.includes('💼 Travail  ·  Bureau'), JSON.stringify(noms));
+    });
+
     // --- Échap en plein écran -------------------------------------------------------------
     const plein = () => ctx.principal(({ w }) => w.win.isFullScreen());
     await ctx.menu('Ctrl+Cmd+F');

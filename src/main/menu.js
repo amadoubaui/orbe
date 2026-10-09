@@ -183,7 +183,7 @@ function build() {
         sep, item('nextSpace'), item('prevSpace'),
         sep,
         ...spaces.map((sp, i) => ({
-          label: `${sp.icon}  ${sp.name}`,
+          label: require('./window').spaceLabel(sp, store.state, '  '),
           type: 'checkbox',
           checked: !!w && sp.id === w.spaceId,
           accelerator: i < 9 ? platform.accel(`Ctrl+${i + 1}`) : undefined,

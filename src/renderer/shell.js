@@ -87,7 +87,7 @@ function tabRow(el, it) {
 // que rien d'autre n'a touché la ligne depuis (classes posées par un geste, une
 // animation, la sélection), elle est laissée telle quelle. Comparaison champ par
 // champ, sans rien allouer : à 1 000 onglets, c'est ce passage qui coûtait.
-const ROW_FIELDS = ['title', 'url', 'favicon', 'icon', 'loading', 'audible', 'muted', 'live', 'changed', 'grouped', 'active', 'shown', 'split'];
+const ROW_FIELDS = ['title', 'url', 'favicon', 'icon', 'loading', 'audible', 'muted', 'live', 'changed', 'grouped', 'active', 'shown', 'split', 'noBadge'];
 const rowStats = { drawn: 0, kept: 0 };
 function keepRow(el, it) {
   el._vm = it;
@@ -150,7 +150,7 @@ function tileEl(el, it) {
   el.title = it.title;
   // Pastille de notification : le nombre que le site annonce en tête de son titre (« (3) Boîte de
   // réception »), tant que sa page est vivante — un titre resté d'une session passée ne dit rien.
-  const n = it.live ? (/^\((\d{1,4})\+?\)/.exec(it.title) || [])[1] || '' : '';
+  const n = it.live && !it.noBadge ? (/^\((\d{1,4})\+?\)/.exec(it.title) || [])[1] || '' : '';
   if ((el._n || '') !== n) {
     el._n = n;
     if (!el._badge) { el._badge = Object.assign(document.createElement('span'), { className: 'count' }); el.appendChild(el._badge); }

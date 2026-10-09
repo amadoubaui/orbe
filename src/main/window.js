@@ -96,6 +96,8 @@ const hooks = {
   updateNote: () => null,
   // Position du pointeur à l'écran (onglet glissé hors de la fenêtre) ; remplacée dans les essais.
   cursor: () => screen.getCursorScreenPoint(),
+  // Choix du fichier où enregistrer (export d'un Espace) ; remplacé dans les essais.
+  saveFile: async (parent, options) => { const r = await dialog.showSaveDialog(parent, options); return r.canceled ? null : r.filePath; },
   // Un arrêt d'Orbe demandé puis retenu par une page (« Rester ») : posé par main.js.
   quitAborted: () => {},
 };
@@ -106,6 +108,16 @@ const t = (key, vars) => store.t(key, null, vars);
 function resumed(saved, spaces, on) {
   if (!on) return { spaceId: spaces[0].id, activeBySpace: {} };
   return { spaceId: spaces.some((s) => s.id === saved.spaceId) ? saved.spaceId : spaces[0].id, activeBySpace: { ...(saved.activeBySpace || {}) } };
+}
+// Nom d'un Espace dans un menu. Dès qu'il existe plusieurs profils, le profil de l'Espace
+// est rappelé à la suite (pastille de profil d'Arc) : déplacer un onglet vers un Espace
+// d'un autre profil change ses cookies et ses identifiants, autant le voir avant.
+function spaceLabel(sp, data = store.state, gap = ' ') {
+  const base = `${sp.icon}${gap}${sp.name}`;
+  const profiles = (data && data.profiles) || [];
+  if (profiles.length < 2) return base;
+  const p = profiles.find((x) => x.id === sp.profileId);
+  return p && p.name ? `${base}  ·  ${p.name}` : base;
 }
 const isInternal = (url) => (url || '').startsWith(INTERNAL);
 const isErrorPage = (url) => (url || '').startsWith(INTERNAL + 'error.html');
@@ -4148,12 +4160,14 @@ class OrbeWindow {
       { type: 'separator' },
       { label: t(pinned ? 'tabs.unpin' : 'tabs.pin'), visible: !fav, click: () => this.togglePin(id) },
       { label: t(fav ? 'tabs.removeFavorite' : 'tabs.addFavorite'), visible: this.shared, click: () => this.toggleFavorite(id) },
+      // Favori : la pastille du nombre annoncé par le site (« (3) Boîte de réception ») se coupe site par site.
+      { label: t('tabs.showBadge'), type: 'checkbox', checked: !tab.noBadge, visible: fav, click: () => { if (tab.noBadge) delete tab.noBadge; else tab.noBadge = true; this.changed(); } },
       { label: t('tabs.openSplit'), enabled: !!this.activeId && this.activeId !== id, click: () => this.splitWith(this.activeId, id) },
       { label: t('tabs.separateAll'), visible: !!this.groupOf(id), click: () => this.separateAll(id) },
       { label: t(tab.muted ? 'tabs.unmute' : 'tabs.mute'), click: () => this.toggleMute(id) },
     ];
     // « Déplacer vers » : les autres Espaces, puis les dossiers de celui-ci (sauf le sien).
-    const dest = fav ? [] : others.map((s) => ({ label: `${s.icon} ${s.name}`, click: () => this.moveToSpace(id, s.id) }));
+    const dest = fav ? [] : others.map((s) => ({ label: spaceLabel(s, this.data), click: () => this.moveToSpace(id, s.id) }));
     const folders = [];
     const each = (nodes, trail) => {
       for (const n of nodes) {
@@ -4209,7 +4223,7 @@ class OrbeWindow {
       { label: t('tabs.folderFromSelection'), click: () => this.folderFromSelection(ids) },
     ];
     if (others.length && !lists.includes('favorites')) {
-      tpl.push({ label: t('tabs.moveTo'), submenu: others.map((s) => ({ label: `${s.icon} ${s.name}`, click: () => this.moveManyToSpace(ids, s.id) })) });
+      tpl.push({ label: t('tabs.moveTo'), submenu: others.map((s) => ({ label: spaceLabel(s, this.data), click: () => this.moveManyToSpace(ids, s.id) })) });
     }
     tpl.push({ type: 'separator' }, { label: t('tabs.closeMany', { n }), click: () => this.closeMany(ids) });
     return tpl;
@@ -4263,12 +4277,50 @@ class OrbeWindow {
       { label: t(this.space.hideHeader ? 'spaces.showHeader' : 'spaces.hideHeader'), click: () => this.toggleSpaceHeader() },
       { label: t('spaces.toFolder'), visible: this.shared, enabled: this.data.spaces.length > 1, click: () => this.turnSpaceIntoFolder() },
       { label: t('spaces.manage'), visible: this.shared, click: () => this.run('manageSpaces') },
+      { label: t('spaces.export'), visible: this.shared, click: () => this.exportSpace() },
       { type: 'separator' },
       { label: t('tabs.newFolder'), click: () => this.newFolder() },
       { label: t('spaces.new'), enabled: this.shared, click: () => this.newSpace() },
       { type: 'separator' },
       { label: t('spaces.delete'), enabled: this.data.spaces.length > 1, click: () => this.deleteSpace() },
     ];
+  }
+
+  // « Exporter l'Espace… » : ses épinglés (avec leurs dossiers) et ses onglets du jour, dans
+  // un fichier de signets (format HTML que tous les navigateurs, et Orbe, savent importer).
+  // Seules les adresses web sortent ; titres et adresses sont échappés.
+  spaceExportHtml(space = this.space) {
+    const escHtml = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    let count = 0;
+    const link = (id, pad) => {
+      const tab = this.data.tabs[id];
+      const url = tab && webUrl(tab.homeUrl || tab.url) ? (tab.homeUrl || tab.url) : '';
+      if (!url) return '';
+      count += 1;
+      return `${pad}<DT><A HREF="${escHtml(url)}">${escHtml(tab.customTitle || tab.title || url)}</A>\n`;
+    };
+    const folder = (name, body, pad) => `${pad}<DT><H3>${escHtml(name)}</H3>\n${pad}<DL><p>\n${body}${pad}</DL><p>\n`;
+    const walkNodes = (nodes, pad) => nodes.map((n) => (n.type === 'folder' ? folder(n.name, walkNodes(n.children || [], pad + '    '), pad) : link(n.id, pad))).join('');
+    const pad = '        ';
+    const body = walkNodes(space.pinned || [], pad) + folder(t('spaces.exportToday'), (space.today || []).map((id) => link(id, pad + '    ')).join(''), pad);
+    const html = '<!DOCTYPE NETSCAPE-Bookmark-file-1>\n<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">\n<TITLE>Bookmarks</TITLE>\n<H1>Bookmarks</H1>\n<DL><p>\n'
+      + folder(space.name, body, '    ') + '</DL><p>\n';
+    return { html, count };
+  }
+
+  async exportSpace(space = this.space) {
+    if (!this.shared) return null;
+    const name = String(space.name || 'Espace').replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ').trim().slice(0, 80) || 'Espace';
+    const file = await hooks.saveFile(this.win, { title: t('spaces.export'), defaultPath: path.join(app.getPath('documents'), `${name}.html`), filters: [{ name: 'HTML', extensions: ['html'] }] });
+    if (!file || typeof file !== 'string' || !path.isAbsolute(file)) return null;
+    const { html, count } = this.spaceExportHtml(space);
+    try { fs.writeFileSync(file, html); } catch (err) {
+      console.error('[orbe] export de l’Espace', err.message);
+      this.toast(t('spaces.exportFailed'), 'error');
+      return null;
+    }
+    this.toast(t('spaces.exported', { n: count }));
+    return { file, count };
   }
 
   spaceMenu(id) {
@@ -4432,6 +4484,7 @@ class OrbeWindow {
         // premier onglet, qui porte les icônes et les titres des autres.
         partners: g && g[0] === id ? g.slice(1).filter((x) => d.tabs[x]).map((x) => ({ id: x, title: d.tabs[x].customTitle || d.tabs[x].title || suggest.strip(d.tabs[x].url), favicon: d.tabs[x].favicon, ...(d.tabs[x].icon ? { icon: d.tabs[x].icon } : null), url: d.tabs[x].url })) : null,
         grouped: !!g && g[0] !== id,
+        noBadge: tab.noBadge === true,
         active: g && g[0] === id ? g.includes(activeId) : id === activeId,
         shown: false,
       };
@@ -4712,4 +4765,4 @@ function archiveStale() {
   if (count) { store.save(); for (const w of windows.values()) w.layout(); OrbeWindow.pushAll(); }
 }
 
-module.exports = { PEEK_PULL, OrbeWindow, windows, live, media, STATUS, trusted, hooks, lostAfterStay: () => lastLost, applyBoosts, cleanUrl, mdLink, isMeetingUrl, SPLIT_BAR, archiveStale, tabMemory, tabProcesses, processMb, lastSweep: () => lastSweep, noteDownload, uiRetryDelay, UI_PREFS, STATUS_MAX, ICON_MAX, thumbs: { keep: keepThumb, MAX: THUMBS }, INTERNAL, UI_PRELOAD, isInternal, MOTION, motion, place, forceMotion, motionStats: stats, boundsOf, inFlight, resumed };
+module.exports = { spaceLabel, PEEK_PULL, OrbeWindow, windows, live, media, STATUS, trusted, hooks, lostAfterStay: () => lastLost, applyBoosts, cleanUrl, mdLink, isMeetingUrl, SPLIT_BAR, archiveStale, tabMemory, tabProcesses, processMb, lastSweep: () => lastSweep, noteDownload, uiRetryDelay, UI_PREFS, STATUS_MAX, ICON_MAX, thumbs: { keep: keepThumb, MAX: THUMBS }, INTERNAL, UI_PRELOAD, isInternal, MOTION, motion, place, forceMotion, motionStats: stats, boundsOf, inFlight, resumed };
