@@ -58,6 +58,7 @@
     el.append(open, ctl, play, x, bar);
     el._ = { art, title, inner, sub, prev, back, fwd, next, mute, play, bar, fill };
     scrub(el, bar);
+    volume(el, mute);
     return el;
   }
 
@@ -98,6 +99,53 @@
     };
     bar.addEventListener('pointerup', end);
     bar.addEventListener('pointercancel', end);
+  }
+
+  // Volume : défiler sur le haut-parleur, ou le tirer vers le haut ou le bas. Un
+  // clic sans mouvement coupe le son, comme avant. Le niveau se lit sous l'icône.
+  function volume(el, btn) {
+    let drag = null;
+    let sent = 0;
+    let later = null;
+    const set = (v) => {
+      v = Math.round(Math.max(0, Math.min(1, v)) * 100) / 100;
+      if (!el._p || v === el._vol) return;
+      level(el, v);
+      el._volAt = performance.now(); // l'état reçu d'ici là ne ramène pas l'ancien niveau
+      clearTimeout(later);
+      const go = () => { sent = performance.now(); act(el.dataset.id, 'volume', el._vol); };
+      if (performance.now() - sent > 60) go(); else later = setTimeout(go, 60);
+    };
+    btn.addEventListener('wheel', (e) => {
+      if (!e.deltaY) return;
+      e.preventDefault();
+      set((el._vol == null ? 1 : el._vol) - Math.max(-0.12, Math.min(0.12, e.deltaY / 500)));
+    }, { passive: false });
+    btn.addEventListener('pointerdown', (e) => { if (e.button === 0) { drag = { y: e.clientY, v: el._vol == null ? 1 : el._vol, moved: false }; btn.setPointerCapture(e.pointerId); } });
+    btn.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      const dy = drag.y - e.clientY;
+      if (!drag.moved && Math.abs(dy) < 4) return;
+      drag.moved = true;
+      el.classList.add('vol');
+      set(drag.v + dy / 70);
+    });
+    const end = () => {
+      if (!drag) return;
+      const moved = drag.moved;
+      drag = null;
+      el.classList.remove('vol');
+      // Le relâchement d'un glisser n'est pas un clic : le son n'est pas coupé.
+      if (moved) btn.addEventListener('click', (e) => { e.stopImmediatePropagation(); e.preventDefault(); }, { capture: true, once: true });
+    };
+    btn.addEventListener('pointerup', end);
+    btn.addEventListener('pointercancel', end);
+  }
+  function level(el, v) {
+    el._vol = v;
+    el._.mute.style.setProperty('--vol', String(v));
+    el._.mute.classList.toggle('low', v < 1);
+    el._.mute.dataset.vol = String(Math.round(v * 100));
   }
 
   function show(el, v) {
@@ -167,12 +215,14 @@
       _.play.firstChild.firstChild.setAttribute('href', p.playing ? '#i-pause' : '#i-play');
       _.play.title = t(p.playing ? 'media.pause' : 'media.play');
       _.mute.firstChild.firstChild.setAttribute('href', p.muted ? '#i-mute' : '#i-sound');
-      _.mute.title = t(p.muted ? 'media.unmute' : 'media.mute');
+      _.mute.title = t(p.muted ? 'media.unmute' : 'media.mute') + ' — ' + t('media.volume');
       _.prev.hidden = !p.prev;
       _.next.hidden = !p.next;
       _.back.hidden = !p.seek;
       _.fwd.hidden = !p.seek;
     }
+    // Volume annoncé par la page — sauf pendant qu'on le règle ici (l'écho arrive après).
+    if (el._vol !== p.volume && !(el._volAt && performance.now() - el._volAt < 1500)) level(el, typeof p.volume === 'number' ? p.volume : 1);
     progress(el, p);
   }
 
