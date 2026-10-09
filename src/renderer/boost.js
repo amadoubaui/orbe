@@ -26,13 +26,14 @@ function options(sel, prefix, keys) {
   }
 }
 
-function draw(b) {
+// `force` : les champs sont récrits même si l'on est en train d'y écrire (« Tout réinitialiser »).
+function draw(b, force) {
   if (!b) return;
   B = b;
   $('editor').hidden = false;
   $('host').textContent = 'Boost · ' + b.host;
   document.title = 'Boost · ' + b.host;
-  const typing = document.activeElement;
+  const typing = force ? null : document.activeElement;
   if (typing !== $('name')) $('name').value = b.name;
   if (typing !== $('css')) $('css').value = b.css;
   if (typing !== $('js')) $('js').value = b.js;
@@ -179,7 +180,7 @@ if (LIST) {
   $('zap').onclick = async () => draw(await O.send('boost:zap'));
   $('reload').onclick = async () => draw(await O.send('boost:reload'));
   $('js-settings').onclick = () => O.send('boost:settings');
-  $('reset').onclick = async () => draw(await O.send('boost:reset'));
+  $('reset').onclick = async () => { for (const k of Object.keys(timers)) clearTimeout(timers[k]); draw(await O.send('boost:reset'), true); };
   $('export').onclick = () => O.send('boost:export');
   $('all').onclick = () => O.send('boost:showList');
   O.send('boost:get').then(draw);

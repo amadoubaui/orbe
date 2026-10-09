@@ -825,7 +825,7 @@ Arc : `menu` pour ceux de la barre de menus, sinon la source indiquée. Orbe : `
 | DIV-13 | Menu de page, lien : ouvrir dans un nouvel onglet, en vue scindée, en aperçu, dans Little Arc, copier | slashgear ; binaire « Open in Background Tab », « Open in Split View » | ✅ | self « menu de page, lien… » (cinq vérifications : contenu, nouvel onglet en arrière-plan, vue scindée, aperçu, petite fenêtre) | |
 | DIV-14 | Menu de page, sélection : chercher, « Share Quote » | HC 20498293324823 ; binaire « Search With Google » | ✅ | copier, rechercher, « Copier la sélection en citation » (équivalent de Share Quote) ; self « menu de page, sélection… », « Copier la sélection en citation… » | |
 | DIV-15 | Menu de page, image : ouvrir, copier, enregistrer | non vérifié (Chromium) | ✅ | self « menu de page, image : ouvrir, copier, copier l’adresse, enregistrer » (contenu du menu ; les actions elles-mêmes sont celles de Chromium) | |
-| DIV-16 | Menu de page, vidéo : image dans l'image | HC 19234766331799 | 🟡 | « Image dans l’image » au menu d’une vidéo (la détache, une seconde fois la ramène) ; self « menu d’une vidéo… » : contenu du menu vérifié, lecture réelle ignorée écran verrouillé | À confirmer par un essai écran vivant |
+| DIV-16 | Menu de page, vidéo : image dans l'image | HC 19234766331799 | ✅ | « Image dans l’image » au menu d’une vidéo : la détache, une seconde fois la ramène ; self « menu d’une vidéo… » (lecture réelle vérifiée en intégration sur macOS et Windows ; ignorée écran verrouillé) | |
 | DIV-17 | Menu de page : traduire, « Customize Page » (Boost) | HC 25626093607703 ; binaire | ✅ | « Modifier le Boost de ce site… » et « Traduire la page » (page traduite par Google dans un nouvel onglet, sur un clic) ; self « menu de page, page… », « Traduire la page… » | |
 | DIV-18 | Menu de page : Inspecter | non vérifié | ✅ | « Inspecter » en dernier article de chaque menu de page ; self (cinq menus vérifiés) | |
 | DIV-19 | Boîte « quitter la page ? » (`beforeunload`) | non vérifié (Chromium) | ✅ | question « Quitter la page ? » à la navigation, à la fermeture de l’onglet, de plusieurs onglets et de la fenêtre (unload.js) ; self « fermer l’onglet puis « Rester » : l’onglet revient… », « archiver plusieurs onglets : une question par page… », « fermer la fenêtre puis « Rester »… » ; ui « page modifiée au clavier… » | Aperçu fermé sans question |
@@ -912,7 +912,7 @@ Arc : `menu` pour ceux de la barre de menus, sinon la source indiquée. Orbe : `
 | Menus (MEN) | 68 | 8 | 15 | 5 | 96 |
 | Raccourcis (RAC) | 39 | 3 | 4 | 2 | 48 |
 | Import et accueil (IMP) | 2 | 4 | 8 | 0 | 14 |
-| Divers (DIV) | 22 | 4 | 2 | 4 | 32 |
+| Divers (DIV) | 23 | 3 | 2 | 4 | 32 |
 
 Lecture : un 🟡 recouvre deux cas, que les colonnes « Preuve Orbe » et « Note » distinguent : du code présent mais sans test (un test suffit à le passer en ✅), ou une fonction réellement incomplète. La part de chacun n'a pas été comptée.
 

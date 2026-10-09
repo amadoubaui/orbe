@@ -486,7 +486,14 @@ module.exports = async function fenetresTests(ctx) {
     await ed(`document.getElementById('reset').click()`);
     await until(() => !boosts.has(host), 'Boost réinitialisé');
     await until(async () => (await js('getComputedStyle(document.body).backgroundColor')) === 'rgba(0, 0, 0, 0)', 'page rendue à elle-même');
-    check('« Tout réinitialiser » : le Boost du site disparaît, la page retrouve son aspect', await ed(`document.getElementById('name').value === '' && document.getElementById('css').value === ''`));
+    // (La page est rendue à elle-même avant que l'éditeur ait reçu la réponse : on attend ses champs.)
+    await until(() => ed(`document.getElementById('name').value === '' && document.getElementById('css').value === '' && document.getElementById('size').value === '100'`), 'champs de l’éditeur vidés');
+    check('« Tout réinitialiser » : le Boost du site disparaît, la page retrouve son aspect', !boosts.has(host));
+    // En pleine saisie aussi : le champ où l'on écrit est vidé, et la frappe en attente n'est pas enregistrée après coup.
+    await ed(`(() => { const c = document.getElementById('css'); c.focus(); c.value = 'p { color: red }'; c.dispatchEvent(new Event('input', { bubbles: true })); document.getElementById('reset').click(); })()`);
+    await until(() => ed(`document.getElementById('css').value === ''`), 'champ en cours de saisie vidé');
+    await sleep(500);
+    check('« Tout réinitialiser » pendant une saisie : le champ est vidé, rien n’est enregistré après coup', !boosts.has(host) && await ed(`document.getElementById('css').value`) === '');
     bw.close();
     boosts.remove('exemple.org');
     set({ boostsJs: false });
