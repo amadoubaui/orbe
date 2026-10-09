@@ -443,12 +443,13 @@ module.exports = async function lateraleTests(ctx) {
 
   // --- Fenêtre à l'arrière-plan : la barre s'estompe -----------------------------
   const focused = w.win.isFocused;
+  // L'événement de la fenêtre lui-même, avec la réponse du système simulée.
   w.win.isFocused = () => false;
-  OrbeWindow.pushAll();
+  w.win.emit('blur');
   await until(() => ui('document.body.classList.contains("blurred") && getComputedStyle(document.getElementById("top")).opacity === "0.7"'), 'barre estompée');
   check('fenêtre à l’arrière-plan : le contenu de la barre s’estompe', true);
   w.win.isFocused = () => true;
-  OrbeWindow.pushAll();
+  w.win.emit('focus');
   await until(() => ui('!document.body.classList.contains("blurred") && getComputedStyle(document.getElementById("top")).opacity === "1"'), 'barre nette');
   check('… et revient quand la fenêtre repasse au premier plan', true);
   delete w.win.isFocused;
@@ -543,14 +544,18 @@ module.exports = async function lateraleTests(ctx) {
   // Un onglet qui joue un média n'est ni effacé ni archivé.
   const son = await load('/son', 'Son');
   await wcOf(son).executeJavaScript('start()', true);
-  await until(() => wcOf(son).isCurrentlyAudible(), 'onglet audible');
-  w.activate(pastedTab);
-  const quiet = space.today.filter((id) => id !== pastedTab && id !== son);
-  w.run('clearToday');
-  check('« Effacer » épargne l’onglet qui joue un média (et l’onglet affiché)', !!d.tabs[son] && !!d.tabs[pastedTab] && quiet.length > 0 && quiet.every((id) => !d.tabs[id]) && space.today.join() === [son, pastedTab].join());
-  d.tabs[son].lastActiveAt = Date.now() - 40 * 36e5;
-  win.archiveStale();
-  check('… et l’archivage automatique aussi', !!d.tabs[son] && wcOf(son).isCurrentlyAudible());
+  // Session verrouillée : le système ne joue aucun son, rien à vérifier ici.
+  const audible = await until(() => wcOf(son).isCurrentlyAudible(), 'onglet audible', 8000).then(() => true, () => false);
+  if (!audible) console.log('  – ignoré : onglet qui joue un média (session verrouillée : aucun son n’est joué)');
+  else {
+    w.activate(pastedTab);
+    const quiet = space.today.filter((id) => id !== pastedTab && id !== son);
+    w.run('clearToday');
+    check('« Effacer » épargne l’onglet qui joue un média (et l’onglet affiché)', !!d.tabs[son] && !!d.tabs[pastedTab] && quiet.length > 0 && quiet.every((id) => !d.tabs[id]) && space.today.join() === [son, pastedTab].join());
+    d.tabs[son].lastActiveAt = Date.now() - 40 * 36e5;
+    win.archiveStale();
+    check('… et l’archivage automatique aussi', !!d.tabs[son] && wcOf(son).isCurrentlyAudible());
+  }
   store.state.settings.archiveAfterHours = hours0;
   w.close(son);
   w.undoStack.length = 0;

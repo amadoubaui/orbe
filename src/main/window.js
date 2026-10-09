@@ -245,7 +245,15 @@ class OrbeWindow {
     this.win.on('closed', () => this.dispose());
     for (const ev of ['resized', 'moved']) this.win.on(ev, () => this.remember());
     // La barre latérale s'estompe quand la fenêtre n'est plus au premier plan.
-    for (const ev of ['focus', 'blur']) this.win.on(ev, () => OrbeWindow.pushAll());
+    // Seule cette fenêtre est prévenue, un instant plus tard, et jamais pendant
+    // sa fermeture (qui lui fait aussi perdre le premier plan).
+    for (const ev of ['focus', 'blur']) {
+      this.win.on(ev, () => {
+        if (this.closing) return;
+        clearTimeout(this.focusTimer);
+        this.focusTimer = setTimeout(() => { if (!this.closing && !this.win.isDestroyed()) this.sendState(); }, 60);
+      });
+    }
 
     this.syncPeekTimer();
     // La fenêtre paraît sans attendre la barre latérale (60 à 100 ms gagnées).
@@ -616,6 +624,7 @@ class OrbeWindow {
   dispose() {
     clearInterval(this.peekTimer);
     clearTimeout(this.toastTimer);
+    clearTimeout(this.focusTimer);
     windows.delete(this.id);
     for (const [id, rt] of [...live]) if (rt.owner === this) OrbeWindow.destroyView(id);
     this.closePeek({ animate: false });
