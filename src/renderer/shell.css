@@ -108,7 +108,10 @@ body.fullscreen #top { padding-left: 0; }
 #capture-note { color: #dc2626; animation: capture-pulse 1.6s ease-in-out infinite; }
 @keyframes capture-pulse { 50% { opacity: 0.55; } }
 .row .act.cap { color: #dc2626; }
-.row.capturing .act.cap { display: grid; }
+.row.capturing .act.cap { display: grid; animation: capture-pulse 1.6s ease-in-out infinite; }
+/* Onglet dont l'écran est partagé : surligné en jaune, comme dans Arc. */
+.row.tab.sharing { box-shadow: inset 0 0 0 1.5px #facc15; background: color-mix(in srgb, #facc15 16%, transparent); }
+.row.tab.sharing.active { background: color-mix(in srgb, #facc15 16%, var(--active)); }
 #shield:hover { color: var(--fg); }
 #shield:active { transform: scale(0.94); transition: transform var(--press); }
 #shield.on { color: var(--accent-text, color-mix(in srgb, var(--accent) 55%, var(--fg))); }
@@ -214,6 +217,14 @@ body.dragging #fav:empty { min-height: 40px; border: 1.5px dashed var(--line); b
 .tile:not(.live) .favicon { opacity: 0.85; }
 .tile .dot { position: absolute; bottom: 5px; width: 4px; height: 4px; border-radius: 2px; background: var(--accent); opacity: 0; }
 .tile.audible .dot { opacity: 1; }
+/* Favori qui joue du son : le point devient trois barres qui dansent (transformation seule). */
+.tile .dot i { display: none; }
+.tile.audible .dot { width: 11px; height: 8px; bottom: 3px; border-radius: 0; background: none; display: flex; align-items: flex-end; justify-content: space-between; }
+.tile.audible .dot i { display: block; width: 3px; height: 8px; border-radius: 1.5px; background: var(--accent); transform-origin: center bottom; animation: tile-notes 900ms ease-in-out infinite; }
+.tile.audible .dot i:nth-child(2) { animation-delay: -300ms; }
+.tile.audible .dot i:nth-child(3) { animation-delay: -600ms; }
+@keyframes tile-notes { 0%, 100% { transform: scaleY(0.35); } 50% { transform: scaleY(1); } }
+@media (prefers-reduced-motion: reduce) { .tile.audible .dot i { animation: none; transform: scaleY(0.7); } .row.capturing .act.cap { animation: none; } }
 /* Pastille de notification d'un favori : le nombre annoncé par le titre de sa page. */
 .tile .count { position: absolute; top: 3px; right: 3px; min-width: 14px; height: 14px; padding: 0 4px; box-sizing: border-box; border-radius: 7px; background: #e5484d; color: #fff; font-size: 9.5px; font-weight: 700; line-height: 14px; text-align: center; pointer-events: none; }
 .tile .count[hidden] { display: none; }

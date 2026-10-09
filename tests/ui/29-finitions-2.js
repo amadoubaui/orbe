@@ -326,6 +326,23 @@ module.exports = {
       assert.ok(zone.large > 20 && zone.region === 'drag', JSON.stringify(zone));
     });
 
+    // --- Économie de batterie ------------------------------------------------------------------
+    await t.verifier('Réglages → Onglets : « Économie de batterie », cochée par défaut ; un clic la coupe, sans que le volet ait besoin de défiler', async () => {
+      await ctx.menu('Cmd+,');
+      const r = await ctx.attendrePage('settings.html');
+      await ctx.clic(r, r.locator('#tabs [role=tab][data-pane=tabs]'));
+      const boite = r.locator('#batterySaver');
+      await jusqua(() => boite.isVisible(), 'case « Économie de batterie »');
+      assert.equal(await boite.isChecked(), true);
+      assert.equal(await r.locator('.line', { has: boite }).locator('.grow > div').first().textContent(), await ctx.texte('set.batterySaver'));
+      await jusqua(() => r.evaluate(() => { const p = document.getElementById('panes'); return p.scrollHeight - p.clientHeight <= 0; }), 'fenêtre à la hauteur du volet');
+      await ctx.clic(r, boite);
+      await jusqua(() => ctx.principal(({ store }) => store.state.settings.batterySaver === false), 'réglage coupé');
+      await ctx.clic(r, boite);
+      await jusqua(() => ctx.principal(({ store }) => store.state.settings.batterySaver === true), 'réglage rétabli');
+      await ctx.principal(({ req }) => { const win = req('panes.js').window; if (win && !win.isDestroyed()) win.close(); });
+    });
+
     // --- Échap en plein écran -------------------------------------------------------------
     const plein = () => ctx.principal(({ w }) => w.win.isFullScreen());
     await ctx.menu('Ctrl+Cmd+F');
@@ -337,12 +354,16 @@ module.exports = {
       await ctx.principal(({ w }) => w.win.setFullScreen(false));
     } else {
       await t.verifier('plein écran : un Échap ne fait rien, Échap doublé fait sortir la fenêtre du plein écran', async () => {
-        await shell.keyboard.press('Escape');
+        // La touche est envoyée par Electron à la vue de la barre (les frappes du protocole DevTools
+        // ne passent pas par le filtre des raccourcis d'Orbe).
+        const echap = () => ctx.principal(({ w }) => { for (const type of ['keyDown', 'keyUp']) w.ui.webContents.sendInputEvent({ type, keyCode: 'Escape' }); });
+        await echap();
         await ctx.sleep(700);
         assert.equal(await plein(), true, 'un seul Échap : toujours en plein écran');
-        await shell.keyboard.press('Escape');
+        assert.ok(await ctx.principal(({ w }) => w.escAt > 0), 'la touche est arrivée jusqu’à Orbe');
+        await echap();
         await ctx.sleep(80);
-        await shell.keyboard.press('Escape');
+        await echap();
         await jusqua(async () => !(await plein()), 'sortie du plein écran', 6000);
       });
     }

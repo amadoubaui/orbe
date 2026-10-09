@@ -11,8 +11,9 @@ module.exports = {
       effacer: document.getElementById('b-clear').textContent,
       adresse: document.getElementById('url-text').textContent,
       accueil: document.querySelector('#empty p').textContent,
-      bouton: document.getElementById('b-sidebar').title,
-      retour: document.getElementById('b-back').title,
+      // Boutons à infobulle maison : leur nom est porté par « aria-label » (le raccourci est ajouté à l'affichage).
+      bouton: document.getElementById('b-sidebar').getAttribute('aria-label'),
+      retour: document.getElementById('b-back').getAttribute('aria-label'),
       langue: document.documentElement.lang,
     }));
     const menuCmdT = () => ctx.app.evaluate(({ Menu }) => {
@@ -27,7 +28,7 @@ module.exports = {
         effacer: 'Effacer',
         adresse: 'Rechercher ou saisir une adresse…',
         accueil: 'Appuie sur ⌘T pour ouvrir un onglet',
-        bouton: 'Barre latérale (⌘S)',
+        bouton: 'Barre latérale',
         retour: 'Page précédente',
         langue: 'fr',
       });
@@ -49,7 +50,7 @@ module.exports = {
         effacer: 'Clear',
         adresse: 'Search or enter URL…',
         accueil: 'Press ⌘T to open a tab',
-        bouton: 'Sidebar (⌘S)',
+        bouton: 'Sidebar',
         retour: 'Go back',
         langue: 'en',
       });
@@ -86,7 +87,7 @@ module.exports = {
       await jusqua(async () => (await libelles()).nouvel === 'Nouvel onglet', 'libellé « Nouvel onglet »');
       const l = await libelles();
       assert.equal(l.effacer, 'Effacer');
-      assert.equal(l.bouton, 'Barre latérale (⌘S)');
+      assert.equal(l.bouton, 'Barre latérale');
       assert.equal(l.langue, 'fr');
       await jusqua(async () => /^Nouvel onglet/.test(await menuCmdT()), 'menu « Nouvel onglet »');
       await jusqua(async () => (await reglages.locator('#tab-general').textContent()).trim() === 'Général' && (await reglages.title()) === 'Réglages', 'fenêtre « Réglages »');

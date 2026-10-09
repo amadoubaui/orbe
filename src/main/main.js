@@ -170,6 +170,7 @@ const SETTABLE = {
   memoryBudget: (v) => v === 0 || (Number.isInteger(v) && v >= 10 && v <= 80),
   externalLinks: prefs.externalLinks,
   autoPip: (v) => typeof v === 'boolean',
+  batterySaver: (v) => typeof v === 'boolean',
   sounds: (v) => typeof v === 'boolean',
   soundVolume: (v) => Number.isInteger(v) && v >= 0 && v <= 100,
   soundGestures: (v) => typeof v === 'boolean',

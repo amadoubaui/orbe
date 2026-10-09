@@ -58,7 +58,7 @@ function tabRow(el, it) {
   }
   el.className = 'row tab' + (it.active ? ' active' : '') + (it.shown ? ' shown' : '') + (it.live ? ' live' : '')
     + (it.audible ? ' audible' : '') + (it.muted ? ' muted' : '') + (it.changed ? ' changed' : '') + (it.partners ? ' split' : '') + (it.grouped ? ' grouped' : '')
-    + (it.capture && it.capture.length ? ' capturing' : '')
+    + (it.capture && it.capture.length ? ' capturing' : '') + (it.capture && it.capture.includes('screen') ? ' sharing' : '')
     + (sel.has(it.id) ? ' sel' : '') + (flashId === it.id ? ' flash' : '');
   // Témoin de capture : écran, caméra ou micro (le premier de la liste).
   const cap = (it.capture && it.capture[0]) || '';
@@ -142,7 +142,7 @@ function folderRow(el, it) {
 function tileEl(el, it) {
   if (!el._built) {
     el._built = true;
-    el.innerHTML = `<span class="ic"></span><span class="dot"></span>`;
+    el.innerHTML = `<span class="ic"></span><span class="dot"><i></i><i></i><i></i></span>`;
     el._ic = el.firstChild;
     el.draggable = true;
   }
@@ -1864,6 +1864,17 @@ sidebar.addEventListener('mouseover', (e) => {
   if (id) hoverTimer = setTimeout(() => { if (hoverId === id) send('hoverTab', id); }, 150);
 });
 sidebar.addEventListener('mouseleave', () => { hoverId = null; clearTimeout(hoverTimer); });
+
+// Niveau de la batterie : relevé ici (le processus principal n'y a pas accès) et transmis à
+// chaque changement, pour l'économie de batterie (veille.js). Absent sur un poste fixe : rien.
+if (!FLOATING && navigator.getBattery) {
+  navigator.getBattery().then((b) => {
+    const tell = () => send('battery', { level: b.level, charging: b.charging });
+    b.addEventListener('levelchange', tell);
+    b.addEventListener('chargingchange', tell);
+    tell();
+  }).catch(() => {});
+}
 
 O.on('state', onState);
 // Renommer pendant un glissement (nouvel Espace) : après l'arrivée.

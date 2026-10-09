@@ -304,7 +304,7 @@ module.exports = async function finitions2Tests(ctx) {
     const other = store.makeSpace('Travail <b>', '💼', '#f59e0b');
     d.spaces.push(other);
     const profiles0 = d.profiles.slice();
-    const labelsOf = () => { const m = w.tabMenuTemplate(B).find((x) => x.label === T('tabs.moveTo')); return m ? m.submenu.map((x) => x.label) : []; };
+    const labelsOf = () => { const m = w.tabMenuTemplate(B).find((x) => x.label === T('tabs.moveTo')); return m ? m.submenu.map((x) => x.label).filter((x) => typeof x === 'string') : []; };
     d.profiles.length = 1;
     const single = win.spaceLabel(other, d, space.profileId);
     check('un seul profil : le nom d’un Espace dans un menu ne dit rien du profil', single === '💼 Travail <b>' && labelsOf().includes(single), single);
@@ -480,6 +480,81 @@ module.exports = async function finitions2Tests(ctx) {
     })()`);
     check('le haut de la barre (entre les boutons) déplace la fenêtre ; les boutons, la liste et son vide (double-clic : nouvel onglet) non',
       region.top === 'drag' && region.gap === 'drag' && region.gapW > 20 && region.buttons === 'no-drag,no-drag,no-drag,no-drag' && region.list !== 'drag' && region.blank !== 'drag' && region.resize === 'no-drag', JSON.stringify(region));
+  }
+
+  // --- Témoin de capture animé, onglet partagé surligné, favori qui joue (BL-48, BL-38) ---------------
+  {
+    await until(() => ui('!drag && !slide && S.today.length > 0'), 'liste au repos');
+    const seen = await ui(`(() => {
+      const s0 = S;
+      const reduced = reducedMotion.matches;
+      const first = s0.today[0];
+      const css = (sel) => { const el = document.querySelector(sel); if (!el) return null; const cs = getComputedStyle(el); return { anim: cs.animationName, shadow: getComputedStyle(el.closest('.row, .tile')).boxShadow, cls: el.closest('.row, .tile').className }; };
+      render({ ...s0, today: [{ ...first, capture: ['screen', 'microphone'] }, ...s0.today.slice(1)] });
+      const share = css('#today .row.tab .act.cap');
+      render({ ...s0, today: [{ ...first, capture: ['camera'] }, ...s0.today.slice(1)] });
+      const cam = css('#today .row.tab .act.cap');
+      const camRow = getComputedStyle(document.querySelector('#today .row.tab')).boxShadow;
+      render({ ...s0, favorites: [{ ...first, id: 'fin2-tuile', audible: true, live: true }] });
+      const bars = [...document.querySelectorAll('#fav .tile .dot i')].map((i) => { const cs = getComputedStyle(i); return cs.animationName + '/' + cs.display; });
+      const frames = reduced ? [] : document.querySelector('#fav .tile .dot i').getAnimations().flatMap((a) => a.effect.getKeyframes().flatMap((k) => Object.keys(k))).filter((k) => !['offset', 'easing', 'composite', 'computedOffset'].includes(k));
+      render({ ...s0, favorites: [{ ...first, id: 'fin2-tuile', audible: false, live: true }] });
+      const quiet = [...document.querySelectorAll('#fav .tile .dot i')].map((i) => getComputedStyle(i).display).join();
+      render(s0);
+      return { reduced, share, cam, camRow, bars, frames: [...new Set(frames)].join(), quiet };
+    })()`);
+    const pulse = seen.reduced ? 'none' : 'capture-pulse';
+    check('onglet dont l’écran est partagé : sa ligne est surlignée en jaune, son témoin bat ; caméra ou micro seuls : témoin sans surlignage',
+      !!seen.share && seen.share.cls.includes('sharing') && /rgb\(250, 204, 21\)/.test(seen.share.shadow) && seen.share.anim === pulse
+      && !!seen.cam && seen.cam.cls.includes('capturing') && !seen.cam.cls.includes('sharing') && seen.camRow === 'none' && seen.cam.anim === pulse, JSON.stringify(seen));
+    check('favori qui joue du son : trois barres dansent sur sa tuile (transformation seule) ; silencieux : rien',
+      seen.bars.length === 3 && seen.bars.every((x) => x === (seen.reduced ? 'none' : 'tile-notes') + '/block') && (seen.reduced || seen.frames === 'transform') && seen.quiet === 'none,none,none', JSON.stringify(seen));
+  }
+
+  // --- Économie de batterie (ONG-24) -----------------------------------------------------------------
+  {
+    const veille = require('../src/main/veille');
+    check('économie de batterie : sur batterie et sous 20 % seulement ; branché, à 20 % ou plus, niveau illisible ou réglage coupé : non',
+      veille.saving({ level: 0.19, charging: false }) === true && veille.saving({ level: 0.2, charging: false }) === false && veille.saving({ level: 0.05, charging: true }) === false
+      && veille.saving(undefined) === false && veille.saving({ level: 'bas', charging: false }) === false && veille.saving({ level: 0.1, charging: false }, false) === false);
+    check('… le délai de veille passe à dix minutes (jamais plus long que le réglage ; « jamais » compris)',
+      veille.idleFor(3, true) === 600000 && veille.idleFor(0, true) === 600000 && veille.idleFor(3, false) === 3 * 36e5 && veille.idleFor(0, false) === 0 && veille.SAVER_IDLE === 600000);
+    const reported = OrbeWindow.battery;
+    if (reported) check('la barre latérale transmet le niveau de la batterie au démarrage (un nombre de 0 à 1, branché ou non)', Number.isFinite(reported.level) && reported.level >= 0 && reported.level <= 1 && typeof reported.charging === 'boolean', JSON.stringify(reported));
+    else outils.ignorer('la barre latérale transmet le niveau de la batterie au démarrage', 'aucune batterie annoncée par le moteur sur cette machine');
+    const battery0 = OrbeWindow.battery;
+    const saver0 = store.state.settings.batterySaver;
+    const hours0 = store.state.settings.sleepAfterHours;
+    store.state.settings.batterySaver = true;
+    store.state.settings.sleepAfterHours = 3;
+    const toasts = [];
+    const toast0 = w.toast;
+    w.toast = (text) => { toasts.push(text); };
+    const pick0 = veille.pick;
+    const asked = [];
+    veille.pick = (tabs, opts) => { asked.push(opts.idleMs); return []; };
+    OrbeWindow.battery = { level: 0.8, charging: false };
+    check('niveau refusé s’il n’est pas un nombre de 0 à 1 accompagné d’un booléen', w.handle('battery', { level: 2, charging: false }) === false && w.handle('battery', { level: 0.1 }) === false && w.handle('battery', '0.1') === false && w.handle('battery', { level: NaN, charging: false }) === false && OrbeWindow.battery.level === 0.8);
+    OrbeWindow.trimLive({ deep: true });
+    const normal = asked.pop();
+    w.handle('battery', { level: 0.15, charging: false });
+    const atDrop = asked.slice();
+    w.handle('battery', { level: 0.14, charging: false });
+    check('passage sous 20 % sur batterie : un message, une seule fois, et un passage de veille aussitôt avec le délai de dix minutes',
+      normal === 3 * 36e5 && toasts.join() === T('toast.batterySaver') && atDrop.join() === '600000', JSON.stringify([normal, toasts, atDrop]));
+    asked.length = 0;
+    store.state.settings.batterySaver = false;
+    OrbeWindow.trimLive({ deep: true });
+    store.state.settings.batterySaver = true;
+    w.handle('battery', { level: 0.14, charging: true });
+    OrbeWindow.trimLive({ deep: true });
+    check('réglage coupé, ou machine rebranchée : le délai choisi revient', asked.join() === `${3 * 36e5},${3 * 36e5}`, asked.join());
+    check('réglage « Économie de batterie » : actif par défaut', require('../src/main/store').DEFAULT_SETTINGS.batterySaver === true);
+    veille.pick = pick0;
+    w.toast = toast0;
+    OrbeWindow.battery = battery0;
+    if (saver0 === undefined) delete store.state.settings.batterySaver; else store.state.settings.batterySaver = saver0;
+    store.state.settings.sleepAfterHours = hours0;
   }
 
   // --- Remise en état ---------------------------------------------------------------------

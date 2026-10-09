@@ -128,7 +128,7 @@ const INTERNAL_PAGES = new Set(['library.html', 'shortcuts.html', 'welcome.html'
 const webUrl = (u) => (/^https?:\/\//i.test(u || '') ? u : null);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 // Messages de l'interface qui ne sont pas un geste de l'utilisateur (aucun son ne les suit).
-const QUIET_ACTIONS = new Set(['ready', 'themeGet', 'suggest', 'select', 'dragZone', 'dragZoneOver', 'sidebarWidth', 'splitResize']);
+const QUIET_ACTIONS = new Set(['ready', 'battery', 'themeGet', 'suggest', 'select', 'dragZone', 'dragZoneOver', 'sidebarWidth', 'splitResize']);
 // Ce que l'interface reçoit du thème d'un Espace (voir src/renderer/theme.js).
 const themeFields = (s) => ({ color: s.color, color2: s.color2 || '', color3: s.color3 || '', plain: !!s.plain, intensity: typeof s.intensity === 'number' ? s.intensity : 0.5, grain: s.grain || 0, texture: s.texture || 'grain', mode: s.mode || 'auto' });
 
@@ -1403,6 +1403,23 @@ class OrbeWindow {
   // seule la limite en nombre joue. `deep` (toutes les minutes) : s'y ajoutent
   // l'ancienneté et la mémoire relevée des processus d'onglets.
   // Renvoie [{ id, why }].
+  // Niveau de la batterie, relevé par la barre latérale (le processus principal n'y a pas accès) :
+  // seuls un nombre de 0 à 1 et un booléen sont retenus. Au passage sous le seuil, sur batterie,
+  // un message le dit une fois et les onglets cachés depuis dix minutes s'endorment (veille.js).
+  static setBattery(a, w) {
+    if (!a || typeof a !== 'object' || typeof a.charging !== 'boolean' || !Number.isFinite(a.level) || a.level < 0 || a.level > 1) return false;
+    const on = store.state.settings.batterySaver !== false;
+    const before = veille.saving(OrbeWindow.battery, on);
+    OrbeWindow.battery = { level: a.level, charging: a.charging };
+    const now = veille.saving(OrbeWindow.battery, on);
+    if (now && !before) {
+      const target = w || OrbeWindow.focused || OrbeWindow.primary;
+      if (target) target.toast(t('toast.batterySaver'));
+      OrbeWindow.trimLive({ deep: true });
+    }
+    return true;
+  }
+
   static trimLive({ deep = false } = {}) {
     const s = store.state.settings;
     if (!deep && live.size <= s.maxLiveTabs) return [];
@@ -1427,7 +1444,7 @@ class OrbeWindow {
     }));
     const picked = veille.pick(tabs, {
       max: s.maxLiveTabs,
-      idleMs: deep ? (Number(s.sleepAfterHours) || 0) * 36e5 : 0,
+      idleMs: deep ? veille.idleFor(s.sleepAfterHours, veille.saving(OrbeWindow.battery, s.batterySaver !== false)) : 0,
       budgetMb: deep && Number(s.memoryBudget) ? veille.budget(os.totalmem(), Number(s.memoryBudget)) : 0,
       totalMb: mem ? mem.total : 0,
     });
@@ -4611,6 +4628,7 @@ class OrbeWindow {
     switch (action) {
       case 'ready': return this.sendState();
       case 'hoverTab': return this.prewake(a);
+      case 'battery': return OrbeWindow.setBattery(a, this);
       // Clic sur l'onglet déjà affiché : rien à faire, et surtout ne pas
       // reprendre le clavier (second clic d'un double-clic pour renommer).
       case 'activate': return a === this.activeId && live.has(a) && !this.peekState ? undefined : this.activate(a);

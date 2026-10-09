@@ -36,6 +36,22 @@
 
 const MIN_LIVE = 4;
 
+// Économie de batterie (comme dans Arc, sous 20 %) : sur batterie et sous ce seuil, un
+// onglet resté caché dix minutes s'endort, au lieu d'attendre le délai choisi. Seule la
+// règle d'ancienneté est resserrée : elle épargne les onglets où l'on a agi et consulte
+// la page ; la limite en nombre, qui ne consulte personne, n'est pas touchée.
+const SAVER_LEVEL = 0.2;
+const SAVER_IDLE = 10 * 60 * 1000;
+// `battery` : { level: 0 à 1, charging } relevé par l'interface ; rien de lisible : pas d'économie.
+function saving(battery, enabled = true) {
+  return !!enabled && !!battery && battery.charging === false && Number.isFinite(battery.level) && battery.level >= 0 && battery.level < SAVER_LEVEL;
+}
+// Délai d'ancienneté à appliquer : celui du réglage (0 : jamais), ramené à dix minutes en économie de batterie.
+function idleFor(hours, saver) {
+  const ms = (Number(hours) || 0) * 36e5;
+  return saver ? (ms ? Math.min(ms, SAVER_IDLE) : SAVER_IDLE) : ms;
+}
+
 // `tabs` : [{ id, lastUsed, mb, kept, typed }] — `mb` : mémoire propre à l'onglet (0 si inconnue).
 // `totalMb` : mémoire de l'ensemble des processus d'onglets (les processus partagés comptés une fois).
 // Renvoie [{ id, why }] dans l'ordre d'endormissement ; why : 'count', 'idle' ou 'memory'.
@@ -69,4 +85,4 @@ function budget(totalBytes, percent) {
   return Math.round((totalBytes / 1048576) * (percent / 100));
 }
 
-module.exports = { pick, budget, MIN_LIVE };
+module.exports = { pick, budget, MIN_LIVE, saving, idleFor, SAVER_LEVEL, SAVER_IDLE };
