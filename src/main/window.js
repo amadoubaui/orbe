@@ -1083,6 +1083,17 @@ class OrbeWindow {
     // Changement de site : le CSS du Boost de l'ancien site est retiré dès que le nouveau document est en place.
     if (!incognito) wc.on('did-navigate', () => { boosts.navigated(wc); });
     wc.on('did-navigate-in-page', (e, url, isMainFrame) => { if (isMainFrame) navigated(url); });
+    // Couleurs annoncées par la page (src/main/page-color.js) : son fond devient celui
+    // de la vue (fenêtre redimensionnée : pas de blanc au bord d'une page sombre), sa
+    // couleur de thème teinte la barre d'outils.
+    if (!rt.internal) {
+      const pageColor = require('./page-color');
+      const paint = () => pageColor.background(wc).then((c) => { if (wc.isDestroyed() || rt.bg === c) return; rt.bg = c; try { rt.view.setBackgroundColor(c); } catch {} });
+      wc.on('dom-ready', paint);
+      wc.on('did-finish-load', paint);
+      wc.on('did-change-theme-color', (e, color) => { const c = pageColor.theme(color); if (rt.themeColor === c) return; rt.themeColor = c; OrbeWindow.pushAll(); });
+      wc.on('did-navigate', () => { rt.themeColor = null; });
+    }
     wc.on('update-target-url', (e, url) => { rt.hoverUrl = String(url || '').slice(0, STATUS_MAX); rt.owner.linkStatus(rt, rt.hoverUrl); });
     // Pincer pour zoomer la page (coupé par défaut dans Electron).
     wc.setVisualZoomLevelLimits(1, 5).catch(() => {});
@@ -3918,6 +3929,8 @@ class OrbeWindow {
       })(),
       players: media.payload(this, settings),
       downloadsStarted,
+      // Couleur de thème de la page affichée (barre d'outils teintée), hors vue scindée.
+      pageColor: toolbar && this.activeRt && this.visibleIds().length === 1 ? this.activeRt.themeColor || null : null,
       downloads: downloads.length
         ? { count: downloads.length, progress: downloads.reduce((a, x) => a + (x.total ? x.received / x.total : 0), 0) / downloads.length }
         : null,

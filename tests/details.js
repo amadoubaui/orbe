@@ -218,6 +218,53 @@ module.exports = async function detailsTests(ctx) {
     w.close(tab.id, { silent: true, ask: false });
   }
 
+  // === Couleurs de la page : fond de la vue, barre d'outils teintée =======================
+  {
+    const http = require('http');
+    const pageColor = require('../src/main/page-color');
+    const ui = (js) => w.ui.webContents.executeJavaScript(js);
+    check('couleur de fond annoncée par la page : lue comme des nombres seulement (rgb, rgba posé sur blanc), sinon blanc',
+      pageColor.pick(['rgb(18, 18, 20)', 'rgb(255, 0, 0)']) === '#121214' && pageColor.pick(['rgba(0, 0, 0, 0)', 'rgb(10, 20, 30)']) === '#0a141e' && pageColor.pick(['rgba(0, 0, 0, 0.5)']) === '#808080'
+      && ['url(javascript:1)', 'rgb(999, 0, 0)', 'red', 'rgb(1,2,3);background:url(x)', { a: 1 }, 'rgba(1, 2, 3, 7)', 'x'.repeat(100)].every((v) => pageColor.pick([v]) === '#ffffff') && pageColor.pick(null) === '#ffffff');
+    check('couleur de thème : « #rrggbb » seulement (l’alpha est écarté), tout le reste est refusé', pageColor.theme('#1DB954') === '#1db954' && pageColor.theme('#1db954ff') === '#1db954' && [null, 'red', '#fff', 'url(x)', '#1db95', 12].every((v) => pageColor.theme(v) === null));
+    const server = http.createServer((req, res) => {
+      res.setHeader('content-type', 'text/html; charset=utf-8');
+      res.end(req.url === '/sombre'
+        ? '<!doctype html><meta charset="utf-8"><meta name="theme-color" content="#1db954"><title>Sombre</title><body style="background:#121214;color:#eee">sombre</body>'
+        : '<!doctype html><meta charset="utf-8"><title>Claire</title><body>claire</body>');
+    });
+    await new Promise((r) => server.listen(0, '127.0.0.1', r));
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const toolbar0 = store.state.settings.showToolbar;
+    store.state.settings.showToolbar = true;
+    const tab = w.newTab(base + '/sombre');
+    const rt = () => win.live.get(tab.id);
+    await until(() => rt() && rt().bg === '#121214', 'fond de la page relevé');
+    check('page sombre : la vue de l’onglet prend la couleur de fond de la page (redimensionner ne découvre plus de blanc)', rt().bg === '#121214');
+    await until(() => rt().themeColor === '#1db954', 'couleur de thème reçue');
+    w.layout();
+    win.OrbeWindow.pushAll();
+    await until(() => ui('document.getElementById("toolbar").classList.contains("tinted")'), 'barre d’outils teintée');
+    const look = () => ui('(() => { const b = document.getElementById("toolbar"); return { page: b.style.getPropertyValue("--page"), sombre: b.classList.contains("on-dark"), fond: getComputedStyle(b, "::before").backgroundColor }; })()');
+    // (La teinte arrive en fondu : on lit la couleur une fois posée.)
+    await until(async () => (await look()).fond === 'rgb(29, 185, 84)', 'teinte posée').catch(() => {});
+    const tinted = await look();
+    const darkTint = await ui('(() => { fxToolbar("#101014"); const d = document.getElementById("toolbar").classList.contains("on-dark"); fxToolbar("#1db954"); return d; })()');
+    check('barre d’outils : teintée par la couleur de thème de la page ; texte sombre sur couleur claire, clair sur couleur sombre', tinted.page === '#1db954' && tinted.fond === 'rgb(29, 185, 84)' && tinted.sombre === false && darkTint === true, JSON.stringify(tinted));
+    w.navigate(base + '/claire', tab.id);
+    await until(() => w.data.tabs[tab.id].title === 'Claire' && rt().bg === '#ffffff', 'page claire');
+    win.OrbeWindow.pushAll();
+    await until(() => ui('!document.getElementById("toolbar").classList.contains("tinted")'), 'teinte retirée');
+    check('page sans couleur de thème : la barre reprend ses couleurs, la vue redevient blanche', rt().themeColor === null && rt().bg === '#ffffff' && (await ui('document.getElementById("toolbar").style.getPropertyValue("--page")')) === '');
+    check('couleur illisible donnée à la barre : ignorée', (await ui('(() => { fxToolbar("red;background:url(x)"); fxToolbar({}); return document.getElementById("toolbar").classList.contains("tinted"); })()')) === false);
+    w.close(tab.id, { silent: true, ask: false });
+    store.state.settings.showToolbar = toolbar0;
+    w.layout();
+    win.OrbeWindow.pushAll();
+    server.close();
+    if (server.closeAllConnections) server.closeAllConnections();
+  }
+
   await sleep(30);
   return failed;
 };

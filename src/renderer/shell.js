@@ -264,6 +264,7 @@ function render(s) {
   b.classList.toggle('translucent', s.translucent);
   b.classList.toggle('incognito', s.incognito);
   b.classList.toggle('toolbar', s.toolbar);
+  fxToolbar(s.pageColor);
   b.classList.toggle('fullscreen', s.fullScreen);
   b.classList.toggle('no-tab', !s.activeId && !FLOATING);
   // Compléments : fenêtre à l'arrière-plan, en-tête de l'Espace, section épinglée repliée.

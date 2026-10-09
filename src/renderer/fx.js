@@ -50,6 +50,22 @@
     setTimeout(done, 2500);
   };
 
+  // Barre d'outils teintée par la couleur de thème de la page (« #rrggbb » vérifié
+  // par le processus principal, revérifié ici) ; le texte passe en clair ou en sombre.
+  let tint = null;
+  window.fxToolbar = (color) => {
+    const c = typeof color === 'string' && /^#[0-9a-f]{6}$/.test(color) ? color : null;
+    if (c === tint) return;
+    tint = c;
+    const bar = document.getElementById('toolbar');
+    bar.classList.toggle('tinted', !!c);
+    if (!c) { bar.classList.remove('on-dark'); bar.style.removeProperty('--page'); return; }
+    const n = parseInt(c.slice(1), 16);
+    const lum = (0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255;
+    bar.classList.toggle('on-dark', lum < 0.55);
+    bar.style.setProperty('--page', c);
+  };
+
   // Dépôt dans un dossier (sur son en-tête ou parmi ses lignes) : son icône
   // rebondit, sa ligne s'éclaire un instant. `drag` est le glisser en cours de shell.js.
   document.addEventListener('drop', (e) => {

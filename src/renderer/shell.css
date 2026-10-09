@@ -444,6 +444,12 @@ body.incognito #incognito { display: flex; }
   transition: left 50ms var(--ease-out);
 }
 body.toolbar #toolbar { display: flex; }
+/* Teintée par la couleur de thème de la page : la barre prolonge la page vers le haut
+   (le fond descend derrière ses coins arrondis). */
+#toolbar::before { content: ''; position: absolute; inset: -2px 0 -12px 0; border-radius: 10px 10px 0 0; background: var(--page, transparent); opacity: 0; transition: opacity 180ms var(--ease-out), background-color 180ms var(--ease-out); z-index: -1; pointer-events: none; }
+#toolbar.tinted::before { opacity: 1; }
+#toolbar.tinted { --fg: #16161a; --dim: rgba(22, 22, 26, 0.62); --faint: rgba(22, 22, 26, 0.4); --hover: rgba(0, 0, 0, 0.08); --pill: rgba(0, 0, 0, 0.07); color: var(--fg); }
+#toolbar.tinted.on-dark { --fg: #fff; --dim: rgba(255, 255, 255, 0.72); --faint: rgba(255, 255, 255, 0.45); --hover: rgba(255, 255, 255, 0.14); --pill: rgba(255, 255, 255, 0.12); }
 body.toolbar.docked #toolbar { left: var(--sw); }
 body.toolbar:not(.docked):not(.fullscreen) #toolbar { padding-left: 70px; }
 #tb-url {
