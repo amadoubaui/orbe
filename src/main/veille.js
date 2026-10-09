@@ -8,6 +8,9 @@
 //   3. la mémoire : tant que les processus des onglets dépassent `budgetMb`,
 //      les plus anciens s'endorment, sans descendre sous `MIN_LIVE` vivants.
 //
+// Les sites de la liste « restent éveillés » de l'utilisateur (`spared`) comptent comme des
+// onglets où l'on a agi : les règles 2 et 3 les épargnent, la règle 1 ne les prend qu'en dernier.
+//
 // Jamais touchés, par aucune règle (`kept`, calculé dans window.js) : les onglets
 // affichés, ceux qui jouent du son ou sont en image dans l'image, ceux dont les
 // outils de développement sont ouverts, qui capturent l'écran, la caméra ou le
@@ -28,10 +31,20 @@
 //     il n'a pas agi, mais doit tenir la limite : s'il n'en reste pas d'autre, un
 //     onglet où il a agi s'endort aussi, comme avant.
 //
-// Ce module ne dépend pas d'Electron : il reçoit des relevés et rend des
+// `pick` ne dépend pas d'Electron : il reçoit des relevés et rend des
 // identifiants, ce qui le rend vérifiable sans navigateur.
 
 const MIN_LIVE = 4;
+
+// Sites que l'utilisateur ne veut jamais voir s'endormir (réglage « neverSleep », volet Onglets).
+// Même écriture et même lecture que les règles d'aiguillage des liens (prefs.routeMatches) :
+// un site, ses sous-domaines, au besoin un port et un début de chemin — jamais un texte
+// trouvé n'importe où dans l'adresse.
+function spared(url, settings = {}) {
+  if (!url || !Array.isArray(settings.neverSleep) || !settings.neverSleep.length) return false;
+  const { routeMatches } = require('./prefs');
+  return settings.neverSleep.some((rule) => routeMatches(rule, url));
+}
 
 // `tabs` : [{ id, lastUsed, mb, kept, typed }] — `mb` : mémoire propre à l'onglet (0 si inconnue).
 // `totalMb` : mémoire de l'ensemble des processus d'onglets (les processus partagés comptés une fois).
@@ -66,4 +79,4 @@ function budget(totalBytes, percent) {
   return Math.round((totalBytes / 1048576) * (percent / 100));
 }
 
-module.exports = { pick, budget, MIN_LIVE };
+module.exports = { pick, budget, spared, MIN_LIVE };

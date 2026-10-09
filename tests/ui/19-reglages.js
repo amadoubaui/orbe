@@ -36,14 +36,14 @@ module.exports = {
       r = await ctx.attendrePage('settings.html');
       await jusqua(async () => (await volet()) === 'general', 'volet Général');
       assert.deepEqual(await r.locator('#tabs [role=tab]').allTextContents().then((x) => x.map((s) => s.trim())),
-        ['Général', 'Profils', 'Liens', 'Raccourcis', 'Apparence', 'Confidentialité', 'Extensions', 'Import', 'Avancé']);
+        ['Général', 'Profils', 'Onglets', 'Liens', 'Raccourcis', 'Apparence', 'Confidentialité', 'Extensions', 'Import', 'Avancé']);
       await jusqua(sansDefilement, 'fenêtre à la hauteur du volet');
       assert.equal(await r.getAttribute('#tab-general', 'aria-selected'), 'true');
     });
 
     await t.verifier('un clic sur chaque volet l’affiche, la fenêtre prend sa hauteur sans barre de défilement', async () => {
       const hauteurs = {};
-      for (const id of ['profiles', 'links', 'appearance', 'privacy', 'extensions', 'import', 'advanced', 'general']) {
+      for (const id of ['profiles', 'tabs', 'links', 'appearance', 'privacy', 'extensions', 'import', 'advanced', 'general']) {
         await r.click('#tab-' + id);
         await jusqua(async () => (await volet()) === id, 'volet ' + id);
         await jusqua(sansDefilement, 'hauteur du volet ' + id);
@@ -157,6 +157,46 @@ module.exports = {
       await jusqua(async () => (await r.locator('#dev-list .line .name').allTextContents()).join() === 'localhost:3000', 'site listé');
       await r.locator('#dev-list .line .btn').click();
       await jusqua(async () => (await reglage('devSites')).length === 0, 'site retiré');
+    });
+
+    await t.verifier('volet Onglets : délai de veille et part de mémoire enregistrés, la part est donnée en Go', async () => {
+      await r.click('#tab-tabs');
+      await jusqua(async () => (await volet()) === 'tabs', 'volet Onglets');
+      assert.equal(await r.inputValue('#sleepAfterHours'), '3');
+      assert.equal(await r.inputValue('#memoryBudget'), '25');
+      assert.match(await r.locator('#memoryBudget option[value="25"]').textContent(), /^25 % \(\d+(,\d)? Go\)$/);
+      await r.selectOption('#sleepAfterHours', '6');
+      await jusqua(async () => (await reglage('sleepAfterHours')) === 6, 'veille après six heures');
+      await r.selectOption('#sleepAfterHours', '0');
+      await jusqua(async () => (await reglage('sleepAfterHours')) === 0, 'jamais');
+      await r.selectOption('#memoryBudget', '0');
+      await jusqua(async () => (await reglage('memoryBudget')) === 0, 'sans limite');
+      await r.selectOption('#memoryBudget', '35');
+      await jusqua(async () => (await reglage('memoryBudget')) === 35, 'trente-cinq pour cent');
+      await r.selectOption('#maxLiveTabs', '20');
+      await jusqua(async () => (await reglage('maxLiveTabs')) === 20, 'vingt onglets vivants');
+      await r.selectOption('#sleepAfterHours', '3');
+      await r.selectOption('#memoryBudget', '25');
+      await r.selectOption('#maxLiveTabs', '30');
+      await jusqua(async () => (await reglage('memoryBudget')) === 25 && (await reglage('sleepAfterHours')) === 3 && (await reglage('maxLiveTabs')) === 30, 'réglages rétablis');
+    });
+
+    await t.verifier('sites qui restent éveillés : ajout au clavier sous sa forme normale, texte qui ne nomme pas un site refusé, retrait', async () => {
+      await r.click('#never-sleep-site');
+      await r.keyboard.type('pas un site !', { delay: 8 });
+      await r.keyboard.press('Enter');
+      await jusqua(() => r.locator('#never-sleep-msg').isVisible(), 'refus affiché');
+      assert.deepEqual(await reglage('neverSleep'), []);
+      await r.fill('#never-sleep-site', '');
+      await r.keyboard.type('https://www.GitHub.com/Orbe/', { delay: 8 });
+      await r.keyboard.press('Enter');
+      await jusqua(async () => (await reglage('neverSleep')).join() === 'github.com/orbe', 'site enregistré sous sa forme normale');
+      await jusqua(async () => (await r.locator('#never-sleep-list .line .name').allTextContents()).join() === 'github.com/orbe', 'site listé');
+      assert.equal(await r.locator('#never-sleep-msg').isVisible(), false);
+      assert.equal(await r.inputValue('#never-sleep-site'), '');
+      await jusqua(sansDefilement, 'la fenêtre suit la liste');
+      await r.locator('#never-sleep-list .line .btn').click();
+      await jusqua(async () => (await reglage('neverSleep')).length === 0, 'site retiré');
     });
 
     // --- Raccourcis ---------------------------------------------------------------
@@ -380,8 +420,11 @@ module.exports = {
     await t.verifier('anglais : volets et réglages traduits ; retour au français', async () => {
       await r.click('#tab-general');
       await r.selectOption('#lang', 'en');
-      await jusqua(async () => (await r.locator('#tabs [role=tab]').allTextContents()).map((s) => s.trim()).join() === 'General,Profiles,Links,Shortcuts,Appearance,Privacy,Extensions,Import,Advanced', 'volets en anglais');
+      await jusqua(async () => (await r.locator('#tabs [role=tab]').allTextContents()).map((s) => s.trim()).join() === 'General,Profiles,Tabs,Links,Shortcuts,Appearance,Privacy,Extensions,Import,Advanced', 'volets en anglais');
       assert.equal((await r.textContent('#pane-general h2')).trim(), 'General');
+      // La barre des volets tient dans la fenêtre dans les deux langues, et la part de mémoire se dit en GB.
+      assert.equal(await r.evaluate(() => document.getElementById('tabs').scrollWidth <= document.getElementById('tabs').clientWidth), true);
+      assert.match(await r.locator('#memoryBudget option[value="25"]').textContent(), /^25% \(\d+(\.\d)? GB\)$/);
       await r.click('#tab-shortcuts');
       await jusqua(async () => (await r.locator('#keys-list h3').allTextContents())[1] === 'File', 'raccourcis en anglais');
       await r.click('#tab-general');

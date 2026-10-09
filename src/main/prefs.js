@@ -124,6 +124,8 @@ const SETTABLE = {
   mediaControls: bool,
   tabKeysFavorites: bool,
   tabKeysNinthLast: bool,
+  // Veille automatique : sites que l'utilisateur garde éveillés, écrits comme une règle d'aiguillage.
+  neverSleep: (v) => Array.isArray(v) && v.length <= 100 && v.every((r) => typeof r === 'string' && r.length <= 200 && routeText(r) === r) && new Set(v).size === v.length,
   devSites: (v) => Array.isArray(v) && v.length <= 200 && v.every((h) => typeof h === 'string' && HOST.test(h)) && new Set(v).size === v.length,
   downloadDir,
   // Téléchargements (downloads.js) : demander où enregistrer, PDF ouverts dans un onglet.

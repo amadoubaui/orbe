@@ -31,6 +31,8 @@ const DEFAULT_SETTINGS = {
   // (0 : jamais), et au-delà de cette part de la mémoire de la machine, en % (0 : sans limite).
   sleepAfterHours: 3,
   memoryBudget: 25,
+  // Sites que l'utilisateur ne veut jamais voir s'endormir (volet Onglets des réglages).
+  neverSleep: [],
   peekLinks: true,
   routes: [],
   externalLinks: 'window',

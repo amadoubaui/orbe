@@ -37,6 +37,24 @@ module.exports = async function performancesTests(ctx) {
   if (ctx.modalAtStart !== undefined) check('la vue modale n’est pas créée avec la fenêtre : elle attend l’affichage de la coque', ctx.modalAtStart === null);
   await until(() => w.modal && !w.modal.webContents.isLoading() && w.spares.some((s) => s.ready), 'vue modale et réserve prêtes');
   const shellPid = pidOf(w.ui);
+  {
+    // La réserve de vues n'est demandée à la coque qu'une fois la barre latérale rendue (démarrage : section 8 bis).
+    let n = 0;
+    w.afterFirstRender(() => { n += 1; });
+    await until(() => n === 1, 'barre latérale rendue');
+    const uiWc = w.ui.webContents;
+    const realJs = uiWc.executeJavaScript;
+    uiWc.executeJavaScript = () => new Promise(() => {}); // coque qui ne présente aucune image (fenêtre masquée)
+    let late = -1;
+    const t0 = Date.now();
+    w.afterFirstRender(() => { late = Date.now() - t0; });
+    await sleep(120);
+    const early = late;
+    await until(() => late >= 0, 'filet de sécurité').catch(() => {});
+    uiWc.executeJavaScript = realJs;
+    await sleep(60);
+    check('réserve de vues : demandée après le premier rendu de la barre latérale, une seule fois ; sans image présentée, après un délai borné', n === 1 && early === -1 && late >= 300 && late < 3000, `${n} ${early} ${late}`);
+  }
   check('la vue modale naît de la coque : même processus de rendu, adresse à son nom',
     pidOf(w.modal) === shellPid && w.modal.webContents.getURL() === 'orbe://app/overlay.html#modal', `${pidOf(w.modal)} / ${shellPid} ${w.modal.webContents.getURL()}`);
   const prefs = w.modal.webContents.getLastWebPreferences();
@@ -373,6 +391,97 @@ module.exports = async function performancesTests(ctx) {
     check('la barre latérale signale le survol d’un onglet en veille', calls.length === 2);
     w.session.preconnect = real;
     for (const x of [asleep, plain, other, ...tabs]) w.close(x.id, { silent: true, ask: false });
+
+    // --- Sites gardés éveillés par l'utilisateur (MEM-9) et empreinte réelle (MEM-8) ---
+    {
+      const mine = { neverSleep: ['exemple.fr/outil', 'messagerie.test', 'localhost:3000'] };
+      check('sites gardés éveillés : le site, ses sous-domaines, son port et son début de chemin — jamais un texte trouvé ailleurs dans l’adresse',
+        veille.spared('https://git.exemple.fr/outil/1', mine) && veille.spared('https://www.messagerie.test/x?y', mine) && veille.spared('http://localhost:3000/', mine)
+        && !veille.spared('https://git.exemple.fr/autre', mine) && !veille.spared('https://pirate.invalid/?u=https://messagerie.test/', mine) && !veille.spared('https://messagerie.test.pirate.invalid/', mine)
+        && !veille.spared('http://localhost:4000/', mine) && !veille.spared('file:///messagerie.test/', mine) && !veille.spared('', mine) && !veille.spared('https://messagerie.test/', {}));
+      const prefs = require('../src/main/prefs');
+      check('réglage « neverSleep » : seules des règles bien écrites, sans doublon, cent au plus',
+        prefs.SETTABLE.neverSleep(['github.com', 'exemple.fr/outil', 'localhost:3000']) && !prefs.SETTABLE.neverSleep(['https://GitHub.com/']) && !prefs.SETTABLE.neverSleep(['a.fr', 'a.fr'])
+        && !prefs.SETTABLE.neverSleep(['<script>']) && !prefs.SETTABLE.neverSleep('a.fr') && !prefs.SETTABLE.neverSleep(Array(101).fill(0).map((_, i) => `s${i}.fr`)));
+
+      // Un vrai site local : 127.0.0.1 est dans la liste de l'utilisateur, « localhost » (autre site) non.
+      const http = require('http');
+      const server = http.createServer((req, res) => { res.setHeader('content-type', 'text/html; charset=utf-8'); res.end(`<title>Site ${req.headers.host.split(':')[0]}</title><p>veille</p>`); });
+      await new Promise((r) => server.listen(0, '127.0.0.1', r));
+      const port = server.address().port;
+      const garde = w.newTab(`http://127.0.0.1:${port}/a`, { background: true });
+      const libre = w.newTab(`http://localhost:${port}/a`, { background: true });
+      await until(() => w.data.tabs[garde.id].title === 'Site 127.0.0.1' && w.data.tabs[libre.id].title === 'Site localhost' && !win.live.get(garde.id).loading && !win.live.get(libre.id).loading, 'sites locaux chargés');
+      s.neverSleep = [`127.0.0.1:${port}`];
+      const vieux = Date.now() - 4 * 36e5;
+      win.live.get(garde.id).lastUsed = vieux;
+      win.live.get(libre.id).lastUsed = vieux;
+      const pris = OrbeWindow.trimLive({ deep: true }).map((p) => p.id);
+      await until(() => !win.live.has(libre.id), 'site hors liste endormi').catch(() => {});
+      check('veille automatique : le site de la liste « restent éveillés » ne s’endort pas, l’autre site oui',
+        pris.includes(libre.id) && !pris.includes(garde.id) && win.live.has(garde.id) && !win.live.has(libre.id), JSON.stringify(pris));
+      check('… et le dernier passage dit ce qu’il a relevé', !!win.lastSweep() && win.lastSweep().at > 0 && win.lastSweep().totalMb > 0);
+      s.neverSleep = [];
+      win.live.get(garde.id).lastUsed = vieux;
+      OrbeWindow.trimLive({ deep: true });
+      await until(() => !win.live.has(garde.id), 'site retiré de la liste endormi').catch(() => {});
+      check('… retiré de la liste, il s’endort au passage suivant', !win.live.has(garde.id));
+      // Barre latérale : la ligne d'un onglet en veille n'a plus la classe « live » (titre plus pâle).
+      let rows = null;
+      await until(() => ui(`(() => { const r = document.querySelector('.row.tab[data-id="${garde.id}"]'); return !!r && !r.classList.contains('live'); })()`), 'ligne de l’onglet endormi').catch(() => {});
+      check('barre latérale : la ligne d’un onglet en veille est marquée (plus pâle), celle d’un onglet vivant ne l’est pas',
+        (rows = await ui(`(() => { const z = document.querySelector('.row.tab[data-id="${garde.id}"]'); const v = document.querySelector('.row.tab[data-id="${w.activeId}"]'); return { z: !!z, v: !!v, zl: !!z && z.classList.contains('live'), vl: !!v && v.classList.contains('live'), zc: z && getComputedStyle(z.querySelector('.title')).color, vc: v && getComputedStyle(v.querySelector('.title')).color, va: !!v && v.classList.contains('active') }; })()`))
+        && rows.z && rows.v && !rows.zl && rows.vl && rows.zc !== rows.vc, JSON.stringify(rows));
+      for (const x of [garde, libre]) w.close(x.id, { silent: true, ask: false });
+      server.close();
+
+      // Empreinte réelle.
+      const e = require('../src/main/empreinte');
+      const lu = e.parse('Processes: 550 total\n\nPID    MEM\n15790  30M\n15785* 43M+\n77     1024K-\n88     2G\n99     512B\nabc    12M\n');
+      check('empreinte : la colonne MEM de top est lue en Mo (K, M, G, signes de variation), le reste est ignoré',
+        lu.size === 5 && lu.get(15790) === 30 && lu.get(15785) === 43 && lu.get(77) === 1 && lu.get(88) === 2048 && Math.abs(lu.get(99) - 512 / 1048576) < 1e-9);
+      const realExec = e.state.exec;
+      const realPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
+      const reset = () => Object.assign(e.state, { at: 0, byPid: new Map(), total: 0, running: null, failed: 0 });
+      Object.defineProperty(process, 'platform', { value: 'darwin' });
+      try {
+        reset();
+        const procs = win.tabProcesses();
+        let asked = null;
+        e.state.exec = (file, args, opts, cb) => { asked = { file, args }; setImmediate(() => cb(null, 'PID MEM\n' + procs.map((p) => `${p.pid}  1G`).join('\n') + '\n')); };
+        const before = win.tabMemory();
+        const d0 = e.due({ budgetMb: 4000, tabs: 9, minTabs: 4 });
+        const ok = await e.refresh(procs);
+        const after = win.tabMemory();
+        check('empreinte : relevée par un processus à part (top, un -pid par processus d’onglet), puis utilisée à la place de la mémoire résidente',
+          process.platform !== 'darwin' || (d0 && ok && asked.file === '/usr/bin/top' && asked.args.filter((x) => x === '-pid').length === procs.length && procs.length > 0
+          && !before.real && after.real && Math.round(after.total) === 1024 * procs.length), JSON.stringify({ d0, ok, n: procs.length, total: after.total }));
+        const now = Date.now();
+        check('empreinte : pas de nouveau relevé avant cinq minutes loin du budget, toutes les minutes près du budget, jamais sans budget ni au-dessous de quatre onglets',
+          !e.due({ budgetMb: 1e6, tabs: 9, minTabs: 4, now: now + 2 * 60e3 }) && e.due({ budgetMb: 1e6, tabs: 9, minTabs: 4, now: now + 5 * 60e3 + 10 })
+          && !e.due({ budgetMb: 1024 * procs.length, tabs: 9, minTabs: 4, now: now + 30e3 }) && e.due({ budgetMb: 1024 * procs.length, tabs: 9, minTabs: 4, now: now + 61e3 })
+          && !e.due({ budgetMb: 0, tabs: 9, minTabs: 4, now: now + 10 * 60e3 }) && !e.due({ budgetMb: 1e6, tabs: 4, minTabs: 4, now: now + 10 * 60e3 }));
+        const p0 = procs[0];
+        check('empreinte : un relevé trop ancien ne vaut plus, ni pour un processus né depuis sous le même numéro',
+          e.of(p0.pid, p0.creationTime) === 1024 && e.of(p0.pid, p0.creationTime, now + e.FRESH + 1000) === undefined && e.of(p0.pid, p0.creationTime + 5000) === undefined);
+        reset();
+        e.state.exec = (file, args, opts, cb) => setImmediate(() => cb(new Error('absent'), ''));
+        const r1 = await e.refresh(procs); await e.refresh(procs); await e.refresh(procs);
+        check('empreinte : top absent ou muet, rien ne casse — la mémoire résidente sert, et on n’insiste pas',
+          r1 === false && !win.tabMemory().real && win.tabMemory().total > 0 && !e.due({ budgetMb: 4000, tabs: 9, minTabs: 4 }));
+        reset();
+        e.state.exec = realExec;
+        if (realPlatform.value === 'darwin') {
+          const vrai = await e.refresh(procs);
+          const m = win.tabMemory();
+          check('empreinte (macOS, vrai top) : chaque processus d’onglet a son empreinte', vrai && m.real && m.total > 0 && procs.every((p) => e.of(p.pid, p.creationTime) > 0), JSON.stringify({ vrai, total: m.total }));
+        }
+      } finally {
+        Object.defineProperty(process, 'platform', realPlatform);
+        e.state.exec = realExec;
+        reset();
+      }
+    }
     Object.assign(s, saved);
 
     // Vignettes de la bascule ⌃Tab : huit au plus.

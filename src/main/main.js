@@ -491,7 +491,7 @@ app.whenReady().then(async () => {
   setInterval(win.archiveStale, 10 * 60e3);
   // Veille des onglets selon l'ancienneté et la mémoire, toutes les minutes.
   // (Pas pendant les tests : ils déclenchent ce passage eux-mêmes.)
-  if (!SELFTEST) setInterval(() => OrbeWindow.trimLive({ deep: true }), 60e3).unref();
+  if (!SELFTEST) setInterval(() => { OrbeWindow.sweep().catch((err) => console.error('[orbe] veille', err)); }, 60e3).unref();
   setInterval(() => little.LittleWindow.archiveStale(), 10 * 60e3).unref();
 
   if (SELFTEST) {

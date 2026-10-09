@@ -109,7 +109,7 @@ module.exports = async function reglagesTests(ctx) {
   const info = await globalAction('settings:get', null, null);
   check('« settings:get » garde ses champs et décrit les volets',
     info.settings === s() && Array.isArray(info.spaces) && Array.isArray(info.profiles) && Array.isArray(info.engines) && typeof info.version === 'string'
-    && info.panes.length === 9 && info.panes.includes('shortcuts') && typeof info.isDefault === 'boolean' && typeof info.downloads === 'string', JSON.stringify(Object.keys(info)));
+    && info.panes.length === 10 && info.panes.includes('shortcuts') && info.panes.includes('tabs') && info.memoryGb > 0 && typeof info.isDefault === 'boolean' && typeof info.downloads === 'string', JSON.stringify(Object.keys(info)));
 
   // Profils : renommer, supprimer
   store.state.profiles.push({ id: 'p-tmp', name: 'Temporaire' });
@@ -533,8 +533,8 @@ module.exports = async function reglagesTests(ctx) {
     defaut: [document.getElementById('defaultState').textContent, document.getElementById('makeDefault').hidden],
     scroll: document.getElementById('panes').scrollHeight - document.getElementById('panes').clientHeight,
   })`).then(JSON.parse);
-  check('fenêtre des réglages : neuf volets, un seul affiché, tous les réglages présents',
-    struct.tabs.length === 9 && struct.tabs[0] === 'general:Général' && struct.tabs[3] === 'shortcuts:Raccourcis' && struct.shown.join() === 'pane-general' && struct.selected === 'general'
+  check('fenêtre des réglages : dix volets, un seul affiché, tous les réglages présents',
+    struct.tabs.length === 10 && struct.tabs[0] === 'general:Général' && struct.tabs[2] === 'tabs:Onglets' && struct.tabs[4] === 'shortcuts:Raccourcis' && struct.shown.join() === 'pane-general' && struct.selected === 'general'
     && !struct.missing.length && !struct.ghosts.length && !struct.overflow, JSON.stringify(struct));
   const isDefault = panes.isDefaultBrowser();
   check('navigateur par défaut : l’état est affiché, le bouton n’apparaît que s’il reste à faire',
