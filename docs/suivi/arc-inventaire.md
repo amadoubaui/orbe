@@ -890,7 +890,7 @@ Arc : `menu` pour ceux de la barre de menus, sinon la source indiquée. Orbe : `
 
 ## Bilan chiffré
 
-656 lignes au total : 518 ✅, 50 🟡, 43 ⬜, 45 ➖.
+656 lignes au total : 538 ✅, 41 🟡, 29 ⬜, 48 ➖ (recompté le 9 octobre 2026).
 
 | Domaine | ✅ | 🟡 | ⬜ | ➖ | Total |
 | --- | --- | --- | --- | --- | --- |
@@ -899,23 +899,23 @@ Arc : `menu` pour ceux de la barre de menus, sinon la source indiquée. Orbe : `
 | Espaces et profils (ESP) | 21 | 1 | 2 | 0 | 24 |
 | Vie des onglets (ONG) | 25 | 1 | 1 | 2 | 29 |
 | Vue scindée (SCI) | 17 | 1 | 0 | 0 | 18 |
-| Aperçu (APE) | 10 | 0 | 2 | 0 | 12 |
+| Aperçu (APE) | 11 | 0 | 1 | 0 | 12 |
 | Petite fenêtre (PET) | 12 | 4 | 0 | 0 | 16 |
 | Thèmes (THM) | 15 | 2 | 1 | 2 | 20 |
-| Animations (ANI) | 20 | 3 | 6 | 0 | 29 |
-| Sons et haptique (SON) | 3 | 1 | 2 | 5 | 11 |
-| Gestes (GES) | 6 | 1 | 2 | 0 | 9 |
-| Bibliothèque et médias (BIB) | 21 | 3 | 4 | 3 | 31 |
+| Animations (ANI) | 24 | 1 | 4 | 0 | 29 |
+| Sons et haptique (SON) | 3 | 2 | 0 | 6 | 11 |
+| Gestes (GES) | 7 | 0 | 2 | 0 | 9 |
+| Bibliothèque et médias (BIB) | 24 | 3 | 1 | 3 | 31 |
 | Boosts (BOO) | 12 | 0 | 0 | 1 | 13 |
-| Tableaux et capture (TAB) | 14 | 1 | 3 | 1 | 19 |
-| Notes (NOT) | 4 | 1 | 0 | 0 | 5 |
-| Extensions et site (EXT) | 12 | 4 | 5 | 1 | 22 |
-| Réglages (REG) | 31 | 2 | 0 | 11 | 44 |
+| Tableaux et capture (TAB) | 15 | 0 | 3 | 1 | 19 |
+| Notes (NOT) | 5 | 0 | 0 | 0 | 5 |
+| Extensions et site (EXT) | 19 | 0 | 2 | 1 | 22 |
+| Réglages (REG) | 31 | 1 | 0 | 12 | 44 |
 | Menus (MEN) | 85 | 5 | 1 | 5 | 96 |
 | Raccourcis (RAC) | 44 | 1 | 1 | 2 | 48 |
-| Import et accueil (IMP) | 8 | 1 | 4 | 1 | 14 |
+| Import et accueil (IMP) | 10 | 1 | 1 | 2 | 14 |
 | Divers (DIV) | 24 | 3 | 0 | 5 | 32 |
-| **Total** | **518** | **50** | **43** | **45** | **656** |
+| **Total** | **538** | **41** | **29** | **48** | **656** |
 
 Lecture : un 🟡 recouvre deux cas, que les colonnes « Preuve Orbe » et « Note » distinguent : du code présent mais sans test (un test suffit à le passer en ✅), ou une fonction réellement incomplète. La part de chacun n'a pas été comptée.
 
