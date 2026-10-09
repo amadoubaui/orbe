@@ -286,7 +286,7 @@ module.exports = {
       assert.ok(Theme.contrast([255, 255, 255], fond) >= 4.5, 'texte du message lisible');
     });
 
-    await t.avecEcran('verifier', 'd’un Espace à l’autre : le fond de l’autre Espace se fond par-dessus pendant le glissement, sa liste a déjà ses couleurs', async () => {
+    await t.verifier('d’un Espace à l’autre : le fond de l’autre Espace se fond par-dessus pendant le glissement, sa liste a déjà ses couleurs', async () => {
       await regler({ colors: ['#f5d98b'], intensity: 0.8, mode: 'light', grain: 0.3, texture: 'sand' });
       await ctx.menu('spaces.new');
       await jusqua(() => shell.locator('#space-name input.rename').count(), 'champ de nom');
@@ -299,6 +299,9 @@ module.exports = {
       assert.equal(nuit.family, 'dark');
       const reduit = await shell.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches);
       if (reduit) return t.ignorer('fondu entre Espaces', '« Réduire les animations » est actif');
+      // Le fondu se lit à mi-course : sans image présentée, il n'avance pas. Les deux
+      // Espaces et leurs thèmes, eux, sont en place pour la vérification suivante.
+      if (!ctx.milieu.vivant) return t.ignorer('fondu entre Espaces (lu à mi-course)', ctx.milieu.raison);
       await jusqua(() => shell.evaluate(() => !slide), 'listes au repos'); // eslint-disable-line no-undef
       await ctx.vitesseAnimations(0.15);
       try {

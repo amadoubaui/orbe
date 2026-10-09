@@ -48,6 +48,21 @@ if (process.argv.includes('--selftest') && !SELFTEST) {
   console.error('[orbe] --selftest refusé : application fabriquée, sans --orbe-test ni ORBE_USER_DATA à part');
   process.exit(2);
 }
+// Exception non rattrapée dans le processus principal. Sans écouteur, Electron
+// ouvre une boîte d'erreur native (« A JavaScript error occurred in the main
+// process ») qui fige toute l'application tant que personne n'y répond — et
+// personne n'y répond pendant un essai : c'était le blocage des tests après la
+// fermeture d'une fenêtre. Orbe consigne l'erreur et continue ; en test, elle
+// fait échouer le scénario à la fin (voir plus bas).
+const uncaught = [];
+process.on('uncaughtException', (err) => {
+  const text = String((err && err.stack) || err);
+  uncaught.push(text);
+  if (uncaught.length > 20) uncaught.shift();
+  console.error(`[orbe] exception non rattrapée dans le processus principal :\n${text}`);
+  try { fs.appendFileSync(path.join(app.getPath('userData'), 'erreurs.log'), `${new Date().toISOString()} ${text}\n\n`); } catch {}
+});
+
 // Profil de données isolé : pour les tests, ou via ORBE_USER_DATA.
 if (process.env.ORBE_USER_DATA) app.setPath('userData', path.resolve(process.env.ORBE_USER_DATA));
 else if (SELFTEST) app.setPath('userData', fs.mkdtempSync(path.join(os.tmpdir(), 'orbe-test-')));
@@ -57,6 +72,7 @@ if (SELFTEST) {
   // Garde des essais : aucune boîte de dialogue native sans réponse préparée,
   // et un scénario qui n'avance plus s'arrête en disant ce qu'il attendait.
   testGuard = require('./test-guard');
+  testGuard.state.errors = uncaught;
   testGuard.install({ app, dialog, limit: Number(process.env.ORBE_TEST_LIMIT) || 480, stall: Number(process.env.ORBE_TEST_STALL) || 150 });
   // Les tests ne touchent jamais au vrai trousseau du système.
   app.commandLine.appendSwitch('use-mock-keychain');
@@ -425,6 +441,7 @@ app.whenReady().then(async () => {
       // ORBE_SCENARIO : autre scénario de test (ex. tests/sites.js, sites réels).
       await require(process.env.ORBE_SCENARIO ? path.resolve(process.env.ORBE_SCENARIO) : '../../tests/selftest')({ first, OrbeWindow, store, win, little, commands, menu, openSettings, openUrl, extensions, extApi, extHost, passwords, panes, prefs, shortcuts, globalAction, essentials });
       store.flush();
+      if (uncaught.length) throw new Error(`${uncaught.length} exception(s) non rattrapée(s) dans le processus principal pendant le scénario :\n${uncaught.join('\n')}`);
       const asked = testGuard.state.dialogs;
       if (asked.length) throw new Error(`${asked.length} boîte(s) de dialogue native(s) demandée(s) sans réponse préparée : ${asked.map((d) => `${d.name} « ${d.what} »`).join(' ; ')}`);
       app.exit(0);

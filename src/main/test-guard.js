@@ -20,6 +20,7 @@ const state = {
   waits: new Map(), // attentes en cours : jeton -> { label, since }
   scripts: new Map(), // executeJavaScript sans réponse : jeton -> { wc, code, since }
   dialogs: [], // boîtes de dialogue demandées sans réponse préparée
+  errors: [], // exceptions non rattrapées du processus principal (tenu par main.js)
   skipped: [], // vérifications ignorées (avec la raison)
   notes: [], // faits utiles au diagnostic (fermetures de fenêtres…)
 };
@@ -114,6 +115,8 @@ function describe() {
   for (const s of scripts) lines.push(`  · page ${s.wc}, depuis ${ago(s.since)} : ${s.code}`);
   lines.push(`boîtes de dialogue natives demandées sans réponse préparée : ${state.dialogs.length ? '' : 'aucune'}`);
   for (const d of state.dialogs) lines.push(`  · ${d.name} « ${d.what} » — ${d.where}`);
+  lines.push(`exceptions non rattrapées : ${state.errors.length ? '' : 'aucune'}`);
+  for (const e of state.errors) lines.push(`  · ${String(e).split('\n').slice(0, 6).join(' | ')}`);
   try {
     const wins = BaseWindow.getAllWindows();
     lines.push(`fenêtres : ${wins.length}`);

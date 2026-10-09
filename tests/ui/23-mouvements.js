@@ -399,7 +399,8 @@ module.exports = {
       await shell.emulateMedia({ reducedMotion: 'reduce' });
       try {
         await jusqua(() => shell.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches), 'réglage pris en compte');
-        await ctx.ouvrir('/d', 'Page D');
+        // Page jamais ouverte dans ce groupe : la vérification ne dépend pas des précédentes.
+        await ctx.ouvrir('/saisie', 'Page Saisie');
         await sleep(60);
         const apres = await enCours();
         assert.deepEqual(apres.filter((x) => x.nom === 'flip'), [], 'aucun glissement');
@@ -409,8 +410,8 @@ module.exports = {
         await shell.mouse.move(c.x, c.y);
         for (let i = 0; i < 4; i++) { await shell.mouse.wheel(0, -14); await sleep(16); }
         assert.equal(await shell.evaluate(() => getComputedStyle(document.getElementById('scroll')).translate), 'none');
-        await fermer('Page D');
-        await jusqua(async () => !(await today()).includes('Page D'), 'onglet fermé');
+        await fermer('Page Saisie');
+        await jusqua(async () => !(await today()).includes('Page Saisie'), 'onglet fermé');
         assert.equal(await shell.locator('#today .out').count(), 0, 'la ligne est retirée aussitôt');
       } finally {
         await shell.emulateMedia({ reducedMotion: null });

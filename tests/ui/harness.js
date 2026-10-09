@@ -136,7 +136,8 @@ async function lancer() {
   // --- Écran vivant ? -----------------------------------------------------------
   // Mesuré une fois par groupe, dans la coque (voir tests/outils.js) : sans image
   // présentée, une cadence ou une animation ne prouve rien.
-  ctx.milieu = juger(await delai(ctx.shell.evaluate(PROBE), 8000, 'mesure de l’écran').catch(() => null));
+  // (ORBE_UI_ECRAN=inactif : fait comme si aucune image n'était présentée, pour essayer ce chemin.)
+  ctx.milieu = juger(process.env.ORBE_UI_ECRAN === 'inactif' ? { frames: 0, ticks: 25, ms: 500, visible: 'simulé' } : await delai(ctx.shell.evaluate(PROBE), 8000, 'mesure de l’écran').catch(() => null));
 
   // --- Processus principal ----------------------------------------------------
   // `require` n'existe pas dans le contexte d'évaluation de Playwright ; on
