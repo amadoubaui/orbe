@@ -896,23 +896,23 @@ Arc : `menu` pour ceux de la barre de menus, sinon la source indiquée. Orbe : `
 | Barre de commande (CMD) | 14 | 21 | 15 | 3 | 53 |
 | Espaces et profils (ESP) | 18 | 2 | 4 | 0 | 24 |
 | Vie des onglets (ONG) | 19 | 4 | 4 | 2 | 29 |
-| Vue scindée (SCI) | 7 | 5 | 6 | 0 | 18 |
-| Aperçu (APE) | 6 | 2 | 4 | 0 | 12 |
-| Petite fenêtre (PET) | 3 | 6 | 7 | 0 | 16 |
+| Vue scindée (SCI) | 16 | 2 | 0 | 0 | 18 |
+| Aperçu (APE) | 10 | 0 | 2 | 0 | 12 |
+| Petite fenêtre (PET) | 9 | 4 | 3 | 0 | 16 |
 | Thèmes (THM) | 4 | 7 | 8 | 1 | 20 |
 | Animations (ANI) | 8 | 6 | 15 | 0 | 29 |
 | Sons et haptique (SON) | 3 | 1 | 7 | 0 | 11 |
-| Gestes (GES) | 1 | 5 | 3 | 0 | 9 |
+| Gestes (GES) | 5 | 1 | 3 | 0 | 9 |
 | Bibliothèque et médias (BIB) | 3 | 13 | 13 | 2 | 31 |
-| Boosts (BOO) | 3 | 2 | 7 | 1 | 13 |
+| Boosts (BOO) | 12 | 0 | 0 | 1 | 13 |
 | Tableaux et capture (TAB) | 8 | 2 | 8 | 1 | 19 |
 | Notes (NOT) | 1 | 2 | 2 | 0 | 5 |
 | Extensions et site (EXT) | 3 | 8 | 11 | 0 | 22 |
 | Réglages (REG) | 29 | 3 | 0 | 12 | 44 |
 | Menus (MEN) | 68 | 8 | 15 | 5 | 96 |
-| Raccourcis (RAC) | 29 | 9 | 8 | 2 | 48 |
+| Raccourcis (RAC) | 39 | 3 | 4 | 2 | 48 |
 | Import et accueil (IMP) | 2 | 4 | 8 | 0 | 14 |
-| Divers (DIV) | 3 | 11 | 8 | 4 | 26 |
+| Divers (DIV) | 22 | 4 | 2 | 4 | 32 |
 
 Lecture : un 🟡 recouvre deux cas, que les colonnes « Preuve Orbe » et « Note » distinguent : du code présent mais sans test (un test suffit à le passer en ✅), ou une fonction réellement incomplète. La part de chacun n'a pas été comptée.
 
