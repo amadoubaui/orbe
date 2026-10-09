@@ -96,8 +96,15 @@ module.exports = async function accueilTests(ctx) {
   const again = w.openInternal('welcome.html');
   await until(() => win.live.get(again.id) && win.live.get(again.id).wc.executeJavaScript('typeof show === "function" && !!document.getElementById("skip")'), 'accueil rouvert depuis l’aide');
   await win.live.get(again.id).wc.executeJavaScript('document.getElementById("skip").click()');
-  await until(() => !w.data.tabs[again.id], 'accueil passé');
-  check('« Passer l’accueil » le referme dès la première étape', !w.data.tabs[again.id]);
+  // « Passer » ne ferme pas : il mène à la dernière étape, celle du mot de soutien.
+  const awc = win.live.get(again.id).wc;
+  await until(() => awc.executeJavaScript('document.querySelector(".step.on").dataset.step === "ready"'), 'dernière étape après « Passer »');
+  const skipped = JSON.parse(await awc.executeJavaScript(`JSON.stringify({ soutien: document.querySelector('.support').getClientRects().length > 0, bouton: document.querySelector('.support [data-cmd="support"]').textContent, passer: document.getElementById('skip').hidden, suite: document.getElementById('next').textContent })`));
+  check('« Passer l’accueil » mène à la dernière étape : le mot de soutien est affiché, puis « Commencer à naviguer »',
+    !!w.data.tabs[again.id] && skipped.soutien && skipped.bouton === 'Soutenir le projet' && skipped.passer === true && skipped.suite === 'Commencer à naviguer', JSON.stringify(skipped));
+  await awc.executeJavaScript('document.getElementById("next").click()');
+  await until(() => !w.data.tabs[again.id], 'accueil refermé');
+  check('après « Passer », « Commencer à naviguer » referme l’accueil', !w.data.tabs[again.id]);
 
   platform.makeDefault = realDefault;
   br.configure(real);
