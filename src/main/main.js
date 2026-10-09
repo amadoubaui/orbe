@@ -391,6 +391,21 @@ function setupIpc() {
 
 app.on('open-url', (e, url) => { e.preventDefault(); openUrl(url); });
 app.on('open-file', (e, file) => { e.preventDefault(); openUrl(pathToFileURL(file).href); });
+// Handoff (macOS) : une page ouverte dans le navigateur d'un autre appareil de l'utilisateur
+// (iPhone, iPad, autre Mac) et reprise ici. Seule une adresse web est acceptée ; Orbe
+// n'annonce lui-même aucune page aux autres appareils.
+function handoffUrl(type, details) {
+  if (type !== 'NSUserActivityTypeBrowsingWeb') return '';
+  const raw = details && typeof details.webpageURL === 'string' ? details.webpageURL : '';
+  if (!raw || raw.length > 4096) return '';
+  try { const u = new URL(raw); return /^https?:$/.test(u.protocol) && u.hostname ? u.href : ''; } catch { return ''; }
+}
+app.on('continue-activity', (e, type, userInfo, details) => {
+  const url = handoffUrl(type, details);
+  if (!url) return;
+  e.preventDefault();
+  openUrl(url);
+});
 app.on('second-instance', (e, argv) => {
   const url = argv.find((x) => /^https?:\/\//i.test(x));
   if (url) openUrl(url);

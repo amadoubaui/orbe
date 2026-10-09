@@ -65,6 +65,48 @@ pour les autorisations simples.
   écouteur, Electron choisirait **le premier appareil** (Bluetooth) : Orbe
   annule la demande et le dit.
 
+- **Autres autorisations demandées** : détection d'inactivité (`idle-detection`), stockage
+  durable (`persistent-storage`), accès d'un cadre intégré à ses propres cookies
+  (`storage-access`). Ce dernier, comme la caméra et le micro, ne vaut que pour le couple
+  (site intégré, site qui l'intègre).
+- La demande est une **bulle ancrée** en haut de la page, du côté de l'adresse. La vue de la
+  feuille couvre toujours toute la page (la page ne reçoit aucun clic tant qu'elle est là) :
+  seule la carte a changé de place.
+
+## Centre de contrôle du site (`siteControl` dans `src/main/essentials.js`)
+
+Le panneau qu'ouvre le bouclier : bloqueur, autorisations, cookies et données, cache, Boost,
+mode développeur, extensions, copie du lien. C'est une feuille d'onglet (`sheets.js`), avec
+toutes ses garanties.
+
+| Menace | Réponse |
+| --- | --- |
+| La page fournit ce que le panneau affiche | Tout vient du processus principal : origine de l'adresse **engagée** par l'onglet (`webContents.getURL()`), compteur du bloqueur, autorisations retenues, cookies comptés dans la session, réglages. Le nom du site et le nom d'une extension (choisis par d'autres) sont affichés par `textContent`. Vérifié avec un nom d'extension piégé. |
+| L'action vaut pour un autre site que celui affiché à l'ouverture | Chaque action est revérifiée **au moment où elle arrive** : l'onglet du panneau existe encore, il est l'onglet actif de sa fenêtre, et l'origine de son adresse engagée est celle pour laquelle le panneau a été dressé. Sinon rien n'est fait et le panneau se ferme. Le panneau se ferme aussi de lui-même à toute navigation de l'onglet. Vérifié en neutralisant cette fermeture puis en changeant l'onglet de site : aucun cookie effacé, ni d'un côté ni de l'autre. |
+| La page actionne le panneau, le recouvre ou y fait cliquer | Vue d'Orbe posée sur la page : la page n'y a ni accès ni canal (un message `sheet:act` venu d'une page est sans effet : vérifié). Les actions qui changent quelque chose (bloqueur, autorisations, cookies, cache, Boost, mode développeur) sont refusées par le processus principal pendant la demi-seconde qui suit l'apparition du panneau, comme les réponses des feuilles. |
+| Une extension se fait ouvrir par un identifiant forgé | Seule une extension présente dans la liste du moment, et active, peut être ouverte ; le panneau ne transmet qu'un identifiant, relu dans cette liste. |
+| « Effacer » emporte plus que demandé | Cookies et données : l'origine de l'onglet seulement (`clearStorageData({ origin })`). Le cache HTTP n'est pas rangé par site dans Chromium : le bouton dit qu'il vide celui de tout le profil. |
+
+Ce que le panneau ne propose pas : accès des extensions site par site et extensions en
+navigation privée, qu'Electron ne permet pas de faire respecter (voir `docs/extensions.md`).
+
+## Téléchargements multiples (`downloadGate` dans `src/main/permissions.js`)
+
+Une page peut lancer un téléchargement que personne n'a demandé ; au **deuxième**, Orbe pose
+la question (« Télécharger plusieurs fichiers à la suite »), retenue par site comme les autres
+autorisations. Est « demandé » : un téléchargement que le moteur rattache à un geste, celui
+qui suit un geste dans l'onglet de moins de cinq secondes (un seul par geste), et ceux
+qu'Orbe lance lui-même (« Enregistrer l'image »). La décision est synchrone (`will-download`) :
+le téléchargement qui déclenche la question est refusé, puis relancé si la réponse est oui et
+que la page est toujours là. Une seule question par page ; un refus vaut pour le site.
+
+## Mode développeur automatique (`devAuto` dans `src/main/prefs.js`)
+
+Sur `localhost`, `*.localhost`, `127.0.0.1` et `::1`, la barre d'outils et l'adresse entière
+s'affichent d'elles-mêmes, avec un liseré jaune et noir. Cela ne donne **aucun droit** au
+site : le mode développeur ne change que ce qu'Orbe affiche. Un nom qui ressemble à
+`localhost` (`localhost.exemple.fr`) n'est pas un site local.
+
 ## Partage d'écran (`src/main/display-media.js`)
 
 | Menace | Réponse |

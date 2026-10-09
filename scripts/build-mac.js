@@ -93,6 +93,8 @@ plutil('NSMicrophoneUsageDescription', '-string', 'Un site web ouvert dans Orbe 
 plutil('NSLocationUsageDescription', '-string', 'Un site web ouvert dans Orbe demande ta position.');
 // Déclare Orbe comme navigateur web (liens http/https et fichiers HTML).
 plutil('CFBundleURLTypes', '-json', JSON.stringify([{ CFBundleURLName: 'Web', CFBundleTypeRole: 'Viewer', CFBundleURLSchemes: ['http', 'https'] }]));
+// Handoff : reprendre ici une page ouverte sur un autre appareil (événement « continue-activity »).
+plutil('NSUserActivityTypes', '-json', JSON.stringify(['NSUserActivityTypeBrowsingWeb']));
 plutil('CFBundleDocumentTypes', '-json', JSON.stringify([{ CFBundleTypeName: 'Document HTML', CFBundleTypeRole: 'Viewer', LSItemContentTypes: ['public.html', 'public.xhtml'] }]));
 
 cutFuses(framework);

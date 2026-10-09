@@ -357,6 +357,19 @@ Avec elle (`tests/ext-reelles.js`) :
   `tabs.create` dans un onglet d'Orbe.
 - **uBlock Origin Lite** : fenêtre « www.lemonde.fr — filtering mode optimal ».
 
+## ⌘E et extension qui plante (`cycle`, `backgroundGone` dans `src/main/ext-host.js`)
+
+- **⌘E** ouvre l'extension suivante parmi celles dont le bouton est actif pour l'onglet (sa
+  fenêtre, ou son action), et referme après la dernière. Rien de plus qu'un clic sur le bouton :
+  mêmes vérifications (`openPopup`), jamais en navigation privée.
+- **Plantage.** Quand le processus de la page d'arrière-plan d'une extension disparaît
+  (`render-process-gone` sur un `webContents` de type `backgroundPage`, raison autre qu'un arrêt
+  normal), l'extension est désactivée et un message cliquable mène au volet Extensions ; la
+  réactiver la relance. L'identité vient de l'adresse du `webContents` rapportée par Electron.
+  **Limite** : un service worker (manifeste 3) qui plante n'est pas signalé par Electron 44 —
+  `running-status-changed` ne distingue pas un arrêt d'un plantage — et Chromium le relance au
+  prochain événement : rien n'est fait pour lui.
+
 ## Interface (`src/main/ext-ui.js`)
 
 - **Bouton** : chaque extension a son bouton sous l'adresse. Clic droit : nom,
