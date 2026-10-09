@@ -1087,6 +1087,9 @@ module.exports = async function selftest(ctx) {
   // Barre latérale et menus : menus contextuels, dossiers, Espaces, barre de menus (tests/laterale.js)
   await require('./laterale')({ ...ctx, check });
 
+  // Finitions : icônes, dossier et Espace archivés à la suppression, fenêtre vierge, menus (tests/finitions.js)
+  await require('./finitions')({ ...ctx, check });
+
   // Tableaux (tests/easels.js)
   await require('./easels')({ ...ctx, check });
 

@@ -776,7 +776,7 @@ la coque), puis retiré. 1 000 onglets, 3 tours alternés, charge 4,4 :
 Le transport n'est pas le poste qui coûte : c'est `render()`, qui repasse sur toutes les lignes
 (2,1–2,8 ms à 1 000 onglets, 0,8 ms à 300, 0,6 ms à 50), et la production de l'image.
 
-- ⬜ **PERF-26 — `render()` : ne pas repasser sur les lignes inchangées.**
+- ✅ **PERF-26 — `render()` : ne pas repasser sur les lignes inchangées.** *(fait le 9 oct. : chaque ligne garde la description qui l’a dessinée et n’est redessinée que si un champ, la sélection, le renommage ou une classe posée hors du rendu a changé — comparaison champ par champ, sans allocation ; chemin court quand les lignes sont les mêmes dans le même ordre ; signature de la forme des listes calculée une fois par état. Mesuré à 1 000 onglets, état identique : `render()` 1,36 → 0,49 ms (la liste du jour 1,07 → 0,35 ms) ; tâche complète de la coque 8,9 → 7,8 ms et aller-retour 8,9 → 7,8 ms sur une machine chargée (charge 6,6), le reste étant la désérialisation de l’état (0,9 ms) et le travail du moteur. Le gain de 2 ms attendu était surestimé : le script du rendu n’en coûtait que 1,4. Verrouillé par self fin « état identique renvoyé : aucune ligne n’est redessinée… » et six autres vérifications)*
   *Constat* : à 1 000 onglets, chaque état reçu coûte 2,1 à 2,8 ms de script dans la coque même
   quand rien n'a changé (0,38 ms annoncé en section 8 : c'était sous-estimé), 5 ms de tâche au
   total. *Changement possible* : garder par ligne le texte JSON de sa dernière description et

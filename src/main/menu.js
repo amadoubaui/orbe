@@ -85,8 +85,8 @@ function build() {
     {
       label: t('menu.file'),
       submenu: [
-        item('newTab'), item('newWindow'), item('newIncognito'), item('newLittle'), item('newNote'), item('newNoteSplit'), item('newEasel'), item('reopen'),
-        sep, item('commandBar'), item('newProfile', { enabled: !!w && !w.incognito }),
+        item('newTab'), item('newWindow'), item('newBlank'), item('newIncognito'), item('newLittle'), item('newNote'), item('newNoteSplit'), item('newEasel'), item('reopen'),
+        sep, item('commandBar'), item('newProfile', { enabled: !!w && w.shared }),
         sep, item('closeTab'), item('closeWindow'),
         sep, ...(platform.isMac ? [item('share', { enabled: !!tab && /^https?:/i.test(tab.url) })] : []), item('capture'), item('captureFull'), item('capturePortrait'), item('captureToEasel'), item('savePage'), item('print'),
       ],
@@ -106,7 +106,23 @@ function build() {
         item('pasteUrl'),
         { label: t('edit.selectAll'), role: 'selectAll' },
         sep,
-        item('find'), item('findNext'), item('findPrev'), item('useSelectionFind'),
+        item('find'), item('findReplace'), item('findNext'), item('findPrev'), item('useSelectionFind'), item('jumpToSelection'),
+        sep,
+        // Orthographe, substitutions, transformations, parole, police : comme le menu Édition d'Arc.
+        { label: t('edit.spelling'), submenu: [{ label: t('edit.spellCheck'), role: 'toggleSpellChecker' }] },
+        ...(platform.isMac ? [{
+          label: t('edit.substitutions'),
+          submenu: [
+            { label: t('edit.showSubstitutions'), role: 'showSubstitutions' },
+            sep,
+            { label: t('edit.smartQuotes'), role: 'toggleSmartQuotes' },
+            { label: t('edit.smartDashes'), role: 'toggleSmartDashes' },
+            { label: t('edit.textReplacement'), role: 'toggleTextReplacement' },
+          ],
+        }] : []),
+        { label: t('edit.transformations'), submenu: [item('transformUpper'), item('transformLower'), item('transformCapitalize')] },
+        ...(platform.isMac ? [{ label: t('edit.speech'), submenu: [{ label: t('edit.startSpeaking'), role: 'startSpeaking' }, { label: t('edit.stopSpeaking'), role: 'stopSpeaking' }] }] : []),
+        { label: t('edit.format'), submenu: [{ label: t('edit.font'), submenu: [item('formatB'), item('formatI'), item('formatU')] }] },
       ],
     },
     {
@@ -138,7 +154,7 @@ function build() {
         sep,
         item('actualSize'), item('zoomIn'), item('zoomOut'),
         sep,
-        { label: t('view.developer'), submenu: [item('source'), item('devtools'), item('inspect'), item('console'), sep, item('toggleDevMode', { type: 'checkbox', checked: !!tab && require('./prefs').devMode(tab.url), enabled: !!tab && !!require('./prefs').hostOf(tab.url) && !w.incognito })] },
+        { label: t('view.developer'), submenu: [item('source'), item('devtools'), item('inspect'), item('console'), item('network'), sep, item('toggleDevMode', { type: 'checkbox', checked: !!tab && require('./prefs').devMode(tab.url), enabled: !!tab && !!require('./prefs').hostOf(tab.url) && !w.incognito })] },
         sep,
         item('fullscreen'),
       ],
@@ -146,10 +162,11 @@ function build() {
     {
       label: t('menu.spaces'),
       submenu: [
-        item('newSpace'), item('editTheme'), item('renameSpace'),
+        // (Sans fenêtre, la commande en ouvre une : l'article reste disponible.)
+        item('newSpace', { enabled: !w || w.shared }), item('editTheme'), item('renameSpace'),
         {
           label: t('spaces.profile'),
-          enabled: !!w && !w.incognito,
+          enabled: !!w && w.shared,
           submenu: [
             ...(w ? w.data.profiles : []).map((p) => ({
               label: p.name,
@@ -162,6 +179,7 @@ function build() {
           ],
         },
         item('deleteSpace', { enabled: spaces.length > 1 }),
+        item('manageSpaces'),
         sep, item('nextSpace'), item('prevSpace'),
         sep,
         ...spaces.map((sp, i) => ({
@@ -219,12 +237,13 @@ function build() {
       submenu: [
         item('stayOnTop', { type: 'checkbox', checked: !!w && w.win.isAlwaysOnTop() }),
         { label: t('window.minimize'), role: 'minimize' },
+        ...(platform.isMac ? [{ label: t('window.minimizeAll'), accelerator: 'Alt+Cmd+M', click: () => commands.minimizeAll() }] : []),
         { label: t('window.zoom'), role: 'zoom' },
         sep, item('library'), item('downloads'), item('media'), item('notes'), item('easels'),
         sep, { label: t('window.front'), role: 'front' },
       ],
     },
-    { label: t('menu.help'), role: 'help', submenu: [item('welcome'), item('shortcuts'), item('helpCenter'), item('whatsNew'), item('reportIssue'), item('support'), item('github'), sep, item('exportNotes'), sep, { label: t('help.troubleshooting'), submenu: [item('revealData'), item('copyInfo'), sep, { label: t('backup.menu'), submenu: require('./backups').menuItems() }] }] },
+    { label: t('menu.help'), role: 'help', submenu: [item('welcome'), item('shortcuts'), item('helpCenter'), item('whatsNew'), item('reportIssue'), item('support'), item('github'), sep, item('exportNotes'), sep, { label: t('help.troubleshooting'), submenu: [item('revealData'), item('copyInfo'), item('recordTrace', { labelKey: commands.tracing() ? 'help.stopTrace' : 'help.recordTrace' }), sep, { label: t('backup.menu'), submenu: require('./backups').menuItems() }] }] },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(platform.menuTemplate(template)));
   if (platform.isMac && app.dock) app.dock.setMenu(Menu.buildFromTemplate(dockTemplate()));
@@ -247,9 +266,17 @@ function dockTemplate() {
 
 // Appelé à chaque changement d'état : ne reconstruit le menu que si ce qu'il
 // affiche a réellement changé.
+// Une reconstruction déjà prévue n'est pas repoussée par les appels suivants : des
+// changements d'état rapprochés (page qui charge, machine chargée) la retardaient
+// sans fin, et le menu gardait des articles grisés d'avant l'ouverture de la fenêtre.
+let forced = false;
 function refresh(force) {
+  if (timer && (!force || forced)) return;
   clearTimeout(timer);
+  forced = !!force;
   timer = setTimeout(() => {
+    timer = null;
+    forced = false;
     const w = OrbeWindow.focused || OrbeWindow.primary;
     const s = store.state.settings;
     const loc = w && w.activeId ? w.locate(w.activeId) : null;
@@ -261,7 +288,7 @@ function refresh(force) {
       w && w.pendingLabel('undo'), w && w.pendingLabel('redo'),
       s.shortcuts, s.devSites, tab && tab.url && require('./prefs').hostOf(tab.url),
       w && w.space.pinnedCollapsed, !!(w && w.activeId && w.groupOf(w.activeId)), !!(w && w.win.isAlwaysOnTop()),
-      isDefaultBrowser(), extensionActions(w).map((x) => [x.id, x.title, x.enabled]),
+      commands.tracing(), !!(w && w.shared), isDefaultBrowser(), extensionActions(w).map((x) => [x.id, x.title, x.enabled]),
     ]);
     if (!force && sig === lastSignature) return;
     lastSignature = sig;

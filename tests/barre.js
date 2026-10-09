@@ -166,13 +166,14 @@ module.exports = async function barreTests(ctx) {
     ['undo.unpin', () => w.togglePin(c1)],
     ['undo.removeFavorite', () => w.toggleFavorite(a1)],
     ['undo.pinMany', () => w.pinMany([a1, c1])],
-    ['undo.deleteFolder', () => w.deleteFolder(dossier)],
     ['undo.moveToSpace', () => w.moveToSpace(f1, other.id)],
     ['undo.moveToSpace', () => w.moveManyToSpace([b1, a1], other.id)],
     ['undo.newFolder', () => w.folderFromSelection([d1, c1])],
     ['undo.unpinMany', () => w.pinMany([d1, c1, e1])],
     ['undo.archive', () => w.handle('close', d1)],
     ['undo.archiveMany', () => w.handle('close', { ids: [c1, e1] })],
+    // Dossier sans onglet : supprimé sans question (garni, il archive son contenu : tests/finitions.js).
+    ['undo.deleteFolder', () => { w.deleteFolder(dossier); }],
   ];
   const states = [snap()];
   const seen = [];

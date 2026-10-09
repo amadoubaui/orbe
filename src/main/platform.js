@@ -23,6 +23,8 @@ const WIN_ACCEL = {
   'Cmd+[': 'Alt+Left', // Page précédente
   'Cmd+]': 'Alt+Right', // Page suivante
   'Ctrl+Cmd+F': 'F11', // Plein écran
+  'Cmd+J': 'Alt+Shift+J', // Aller à la sélection (Ctrl+J ouvre les téléchargements)
+  'Ctrl+Cmd+N': 'Alt+Shift+B', // Fenêtre vierge (Ctrl+N ouvre une fenêtre ordinaire)
   'Shift+Cmd+2': 'Alt+Shift+2', // Capture (Ctrl+Shift+2 vise le volet 2)
   'Ctrl+Shift+Cmd+C': 'Alt+Shift+C', // Copier en citation
   'Ctrl+Shift+N': 'Alt+Shift+N', // Nouvelle note (Ctrl+Shift+N ouvre la navigation privée)

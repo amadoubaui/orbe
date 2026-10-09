@@ -135,8 +135,12 @@ module.exports = {
       await attendre(['Page D', '[Lot: ]'], epingles);
       await glisser(ligne('Page A'), shell.locator('#pinned .folder > .row'), 0.5, 0.5);
       await attendre(['Page D', '[Lot: Page A]'], epingles);
+      // Comme dans Arc : la suppression est confirmée, et l'onglet du dossier part à l'archive.
+      await ctx.principal(({ electron }) => { global.__boiteDossier = electron.dialog.showMessageBox; electron.dialog.showMessageBox = async () => ({ response: 0 }); });
       await menuContextuel(shell.locator('#pinned .folder > .row'), 'tabs.deleteFolder');
-      await attendre(['Page D', 'Page A'], epingles);
+      await attendre(['Page D'], epingles);
+      assert.equal((await ctx.etat()).archive[0], ctx.url('/a'));
+      await ctx.principal(({ electron }) => { electron.dialog.showMessageBox = global.__boiteDossier; });
       await menuDit('Cmd+Z', 'Annuler Supprimer le dossier');
       await annuler();
       await attendre(['Page D', '[Lot: Page A]'], epingles);
@@ -154,7 +158,8 @@ module.exports = {
       await retablir();
       await attendre(['Page D', '[Lot: Page A]'], epingles);
       await retablir();
-      await attendre(['Page D', 'Page A'], epingles);
+      await attendre(['Page D'], epingles);
+      assert.equal((await ctx.etat()).archive[0], ctx.url('/a'), 'rétablir la suppression archive de nouveau l’onglet, sans reposer la question');
     });
 
     await t.verifier('aperçu fermé par son bouton puis ⌘Z : il se rouvre', async () => {
