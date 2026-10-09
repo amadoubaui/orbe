@@ -294,7 +294,9 @@ module.exports = {
       const mediane = Math.round(ecarts[Math.floor(ecarts.length / 2)] * 10) / 10;
       const p95 = Math.round(ecarts[Math.floor(ecarts.length * 0.95)] * 10) / 10;
       console.log(`    accueil (vague, anneau, halo) : ${ecarts.length} images, médiane ${mediane} ms, 95e centile ${p95} ms, ${apres.LayoutCount - avant.LayoutCount} mise(s) en page`);
-      assert.ok(apres.LayoutCount - avant.LayoutCount <= 1, 'mises en page : ' + (apres.LayoutCount - avant.LayoutCount));
+      // La page vient d'être rechargée : elle se dessine encore (couleurs, navigateurs trouvés)
+      // pendant que la vague part. Ce qui est vérifié : aucune mise en page par image.
+      assert.ok(apres.LayoutCount - avant.LayoutCount <= 4, 'mises en page pendant ' + ecarts.length + ' images : ' + (apres.LayoutCount - avant.LayoutCount));
       assert.ok(mediane < 34, 'cadence médiane : ' + mediane);
     });
 
@@ -342,6 +344,11 @@ module.exports = {
       await cdpA.send('Performance.enable');
       const lire = async () => Object.fromEntries((await cdpA.send('Performance.getMetrics')).metrics.map((x) => [x.name, x.value]));
       await accueil.mouse.move(5, 5);
+      // L'arrivée sur l'étape redessine la page (couleurs, navigateur par défaut, réponse du
+      // processus principal) : la mesure commence une fois ces mises en page passées, pour ne
+      // compter que celles que causeraient les boucles elles-mêmes.
+      let vu = (await lire()).LayoutCount;
+      await jusqua(async () => { await sleep(400); const n = (await lire()).LayoutCount; const calme = n === vu; vu = n; return calme; }, 'page de l’accueil au repos', 10000);
       await accueil.evaluate(() => { const p = (window.__img = { t: [], on: true }); const f = () => { p.t.push(performance.now()); if (p.on) requestAnimationFrame(f); }; requestAnimationFrame(f); });
       const avant = await lire();
       await sleep(2000);
@@ -360,6 +367,16 @@ module.exports = {
       try {
         assert.equal(await accueil.evaluate(() => [...document.querySelectorAll('.tips .demo b')].filter((b) => getComputedStyle(b).animationName !== 'none').length), 0);
       } finally { await accueil.emulateMedia({ reducedMotion: null }); }
+    });
+
+    // --- Tableau neuf : onglet épinglé -----------------------------------------------------
+    await t.verifier('⌃⇧E : le tableau neuf paraît parmi les onglets épinglés de la barre, choisi', async () => {
+      const avant = await shell.locator('#pinned .row.tab').count();
+      await ctx.menu('Ctrl+Shift+E');
+      await ctx.attendrePage('easel.html');
+      await jusqua(async () => (await shell.locator('#pinned .row.tab').count()) === avant + 1, 'ligne du tableau parmi les épinglés');
+      assert.equal(await shell.locator('#pinned .row.tab.active').count(), 1);
+      assert.equal(await shell.locator('#today .row.tab.active').count(), 0);
     });
 
     await t.verifier('aucune sorte cochée, ou rien de récent : le survol ne montre rien', async () => {

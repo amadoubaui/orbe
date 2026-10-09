@@ -223,6 +223,31 @@ module.exports = async function sensationsTests(ctx) {
     if (home) w.activate(home);
   }
 
+  // === Tableau neuf : onglet épinglé de l'Espace (TAB-2) =====================================
+  {
+    const { win } = ctx;
+    const easels = require('../src/main/easels');
+    const home = w.activeId;
+    const pinned0 = w.space.pinned.length;
+    const today0 = w.space.today.length;
+    w.run('newEasel');
+    const tabId = w.activeId;
+    const tab = w.data.tabs[tabId];
+    const board = new URL(tab.url).searchParams.get('id');
+    const where = () => (w.locate(tabId) || {}).list;
+    check('nouveau tableau (⌃⇧E) : il s’ouvre comme onglet épinglé de l’Espace, à la suite des épinglés, et il est affiché',
+      where() === 'pinned' && w.space.pinned.length === pinned0 + 1 && w.space.pinned[pinned0].id === tabId && w.space.today.length === today0 && tab.internal === true, JSON.stringify([where(), w.space.pinned.length, pinned0]));
+    await until(() => ui(`!!document.querySelector('#pinned [data-id=${JSON.stringify(tabId)}]')`), 'ligne du tableau parmi les épinglés');
+    if (home) w.activate(home);
+    easels.open(w, board);
+    check('rouvrir ce tableau (Bibliothèque) : son onglet épinglé revient au premier plan, sans doublon', w.activeId === tabId && w.space.pinned.length === pinned0 + 1 && w.space.today.length === today0);
+    easels.remove(board);
+    check('tableau supprimé : son onglet n’est plus épinglé (il redevient un onglet du jour, qui se ferme comme un autre)', where() === 'today' && w.space.pinned.length === pinned0 && !easels.list().some((b) => b.id === board), String(where()));
+    w.close(tabId, { ask: false });
+    check('…et une fois fermé, il a quitté la barre', !w.data.tabs[tabId] && w.space.today.length === today0);
+    if (home && w.data.tabs[home]) w.activate(home);
+  }
+
   // === Changement d'onglet : coupe franche (ANI-24) ========================================
   {
     const { win } = ctx;
