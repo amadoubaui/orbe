@@ -10,7 +10,8 @@
   border: 0.5px solid var(--panel-line);
   border-radius: 14px;
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28), 0 2px 8px rgba(0, 0, 0, 0.12);
-  backdrop-filter: blur(30px) saturate(1.6);
+  /* Pas de backdrop-filter : la page est une autre vue native, il n'y a rien à
+     flouter derrière le panneau dans celle-ci (voir DESIGN-5, mesures). */
 }
 
 @keyframes pop { from { opacity: 0; } }
@@ -257,4 +258,4 @@ body.peek-out #backdrop, body.peek-out #peek { animation: fade-out var(--peek-ms
 #drop { position: fixed; inset: 0; display: flex; justify-content: flex-end; }
 #drop::before { content: ''; position: absolute; inset: 0; }
 #drop-label { width: 50%; margin: 10px; border-radius: 12px; border: 2px dashed transparent; display: grid; place-items: center; color: transparent; font-size: 15px; font-weight: 600; transition: all 120ms; }
-#drop.over #drop-label { background: color-mix(in srgb, var(--accent) 30%, rgba(0, 0, 0, 0.35)); border-color: var(--accent); color: #fff; backdrop-filter: blur(2px); }
+#drop.over #drop-label { background: color-mix(in srgb, var(--accent) 30%, rgba(0, 0, 0, 0.35)); border-color: var(--accent); color: #fff; }

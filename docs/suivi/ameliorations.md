@@ -758,7 +758,7 @@ quand une inertie suit ; les constantes sont regroupées dans `PAGER` (`shell.js
   droite vérifiées par les essais de bout en bout (cotes exactes à l'arrivée). « Réduire les
   animations » coupe aussi ces mouvements (`motion()`).
 
-- ⬜ **ANIM-2 — À défaut d'ANIM-1 : caler le minuteur sur l'écran.**
+- ➖ **ANIM-2 — À défaut d'ANIM-1 : caler le minuteur sur l'écran.** *(sans objet : ANIM-1 est fait, plus aucun minuteur ne déplace les vues)*
   *Changement* : remplacer `setInterval(…, 8)` par un pas calculé sur
   `1000 / screen.getDisplayMatching(win.getBounds()).displayFrequency`, en boucle `setTimeout`
   corrigée de la dérive (viser l'instant de l'image suivante, pas « dans 8 ms »). *Gain* :
@@ -859,7 +859,7 @@ Ce chapitre est de la recherche : ce qu'Electron 44 expose réellement (relevé 
 
 ### Points
 
-- ⬜ **DESIGN-1 — Retour au glisser : balayage de page qui suit le doigt.**
+- ✅ **DESIGN-1 — Retour au glisser : balayage de page qui suit le doigt.** *(fait : `src/preload/swipe.js` et `src/main/swipe.js` ; une pastille suit les doigts au bord de la page, navigation au seuil de 130 px ou sur un geste vif ; essais d'interface « Mouvements » : 120 images/s (médiane 8,3 ms, 95e centile 10,2 ms). La détection passe par la molette vue par la page (les événements `gestureScroll*` ne sont pas nécessaires). Seuils à régler main sur le pavé)*
   *Constat* : précédent / suivant se font au clavier ou au bouton ; rien ne suit le doigt sur la
   page. *Changement* : écouter `input-event` sur la vue de l'onglet actif ; sur
   `gestureScrollBegin` puis des `gestureScrollUpdate` majoritairement horizontaux alors que la
@@ -869,7 +869,7 @@ Ce chapitre est de la recherche : ce qu'Electron 44 expose réellement (relevé 
   bien émis sur macOS pour un balayage à deux doigts (présents dans le fichier de types, non
   essayés pendant cette séance). *Effort* : M.
 
-- ⬜ **DESIGN-2 — Rebond élastique de la barre latérale.**
+- ✅ **DESIGN-2 — Rebond élastique de la barre latérale.** *(fait : rebond imité (`BOUNCE` dans `shell.js`, propriété `translate`, `overscroll-behavior: none`) ; médiane 8,3 ms par image, pas de mise en page par image ; essai « rebond élastique »)*
   *À vérifier à l'œil* : `#scroll` est un bloc défilant interne ; selon la version de Chromium
   l'élastique de macOS ne s'applique qu'au défilement principal du document. Si la liste bute
   sèchement, faire de `#scroll` le défilement principal de la coque n'est pas possible (la
@@ -885,7 +885,7 @@ Ce chapitre est de la recherche : ce qu'Electron 44 expose réellement (relevé 
   trop tard pour accompagner un geste, et le retour n'est produit que si un doigt est posé sur
   le pavé. À reprendre seulement si un module natif est accepté. État : ➖ écarté (avec la raison).
 
-- ⬜ **DESIGN-4 — Sons d'interface discrets, originaux.**
+- ✅ **DESIGN-4 — Sons d'interface discrets, originaux.** *(fait : sept sons synthétisés par `scripts/make-sounds.js` (capture, tab, close, space, pin, unpin, error ; 0,14 à 0,42 s, 12 à 36 Ko, même niveau moyen, crête à −6 dB au plus), déduits des changements d'état après un geste (`src/main/sounds.js`) ; réglages « Sons des gestes » (coupé par défaut) et volume ; muets pendant les essais. Timbre à juger à l'oreille)*
   *Droit* : un son que l'on synthétise soi-même est une création originale dont on détient les
   droits ; il ne faut ni reprendre ni imiter de près les sons d'Arc ou de macOS, ni partir
   d'une banque sans licence claire (préférer CC0 ou création propre). Les fichiers doivent être
@@ -900,7 +900,7 @@ Ce chapitre est de la recherche : ce qu'Electron 44 expose réellement (relevé 
   défaut, réglage dans les préférences, coupés par le mode silencieux du système si possible.
   *Effort* : S pour un prototype.
 
-- ⬜ **DESIGN-5 — Panneaux flottants : flou natif plutôt que `backdrop-filter`.**
+- 🟡 **DESIGN-5 — Panneaux flottants : flou natif plutôt que `backdrop-filter`.** *(mesuré : avec ou sans `backdrop-filter`, la barre de commande tient 120 images/s (médiane 8,3 ms, 95e centile 10,3 à 10,6 ms dans les deux cas) et le filtre ne montre rien, faute de contenu derrière lui dans la vue ; il est retiré (panneaux, barre flottante, zone de dépôt). `View.setBackgroundBlur()` existe dans Electron 44 mais demande des vues réduites au panneau et un fond plus transparent : choix à faire à l'œil, non fait)*
   *Constat* : `.panel` (barre de commande, recherche, thème) utilise
   `backdrop-filter: blur(30px) saturate(1.6)` dans une vue transparente de la taille de la
   fenêtre. Un `backdrop-filter` ne floute que ce que la **même** vue dessine derrière lui ; ici
@@ -912,7 +912,7 @@ Ce chapitre est de la recherche : ce qu'Electron 44 expose réellement (relevé 
   la vue modale couvre aujourd'hui toute la fenêtre pour capter le clic « en dehors » : il
   faudrait le capter autrement. *Effort* : M.
 
-- ⬜ **DESIGN-6 — Typographie.**
+- ✅ **DESIGN-6 — Typographie.** *(fait : `font-optical-sizing: auto`, `font-kerning: normal`, `text-rendering: auto`, chiffres alignés dans les messages ; essai « typographie ». Rendu à juger à l'œil)*
   *Constat* : `font: 13px/1.35 -apple-system`, lignes d'onglet en 14 px / 500, `letter-spacing: -0.005em`,
   `-webkit-font-smoothing: antialiased`. C'est cohérent avec macOS. Pistes à juger à l'œil,
   sans coût : `font-optical-sizing: auto` et `font-feature-settings: 'ss01', 'cv11'` selon les
@@ -932,13 +932,13 @@ Ce chapitre est de la recherche : ce qu'Electron 44 expose réellement (relevé 
   thème ; enfoncement en 80 ms, relâchement au ressort ; survol des lignes immédiat à l'entrée,
   150 ms à la sortie. Vérifié à la souris (essai d'interface « Mise en page »).
 
-- ⬜ **DESIGN-8 — Fermeture d'un onglet : glissement des lignes suivantes.**
+- ✅ **DESIGN-8 — Fermeture d'un onglet : glissement des lignes suivantes.** *(fait : la hauteur n'est plus animée ; la ligne s'efface sur place, hors du flux, et les suivantes glissent par transformation (`flip` dans `shell.js`, ressort `--spring-snappy`) ; une mise en page par changement, 120 images/s pendant le glissement ; essai « fermer un onglet »)*
   *Constat* : `row-out` anime la hauteur de la ligne supprimée (`height` → 0, 150 ms), ce qui
   relance une mise en page par image pour toute la liste. Mesuré : la mise en page de la liste
   coûte 0,24 à 0,51 ms, donc cela tient à 120 Hz même à 1 000 onglets ; rien à corriger pour la
   vitesse. Pour l'agrément, passer la courbe à `--spring-snappy`. *Effort* : S.
 
-- ⬜ **DESIGN-9 — `will-change: transform` permanent sur `#sidebar`.**
+- ➖ **DESIGN-9 — `will-change: transform` permanent sur `#sidebar`.** *(mesuré, sans gain : mémoire du processus graphique 83 à 89 Mo avec comme sans `will-change`, mêmes 12 couches de même surface ; la propriété est gardée)*
   *Constat* : la barre garde sa propre couche graphique en permanence pour une animation qui
   dure 50 à 180 ms. *À mesurer* : mémoire graphique avec et sans (le processus graphique oscille
   déjà entre 160 et 183 Mo sans cause identifiée) ; poser la propriété au début de la bascule et

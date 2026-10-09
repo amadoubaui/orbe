@@ -480,7 +480,6 @@ body.toolbar #empty { top: 50px; }
   border-radius: 14px;
   background: var(--paint, var(--bg));
   box-shadow: 0 10px 34px rgba(0, 0, 0, 0.3), 0 0 0 0.5px var(--line);
-  backdrop-filter: blur(24px);
   transform: translateX(calc(-100% - 14px));
   /* Elle entre au ressort et repart plus vite qu'elle n'est venue (la vue est retirée 220 ms après). */
   transition: transform 180ms var(--ease-in);

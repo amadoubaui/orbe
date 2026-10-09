@@ -740,6 +740,8 @@ class OrbeWindow {
     if (!incognito) wc.on('dom-ready', () => boosts.apply(wc));
     wc.on('did-navigate-in-page', (e, url, isMainFrame) => { if (isMainFrame) navigated(url); });
     wc.on('update-target-url', (e, url) => rt.owner.linkStatus(rt, url));
+    // Pincer pour zoomer la page (coupé par défaut dans Electron).
+    wc.setVisualZoomLevelLimits(1, 5).catch(() => {});
     wc.on('audio-state-changed', () => {
       const owner = rt.owner;
       if (wc.isCurrentlyAudible()) { rt.playing = true; if (!owner.visibleIds().includes(rt.id)) owner.mediaId = rt.id; }

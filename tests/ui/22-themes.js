@@ -348,7 +348,7 @@ module.exports = {
         const cap = process.mainModule.require(a.racine + '/tests/capture.js');
         process.mainModule.require('fs').writeFileSync(a.fichier, await cap.compose(w.win, '#ffffff'));
       }, { racine: ctx.root, fichier: path.join(dossier, nom + '.png') });
-      await ctx.principal(({ w }) => { w.win.setContentSize(1180, 760); });
+      await ctx.principal(({ w }) => { w.win.setContentSize(1180, 760); clearTimeout(w.toastTimer); if (w.toastView) { w.toastView.setVisible(false); try { w.win.contentView.removeChildView(w.toastView); } catch {} } });
       await sleep(300);
       await regler({ colors: ['#3b82f6'], intensity: 0.5, mode: 'light', grain: 0 });
       await sleep(400);

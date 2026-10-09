@@ -81,6 +81,11 @@ html, body {
   color: var(--fg);
   font: 13px/1.35 -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
   -webkit-font-smoothing: antialiased;
+  /* Dessin de la police adapté au corps (SF Text / Display), crénage ; pas de
+     « optimizeLegibility », coûteux sur les longues listes. */
+  font-optical-sizing: auto;
+  font-kerning: normal;
+  text-rendering: auto;
   user-select: none;
   cursor: default;
 }

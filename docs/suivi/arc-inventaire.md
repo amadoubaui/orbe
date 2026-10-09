@@ -370,25 +370,25 @@ Actions de la barre de commande relevées dans Arc (libellés du binaire et du c
 | Id | Ce que fait Arc | Preuve Arc | État | Preuve Orbe | Note |
 | --- | --- | --- | --- | --- | --- |
 | THM-1 | Apparence Automatic / Light / Dark, commune à tous les Espaces ; libellé « Websites, Easels, and Notes will use: » | menu ; HC 19228064149143 | ✅ | MA:applyAppearance ; self « le thème clair s'applique » | |
-| THM-2 | Dans le sélecteur de thème : trois boutons animés (étoiles, soleil, lune) | binaire `automatic.json`, `sun.json`, `moon.json` (Lottie) | ⬜ | menu et réglages seulement | Les mettre dans le panneau de thème |
-| THM-3 | Couleurs choisies en déplaçant des points sur un nuancier, « + » et « − » pour ajouter ou retirer une couleur | HC 25625261733143 | 🟡 | 12 couleurs + curseur de teinte | Nuancier à deux dimensions |
-| THM-4 | Jusqu'à trois couleurs en dégradé | slashgear ; variables `--arc-background-gradient-color0/1/2` (HC 19212718608151) | 🟡 | deux couleurs ; self « thème d'Espace en dégradé avec grain » | Troisième couleur |
-| THM-5 | Retirer toutes les couleurs rend le thème par défaut | HC 25625261733143 | ⬜ | | |
-| THM-6 | Palettes prêtes : 9 pastel, 9 ternes, 9 gris | binaire `ColorPickerPastel1-9`, `ColorPickerDrab1-9`, `ColorPickerGreyscale1-9` | 🟡 | 12 couleurs vives | Reprendre les trois familles (teintes exactes non relevées) |
-| THM-7 | Réglage d'intensité | HC 20498417809815 | ⬜ | | Curseur sur le taux de mélange (18 % / 24 % aujourd'hui) |
-| THM-8 | Réglage de grain par une molette | HC 20498417809815 ; binaire `GrainKnob` | ✅ | SC:368-376 ; self | Molette au lieu d'un curseur : à voir |
-| THM-9 | Quatre textures : grain, sable, tweed, denim | binaire `GrainKnob`, `SandKnob`, `TweedKnob`, `DenimKnob` ; images `grain`, `sand`, `tweed`, `denim` | 🟡 | une seule (bruit fractal SVG) | Trois textures à ajouter ; le rendu exact d'Arc reste à observer |
-| THM-10 | Fond de fenêtre rendu par un shader (Metal) | binaire `ARC_WindowThemeUI/default.metallib` | 🟡 | dégradé CSS + bruit SVG | Suffisant si le rendu est comparé à l'œil |
-| THM-11 | Retour haptique en tournant les molettes du thème | inverse ; HC 20498377604887 | ⬜ | | Voir SON-6 |
-| THM-12 | Les couleurs du thème gagnent menus, champs, barre de commande, sélecteur d'onglets, messages | HC 20498417809815 | 🟡 | barre latérale et sélection | Étendre à la barre de commande et aux messages |
-| THM-13 | Barre latérale translucide sur le bureau | non vérifié (mesure faite en thème sombre opaque) | 🟡 | réglage `translucent`, effet `sidebar` ; aucun test | |
+| THM-2 | Dans le sélecteur de thème : trois boutons animés (étoiles, soleil, lune) | binaire `automatic.json`, `sun.json`, `moon.json` (Lottie) | ✅ | OV `#theme-modes` : trois boutons (étoiles, soleil, lune) dont l'icône s'anime au choix (CSS) ; ui 22 « apparence de l'Espace » | Apparence réglée par Espace (la barre et les panneaux suivent) ; les sites suivent toujours le réglage général. Icônes dessinées pour Orbe, pas les Lottie d'Arc |
+| THM-3 | Couleurs choisies en déplaçant des points sur un nuancier, « + » et « − » pour ajouter ou retirer une couleur | HC 25625261733143 | ✅ | OV `#theme-wheel` : un point par couleur, déplacé à la souris ou aux flèches (teinte autour, saturation du centre au bord), « + » et « − » ; ui 22 « déplacer un point », « + ajoute » | Les points sont indépendants (pas d'harmonie imposée entre eux) |
+| THM-4 | Jusqu'à trois couleurs en dégradé | slashgear ; variables `--arc-background-gradient-color0/1/2` (HC 19212718608151) | ✅ | `src/renderer/theme.js` (`color`, `color2`, `color3`) ; dégradé à trois arrêts ; self « thème : trois couleurs… », ui 22 |  |
+| THM-5 | Retirer toutes les couleurs rend le thème par défaut | HC 25625261733143 | ✅ | theme.js `apply({ colors: [] })` : `plain`, fond neutre, accent d'origine ; self « sans aucune couleur, thème par défaut », ui 22 « − retire les couleurs » |  |
+| THM-6 | Palettes prêtes : 9 pastel, 9 ternes, 9 gris | binaire `ColorPickerPastel1-9`, `ColorPickerDrab1-9`, `ColorPickerGreyscale1-9` | ✅ | theme.js `PALETTES` : 9 pastels, 9 ternes, 9 gris, plus 8 thèmes prêts (`PRESETS`) ; self « nuanciers », ui 22 | Teintes propres à Orbe (celles d'Arc ne sont pas relevées) |
+| THM-7 | Réglage d'intensité | HC 20498417809815 | ✅ | theme.js `tintOf` : de 4 % à 72 % de couleur, le réglage d'origine (18 % / 24 %) à mi-course ; curseur dans l'éditeur ; self, ui 22 « l'intensité renforce ou allège le fond » |  |
+| THM-8 | Réglage de grain par une molette | HC 20498417809815 ; binaire `GrainKnob` | ✅ | curseur de force dans l'éditeur ; `body.grainy::before` ; ui 22 « quatre textures… force nulle, plus de texture » | Curseur plutôt que molette |
+| THM-9 | Quatre textures : grain, sable, tweed, denim | binaire `GrainKnob`, `SandKnob`, `TweedKnob`, `DenimKnob` ; images `grain`, `sand`, `tweed`, `denim` | ✅ | `scripts/make-textures.js` → `src/renderer/textures/{grain,sand,tweed,denim}.png` (carreaux gris de 192 px, 33 Ko chacun, fondus en « overlay » sous l'interface, rendus une fois) ; self « textures », ui 22 | Motifs calculés pour Orbe ; ressemblance avec ceux d'Arc non comparée à l'œil |
+| THM-10 | Fond de fenêtre rendu par un shader (Metal) | binaire `ARC_WindowThemeUI/default.metallib` | 🟡 | dégradé CSS + carreau de texture (image fixe, aucun filtre par image) | À comparer à l'œil avec Arc |
+| THM-11 | Retour haptique en tournant les molettes du thème | inverse ; HC 20498377604887 | ➖ | | Electron 44 n'expose aucune interface haptique (aucune occurrence de « haptic » dans `electron.d.ts`, `NSHapticFeedbackManager` absent) ; il faudrait un module natif, contraire au choix « aucune dépendance ». Le réglage reste enregistré, affiché comme indisponible |
+| THM-12 | Les couleurs du thème gagnent menus, champs, barre de commande, sélecteur d'onglets, messages | HC 20498417809815 | ✅ | W `themeNow` → événement `theme` ; OV `applyLook` : accent, panneaux teintés à 9 %, ligne choisie, message et pastille d'adresse teintés, apparence de l'Espace ; ui 22 « barre de commande, bascule et messages » | Les menus natifs du système gardent leurs couleurs |
+| THM-13 | Barre latérale translucide sur le bureau | non vérifié (mesure faite en thème sombre opaque) | 🟡 | réglage `translucent` : fond de la barre à 80 % d'opacité sur l'effet `sidebar` ; ui 22 « barre translucide » | Le réglage est vérifié ; le rendu du matériau sur le bureau reste à juger à l'œil. Le contraste du texte est calculé pour un fond opaque |
 | THM-14 | Fenêtre privée noire | observé | ✅ | W:105-112 | |
 | THM-15 | Barre d'outils teintée par la couleur de la page | HC 20498293324823 ; binaire `TopBarColorCache` | ⬜ | | |
 | THM-16 | Le redimensionnement de la fenêtre utilise la couleur de fond de la page | HC 20498293324823 | ⬜ | fond blanc fixe | `setBackgroundColor` d'après la page |
-| THM-17 | Les sites peuvent lire les couleurs du thème (variables CSS `--arc-palette-*`), réglage « Allow websites to get your theme data » | binaire ; HC 19212718608151 | ⬜ | | Injecter `--orbe-palette-*` |
+| THM-17 | Les sites peuvent lire les couleurs du thème (variables CSS `--arc-palette-*`), réglage « Allow websites to get your theme data » | binaire ; HC 19212718608151 | ✅ | `panes.js` `extraCss` : `--orbe-theme-color`, `--orbe-theme-color-2`, `--orbe-theme-dark`, réglage « Donner les couleurs de l'Espace aux sites » ; self « couleurs de l'Espace données aux pages seulement sur demande » | Noms propres à Orbe ; la troisième couleur n'est pas transmise |
 | THM-18 | Icône de l'application au choix (colorful, schoolbook, neon, hologram, fluted glass, candy, original) | binaire ; HC 20498293324823 | ⬜ | | Faible priorité |
 | THM-19 | Polices embarquées pour l'interface et les Boosts (Inter, Nunito, Marlin Soft, ABC Favorit, Söhne, etc.) | binaire `ARCClients_FontsManager` | ➖ | police du système | Polices sous licence, non reprises |
-| THM-20 | Ouvrir le thème : menu Spaces → Edit Theme…, clic droit dans la barre, commande « Theme » | menu ; HC 19228064149143 | ✅ | M, W:sidebarMenu | Panneau lui-même sans test d'interface |
+| THM-20 | Ouvrir le thème : menu Spaces → Edit Theme…, clic droit dans la barre, commande « Theme » | menu ; HC 19228064149143 | ✅ | M, W:sidebarMenu ; ui 22 (panneau ouvert par le menu, 14 vérifications) |  |
 
 ## ANI — Animations et mouvement
 
@@ -402,29 +402,29 @@ Chiffres d'Arc : seuls ANI-1 à ANI-4 ont été mesurés. Pour le reste, l'exist
 | ANI-4 | Vue scindée : ouverture et fermeture immédiates | M-13, M-14 | ✅ | sans animation ; self | Identique |
 | ANI-5 | Miroitement au démarrage | HC 20498417809815 | ⬜ | | |
 | ANI-6 | Animation de fenêtre au redémarrage | HC 20498417809815 | ⬜ | | |
-| ANI-7 | Boutons plus, fermer, actualiser, précédent, suivant animés | HC 20498417809815 | ⬜ | | Rotation d'actualiser, glissé des flèches |
-| ANI-8 | Indicateur de chargement en lueur en haut de la fenêtre | HC 20498377604887 ; binaire (shader) | 🟡 | balayage dans la pastille | |
+| ANI-7 | Boutons plus, fermer, actualiser, précédent, suivant animés | HC 20498417809815 | ✅ | SC `.ib svg` : « actualiser » fait un tour à chaque clic, les flèches partent dans leur sens à la pression, le « + » et la croix pivotent ; ui 23 « boutons animés » |  |
+| ANI-8 | Indicateur de chargement en lueur en haut de la fenêtre | HC 20498377604887 ; binaire (shader) | ✅ | SC `#glow` : lueur à la couleur de l'Espace le long du bord haut de la page, plus le reflet de la pastille ; transformations seules ; ui 23 « chargement » (120 images/s, pas de mise en page par image) | Lueur CSS, pas un shader ; à comparer à l'œil avec Arc |
 | ANI-9 | Téléchargement : le fichier « saute » dans l'icône de la Bibliothèque ; plusieurs à la fois | HC 20498377604887 | ⬜ | anneau de progression | |
 | ANI-10 | Changement d'Espace : la barre glisse d'un Espace à l'autre en suivant le doigt, l'icône se transforme | HC 20498377604887 ; binaire `space_swiping.mp4` | ✅ | glissé-fondu de 36 px, 220 ms | deux listes côte à côte qui suivent le doigt, teinte fondue, ressort (SH PAGER) ; l'icône grossit dans sa pastille ; self ; ui 06. Durées à régler face à Arc |
 | ANI-11 | Aperçu : ouverture et fermeture animées, fermeture interactive | HC 20498417809815, 20498377604887 | 🟡 | la carte grandit depuis le lien (200 ms), se réduit à la fermeture (150 ms), s'étend pour ⌘O (220 ms) ; self, ui 16 | Reste la fermeture interactive (tirer la carte) ; durées d'Arc non mesurées |
 | ANI-12 | Glisser vers une vue scindée : l'onglet devient une bulle, rebond au dépôt | inverse | ⬜ | | |
 | ANI-13 | Dépôt dans un dossier animé | HC 20498377604887 | ⬜ | | |
-| ANI-14 | Effacement des onglets du jour animé | HC 20498377604887 | 🟡 | `row-out` 150 ms par ligne | Cascade |
-| ANI-15 | Messages (toasts) animés, aux couleurs du thème | HC 20498293324823 | 🟡 | entrée au ressort (`--spring-bouncy`), sortie de 180 ms ; pilule sombre | Restent les couleurs du thème |
+| ANI-14 | Effacement des onglets du jour animé | HC 20498377604887 | ✅ | SH `flipPlay` : les lignes s'effacent en cascade (22 ms d'écart, dix crans au plus) ; ui 23 « Effacer » |  |
+| ANI-15 | Messages (toasts) animés, aux couleurs du thème | HC 20498293324823 | ✅ | entrée au ressort, sortie de 180 ms ; pilule sombre teintée à 26 % par la couleur de l'Espace ; ui 22 « messages » |  |
 | ANI-16 | Petite fenêtre : animation d'ouverture | HC 20498417809815 | ⬜ | | |
 | ANI-17 | Passage en plein écran simplifié | HC 20498417809815 | 🟡 | natif | |
 | ANI-18 | Image dans l'image : élastique sous la taille minimale, lancer vers un coin | inverse ; HC 20498417809815 | ⬜ | fenêtre native de Chromium | |
 | ANI-19 | Le lecteur audio rejoint la position de l'image dans l'image en s'animant | HC 20498377604887 | ⬜ | | |
 | ANI-20 | Pastille d'état du lien : s'étend après 1,5 s, s'écarte de la souris | HC 20498377604887 | ⬜ | | |
-| ANI-21 | Apparition et retrait d'une ligne d'onglet | non vérifié | ✅ | `row-in` 170 ms, `row-out` 150 ms ; aucun test | entrée au ressort (--spring-snappy, 240 ms), retrait 150 ms ; état pressé : ui 11 |
+| ANI-21 | Apparition et retrait d'une ligne d'onglet | non vérifié | ✅ | SH `flip` : la ligne paraît ou s'efface (opacité, échelle), les voisines glissent à leur place (240 ms, ressort) ; ui 23 « fermer un onglet », « nouvel onglet » | Une mise en page par changement, aucune par image (mesuré) |
 | ANI-22 | Les lignes s'écartent pendant un glisser | non vérifié | ✅ | ui 17 ; transformations de 140 ms, relevé unique des positions, aucune mise en page pendant le geste | Mesures dans ameliorations.md (PERF-25) |
-| ANI-23 | Ouverture d'un dossier : hauteur animée | non vérifié | ⬜ | | |
+| ANI-23 | Ouverture d'un dossier : hauteur animée | non vérifié | ✅ | SH `flip` : le contenu paraît en fondu, la suite de la liste glisse ; au repli elle remonte ; ui 23 « dossier » | Glissement par transformation plutôt qu'une hauteur animée |
 | ANI-24 | Changement d'onglet : coupe franche | non vérifié | 🟡 | coupe franche | Sans doute identique |
 | ANI-25 | Sélecteur ⌃⇥ : apparition | non vérifié | ✅ | sans animation | apparition au ressort (240 ms, échelle 0,96 → 1) ; durée d'Arc non vérifiée |
 | ANI-26 | Bandeau de mise à jour : replié, s'ouvre au survol, bouton en dégradé ; cœur animé | HC 21489650267031 ; binaire `update-heart-animation.json` | ⬜ | | |
 | ANI-27 | Icônes animées de la Bibliothèque (archive, captures, Espaces, tableaux, téléchargements, Boosts) | binaire `ARC_HomeButton/*.json` (Lottie) | ⬜ | | |
 | ANI-28 | Logo animé (vague) et orbe vidéo | binaire `logo-wave.json`, `orb.mp4`, `background.mp4` | ⬜ | | Accueil |
-| ANI-29 | « Réduire les animations » du système respecté | non vérifié | ⬜ | aucune règle `prefers-reduced-motion` relevée | À ajouter de toute façon |
+| ANI-29 | « Réduire les animations » du système respecté | non vérifié | ✅ | `base.css` (durées à zéro), SH (`reducedMotion` : ni glissement, ni rebond, ni balayage d'Espace animé), W `motion()` ; ui 23 « Réduire les animations », ui 17 |  |
 
 ## SON — Sons et retour haptique
 
@@ -436,12 +436,12 @@ Arc contient en tout trois fichiers son. Aucun autre son n'existe dans l'applica
 | SON-2 | Son `event.m4a`, 3,52 s, stéréo 44,1 kHz | binaire | ⬜ | | Moment où il joue : non vérifié (probablement un événement d'accueil ou de carte de membre) ; à écouter avec le propriétaire |
 | SON-3 | Musique d'accueil `intro-music.mp3`, 21,3 s, pendant la création du compte ; vidéo `demo.mov` | binaire `ARC_AuthFeature` ; inverse | ⬜ | accueil silencieux | Musique originale courte, coupable |
 | SON-4 | Réglage « Play Arc sound effects » (Advanced) | binaire ; HC 20498417809815 | ✅ | | Fait le 8 oct. (zone + choix de l'action, son original, réglage) |
-| SON-5 | Pas de son pour copier l'adresse, changer d'Espace, fermer un onglet ou finir un téléchargement | binaire (seuls trois fichiers) | ✅ | Orbe est muet aussi | Vérifié par l'absence de fichiers ; un son système reste possible mais non constaté |
-| SON-6 | Retour haptique en réordonnant les onglets, réglage « Haptic feedback when reordering tabs » | binaire ; HC 20498293324823, 20498377604887 | ⬜ | | Electron n'expose pas `NSHapticFeedbackManager` : petit module natif à écrire |
-| SON-7 | Retour haptique au dépôt d'un glisser-déposer | binaire `dropHapticSubject`, `isDragDropHapticFeedbackEnabled` | ⬜ | | Même module |
-| SON-8 | Retour haptique dans le sélecteur de thème | inverse ; HC 20498377604887 | ⬜ | | Même module |
-| SON-9 | Retour haptique dans le lecteur vidéo miniature (taille maximale atteinte) | HC 20498377604887 ; binaire `_shouldPerformMaxScaleHaptic` | ⬜ | | Même module |
-| SON-10 | Cran haptique en changeant de page | binaire `performsPageDetentHaptics` | ⬜ | | Lié au balayage d'Espace, à confirmer |
+| SON-5 | Pas de son pour copier l'adresse, changer d'Espace, fermer un onglet ou finir un téléchargement | binaire (seuls trois fichiers) | ✅ | par défaut, Orbe est muet aussi ; self « réglage par défaut : ouvrir un onglet ne demande aucun son » | Orbe propose en plus, sur demande, des sons de gestes (réglage « Sons des gestes », coupé par défaut : voir DESIGN-4) |
+| SON-6 | Retour haptique en réordonnant les onglets, réglage « Haptic feedback when reordering tabs » | binaire ; HC 20498293324823, 20498377604887 | ➖ | | Electron 44 n'expose aucune interface haptique (aucune occurrence de « haptic » dans `electron.d.ts`, `NSHapticFeedbackManager` absent) ; il faudrait un module natif, contraire au choix « aucune dépendance ». Le réglage reste enregistré, affiché comme indisponible |
+| SON-7 | Retour haptique au dépôt d'un glisser-déposer | binaire `dropHapticSubject`, `isDragDropHapticFeedbackEnabled` | ➖ | | Même cause que SON-6 |
+| SON-8 | Retour haptique dans le sélecteur de thème | inverse ; HC 20498377604887 | ➖ | | Même cause que SON-6 |
+| SON-9 | Retour haptique dans le lecteur vidéo miniature (taille maximale atteinte) | HC 20498377604887 ; binaire `_shouldPerformMaxScaleHaptic` | ➖ | | Même cause que SON-6 |
+| SON-10 | Cran haptique en changeant de page | binaire `performsPageDetentHaptics` | ➖ | | Même cause que SON-6 |
 | SON-11 | Notifications des sites avec son | binaire `UNAuthorizationOptions.sound` | 🟡 | notifications natives d'Electron ; non testé | |
 
 ## GES — Gestes du pavé tactile
@@ -452,13 +452,13 @@ Aucun geste n'a été rejoué sur Arc pendant cet inventaire (ils demandent la m
 | --- | --- | --- | --- | --- | --- |
 | GES-1 | Balayage horizontal à deux doigts sur la barre : change d'Espace, le contenu suit le doigt | HC 19228064149143 | ✅ | SH `PAGER` : les deux listes suivent le doigt 1 px pour 1 px, seuil 40 % de la largeur (110 px au plus) ou geste vif, retour au ressort ; self ; ui 06 (sept vérifications, molette simulée) | Seuil, vitesse et inertie à régler face à Arc, main sur le pavé |
 | GES-2 | Au bout de la liste des Espaces : résistance élastique puis nouvel Espace | inverse | 🟡 | résistance élastique et retour au ressort (SH `PAGER`) ; self, ui 06 | Reste la création d'un Espace en tirant plus loin |
-| GES-3 | Balayage à deux doigts sur la page : précédent / suivant | non vérifié (comportement de Chromium) | 🟡 | rien dans le code d'Orbe, comportement d'Electron non testé | Vérifier, puis ajouter la flèche d'indication |
-| GES-4 | Pincer pour zoomer la page | non vérifié | 🟡 | défaut d'Electron, non testé | |
+| GES-3 | Balayage à deux doigts sur la page : précédent / suivant | non vérifié (comportement de Chromium) | ✅ | `src/preload/swipe.js` + `src/main/swipe.js` : balayage horizontal que la page n'a pas consommé, pastille qui suit les doigts au bord de la page, navigation au seuil (130 px) ou sur un geste vif ; ui 23 (quatre vérifications, molette simulée) | Seuil et vitesse à régler main sur le pavé ; Arc fait glisser la page entière, Orbe montre une pastille |
+| GES-4 | Pincer pour zoomer la page | non vérifié | ✅ | W : `setVisualZoomLevelLimits(1, 5)` sur chaque onglet (coupé par défaut dans Electron, d'après sa documentation) ; ui 23 « pincer pour zoomer la page » (pincement simulé) |  |
 | GES-5 | Image dans l'image : pincer pour redimensionner, deux doigts pour déplacer, ⌘défilement pour zoomer, double-clic pour revenir à l'onglet | HC 20498417809815 | ⬜ | fenêtre native | |
-| GES-6 | Tableaux : pincer pour zoomer | HC 20498293324823 | 🟡 | zoom 0,1 à 8 à la molette ; pincement non testé | |
+| GES-6 | Tableaux : pincer pour zoomer | HC 20498293324823 | ✅ | `easel.js` : pincement (Ctrl + molette, tel que Chromium le transmet) = zoom centré sur le pointeur ; ui 15 « pincement » |  |
 | GES-7 | Capture : zoomer et déplacer l'image avant de l'enregistrer | binaire « Zoom and pan to edit your screenshot » | ⬜ | | |
 | GES-8 | Lecteur miniature : glisser vers le haut pour chercher précisément | binaire « Drag upwards to seek precisely » | ⬜ | | |
-| GES-9 | Défilement élastique des listes de la barre | non vérifié | 🟡 | défilement natif | |
+| GES-9 | Défilement élastique des listes de la barre | non vérifié | ✅ | SH `BOUNCE` : au bout de la liste elle se laisse tirer (72 px au plus, de moins en moins) et revient au ressort ; ui 23 « rebond élastique » (molette simulée) | Raideur et retour à régler main sur le pavé |
 
 ## BIB — Bibliothèque, archive, téléchargements, médias
 

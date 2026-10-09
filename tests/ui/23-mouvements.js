@@ -367,6 +367,32 @@ module.exports = {
       assert.equal((await ctx.etat()).actifUrl, ctx.url('/large'));
     });
 
+    await t.verifier('pincer pour zoomer la page : le zoom visuel suit le geste, puis revient', async () => {
+      const page = await ctx.ouvrir('/e?pince', 'Page E');
+      const session = await page.context().newCDPSession(page);
+      try {
+        assert.equal(await page.evaluate(() => visualViewport.scale), 1);
+        await ctx.delai(session.send('Input.synthesizePinchGesture', { x: 300, y: 300, scaleFactor: 2, relativeSpeed: 1200, gestureSourceType: 'touch' }), 8000, 'pincement');
+        await jusqua(() => page.evaluate(() => visualViewport.scale > 1.5), 'page agrandie par le pincement');
+        await ctx.delai(session.send('Input.synthesizePinchGesture', { x: 300, y: 300, scaleFactor: 0.3, relativeSpeed: 1200, gestureSourceType: 'touch' }), 8000, 'pincement inverse');
+        await jusqua(() => page.evaluate(() => visualViewport.scale === 1), 'page revenue à sa taille');
+      } finally {
+        await session.detach().catch(() => {});
+      }
+    });
+
+    await t.verifier('typographie : police du système au dessin adapté au corps, chiffres alignés dans les compteurs et les messages', async () => {
+      const m = await shell.evaluate(() => {
+        const cs = (el) => getComputedStyle(el);
+        const row = document.querySelector('#today .row.tab');
+        return { corps: cs(document.body).fontSize, optique: cs(document.body).fontOpticalSizing, crenage: cs(document.body).fontKerning, rendu: cs(document.body).textRendering, lissage: cs(document.body).webkitFontSmoothing, ligne: [cs(row).fontSize, cs(row).fontWeight], bouclier: cs(document.getElementById('shield')).fontVariantNumeric };
+      });
+      assert.deepEqual(m, { corps: '13px', optique: 'auto', crenage: 'normal', rendu: 'auto', lissage: 'antialiased', ligne: ['14px', '500'], bouclier: 'tabular-nums' });
+      await ctx.principal(({ w }) => w.toast('Zoom 110 %'));
+      const toast = await ctx.attendrePage('overlay.html#toast');
+      assert.equal(await toast.evaluate(() => getComputedStyle(document.getElementById('toast')).fontVariantNumeric), 'tabular-nums');
+    });
+
     await t.verifier('« Réduire les animations » : la liste change sans glissement, la liste ne rebondit pas', async () => {
       await shell.emulateMedia({ reducedMotion: 'reduce' });
       try {
