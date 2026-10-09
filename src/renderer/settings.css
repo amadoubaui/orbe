@@ -58,6 +58,17 @@ html.win #bar { padding-top: 34px; }
 .pane input[type=range] { width: 160px; accent-color: var(--accent); }
 .btn:disabled { opacity: 0.45; }
 
+/* --- Mises à jour ---------------------------------------------------------------- */
+#update-headline { font-weight: 600; }
+#update-notes { margin: 0; padding: 10px 14px; max-height: 150px; overflow: auto; white-space: pre-wrap; word-break: break-word; font: 12px/1.5 inherit; font-family: inherit; color: var(--dim); border-top: 0.5px solid var(--line); user-select: text; outline: none; }
+#update-notes:empty { display: none; }
+#update-new > .line:last-child { border-bottom: 0.5px solid var(--line); }
+
+/* --- Import depuis un navigateur ---------------------------------------------------- */
+.imp-controls { display: flex; align-items: center; gap: 6px; flex: none; }
+.imp-controls select { max-width: 190px; }
+.imp-name { font-weight: 500; }
+
 /* --- Profils -------------------------------------------------------------------- */
 .profile .head .pname { font-size: 14px; font-weight: 600; }
 

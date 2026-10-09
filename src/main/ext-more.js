@@ -99,23 +99,143 @@ function suggested(command) {
   return k[os] || k.default || '';
 }
 
-// Raccourcis attribués dans une session : Map(forme interne -> { id, name, keys }).
-// La première extension (par ordre d'identifiant) qui demande une touche l'obtient.
-function shortcuts(ses) {
-  const out = new Map();
+// Raccourcis choisis par l'utilisateur (Réglages → Raccourcis) : réglage
+// `extShortcuts`, { '<extension>/<commande>': accélérateur d'Electron, ou '' s'il a été retiré }.
+const userKeys = () => { const s = require('./store').store.state; return (s && s.settings.extShortcuts) || {}; };
+const ACCEL_KEYS = { Comma: 'comma', ',': 'comma', Period: 'period', '.': 'period', Home: 'home', End: 'end', PageUp: 'pageup', PageDown: 'pagedown', Space: 'space', Insert: 'insert', Delete: 'delete', Up: 'up', Down: 'down', Left: 'left', Right: 'right' };
+// Accélérateur d'Electron -> forme interne complète, ou null si la touche n'est
+// pas de celles qu'une extension peut recevoir (lettres, chiffres, F1 à F12, flèches…).
+function fromAccelerator(accel) {
+  const parts = String(accel || '').split('+');
+  const last = parts.pop() || '';
+  const m = { ctrl: false, alt: false, shift: false, meta: false };
+  for (const p of parts) {
+    const k = p.toLowerCase();
+    if (k === 'cmd' || k === 'command' || k === 'meta' || k === 'super') m.meta = true;
+    else if (k === 'cmdorctrl' || k === 'commandorcontrol') { if (isMac) m.meta = true; else m.ctrl = true; }
+    else if (k === 'ctrl' || k === 'control') m.ctrl = true;
+    else if (k === 'alt' || k === 'option') m.alt = true;
+    else if (k === 'shift') m.shift = true;
+    else return null;
+  }
+  let key = null;
+  if (/^[A-Za-z0-9]$/.test(last)) key = last.toLowerCase();
+  else if (/^F([1-9]|1[0-2])$/i.test(last)) key = last.toLowerCase();
+  else if (ACCEL_KEYS[last]) key = ACCEL_KEYS[last];
+  return key ? { ...m, key, id: combo(m, key) } : null;
+}
+
+// Commandes déclarées par les extensions d'une session, dans l'ordre des identifiants.
+function declared(ses) {
+  const out = [];
   if (!ses || !X.attached.has(ses)) return out;
-  const taken = reserved();
   const all = ses.extensions.getAllExtensions().slice().sort((a, b) => a.id.localeCompare(b.id));
   for (const ext of all) {
     const list = ext.manifest && ext.manifest.commands;
     if (!list || typeof list !== 'object') continue;
-    for (const name of Object.keys(list)) {
-      const keys = parseShortcut(suggested(list[name]));
-      if (!keys || taken.has(keys.id) || out.has(keys.id)) continue;
-      out.set(keys.id, { id: ext.id, name, keys });
-    }
+    for (const name of Object.keys(list).slice(0, 60)) out.push({ id: ext.id, name, command: list[name] || {} });
   }
   return out;
+}
+
+// Raccourcis attribués dans une session : Map(forme interne -> { id, name, keys }).
+// Les choix de l'utilisateur passent d'abord ; ensuite, la première extension
+// (par ordre d'identifiant) qui propose une touche libre l'obtient.
+function shortcuts(ses) {
+  const out = new Map();
+  const all = declared(ses);
+  if (!all.length) return out;
+  const user = userKeys();
+  const current = require('./shortcuts');
+  for (const c of all) {
+    const accel = user[`${c.id}/${c.name}`];
+    if (!accel) continue;
+    const keys = fromAccelerator(accel);
+    // Donné depuis à une commande d'Orbe : Orbe passe avant.
+    if (!keys || out.has(keys.id) || current.owner(accel)) continue;
+    out.set(keys.id, { id: c.id, name: c.name, keys, user: true });
+  }
+  const taken = reserved();
+  for (const c of all) {
+    if (Object.hasOwn(user, `${c.id}/${c.name}`)) continue;
+    const keys = parseShortcut(suggested(c.command));
+    if (!keys || taken.has(keys.id) || out.has(keys.id)) continue;
+    out.set(keys.id, { id: c.id, name: c.name, keys });
+  }
+  return out;
+}
+
+// Pour le volet Raccourcis : chaque commande d'extension, avec son raccourci en vigueur.
+function commandList(ses, names = new Map()) {
+  const map = shortcuts(ses);
+  const user = userKeys();
+  const held = (c) => { for (const s of map.values()) if (s.id === c.id && s.name === c.name) return s; return null; };
+  return declared(ses).map((c) => {
+    const s = held(c);
+    const def = parseShortcut(suggested(c.command));
+    const action = /^_execute_(action|browser_action|page_action)$/.test(c.name);
+    const what = typeof c.command.description === 'string' && c.command.description && !/^__MSG_/.test(c.command.description) ? c.command.description.slice(0, 80) : (action ? '' : c.name);
+    return {
+      name: `ext:${c.id}/${c.name}`, id: c.id, extension: names.get(c.id) || c.id, command: c.name, action, what,
+      keys: s ? label(s.keys) : '', defaultKeys: def ? label(def) : '', changed: Object.hasOwn(user, `${c.id}/${c.name}`),
+    };
+  });
+}
+
+function saveUserKeys(map) {
+  const { store } = require('./store');
+  store.state.settings.extShortcuts = map;
+  store.save();
+  forgetReserved();
+  require('./shortcuts').hooks.changed();
+}
+
+const splitName = (name) => { const m = /^ext:([a-p]{32})\/(.{1,120})$/.exec(String(name || '')); return m ? { id: m[1], name: m[2] } : null; };
+
+// Donne un raccourci à la commande d'une extension (`name` : « ext:<id>/<commande> »).
+// Pris par une commande d'Orbe ou d'une autre extension : { conflict }, sauf avec `force`.
+function assignKey(ses, name, accel, { force = false } = {}) {
+  const t = splitName(name);
+  const all = declared(ses);
+  if (!t || !all.some((c) => c.id === t.id && c.name === t.name)) return { error: 'unknown' };
+  const current = require('./shortcuts');
+  const r = current.check(accel);
+  if (r.error) return r;
+  const keys = fromAccelerator(r.accel);
+  if (!keys) return { error: 'bad' };
+  const { store } = require('./store');
+  if (current.canon(store.state.settings.littleShortcut || '') === r.accel) return { error: 'reserved', kind: 'global' };
+  const orbe = current.owner(r.accel);
+  if (orbe && !force) return { conflict: orbe, label: current.labelOf(orbe), keys: current.display(r.accel) };
+  const other = [...shortcuts(ses).values()].find((s) => s.keys.id === keys.id && !(s.id === t.id && s.name === t.name));
+  if (other && !orbe && !force) {
+    const ext = ses.extensions.getAllExtensions().find((e) => e.id === other.id);
+    return { conflict: `ext:${other.id}/${other.name}`, label: `${(ext && ext.name) || other.id} — ${other.name}`, keys: current.display(r.accel) };
+  }
+  const map = { ...userKeys() };
+  if (other) map[`${other.id}/${other.name}`] = '';
+  map[`${t.id}/${t.name}`] = r.accel;
+  saveUserKeys(map);
+  if (orbe) current.clear(orbe);
+  return { ok: true, accel: r.accel, keys: current.display(r.accel) };
+}
+
+// '' : retiré ; null : rendu au raccourci proposé par l'extension.
+function setKey(ses, name, value) {
+  const t = splitName(name);
+  if (!t) return { error: 'unknown' };
+  const map = { ...userKeys() };
+  if (value === null) delete map[`${t.id}/${t.name}`]; else map[`${t.id}/${t.name}`] = '';
+  saveUserKeys(map);
+  return { ok: true };
+}
+
+// Extension désinstallée : ses raccourcis choisis sont oubliés.
+function forgetKeys(id) {
+  const map = { ...userKeys() };
+  let changed = false;
+  for (const k of Object.keys(map)) if (k.startsWith(id + '/')) { delete map[k]; changed = true; }
+  if (changed) saveUserKeys(map);
 }
 
 // Affichage, à la manière de Chrome : « ⇧⌘E » sur macOS, « Ctrl+Shift+E » ailleurs.
@@ -481,4 +601,4 @@ function setup(options = {}) {
 // Les raccourcis d'Orbe ont changé : la liste réservée est à recalculer.
 function forgetReserved() { reservedSet = null; }
 
-module.exports = { forgetReserved, reserved, setup, onKey, shortcuts, shortcutOf, parseShortcut, parseAccelerator, comboOf, groups };
+module.exports = { forgetReserved, reserved, setup, onKey, shortcuts, shortcutOf, parseShortcut, parseAccelerator, fromAccelerator, comboOf, groups, commandList, assignKey, setKey, forgetKeys };

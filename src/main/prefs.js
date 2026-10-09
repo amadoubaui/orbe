@@ -57,6 +57,7 @@ const SETTABLE = {
   // Téléchargements (downloads.js) : demander où enregistrer, PDF ouverts dans un onglet.
   downloadAsk: bool,
   downloadOpenPdf: bool,
+  updateCheck: bool,
   profileSettings,
   shortcuts: (v) => require('./shortcuts').validMap(v),
 };

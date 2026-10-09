@@ -117,7 +117,7 @@ function setGlobal(accel, { force = false } = {}) {
 let keySig = null;
 function syncShortcuts() {
   const s = store.state.settings;
-  const sig = JSON.stringify([s.shortcuts, s.littleShortcut]);
+  const sig = JSON.stringify([s.shortcuts, s.littleShortcut, s.extShortcuts]);
   if (sig === keySig) return;
   const first = keySig === null;
   keySig = sig;
@@ -137,8 +137,10 @@ function extensionShortcuts() {
     const more = require('./ext-more');
     const extensions = require('./extensions');
     const ses = sessions.mainSession();
-    const names = new Map(extensions.list().map((x) => [x.id, x.name]));
-    return [...more.shortcuts(ses).values()].map((s) => ({ extension: names.get(s.id) || s.id, command: s.name, keys: more.shortcutOf(ses, s.id, s.name) }));
+    // Nom affiché : celui de la fiche d'Orbe (traduit), sinon celui que donne Chromium.
+    const names = new Map([...ses.extensions.getAllExtensions().map((x) => [x.id, x.name]), ...extensions.list().map((x) => [x.id, x.name])]);
+    // Chaque commande déclarée, avec ou sans raccourci : toutes se règlent ici.
+    return more.commandList(ses, names).map((c) => ({ ...c, label: `${c.extension} — ${c.action ? t('keys.extAction') : c.what}` }));
   } catch {
     return [];
   }
@@ -150,7 +152,7 @@ function shortcutList() {
     groups: shortcuts.list(),
     global: { name: '@little', label: t('keys.globalLittle'), keys: shortcuts.display(s.littleShortcut || ''), accel: s.littleShortcut || '', defaultKeys: '', changed: !!s.littleShortcut },
     extensions: extensionShortcuts(),
-    changed: Object.keys(s.shortcuts || {}).length + (s.littleShortcut ? 1 : 0),
+    changed: Object.keys(s.shortcuts || {}).length + (s.littleShortcut ? 1 : 0) + Object.keys(s.extShortcuts || {}).length,
   };
 }
 
@@ -321,20 +323,24 @@ async function handle(action, a, sender) {
       return shortcutList();
     case 'shortcuts:assign': {
       const name = String((a && a.name) || '');
-      const r = name === '@little' ? setGlobal(a.accel, { force: !!a.force }) : shortcuts.assign(name, a && a.accel, { force: !!(a && a.force) });
+      // « ext:<id>/<commande> » : raccourci d'une extension (ext-more.js).
+      const r = name === '@little' ? setGlobal(a.accel, { force: !!a.force })
+        : name.startsWith('ext:') ? require('./ext-more').assignKey(sessions.mainSession(), name, a && a.accel, { force: !!(a && a.force) })
+          : shortcuts.assign(name, a && a.accel, { force: !!(a && a.force) });
       return { ...r, list: shortcutList() };
     }
     case 'shortcuts:clear': {
-      const r = a === '@little' ? setGlobal('') : shortcuts.clear(String(a || ''));
+      const r = a === '@little' ? setGlobal('') : String(a || '').startsWith('ext:') ? require('./ext-more').setKey(sessions.mainSession(), a, '') : shortcuts.clear(String(a || ''));
       return { ...r, list: shortcutList() };
     }
     case 'shortcuts:reset': {
       const name = String((a && a.name) || '');
-      const r = name === '@little' ? setGlobal('') : shortcuts.reset(name, { force: !!(a && a.force) });
+      const r = name === '@little' ? setGlobal('') : name.startsWith('ext:') ? require('./ext-more').setKey(sessions.mainSession(), name, null) : shortcuts.reset(name, { force: !!(a && a.force) });
       return { ...r, list: shortcutList() };
     }
     case 'shortcuts:resetAll':
       s.littleShortcut = '';
+      s.extShortcuts = {};
       applyGlobal();
       shortcuts.resetAll();
       return { ok: true, list: shortcutList() };
