@@ -2,7 +2,7 @@
 // Tout champ listé ici (case à cocher ou liste dont l'id est la clé du réglage)
 // est rempli et enregistré automatiquement, quel que soit son volet.
 const FIELDS = ['lang', 'searchEngine', 'suggestions', 'archiveAfterHours', 'maxLiveTabs', 'appearance', 'translucent', 'externalLinks', 'autoPip', 'adblock', 'peekLinks', 'passwordSave', 'passwordFill', 'sounds', 'soundGestures', 'soundVolume',
-  'restoreSession', 'warnOnQuit', 'peekShift', 'littleAltClick', 'littleArchiveHours', 'tabKeysFavorites', 'tabKeysNinthLast', 'showToolbar', 'showFullUrl', 'cookieBanners', 'themeData', 'mediaControls', 'haptics', 'boostsEnabled', 'boostsJs', 'downloadAsk', 'downloadOpenPdf'];
+  'restoreSession', 'warnOnQuit', 'peekShift', 'littleAltClick', 'littleArchiveHours', 'tabKeysFavorites', 'tabKeysNinthLast', 'showToolbar', 'showFullUrl', 'cookieBanners', 'themeData', 'mediaControls', 'haptics', 'boostsEnabled', 'boostsJs', 'downloadAsk', 'downloadOpenPdf', 'updateCheck'];
 const NUMERIC = new Set(['archiveAfterHours', 'maxLiveTabs', 'littleArchiveHours', 'soundVolume']);
 const el = (id) => document.getElementById(id);
 const make = (tag, className, text) => { const n = document.createElement(tag); if (className) n.className = className; if (text != null) n.textContent = text; return n; };
@@ -295,7 +295,7 @@ function drawKeys() {
   };
   group(t('keys.global'), [keyRow(KEYLIST.global)]);
   for (const g of KEYLIST.groups) group(g.title, g.items.map((i) => keyRow(i)));
-  group(t('keys.extensions'), KEYLIST.extensions.map((x) => keyRow({ name: '', label: `${x.extension} — ${x.command}`, keys: x.keys }, { fixed: true })), t('keys.extensionsHint'));
+  group(t('keys.extensions'), KEYLIST.extensions.map((x) => keyRow(x)), t('keys.extensionsHint'));
   if (!shown) box.appendChild(make('div', 'empty', t('keys.none')));
   box.scrollTop = top;
   el('keys-reset-all').disabled = !KEYLIST.changed;
@@ -471,12 +471,26 @@ function drawExtensions(list) {
       open.onclick = () => O.send('ext:popup', x.id);
       line.appendChild(open);
     }
+    const small = (cls, key, fn) => { const b = make('button', 'btn ' + cls, t(key)); b.onclick = fn; line.appendChild(b); return b; };
+    if (x.options) small('ext-options', 'ext.options', () => O.send('ext:options', x.id)).disabled = !x.enabled;
+    const pin = small('ext-pin', x.pinned ? 'ext.pinned' : 'ext.pin', async () => drawExtensions(await O.send('ext:pin', { id: x.id, pinned: !x.pinned })));
+    pin.setAttribute('aria-pressed', String(!!x.pinned));
+    pin.title = t('ext.pinHint');
+    const up = small('ext-update', 'ext.update', async () => {
+      up.disabled = true;
+      el('ext-msg').textContent = t('ext.installing');
+      const r = await O.send('ext:update', x.id);
+      el('ext-msg').textContent = (r && (r.error || r.message)) || t('ext.hint');
+      if (r && r.list) drawExtensions(r.list); else up.disabled = false;
+    });
+    line.dataset.ext = x.id;
     const on = document.createElement('input');
     on.type = 'checkbox';
     on.checked = x.enabled;
+    on.title = t('ext.enabledHint');
     on.onchange = async () => drawExtensions(await O.send('ext:toggle', { id: x.id, enabled: on.checked }));
     const del = document.createElement('button');
-    del.className = 'btn';
+    del.className = 'btn ext-remove';
     del.textContent = t('set.profileDelete');
     del.onclick = async () => drawExtensions(await O.send('ext:remove', x.id));
     line.append(on, del);
@@ -495,11 +509,39 @@ el('ext-add').onclick = async () => {
   if (r && r.list) { input.value = ''; drawExtensions(r.list); }
 };
 
+// --- Mises à jour ----------------------------------------------------------------------
+// Tout ce qui vient de GitHub (nom, notes de version) est posé comme du texte.
+function drawUpdate(u) {
+  if (!u) return;
+  drawUpdate.last = u;
+  el('update-version').textContent = 'Orbe ' + u.current;
+  const when = u.checkedAt ? new Date(u.checkedAt).toLocaleString(lang, { dateStyle: 'medium', timeStyle: 'short' }) : '';
+  el('update-state').textContent = u.checking ? t('update.checking') : u.error ? t('update.err.' + u.error) : u.available ? t('update.available', { version: u.latest.version }) : when ? t('update.upToDate', { when }) : t('update.never');
+  el('update-check').disabled = !!u.checking;
+  el('update-new').hidden = !u.available;
+  if (!u.available) return;
+  el('update-headline').textContent = t('update.available', { version: u.latest.version }) + (u.latest.name && u.latest.name !== 'v' + u.latest.version && u.latest.name !== u.latest.version ? ' — ' + u.latest.name : '');
+  el('update-notes').textContent = u.latest.notes;
+  const d = u.download || {};
+  el('update-download').hidden = !u.latest.asset || d.state === 'done';
+  el('update-download').disabled = d.state === 'running';
+  el('update-reveal').hidden = d.state !== 'done';
+  el('update-dl-state').textContent = d.state === 'running' ? t('update.downloading', { pct: d.total ? Math.floor((d.received / d.total) * 100) : 0 })
+    : d.state === 'done' ? t(d.verified ? 'update.downloaded' : 'update.downloadedPlain', { name: d.name })
+      : d.state === 'error' ? t('update.dlErr.' + d.error) : '';
+}
+for (const [id, action] of [['update-check', 'update:check'], ['update-page', 'update:open'], ['update-download', 'update:download'], ['update-reveal', 'update:reveal']]) {
+  el(id).onclick = async () => drawUpdate(await O.send(action));
+}
+O.on('update', drawUpdate);
+O.send('update:status').then(drawUpdate);
+
 // --- Import ------------------------------------------------------------------------------
 function drawImport() {
   el('import-arc').disabled = !DATA.arc;
   el('import-arc-hint').textContent = t(DATA.arc ? 'imp.arcHint' : 'imp.arcMissing');
 }
+mountImport(el('import-browsers'), { onChange: () => refresh() });
 el('import-arc').onclick = () => O.send('settings:importArc');
 el('import-passwords').onclick = () => O.send('pw:open');
 el('import-bookmarks').onclick = async () => {
@@ -571,7 +613,7 @@ el('clearData').onclick = async (e) => { if (await O.send('settings:clearData'))
 O.on('settings', (s) => {
   const langChanged = setLang(s.lang);
   S = s;
-  if (DATA) { DATA.settings = s; routes = (s.routes || []).slice(); drawExternal(); fill(s); drawProfiles(DATA.profiles); drawRoutes(); drawDefault(); drawLittleKeys(); drawAllow(); drawImport(); }
+  if (DATA) { DATA.settings = s; routes = (s.routes || []).slice(); drawExternal(); fill(s); drawProfiles(DATA.profiles); drawRoutes(); drawDefault(); drawLittleKeys(); drawAllow(); drawImport(); drawUpdate(drawUpdate.last); O.send('ext:list').then(drawExtensions); }
   if (current === 'shortcuts' && !recording && !pending && !keyError && (langChanged || Date.now() - keysBusy > 800)) loadKeys();
 });
 // Raccourcis changés : celui de la petite fenêtre est rappelé dans le volet Liens.

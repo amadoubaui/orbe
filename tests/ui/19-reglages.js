@@ -344,7 +344,7 @@ module.exports = {
       await r.click('#tab-import');
       await jusqua(async () => (await volet()) === 'import', 'volet Import');
       const texte = await r.textContent('#pane-import');
-      for (const mot of ['Depuis Arc', 'Signets de Chrome, Safari, Firefox', 'onglets épinglés', 'Mots de passe', 'CSV', 'Non repris : l’historique']) assert.ok(texte.includes(mot), mot);
+      for (const mot of ['Depuis Arc', 'Signets de Chrome, Safari, Firefox', 'onglets épinglés', 'Mots de passe', 'CSV', 'Depuis un navigateur installé', 'l’historique ne sont pas importés']) assert.ok(texte.includes(mot), mot);
       // Les dialogues du système ne se pilotent pas : ils sont remplacés le temps de l'import.
       await ctx.principal(({ electron }, fichier) => {
         electron.dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [fichier] });

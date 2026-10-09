@@ -9,7 +9,7 @@ const easels = require('./easels');
 // Page de soutien de l'auteur d'Orbe.
 const SUPPORT_URL = 'https://buymeacoffee.com/amadouba';
 
-const hooks = { newWindow: () => {}, newLittle: () => {}, openSettings: () => {}, settingsChanged: null, openBoost: () => {}, openPasswords: () => {}, importBookmarks: () => {}, menuChanged: () => {} };
+const hooks = { newWindow: () => {}, newLittle: () => {}, openSettings: () => {}, settingsChanged: null, openBoost: () => {}, openPasswords: () => {}, importBookmarks: () => {}, menuChanged: () => {}, checkUpdates: () => {} };
 
 const wc = (w) => w.activeWc;
 
@@ -120,6 +120,7 @@ const COMMANDS = [
   { name: 'zap', label: 'boost.zapCmd', run: (w) => { const p = w.activeRt; if (p && !p.internal && !w.incognito) require('./boosts').zap(p.wc); } },
   // « View Boosts… » dans Arc : la liste de tous les Boosts (activer, supprimer, exporter, importer).
   { name: 'boosts', label: 'boost.list', run: (w) => hooks.openBoost(w, 'list') },
+  { name: 'checkUpdates', label: 'app.checkUpdates', global: true, run: () => hooks.checkUpdates() },
   { name: 'importArc', label: 'app.importArc', run: (w) => importArc(w) },
   { name: 'importBookmarks', label: 'app.importBookmarks', run: (w) => hooks.importBookmarks(w) },
   { name: 'newProfile', label: 'spaces.newProfile', palette: false, run: (w) => w.newProfile() },

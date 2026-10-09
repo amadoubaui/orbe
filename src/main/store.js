@@ -60,6 +60,10 @@ const DEFAULT_SETTINGS = {
   downloadDir: '',
   profileSettings: {},
   shortcuts: {},
+  // Raccourcis des extensions choisis dans les réglages : { '<id>/<commande>': accélérateur, ou '' s'il a été retiré }.
+  extShortcuts: {},
+  // Extensions dont le bouton est détaché de la barre latérale (elles restent dans le menu du bouclier et le menu Extensions).
+  extHidden: [],
   adblock: true,
   adblockAllow: [],
   passwordSave: true,
@@ -67,6 +71,8 @@ const DEFAULT_SETTINGS = {
   // Téléchargements : demander où enregistrer, PDF ouverts dans un onglet (le dossier : `downloadDir`, plus haut).
   downloadAsk: false,
   downloadOpenPdf: true,
+  // Recherche automatique d'une nouvelle version, une fois par jour (src/main/updates.js).
+  updateCheck: true,
 };
 
 class Store {
@@ -143,6 +149,8 @@ class Store {
     s.boosts = s.boosts || {};
     s.notes = Array.isArray(s.notes) ? s.notes : [];
     s.window = s.window || {};
+    // Mises à jour : dernière vérification et version annoncée (src/main/updates.js).
+    s.updates = s.updates && typeof s.updates === 'object' && !Array.isArray(s.updates) ? s.updates : {};
     if (!Array.isArray(s.spaces) || !s.spaces.length) {
       s.spaces = [this.makeSpace(this.t('spaces.firstName', s.settings.lang), '🏠', SPACE_COLORS[0])];
     }

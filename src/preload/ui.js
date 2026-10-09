@@ -4,7 +4,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 if (location.protocol === 'orbe:') {
   const boot = ipcRenderer.sendSync('i18n') || { locales: { fr: {} }, lang: 'fr', settings: {} };
-  const EVENTS = ['state', 'overlay', 'edit', 'suggest-more', 'find-result', 'settings', 'easel', 'sound', 'keys', 'theme'];
+  const EVENTS = ['state', 'overlay', 'edit', 'suggest-more', 'find-result', 'settings', 'easel', 'sound', 'keys', 'theme', 'update'];
   contextBridge.exposeInMainWorld('orbe', {
     locales: boot.locales,
     lang: boot.lang,
