@@ -502,12 +502,21 @@ O.on('overlay', (p) => {
     // Domaine en avant ; trop longue, elle s'efface par la gauche du nom d'hôte, jamais par sa fin.
     addressInto($('peek-url'), p.text || '');
     $('peek-url').hidden = !p.text;
+  } else if (p.mode === 'peek-pull') {
+    // Carte tirée par un balayage : le voile s'éclaircit avec elle (opacité seule) ;
+    // relâchée (`ms`), il revient en même temps qu'elle.
+    const v = Math.max(0, Math.min(1, Number(p.p) || 0));
+    const b = document.body;
+    b.style.setProperty('--pull-ms', (Number(p.ms) || 0) + 'ms');
+    b.style.setProperty('--pull-o', String(1 - 0.6 * v));
+    b.classList.add('peek-pull');
   } else if (p.mode === 'peek') {
     // Ouverture : le voile et les boutons paraissent en fondu ; `leaving` : ils s'effacent
     // pendant que la carte se réduit ou s'étend (durée donnée par le processus principal).
     show('peek');
     document.body.style.setProperty('--peek-ms', (p.ms || 0) + 'ms');
     document.body.classList.remove('peek', 'peek-out');
+    if (!p.leaving) document.body.classList.remove('peek-pull'); // fermeture après un tirage : le fondu part de l'opacité atteinte
     void document.body.offsetWidth;
     document.body.classList.add(p.leaving ? 'peek-out' : 'peek');
   } else if (p.mode === 'drop') {

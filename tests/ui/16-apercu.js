@@ -112,6 +112,62 @@ module.exports = {
       assert.equal(await ctx.vueAu(e.vuePage.x + 40, e.vuePage.y + 40), autre().url());
     });
 
+    // Page de l'aperçu ouvert : la dernière venue à cette adresse (un onglet « Page B » existe déjà).
+    const carteApercu = () => ctx.pages().filter((p) => p.url() === `http://localhost:${ctx.hote.split(':')[1]}/b`).pop();
+    await t.verifier('balayage à deux doigts vers la droite sur l’aperçu : la carte suit les doigts sans être redimensionnée, le voile s’éclaircit ; relâchée avant le seuil, elle revient', async () => {
+      await ctx.clic(shell, ctx.ligne('Page à liens', '#pinned'));
+      await jusqua(async () => (await ctx.etat()).actifUrl === ctx.url('/liens'), 'retour sur la page épinglée');
+      await ctx.sleep(200);
+      await ouvrir();
+      const chrome = await ctx.attendrePage('overlay.html#peek');
+      await jusqua(() => chrome.evaluate(() => getComputedStyle(document.getElementById('backdrop')).opacity === '1'), 'voile en place');
+      const carte = carteApercu();
+      await carte.evaluate(() => { window.__tailles = 0; addEventListener('resize', () => { window.__tailles += 1; }); });
+      const v = await carte.evaluate(() => ({ w: innerWidth, h: innerHeight }));
+      const a0 = await apercu();
+      const cible = () => ctx.principal(({ w, win }) => (w.peekState ? win.boundsOf(w.peekState.view) : null));
+      const voile = () => chrome.evaluate(() => Number(getComputedStyle(document.getElementById('backdrop')).opacity));
+      await carte.mouse.move(v.w / 2, v.h / 2);
+      const suivi = [];
+      const t0 = Date.now();
+      for (let i = 0; i < 6; i++) {
+        await carte.mouse.wheel(-12, 0);
+        await ctx.sleep(18);
+        suivi.push((await cible()).x - a0.attendue.x);
+      }
+      const duree = Date.now() - t0;
+      const pendant = await cible();
+      assert.ok(suivi.every((x, i) => (i === 0 ? x > 0 : x >= suivi[i - 1])) && suivi[5] === 72, 'la carte avance avec les doigts, point pour point : ' + suivi.join(', '));
+      assert.deepEqual([pendant.y, pendant.width, pendant.height], [a0.attendue.y, a0.attendue.width, a0.attendue.height], 'déplacée, pas redimensionnée');
+      await jusqua(async () => { const o = await voile(); return o < 0.8 && o > 0.6; }, 'voile éclairci à proportion (72 px sur 150)');
+      console.log(`    aperçu tiré : 6 pas en ${duree} ms, déplacements ${suivi.join(', ')} px, voile à ${await voile()}`);
+      // Doigts levés (plus d'événement) : retour à la place, voile revenu ; l'aperçu est toujours là, sa page n'a pas été remise en page.
+      await jusqua(async () => memeRect(await cible(), a0.attendue), 'carte revenue à sa place', 3000);
+      await jusqua(async () => (await voile()) === 1, 'voile revenu');
+      await jusqua(async () => memeRect((await apercu()).place, a0.attendue), 'carte posée');
+      assert.equal((await apercu()).ouvert, true);
+      assert.equal(await carte.evaluate(() => window.__tailles), 0, 'aucun redimensionnement de la page de l’aperçu pendant le geste');
+    });
+
+    await t.verifier('balayage franc : l’aperçu se ferme (une seule fois, inertie comprise), l’onglet d’origine reste ; « Annuler » le rouvre', async () => {
+      const carte = carteApercu();
+      const avant = await ctx.principal(({ req }) => req('swipe.js').stats.peekCloses);
+      const v = await carte.evaluate(() => ({ w: innerWidth, h: innerHeight }));
+      await ctx.sleep(250); // fin du geste précédent
+      await carte.mouse.move(v.w / 2, v.h / 2);
+      for (let i = 0; i < 8; i++) { await carte.mouse.wheel(-30, 0).catch(() => {}); await ctx.sleep(16); }
+      await ferme();
+      await jusqua(async () => (await apercu()).cartes === 0, 'la carte a quitté la fenêtre');
+      assert.equal(await ctx.principal(({ req }) => req('swipe.js').stats.peekCloses), avant + 1);
+      assert.equal((await ctx.etat()).actifUrl, ctx.url('/liens'));
+      await ctx.menu('Cmd+Z');
+      await jusqua(async () => (await apercu()).titre === 'Page B', 'aperçu rouvert par « Annuler »');
+      const chrome = await ctx.attendrePage('overlay.html#peek');
+      await jusqua(() => chrome.evaluate(() => !document.body.classList.contains('peek-pull') && getComputedStyle(document.getElementById('backdrop')).opacity === '1'), 'voile entier pour l’aperçu rouvert');
+      await chrome.keyboard.press('Escape');
+      await ferme();
+    });
+
     await t.verifier('barre d’outils affichée (⇧⌘D) : l’aperçu montre son adresse au-dessus de la carte', async () => {
       await ctx.menu('Shift+Cmd+D');
       await jusqua(() => shell.evaluate(() => document.body.classList.contains('toolbar')), 'barre d’outils affichée');

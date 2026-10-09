@@ -22,6 +22,7 @@ const PAD = 10;
 const GAP = 8;
 const RADIUS = 10;
 const TOOLBAR_H = 40;
+const PEEK_PULL = 150; // déplacement (px) au bout duquel un aperçu tiré se ferme
 const PEEK_BAR = 40; // marge au-dessus de la carte de l'aperçu quand son adresse s'affiche
 const SPLIT_BAR = 28; // petite barre de chaque volet d'une vue scindée (adresse, options, fermer)
 const TRAFFIC = { x: 15, y: 15 };
@@ -2783,6 +2784,35 @@ class OrbeWindow {
     this.focusContent();
   }
 
+  // Fermeture interactive : un balayage à deux doigts vers la droite, sur un aperçu
+  // qui n'a pas de page précédente, tire la carte (src/main/swipe.js). Elle suit
+  // les doigts — déplacée seulement, jamais redimensionnée : sa page n'est pas
+  // remise en page — et le voile s'éclaircit d'autant. `x` : déplacement en px.
+  pullPeek(x) {
+    const state = this.peekState;
+    if (!state || this.peekJob || this.win.isDestroyed() || !(x >= 0)) return false;
+    const final = this.peekRect();
+    const dx = Math.round(Math.min(x, final.width * 0.6));
+    if (state.pull === dx) return true;
+    state.pull = dx;
+    place(state.view, { ...final, x: final.x + dx });
+    const wc = this.peekChrome && this.peekChrome.webContents;
+    if (wc && !wc.isDestroyed()) wc.send('overlay', { mode: 'peek-pull', p: Math.min(1, dx / PEEK_PULL) });
+    return true;
+  }
+
+  // Doigts levés avant le seuil : la carte revient à sa place, le voile aussi.
+  releasePeek() {
+    const state = this.peekState;
+    if (!state || !state.pull) return false;
+    state.pull = 0;
+    const ms = motion(MOTION.peekBack);
+    place(state.view, this.peekRect(), ms);
+    const wc = this.peekChrome && this.peekChrome.webContents;
+    if (wc && !wc.isDestroyed()) wc.send('overlay', { mode: 'peek-pull', p: 0, ms });
+    return true;
+  }
+
   // Transforme l'aperçu en onglet sans recharger la page : la carte s'étend
   // jusqu'à la place de l'onglet, la page quittée reste dessous pendant ce temps.
   expandPeek({ split = false } = {}) {
@@ -4095,4 +4125,4 @@ function archiveStale() {
   if (count) { store.save(); for (const w of windows.values()) w.layout(); OrbeWindow.pushAll(); }
 }
 
-module.exports = { OrbeWindow, windows, live, media, STATUS, trusted, hooks, lostAfterStay: () => lastLost, applyBoosts, cleanUrl, mdLink, isMeetingUrl, SPLIT_BAR, archiveStale, tabMemory, noteDownload, uiRetryDelay, UI_PREFS, STATUS_MAX, ICON_MAX, thumbs: { keep: keepThumb, MAX: THUMBS }, INTERNAL, UI_PRELOAD, isInternal, MOTION, motion, place, forceMotion, motionStats: stats, boundsOf, inFlight, resumed };
+module.exports = { PEEK_PULL, OrbeWindow, windows, live, media, STATUS, trusted, hooks, lostAfterStay: () => lastLost, applyBoosts, cleanUrl, mdLink, isMeetingUrl, SPLIT_BAR, archiveStale, tabMemory, noteDownload, uiRetryDelay, UI_PREFS, STATUS_MAX, ICON_MAX, thumbs: { keep: keepThumb, MAX: THUMBS }, INTERNAL, UI_PRELOAD, isInternal, MOTION, motion, place, forceMotion, motionStats: stats, boundsOf, inFlight, resumed };

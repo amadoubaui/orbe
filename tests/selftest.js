@@ -409,6 +409,24 @@ module.exports = async function selftest(ctx) {
   w.activate(a.id);
   w.openPeek(base + '/c', a.id);
   await until(() => w.peekState && w.peekState.title.startsWith('C '), 'second aperçu');
+  // Fermeture interactive : la carte tirée se déplace sans changer de taille, relâchée elle revient.
+  {
+    const { boundsOf } = require('../src/main/motion');
+    const view = w.peekState.view;
+    await until(() => !win.inFlight(view), 'aperçu posé');
+    const final = w.peekRect();
+    const okPull = w.pullPeek(80);
+    const pulled = boundsOf(view);
+    const far = (w.pullPeek(5000), boundsOf(view));
+    const bad = [w.pullPeek(-10), w.pullPeek(NaN), w.pullPeek('x')];
+    const back = w.releasePeek();
+    const again = w.releasePeek();
+    check('aperçu tiré (fermeture interactive) : la carte suit de 80 px sans changer de taille, bornée à 60 % de sa largeur ; relâchée, elle revient à sa place',
+      okPull === true && pulled.x === final.x + 80 && pulled.y === final.y && pulled.width === final.width && pulled.height === final.height
+      && far.x === final.x + Math.round(final.width * 0.6) && far.width === final.width && bad.every((r) => r === false)
+      && back === true && again === false && JSON.stringify(boundsOf(view)) === JSON.stringify(final) && !!w.peekState, JSON.stringify({ final, pulled, far, bad, back, again }));
+    await until(() => !win.inFlight(view), 'aperçu revenu');
+  }
   w.run('closeTab');
   check('⌘W ferme l’aperçu sans fermer l’onglet', !w.peekState && w.activeId === a.id && !!tabs()[a.id]);
 
