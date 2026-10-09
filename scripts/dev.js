@@ -75,11 +75,13 @@ function supervise(args, env = process.env) {
   const child = spawn(exe, [root, ...args], { stdio: 'inherit', env: { ...env, ORBE_HEARTBEAT: beat } });
   const started = Date.now();
   let over = false;
+  let at = 0; // dernier battement lu
+  let last = '';
   const watch = setInterval(() => {
     if (over) return;
-    let at = 0;
-    let last = '';
-    try { const [t, l] = fs.readFileSync(beat, 'utf8').split('\n'); at = Number(t) || 0; last = l || ''; } catch {}
+    // Une lecture peut tomber pendant la réécriture du fichier (vide un instant) :
+    // on garde alors le dernier battement connu.
+    try { const [t, l] = fs.readFileSync(beat, 'utf8').split('\n'); if (Number(t) > at) { at = Number(t); last = l || ''; } } catch {}
     // Avant le premier battement (démarrage du moteur), on laisse deux minutes.
     const silent = at ? Date.now() - at : Date.now() - started - 90e3;
     if (silent < frozen) return;

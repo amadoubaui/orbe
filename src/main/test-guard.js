@@ -37,7 +37,7 @@ function waiting(label) {
 
 function note(text) {
   state.notes.push(`${new Date().toISOString().slice(11, 23)} ${text}`);
-  if (state.notes.length > 60) state.notes.shift();
+  if (state.notes.length > 300) state.notes.shift();
 }
 
 // --- Boîtes de dialogue -------------------------------------------------------
@@ -141,7 +141,7 @@ function describe() {
   } catch (err) { lines.push('pages illisibles : ' + err.message); }
   if (state.notes.length) {
     lines.push('derniers faits notés :');
-    for (const n of state.notes.slice(-25)) lines.push('  · ' + n);
+    for (const n of state.notes.slice(-40)) lines.push('  · ' + n);
   }
   return lines.join('\n');
 }
@@ -177,6 +177,17 @@ function install({ app, dialog, limit, stall }) {
       return real.apply(this, args);
     };
   }
+  // Vie des pages : navigations du cadre principal, fins et échecs de chargement.
+  app.on('web-contents-created', (e, wc) => {
+    const id = wc.id;
+    const short = (u) => String(u).slice(0, 90);
+    note(`page n° ${id} créée (${wc.getType()})`);
+    wc.on('did-start-navigation', (ev, url, inPlace, mainFrame) => { if (mainFrame && !inPlace) note(`page n° ${id} : navigation vers ${short(url)}`); });
+    wc.on('did-finish-load', () => { try { note(`page n° ${id} : chargée, ${short(wc.getURL())}`); } catch {} });
+    wc.on('did-fail-load', (ev, code, desc, url, mainFrame) => { if (mainFrame) note(`page n° ${id} : ÉCHEC du chargement ${code} ${desc}, ${short(url)}`); });
+    wc.on('unresponsive', () => note(`page n° ${id} : ne répond plus`));
+    wc.on('destroyed', () => note(`page n° ${id} : détruite`));
+  });
   app.on('render-process-gone', (e, wc, details) => note(`processus de rendu perdu (page ${wc.id}) : ${details.reason}, code ${details.exitCode}`));
   app.on('child-process-gone', (e, details) => note(`processus auxiliaire perdu : ${details.type} ${details.reason}, code ${details.exitCode}`));
   process.on('unhandledRejection', (err) => note(`promesse rejetée sans suite : ${String((err && err.stack) || err).split('\n').slice(0, 3).join(' | ')}`));
@@ -194,7 +205,8 @@ function install({ app, dialog, limit, stall }) {
   // Battement pour le lanceur : tant que ce fichier est récrit, le fil principal vit.
   const beat = process.env.ORBE_HEARTBEAT;
   if (beat) {
-    const write = () => { try { fs.writeFileSync(beat, `${Date.now()}\n${state.last}\n`); } catch {} };
+    // Écrit à côté puis renommé : le lanceur ne lit jamais un fichier à moitié écrit.
+    const write = () => { try { fs.writeFileSync(beat + '.tmp', `${Date.now()}\n${state.last}\n`); fs.renameSync(beat + '.tmp', beat); } catch {} };
     write();
     setInterval(write, 500).unref();
   }

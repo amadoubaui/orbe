@@ -447,6 +447,8 @@ app.whenReady().then(async () => {
       app.exit(0);
     } catch (err) {
       console.error('\nÉCHEC', err);
+      // Un délai dépassé ne dit pas pourquoi : l'état du processus principal, si.
+      if (/Délai dépassé|non rattrapée|boîte\(s\) de dialogue/.test(String(err && err.message))) console.error(`\nÉtat du processus principal :\n${testGuard.describe()}\n`);
       app.exit(1);
     }
   }

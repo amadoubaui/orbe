@@ -11,7 +11,7 @@ const root = path.join(__dirname, '..', '..');
 const runtime = process.env.ORBE_RUNTIME || path.join(os.homedir(), '.orbe-dev');
 const electronBin = path.join(runtime, 'node_modules', 'electron', 'dist', 'Electron.app', 'Contents', 'MacOS', 'Electron');
 
-const { PROBE, juger } = require('../outils');
+const { PROBE, juger, mesurer } = require('../outils');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -137,7 +137,7 @@ async function lancer() {
   // Mesuré une fois par groupe, dans la coque (voir tests/outils.js) : sans image
   // présentée, une cadence ou une animation ne prouve rien.
   // (ORBE_UI_ECRAN=inactif : fait comme si aucune image n'était présentée, pour essayer ce chemin.)
-  ctx.milieu = juger(process.env.ORBE_UI_ECRAN === 'inactif' ? { frames: 0, ticks: 25, ms: 500, visible: 'simulé' } : await delai(ctx.shell.evaluate(PROBE), 8000, 'mesure de l’écran').catch(() => null));
+  ctx.milieu = process.env.ORBE_UI_ECRAN === 'inactif' ? juger({ frames: 0, ticks: 25, ms: 500, visible: 'simulé' }) : await mesurer(() => ctx.shell.evaluate(PROBE));
 
   // --- Processus principal ----------------------------------------------------
   // `require` n'existe pas dans le contexte d'évaluation de Playwright ; on

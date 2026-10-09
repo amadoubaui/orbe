@@ -66,11 +66,22 @@ function juger(m) {
     resume: `${m.frames} image(s) présentée(s), ${m.ticks}/25 tics de 20 ms en ${m.ms} ms, page « ${m.visible} » → ${vivant ? 'écran vivant' : 'ÉCRAN INACTIF : les vérifications qui en dépendent seront ignorées'}`,
   };
 }
+// Une machine occupée (démarrage) peut manquer une mesure : l'écran n'est dit
+// inactif que si trois mesures de suite le disent.
+async function mesurer(sonde) {
+  let j = null;
+  for (let i = 0; i < 3; i++) {
+    let m = null;
+    try { m = await Promise.race([sonde(), sleep(6000).then(() => null)]); } catch {}
+    j = juger(m);
+    if (j.vivant) break;
+    await sleep(700);
+  }
+  return j;
+}
 async function milieu(w) {
   if (measured) return measured;
-  let m = null;
-  try { m = await Promise.race([w.ui.webContents.executeJavaScript(PROBE), sleep(6000).then(() => null)]); } catch {}
-  measured = juger(m);
+  measured = await mesurer(() => w.ui.webContents.executeJavaScript(PROBE));
   console.log(`  – milieu de l’essai : ${measured.resume}`);
   return measured;
 }
@@ -81,4 +92,4 @@ function ignorer(nom, raison) {
   console.log(`  – ignoré : ${nom} (${raison})`);
 }
 
-module.exports = { sleep, until, milieu, ignorer, ignores: garde.state.skipped, PROBE, juger };
+module.exports = { sleep, until, milieu, ignorer, ignores: garde.state.skipped, PROBE, juger, mesurer };
