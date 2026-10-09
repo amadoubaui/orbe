@@ -674,6 +674,30 @@ des adresses et des titres de pages.
   entrées dont la clé est un nom d'hôte valide et la valeur un identifiant de
   profil sont gardées. `__proto__` n'est pas un site.
 
+## Fichiers récents et médias des dossiers (`src/main/library.js`, `src/renderer/libpeek.js`)
+
+- **Survol de l'icône de la Bibliothèque.** La barre latérale reçoit, pour cinq
+  fichiers au plus, un identifiant, un nom, une sorte et une date : ni chemin, ni
+  adresse. Le nom vient d'un site ; il est posé par `textContent`, les dessins sont
+  fixes, aucun fichier n'est lu ni décodé par la barre. Ouvrir et glisser passent par
+  les mêmes portes que la Bibliothèque (`dl:open`, `drag`) : fichier exécutable
+  confirmé, fichier sans marque « venu d'Internet » jamais glissé sans accord.
+- **Captures d'Orbe.** Elles sont rangées dans la Bibliothèque, sauf en navigation
+  privée, où le fichier est écrit sans laisser de fiche.
+- **« Afficher les médias de : » Bureau, Documents, Téléchargements.** macOS demande
+  l'accord de l'utilisateur à la première lecture de ces dossiers. Orbe ne les lit
+  donc que lorsqu'un dossier vient d'être choisi dans la section Médias : jamais au
+  démarrage, et le choix n'est pas retenu d'une ouverture à l'autre. Seul le premier
+  niveau est lu ; liens symboliques, fichiers cachés et autres types sont écartés ;
+  rien n'est ouvert ni décodé. La page reçoit un identifiant (empreinte du chemin) ;
+  à chaque action, le fichier est revérifié : fichier ordinaire, toujours dans le
+  dossier parcouru (un fichier remplacé depuis par un lien est refusé).
+- **Vidéos dans un tableau, aperçu des vidéos de la Bibliothèque : non faits.** Les
+  deux feraient décoder du contenu venu du web dans une page interne de confiance ;
+  il y faudra une vue web à part, en bac à sable, dans la session du profil.
+
+Essais : `tests/sensations.js`, `tests/ui/29-sensations.js`.
+
 ## Ce qui demande une vérification humaine
 
 - Une vraie mise à jour, d'une version publiée à la suivante (annonce,
