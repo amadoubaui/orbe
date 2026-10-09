@@ -45,7 +45,9 @@ function serve() {
   let seen = 0;
   server.on('connection', (socket) => { if ((seen += 1) <= 12) note(`serveur d’essai : connexion n° ${seen} depuis ${socket.remoteAddress}`); });
   server.on('request', (req) => { if (seen <= 12) note(`serveur d’essai : ${req.method} ${req.url}`); });
-  return new Promise((resolve) => server.listen(0, () => { note(`serveur d’essai à l’écoute : ${JSON.stringify(server.address())}`); resolve(server); }));
+  // 127.0.0.1 seulement : à l'écoute partout (« :: »), le système peut donner le même numéro de port qu'au
+  // serveur 127.0.0.1 d'une autre suite lancée en même temps, qui reçoit alors nos demandes (page jamais servie).
+  return new Promise((resolve) => server.listen(0, '127.0.0.1', () => { note(`serveur d’essai à l’écoute : ${JSON.stringify(server.address())}`); resolve(server); }));
 }
 
 module.exports = async function selftest(ctx) {
