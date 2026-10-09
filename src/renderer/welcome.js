@@ -1,5 +1,6 @@
 // Accueil du premier lancement : bienvenue, import, couleur, navigateur par
-// défaut, premiers gestes. Chaque étape est facultative ; « Passer » ferme tout.
+// défaut, premiers gestes. Chaque étape est facultative ; « Passer » mène droit à
+// la dernière (premiers gestes et mot de soutien), d'où l'on commence à naviguer.
 const steps = [...document.querySelectorAll('.step')];
 const dots = document.getElementById('dots');
 const next = document.getElementById('next');
@@ -25,7 +26,7 @@ function show(i) {
 const finish = () => O.send('welcome:done');
 next.onclick = () => (at === steps.length - 1 ? finish() : show(at + 1));
 back.onclick = () => show(at - 1);
-document.getElementById('skip').onclick = finish;
+document.getElementById('skip').onclick = () => show(steps.length - 1);
 
 document.addEventListener('click', (e) => {
   const b = e.target.closest('[data-cmd]');

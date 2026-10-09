@@ -78,6 +78,9 @@ module.exports = {
     await shell.keyboard.press('Enter');
     const tete = shell.locator('#pinned .folder').first().locator('> .row');
     await animer('un onglet déposé sur un dossier : l’icône du dossier rebondit, sa ligne s’éclaire (transformation et opacité)', async () => {
+      // Le dossier vient de naître : ses lignes glissent encore. On attend qu'elles soient posées avant de
+      // ralentir les animations, sinon le point de dépôt est relevé sur une ligne en mouvement (dépôt à côté).
+      await jusqua(() => shell.evaluate(() => !document.getElementById('scroll').getAnimations({ subtree: true }).some((x) => x.playState === 'running')), 'lignes au repos');
       await ctx.vitesseAnimations(0.2);
       try {
         await ctx.glisser(await ctx.centre(ctx.ligne('Page A', '#today')), () => ctx.centre(tete));

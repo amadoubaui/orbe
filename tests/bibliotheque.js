@@ -419,6 +419,53 @@ module.exports = async function bibliothequeTests(ctx) {
       const help = Menu.getApplicationMenu().items.find((m) => m.role === 'help' || m.label === T('menu.help'));
       return !!help && help.submenu.items.some((it) => it.label === T('notes.export')) && w.suggestLocal('exporter les notes').some((i) => i.command === 'exportNotes');
     })());
+    // Mise en forme : un modèle de blocs vérifié, jamais du HTML.
+    {
+      const hostile = [
+        { t: 'h1', runs: [{ s: 'Titre', b: true }] },
+        { t: 'script', runs: [{ s: 'alert(1)' }] },
+        { t: 'p', runs: [{ s: '<img src=x onerror=alert(1)>', i: 'oui' }, { s: 'lien', a: 'javascript:alert(1)' }, { s: 'site', a: 'https://exemple.test/a b' }, { s: 'fichier', a: 'file:///etc/passwd' }, { s: 7 }, null] },
+        { t: 'todo', done: true, runs: [{ s: 'fait' }], onclick: 'x' },
+        { t: 'todo', done: 'oui', runs: [{ s: 'à faire‮' }] },
+        { t: 'ol', runs: [{ s: 'un' }] }, { t: 'ol', runs: [{ s: 'deux' }] }, { t: 'ul', runs: 'pas une liste' },
+        'chaîne', null,
+      ];
+      const clean = notes.cleanBlocks(hostile);
+      check('notes mises en forme : seuls les types de bloc connus sont gardés, le texte reste du texte, un lien ne mène qu’au web ou à un courriel',
+        JSON.stringify(clean) === JSON.stringify([
+          { t: 'h1', runs: [{ s: 'Titre', b: true }] },
+          { t: 'p', runs: [{ s: '<img src=x onerror=alert(1)>' }, { s: 'lien' }, { s: 'site', a: 'https://exemple.test/a%20b' }, { s: 'fichier' }] },
+          { t: 'todo', runs: [{ s: 'fait' }], done: true },
+          { t: 'todo', runs: [{ s: 'à faire' }] },
+          { t: 'ol', runs: [{ s: 'un' }] }, { t: 'ol', runs: [{ s: 'deux' }] }, { t: 'ul', runs: [] },
+        ]), JSON.stringify(clean));
+      check('texte seul d’une note mise en forme (titre, export) : puces, numéros et cases en clair',
+        notes.plain(clean) === 'Titre\n<img src=x onerror=alert(1)>liensitefichier\n[x] fait\n[ ] à faire\n1. un\n2. deux\n- ');
+      const big = notes.cleanBlocks(Array.from({ length: 6000 }, () => ({ t: 'p', runs: [{ s: 'x'.repeat(100) }] })));
+      check('note démesurée : 5000 blocs et 200 000 caractères au plus', big.length === 5000 && big.reduce((n, b) => n + b.runs.reduce((m, r) => m + r.s.length, 0), 0) === 200000);
+      const { globalAction } = ctx;
+      {
+        store.state.notes = [];
+        const saved = await globalAction('notes:save', { blocks: hostile, text: 'ignoré' });
+        check('« notes:save » : ce qui est enregistré est le modèle vérifié et son texte seul', JSON.stringify(saved.blocks) === JSON.stringify(clean) && saved.text === notes.plain(clean) && store.state.notes.length === 1);
+        const old = await globalAction('notes:save', { id: saved.id, text: 'simple\ntexte' });
+        check('« notes:save » sans blocs (ancienne forme) : texte brut, sans mise en forme', old.text === 'simple\ntexte' && !('blocks' in old));
+      }
+      // La page reconstruit l'affichage élément par élément : une note dont le texte ressemble à du HTML n'en devient pas.
+      store.state.notes = [{ id: 'n-hostile', at: Date.now(), text: '', blocks: clean.concat([{ t: 'p', runs: [{ s: '<b>pas gras</b><script>window.__pwn = 1</script>', a: 'https://orbe.test/' }] }]) },
+        { id: 'n-brute', at: Date.now() - 1000, text: '', blocks: [{ t: 'iframe', runs: [{ s: 'x' }] }, { t: 'p', runs: [{ s: 'clic', a: 'javascript:window.__pwn=2' }] }] }];
+      const tab = w.openInternal('notes.html');
+      const nwc = win.live.get(tab.id).wc;
+      await until(() => nwc.executeJavaScript('document.querySelectorAll("#items .note").length === 2 && document.querySelector("#editor h1") !== null'), 'notes mises en forme affichées');
+      const seen = await nwc.executeJavaScript(`(() => { const e = document.getElementById('editor'); const tags = [...new Set([...e.querySelectorAll('*')].map((x) => x.tagName))].sort().join(); const links = [...e.querySelectorAll('a')].map((a) => a.getAttribute('href')); return { tags, links, pwn: window.__pwn || 0, last: e.lastElementChild.textContent, todo: e.querySelectorAll('ul.todo > li').length, done: e.querySelectorAll('ul.todo > li[data-done]').length, ol: e.querySelectorAll('ol > li').length, editable: e.contentEditable }; })()`);
+      check('page des notes : titres, listes, cases et liens redessinés ; le texte « <script> » reste du texte, aucun autre élément n’entre',
+        seen.tags === 'A,B,BR,H1,LI,OL,P,UL' && seen.pwn === 0 && seen.last === '<b>pas gras</b><script>window.__pwn = 1</script>' && seen.todo === 2 && seen.done === 1 && seen.ol === 2
+        && seen.links.join() === 'https://exemple.test/a%20b,https://orbe.test/' && seen.editable === 'true', JSON.stringify(seen));
+      await nwc.executeJavaScript('document.querySelectorAll("#items .note")[1].click()');
+      const brute = await nwc.executeJavaScript(`(() => { const e = document.getElementById('editor'); return { tags: [...e.querySelectorAll('*')].map((x) => x.tagName).join(), a: e.querySelectorAll('a').length, text: e.textContent }; })()`);
+      check('note altérée sur le disque (type inconnu, lien « javascript: ») : le bloc inconnu est ignoré, le lien n’est pas créé', brute.tags === 'P' && brute.a === 0 && brute.text === 'clic', JSON.stringify(brute));
+      w.close(tab.id);
+    }
     store.state.notes = notes0;
     notes.env.pickFolder = pick0;
     notes.env.reveal = reveal0;

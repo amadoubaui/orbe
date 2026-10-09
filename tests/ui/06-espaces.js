@@ -205,6 +205,36 @@ module.exports = {
       assert.equal(await nom(), 'Projets');
     });
 
+    await animer('tirer franchement au-delà du dernier Espace : un « + » sort du bord et grandit ; au bout, un nouvel Espace est créé — un seul', async () => {
+      await ctx.sleep(400);
+      await repos();
+      const plus = () => shell.evaluate(() => { const el = document.querySelector('#pager .pager-plus'); if (!el) return null; const cs = getComputedStyle(el); const m = new DOMMatrix(cs.transform); return { p: Number(el.dataset.p), opacite: Number(cs.opacity), x: m.m41, echelle: Math.round(m.a * 100) / 100, pos: cs.position }; });
+      const c = await ctx.centre(shell.locator('#scroll'));
+      await shell.mouse.move(c.x, c.y);
+      // Début du geste : le « + » paraît, petit et pâle, et grandit à chaque pas.
+      const vus = [];
+      for (let i = 0; i < 3; i++) { await shell.mouse.wheel(30, 0); await ctx.sleep(16); vus.push(await plus()); }
+      assert.ok(vus.every((v) => v && v.pos === 'absolute'), 'pastille présente dès le premier pas : ' + JSON.stringify(vus));
+      assert.ok(vus[2].p > vus[1].p && vus[1].p > vus[0].p && vus[2].p < 1 && vus[2].echelle > vus[0].echelle && vus[2].x < vus[0].x && vus[2].opacite > vus[0].opacite, 'elle avance et grandit avec le geste : ' + JSON.stringify(vus));
+      assert.equal((await ctx.etat()).espaces.length, 2, 'rien n’est créé avant le bout');
+      // Le geste continue, franc : au bout, le nouvel Espace ; la suite du geste (inertie) n'en crée pas d'autre.
+      for (let i = 0; i < 14; i++) { await shell.mouse.wheel(40, 0); await ctx.sleep(16); }
+      await jusqua(async () => (await ctx.etat()).espaces.length === 3, 'nouvel Espace créé');
+      await jusqua(() => shell.locator('#space-name input.rename').count(), 'champ de nom du nouvel Espace');
+      await ctx.sleep(300);
+      const e = await ctx.etat();
+      assert.equal(e.espaces.length, 3, 'un seul Espace créé');
+      assert.equal(e.espaces[2].nom, e.espace, 'il est affiché, à la suite du dernier');
+      assert.equal(await shell.locator('#pager .pager-plus').count(), 0, 'la pastille est retirée');
+      // Remise en place : l'Espace d'essai est supprimé.
+      await shell.keyboard.press('Escape');
+      await ctx.principal(({ w }) => { w.removeSpace(w.space.id); });
+      await jusqua(async () => (await ctx.etat()).espaces.length === 2 && (await pastilles.count()) === 2, 'Espace d’essai retiré');
+      await ctx.menu('Ctrl+2');
+      await jusqua(async () => (await nom()) === 'Projets', 'Espace Projets');
+      await repos();
+    });
+
     await t.verifier('⌥⌘← et ⌃1/⌃2 (éléments de menu) changent d’Espace', async () => {
       await ctx.menu('Alt+Cmd+Left');
       await jusqua(async () => (await nom()) === 'Personnel', 'Espace Personnel');

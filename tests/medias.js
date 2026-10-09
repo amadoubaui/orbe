@@ -326,6 +326,19 @@ module.exports = async function mediasTests(ctx) {
     w.mediaAct({ id: p1, act: 'mute' });
     check('muet depuis le lecteur : son de l’onglet coupé, puis rétabli', d.tabs[p1].muted === true && wcOf(p1).isAudioMuted() && players()[0].muted === true && (w.mediaAct({ id: p1, act: 'mute' }), d.tabs[p1].muted === false));
 
+    // Volume de l'onglet : celui des lecteurs de la page (le son d'essai reste quasi inaudible : on ne fait que baisser).
+    {
+      const v0 = await js(p1, 'document.getElementById("a").volume');
+      const okVol = await w.mediaAct({ id: p1, act: 'volume', value: v0 * 0.5 });
+      const v1 = await js(p1, 'document.getElementById("a").volume');
+      const shown = await until(() => { const p = players()[0]; return p && Math.abs(p.volume - v1) < 0.02 ? p.volume : null; }, 'volume annoncé par le lecteur').catch(() => null);
+      check('volume depuis le lecteur : les lecteurs de la page baissent, le lecteur miniature annonce le nouveau niveau', okVol === true && Math.abs(v1 - Math.round(v0 * 50) / 100) < 0.011 && shown !== null, [v0, v1, shown].join());
+      check('volume : valeur hors de 0 à 1, ou qui n’est pas un nombre → refusée, rien ne change',
+        w.mediaAct({ id: p1, act: 'volume', value: 1.5 }) === false && w.mediaAct({ id: p1, act: 'volume', value: -0.1 }) === false && w.mediaAct({ id: p1, act: 'volume', value: '0.5); alert(1); (' }) === false && w.mediaAct({ id: p1, act: 'volume' }) === false
+        && (await js(p1, 'document.getElementById("a").volume')) === v1);
+      await w.mediaAct({ id: p1, act: 'volume', value: v0 });
+    }
+
     // Deuxième onglet qui joue : deux lecteurs, le plus récent en tête.
     const p2 = await load('/piste2', 'Piste 2');
     await js(p2, 'start("Deuxième morceau")');

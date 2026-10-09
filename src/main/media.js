@@ -34,7 +34,7 @@ const LIMITS = {
 };
 // Gestes qui prêtent une activation d'utilisateur à la page (voir `act`).
 const GESTURE = new Set(['toggle', 'prev', 'next']);
-const ACTIONS = new Set(['toggle', 'prev', 'next', 'back', 'forward', 'seek', 'close', 'mute', 'open']);
+const ACTIONS = new Set(['toggle', 'prev', 'next', 'back', 'forward', 'seek', 'close', 'mute', 'open', 'volume']);
 const attached = new WeakSet();
 // Clé du document affiché par chaque onglet : elle ouvre la table des gestionnaires
 // `mediaSession` que src/preload/media.js garde hors de portée de la page.
@@ -62,12 +62,15 @@ const infoCode = (key) => `(() => { try {
   try { const l = ${/^[0-9a-f]{32}$/.test(key) ? `ms.setActionHandler(${JSON.stringify(key)}, null)` : 'null'}; acts = Array.isArray(l) ? l.slice(0, 16).map((x) => String(x).slice(0, 32)) : []; } catch {}
   const num = (v) => (typeof v === 'number' && isFinite(v) ? v : 0);
   return {
-    has: !!m, paused: m ? !!m.paused : true, t: m ? num(m.currentTime) : 0, d: m ? num(m.duration) : 0,
+    has: !!m, paused: m ? !!m.paused : true, t: m ? num(m.currentTime) : 0, d: m ? num(m.duration) : 0, v: m && typeof m.volume === 'number' ? m.volume : 1,
     title: md ? String(md.title || '').slice(0, ${LIMITS.raw}) : '', artist: md ? String(md.artist || '').slice(0, ${LIMITS.raw}) : '', art, acts,
   };
 } catch { return null; } })()`;
 const TOGGLE = `(() => { ${PICK} if (m) { if (m.paused) m.play().catch(() => {}); else m.pause(); } return !!m && !m.paused; })()`;
 const seekCode = (expr) => `(() => { ${PICK} if (!m || !isFinite(m.duration)) return false; m.currentTime = Math.max(0, Math.min(m.duration, ${expr})); return true; })()`;
+// Volume de l'onglet : Electron n'offre que le muet. Le réglage est donc celui des
+// lecteurs de la page (tous ses <audio>/<video>), comme le ferait son propre curseur.
+const volumeCode = (v) => `(() => { let n = 0; document.querySelectorAll('video, audio').forEach((x) => { try { x.volume = ${v}; n += 1; } catch {} }); return n > 0; })()`;
 const actCode = (key, name) => (/^[0-9a-f]{32}$/.test(key) ? `(() => { try { return navigator.mediaSession.setActionHandler(${JSON.stringify(key)}, ${JSON.stringify(name)}) === true; } catch { return false; } })()` : 'false');
 
 const text = (v) => (typeof v === 'string' ? v.replace(/[\u0000-\u001f\u007f‪-‮⁦-⁩]/g, ' ').trim().slice(0, LIMITS.text) : '');
@@ -83,6 +86,7 @@ function clean(raw) {
     paused: r.paused !== false,
     position: Math.min(num(r.t), d || 360000),
     duration: d,
+    volume: typeof r.v === 'number' && r.v >= 0 && r.v <= 1 ? Math.round(r.v * 100) / 100 : 1,
     track: text(r.title),
     artist: text(r.artist),
     artSrc: artworkKind(r.art) ? r.art : '',
@@ -156,7 +160,7 @@ function make(env) {
     const now = Date.now();
     const expected = before.at ? before.position + (before.paused ? 0 : (now - before.at) / 1000) : -1;
     const drift = !info.duration || Math.abs(info.position - (info.duration ? Math.min(expected, info.duration) : expected)) > LIMITS.drift;
-    const changed = drift || ['has', 'paused', 'track', 'artist', 'prev', 'next'].some((k) => before[k] !== info[k]) || Math.round(before.duration || 0) !== Math.round(info.duration);
+    const changed = drift || ['has', 'paused', 'track', 'artist', 'prev', 'next', 'volume'].some((k) => before[k] !== info[k]) || Math.round(before.duration || 0) !== Math.round(info.duration);
     rt.media = changed ? { ...info, art, at: now } : { ...info, art, position: before.position, at: before.at };
     if (info.has) rt.playing = !info.paused;
     wantArt(rt);
@@ -201,6 +205,7 @@ function make(env) {
         art: m.art || '',
         playing: m.has ? !m.paused : rt.wc.isCurrentlyAudible() || (!!rt.playing && !tab.muted),
         muted: !!tab.muted,
+        volume: m.has && typeof m.volume === 'number' ? m.volume : 1,
         position: Math.min(m.duration || 360000, (m.position || 0) + (m.has && !m.paused && m.at ? (Date.now() - m.at) / 1000 : 0)),
         duration: m.duration || 0,
         prev: !!m.prev,
@@ -246,6 +251,13 @@ function make(env) {
         if (!Number.isFinite(to) || to < 0) return false;
         if (rt.media) { rt.media.position = Math.min(to, rt.media.duration || to); rt.media.at = Date.now(); }
         return run(seekCode(String(Math.min(to, 360000))));
+      }
+      case 'volume': {
+        const v = Number(a.value);
+        if (typeof a.value !== 'number' || !Number.isFinite(v) || v < 0 || v > 1) return false;
+        const to = Math.round(v * 100) / 100;
+        if (rt.media) rt.media.volume = to;
+        return run(volumeCode(String(to)));
       }
       default: return false;
     }

@@ -25,7 +25,11 @@ const SWIPE = {
 const attached = new WeakSet();
 let ipcReady = false;
 
-const windowOf = (wc) => require('./window').OrbeWindow.ownerOf(wc);
+// Fenêtre de la page qui parle : celle de son onglet, ou celle dont elle est l'aperçu.
+const windowOf = (wc) => {
+  const W = require('./window');
+  return W.OrbeWindow.ownerOf(wc) || [...W.windows.values()].find((w) => w.peekState && w.peekState.view.webContents === wc) || null;
+};
 
 function hide(w) {
   const st = w.swipe;
@@ -75,6 +79,8 @@ function onMessage(e, msg) {
   if (!w || w.win.isDestroyed() || w.activeWc !== wc || (e.senderFrame && e.senderFrame !== wc.mainFrame)) return;
   const st = w.swipe || (w.swipe = { done: false, shown: '', timer: null, dir: '' });
   if (msg.type === 'end') {
+    // Aperçu tiré puis relâché avant le seuil : il revient à sa place.
+    if (st.pull) { st.pull = false; if (!st.done) w.releasePeek(); }
     if (!st.done && st.shown) show(w, null, st.shown, { p: 0, release: true });
     st.done = false;
     st.shown = '';
@@ -93,6 +99,23 @@ function onMessage(e, msg) {
   // Les doigts vont vers la droite (défilement négatif) : page précédente.
   const dir = x < 0 ? 'back' : 'forward';
   const nav = wc.navigationHistory;
+  // Aperçu sans page précédente : les doigts vers la droite tirent la carte ; passé
+  // le seuil (ou d'un geste vif), l'aperçu se ferme — annulable comme toute fermeture.
+  if (w.peekState && w.peekState.view.webContents === wc && dir === 'back' && !nav.canGoBack()) {
+    const pull = require('./window').PEEK_PULL;
+    const far = -x >= pull;
+    const brisk = -v >= SWIPE.flick && -x >= SWIPE.flickMin;
+    if (far || brisk) {
+      st.done = true;
+      st.pull = false;
+      stats.peekCloses += 1;
+      w.dismissPeek();
+      return;
+    }
+    st.pull = w.pullPeek(-x);
+    return;
+  }
+  if (st.pull) { st.pull = false; w.releasePeek(); }
   if (!(dir === 'back' ? nav.canGoBack() : nav.canGoForward())) {
     if (st.shown) { show(w, null, st.shown, { p: 0, release: true }); st.shown = ''; hide(w); }
     return;
@@ -115,7 +138,7 @@ function onMessage(e, msg) {
   show(w, rect, dir, { p: Math.abs(x) / SWIPE.commit });
 }
 
-const stats = { navigations: 0 };
+const stats = { navigations: 0, peekCloses: 0 };
 
 function attach(ses) {
   if (!ses || attached.has(ses)) return;

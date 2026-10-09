@@ -214,10 +214,9 @@ async function globalAction(action, a, sender) {
     case 'notes:list':
       return s.notes.slice().sort((x, y) => y.at - x.at);
     case 'notes:save': {
-      const text = String((a && a.text) || '').slice(0, 200000);
       let note = s.notes.find((n) => n.id === (a && a.id));
       if (!note) { note = { id: require('./store').uid(), text: '', at: Date.now() }; s.notes.push(note); }
-      note.text = text;
+      require('./notes').setContent(note, a); // blocs de mise en forme vérifiés (liste fermée), jamais de HTML
       note.at = Date.now();
       store.save();
       return note;
