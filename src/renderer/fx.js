@@ -76,9 +76,17 @@
     const head = folder.querySelector(':scope > .row');
     if (dragging.space || (dragging.folder && head && head.dataset.id === dragging.id)) return;
     folder.classList.remove('gulped');
+    // Le dépôt fait redessiner la liste : la ligne du dossier peut être remplacée par
+    // une neuve avant la fin du rebond (il disparaissait alors, une fois sur deux).
+    // Le rebond est donc tenu par l'identifiant du dossier, et reposé sur la ligne neuve.
+    const id = head ? head.dataset.id : '';
+    const now = () => (id && [...document.querySelectorAll('.folder > .row')].find((r) => r.dataset.id === id) || { parentNode: folder }).parentNode;
+    const mark = () => { const el = now(); if (el && el.isConnected && !el.classList.contains('gulped')) el.classList.add('gulped'); };
+    const watch = new MutationObserver(mark);
     requestAnimationFrame(() => {
-      folder.classList.add('gulped');
-      setTimeout(() => folder.classList.remove('gulped'), 700);
+      mark();
+      watch.observe(document.getElementById('scroll'), { childList: true, subtree: true });
+      setTimeout(() => { watch.disconnect(); for (const el of document.querySelectorAll('.folder.gulped')) el.classList.remove('gulped'); }, 700);
     });
   }, true);
 })();

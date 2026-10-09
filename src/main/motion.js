@@ -3,7 +3,7 @@ const { systemPreferences } = require('electron');
 
 // Durées en millisecondes. Barre latérale : cotes relevées dans Arc (elle revient
 // en 50 ms et disparaît d'un coup). Aperçu : ouverture 200 ms, fermeture 150 ms.
-const MOTION = { sidebarIn: 50, peekIn: 200, peekOut: 150, peekExpand: 220 };
+const MOTION = { sidebarIn: 50, peekIn: 200, peekOut: 150, peekExpand: 220, peekBack: 180 };
 const stats = { animated: 0, direct: 0 }; // appels à setBounds, pour les mesures
 let nativeAnim = true;
 

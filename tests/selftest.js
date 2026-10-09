@@ -411,6 +411,24 @@ module.exports = async function selftest(ctx) {
   w.activate(a.id);
   w.openPeek(base + '/c', a.id);
   await until(() => w.peekState && w.peekState.title.startsWith('C '), 'second aperçu');
+  // Fermeture interactive : la carte tirée se déplace sans changer de taille, relâchée elle revient.
+  {
+    const { boundsOf } = require('../src/main/motion');
+    const view = w.peekState.view;
+    await until(() => !win.inFlight(view), 'aperçu posé');
+    const final = w.peekRect();
+    const okPull = w.pullPeek(80);
+    const pulled = boundsOf(view);
+    const far = (w.pullPeek(5000), boundsOf(view));
+    const bad = [w.pullPeek(-10), w.pullPeek(NaN), w.pullPeek('x')];
+    const back = w.releasePeek();
+    const again = w.releasePeek();
+    check('aperçu tiré (fermeture interactive) : la carte suit de 80 px sans changer de taille, bornée à 60 % de sa largeur ; relâchée, elle revient à sa place',
+      okPull === true && pulled.x === final.x + 80 && pulled.y === final.y && pulled.width === final.width && pulled.height === final.height
+      && far.x === final.x + Math.round(final.width * 0.6) && far.width === final.width && bad.every((r) => r === false)
+      && back === true && again === false && JSON.stringify(boundsOf(view)) === JSON.stringify(final) && !!w.peekState, JSON.stringify({ final, pulled, far, bad, back, again }));
+    await until(() => !win.inFlight(view), 'aperçu revenu');
+  }
   w.run('closeTab');
   check('⌘W ferme l’aperçu sans fermer l’onglet', !w.peekState && w.activeId === a.id && !!tabs()[a.id]);
 
@@ -540,6 +558,8 @@ module.exports = async function selftest(ctx) {
       check('doigts levés avant le seuil : la liste revient, l’Espace ne change pas', w.space === s2 && !back.ghost && back.live === 0 && back.tint === 0);
       await swipe(14, 5, 30); // vers la droite alors qu'il n'y a plus d'Espace : élastique
       const edge = await look();
+      const plus = await ui('(() => { const el = document.querySelector("#pager .pager-plus"); return el ? Number(el.dataset.p) : -1; })()');
+      check('au bout de la rangée, vers la droite : un « + » paraît et grandit avec le geste ; un balayage ordinaire ne crée pas d’Espace', plus > 0 && plus < 0.5 && w.data.spaces.length === 2, String(plus));
       check('au bout de la rangée : la liste résiste, sans autre liste à côté', !edge.ghost && edge.live < 0 && edge.live > -70 && edge.tint === 0, JSON.stringify(edge));
       await until(() => ui('!slide'), 'retour de l’élastique');
       check('au bout de la rangée : rien ne change', w.space === s2 && (await look()).live === 0);

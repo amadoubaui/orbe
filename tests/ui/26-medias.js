@@ -109,6 +109,34 @@ module.exports = {
         await jusqua(async () => (await dansPage(p1, 'calls.join()')) === 'next', 'gestionnaire « suivant » de la page appelé');
       });
 
+      await t.verifier('volume de l’onglet : défiler sur le haut-parleur le baisse, le tirer vers le haut le remonte — sans couper le son', async () => {
+        const son = carte(p1).locator('.mp-mute');
+        const vol = () => dansPage(p1, 'document.getElementById("a").volume');
+        assert.equal(await vol(), 1);
+        await jusqua(async () => { await carte(p1).locator('.mp-art').hover(); await sleep(60); return son.isVisible(); }, 'commandes révélées');
+        await son.hover();
+        for (let i = 0; i < 4; i++) { await shell.mouse.wheel(0, 60); await sleep(90); }
+        await jusqua(async () => { const v = await vol(); return v > 0.4 && v < 0.6; }, 'volume baissé dans la page');
+        const bas = await vol();
+        // Le niveau se lit sous l'icône : un trait mis à l'échelle (transformation seule).
+        const trait = await son.evaluate((el) => ({ vol: el.dataset.vol, low: el.classList.contains('low'), sx: new DOMMatrix(getComputedStyle(el, '::after').transform).a, op: getComputedStyle(el, '::after').opacity }));
+        assert.equal(Number(trait.vol), Math.round(bas * 100));
+        assert.equal(trait.low, true);
+        assert.ok(Math.abs(trait.sx - bas) < 0.06 && Number(trait.op) > 0.9, JSON.stringify(trait));
+        assert.match(await son.getAttribute('title'), /volume/);
+        // Tirer vers le haut : le volume remonte ; le relâchement n'est pas un clic (le son n'est pas coupé).
+        const b = await son.boundingBox();
+        await shell.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+        await shell.mouse.down();
+        await shell.mouse.move(b.x + b.width / 2, b.y + b.height / 2 - 60, { steps: 6 });
+        await sleep(80);
+        await shell.mouse.up();
+        await jusqua(async () => (await vol()) === 1, 'volume remonté dans la page');
+        await sleep(150);
+        assert.equal(await ctx.principal(({ w }, i) => !!w.data.tabs[i].muted, p1), false, 'le relâchement du glisser n’a pas coupé le son');
+        assert.equal(await son.evaluate((el) => el.classList.contains('low')), false);
+      });
+
       await t.verifier('glisser sur la barre d’avancement : recherche ; pointeur remonté : recherche fine', async () => {
         const b = await carte(p1).locator('.mp-bar').boundingBox();
         const y = b.y + b.height - 4;
