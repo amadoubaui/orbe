@@ -239,6 +239,49 @@ module.exports = {
       } finally { await lib.emulateMedia({ reducedMotion: null }); await lib.mouse.move(600, 500); }
     });
 
+    // --- Médias d'un dossier de l'utilisateur (« Afficher les médias de : ») ------------------
+    const bureau = path.join(ctx.userData, 'bureau-essai');
+    fs.mkdirSync(bureau, { recursive: true });
+    const HOSTILE_MEDIA = process.platform === 'win32' ? '&lt;b&gt;gras.png' : '<b onclick="window.pwned=1">gras.png';
+    for (const n of ['vacances.jpg', HOSTILE_MEDIA, 'liste.txt']) fs.writeFileSync(path.join(bureau, n), 'x');
+    await ctx.principal(({ req }, dir) => {
+      const library = req('library.js');
+      global.__medias = { lus: [] };
+      library.env.mediaDir = (from) => { global.__medias.lus.push(from); return from === 'desktop' ? dir : dir + '/absent'; };
+    }, bureau.split(path.sep).join('/'));
+    const lus = () => ctx.principal(() => global.__medias.lus);
+
+    await t.verifier('Bibliothèque → Médias : « Afficher les médias de : » propose Orbe, Téléchargements, Bureau, Documents ; tant qu’on ne choisit rien, aucun dossier n’est lu', async () => {
+      await lib.locator('.tabs [data-tab="media"]').click();
+      await jusqua(() => lib.locator('#f-from').isVisible(), 'filtre des médias');
+      assert.deepEqual(await lib.locator('#f-from option').allTextContents(), ['Orbe (téléchargements et captures)', 'Dossier Téléchargements', 'Bureau', 'Documents']);
+      assert.equal(await lib.locator('#f-from').inputValue(), 'orbe');
+      assert.equal(await lib.locator('#from-label').textContent(), 'Afficher les médias de :');
+      assert.equal(await lib.locator('#f-how').isVisible(), false);
+      assert.deepEqual((await lib.locator('#list .line .name').allTextContents()).sort(), ['Orbe 2026-10-09.png', 'photo.png']);
+      assert.deepEqual(await lus(), []);
+    });
+
+    await t.verifier('« Bureau » choisi : ses médias paraissent (nom posé comme du texte), à ouvrir ou à glisser ; pas de menu, rien à vider', async () => {
+      await lib.selectOption('#f-from', 'desktop');
+      await jusqua(async () => (await lib.locator('#list .line').count()) === 2, 'médias du Bureau');
+      assert.deepEqual(await lus(), ['desktop']);
+      assert.deepEqual((await lib.locator('#list .line .name').allTextContents()).sort(), [HOSTILE_MEDIA, 'vacances.jpg'].sort());
+      const vu = await lib.evaluate(() => ({ balises: [...document.querySelectorAll('#list .line .name')].reduce((n, e) => n + e.childElementCount, 0), menus: document.querySelectorAll('#list .line .more').length, ouvrir: document.querySelectorAll('#list .line [data-do=open]').length, glisser: document.querySelectorAll('#list .line[draggable=true]').length, vider: document.getElementById('clear').hidden, sous: document.querySelector('#list .line .sub').textContent, pwned: window.pwned === 1 }));
+      assert.deepEqual({ ...vu, sous: /· Bureau$/.test(vu.sous) }, { balises: 0, menus: 0, ouvrir: 2, glisser: 2, vider: true, sous: true, pwned: false });
+      const avant = (await temoin()).ouverts.length;
+      await lib.locator('#list .line').filter({ hasText: 'vacances.jpg' }).locator('[data-do=open]').click();
+      await jusqua(async () => (await temoin()).ouverts.length === avant + 1, 'fichier du Bureau ouvert');
+      assert.equal(path.basename((await temoin()).ouverts[avant]), 'vacances.jpg');
+    });
+
+    await t.verifier('Bibliothèque rouverte : le choix n’est pas retenu, les médias d’Orbe reviennent sans relire de dossier', async () => {
+      await lib.reload();
+      await jusqua(() => lib.evaluate(() => document.querySelector('.tabs [data-tab].on') && document.querySelector('.tabs [data-tab].on').dataset.tab === 'media' && !document.getElementById('f-from').hidden), 'section Médias rouverte');
+      assert.equal(await lib.locator('#f-from').inputValue(), 'orbe');
+      assert.deepEqual(await lus(), ['desktop']);
+    });
+
     // --- Barre translucide : texte lisible sur le fond tel qu'il s'affiche -----------------
     await t.verifier('barre translucide, thème gris moyen : titres et texte discret gardent 4,5 de contraste sur le fond affiché, quel que soit l’arrière-plan', async () => {
       const Theme = require('../../src/renderer/theme');

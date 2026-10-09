@@ -223,6 +223,53 @@ module.exports = async function sensationsTests(ctx) {
     if (home) w.activate(home);
   }
 
+  // === Médias des dossiers de l'utilisateur (BIB-7) =========================================
+  {
+    const saved = { env: { ...library.env }, open: downloads.env.openPath, reveal: downloads.env.reveal, downloads: store.state.downloads };
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'orbe-medias-'));
+    const desk = path.join(root, 'Bureau');
+    const outside = path.join(root, 'ailleurs');
+    fs.mkdirSync(desk); fs.mkdirSync(outside); fs.mkdirSync(path.join(desk, 'sous-dossier'));
+    // (Windows refuse « < » et « > » dans un nom de fichier.)
+    const HOSTILE = process.platform === 'win32' ? '&lt;img src=x onerror=alert(1)&gt;.png' : '<img src=x onerror=alert(1)>.png';
+    const put = (dir, name, age) => { const f = path.join(dir, name); fs.writeFileSync(f, 'x'.repeat(10)); const at = new Date(Date.now() - age * 60e3); fs.utimesSync(f, at, at); return f; };
+    put(desk, 'vieux.jpg', 300); put(desk, 'film.mp4', 20); put(desk, HOSTILE, 5); put(desk, 'notes.txt', 1); put(desk, '.cache.png', 1); put(path.join(desk, 'sous-dossier'), 'profond.png', 1);
+    const secret = put(outside, 'secret.png', 1);
+    let linked = true;
+    try { fs.symlinkSync(secret, path.join(desk, 'lien.png')); } catch { linked = false; }
+    const asked = [];
+    library.env.mediaDir = (from) => { asked.push(from); return from === 'desktop' ? desk : path.join(root, 'absent'); };
+    store.state.downloads = [];
+    const lib = (name, a) => library.action(name, a, w.ui.webContents);
+    await lib('lib:get', {});
+    await lib('lib:get', { from: 'orbe' });
+    await lib('lib:get', { from: '../../etc' });
+    check('médias : sans choix d’un dossier (ou avec un choix inconnu), aucun dossier de l’utilisateur n’est lu', asked.length === 0, asked.join());
+    const got = await lib('lib:get', { from: 'desktop' });
+    check('« Afficher les médias de : Bureau » : les médias du premier niveau, du plus récent au plus ancien — ni fichier caché, ni autre type, ni sous-dossier, ni lien',
+      asked.join() === 'desktop' && got.media.map((r) => r.name).join('|') === [HOSTILE, 'film.mp4', 'vieux.jpg'].join('|'), JSON.stringify(got.media.map((r) => r.name)) + (linked ? '' : ' (liens non permis ici)'));
+    check('médias d’un dossier : la page reçoit un identifiant et un nom, jamais un chemin', got.media.every((r) => /^f:[0-9a-f]{20}$/.test(r.id) && !JSON.stringify(r).includes(root) && r.folder === 'desktop' && r.total === 10));
+    check('recherche dans un dossier ; dossier absent ou illisible : liste vide, sans erreur', (await lib('lib:get', { from: 'desktop', q: 'FILM' })).media.length === 1 && (await lib('lib:get', { from: 'documents' })).media.length === 0);
+    const opened = []; const revealed = []; const dragged = [];
+    downloads.env.openPath = (f) => { opened.push(f); };
+    downloads.env.reveal = (f) => { revealed.push(f); };
+    library.env.startDrag = (wc, item) => { dragged.push(item.file); };
+    const film = got.media[1];
+    const okOpen = await lib('lib:openFile', film.id);
+    const okReveal = await lib('lib:reveal', film.id);
+    const okDrag = await lib('lib:drag', film.id);
+    check('fichier d’un dossier : ouvrir, afficher dans le Finder, glisser hors d’Orbe', okOpen === true && okReveal === true && okDrag === true && [opened[0], revealed[0], dragged[0]].every((f) => f === path.join(desk, 'film.mp4')), JSON.stringify([okOpen, okReveal, okDrag, opened, revealed, dragged]));
+    // Le fichier est remplacé par un lien vers ailleurs : plus rien ne s'ouvre.
+    let swapped = false;
+    if (linked) { fs.rmSync(path.join(desk, 'film.mp4')); fs.symlinkSync(secret, path.join(desk, 'film.mp4')); swapped = (await lib('lib:openFile', film.id)) === false && (await lib('lib:drag', film.id)) === false; }
+    check('identifiant inconnu, ou fichier remplacé depuis par un lien : refusé', (await lib('lib:openFile', 'f:' + '0'.repeat(20))) === false && (await lib('lib:reveal', 'f:../../x')) === false && (!linked || swapped) && opened.length === 1);
+    Object.assign(library.env, saved.env);
+    downloads.env.openPath = saved.open;
+    downloads.env.reveal = saved.reveal;
+    store.state.downloads = saved.downloads;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+
   // === Tableau neuf : onglet épinglé de l'Espace (TAB-2) =====================================
   {
     const { win } = ctx;

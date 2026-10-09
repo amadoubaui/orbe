@@ -10,6 +10,8 @@ const list = document.getElementById('list');
 const q = document.getElementById('q');
 const fHow = document.getElementById('f-how');
 const fSpace = document.getElementById('f-space');
+const fFrom = document.getElementById('f-from');
+const FROM = ['orbe', 'downloads', 'desktop', 'documents'];
 let kind = KINDS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'history';
 let rows = [];
 let data = null;
@@ -71,7 +73,18 @@ function option(value, label) {
 
 // Filtres de l'archive : façon dont l'onglet a été fermé, Espace où il était.
 function drawFilters() {
-  document.getElementById('filters').hidden = kind !== 'archive';
+  document.getElementById('filters').hidden = kind !== 'archive' && kind !== 'media';
+  fHow.hidden = fSpace.hidden = kind !== 'archive';
+  fFrom.hidden = document.getElementById('from-label').hidden = kind !== 'media';
+  if (kind === 'media') {
+    // Médias : d'où ils viennent. Le choix n'est pas retenu : un dossier de l'utilisateur
+    // n'est lu que lorsqu'il vient d'être choisi ici.
+    const from = fFrom.value;
+    fFrom.textContent = '';
+    for (const f of FROM) fFrom.appendChild(option(f, t('lib.from.' + f)));
+    fFrom.value = FROM.includes(from) ? from : 'orbe';
+    return;
+  }
   if (kind !== 'archive') return;
   const how = fHow.value;
   fHow.textContent = '';
@@ -99,7 +112,8 @@ function draw() {
   document.title = t('lib.title') + ' — ' + t('lib.' + kind);
   for (const b of document.querySelectorAll('[data-tab]')) b.classList.toggle('on', b.dataset.tab === kind);
   const clear = document.getElementById('clear');
-  clear.hidden = !CLEAR[kind];
+  // (Médias d'un dossier de l'utilisateur : rien à vider, la liste n'est pas celle d'Orbe.)
+  clear.hidden = !CLEAR[kind] || (kind === 'media' && FROM.includes(fFrom.value) && fFrom.value !== 'orbe');
   clear.textContent = CLEAR[kind] ? t(CLEAR[kind]) : '';
   drawFilters();
   list.textContent = '';
@@ -152,7 +166,7 @@ function drawFile(line, r, now) {
   else if (r.state === 'completed') status = r.exists ? size(r.total || r.received) : t('dl.missing');
   else if (r.state === 'cancelled') status = t('dl.cancelled');
   else if (r.received) status = `${t('lib.failed')} — ${progress}`;
-  body.append(el('div', 'name', r.name), el('div', 'sub', `${status} · ${host(r.url)}`));
+  body.append(el('div', 'name', r.name), el('div', 'sub', r.folder ? `${status} · ${t('lib.from.' + r.folder)}` : `${status} · ${host(r.url)}`));
   if (r.danger) body.appendChild(el('div', 'sub danger', t('dl.dangerNote')));
   // Marque « venu d'Internet » impossible à poser : le système n'avertira pas à l'ouverture.
   if (r.marked === false) body.appendChild(el('div', 'sub danger unmarked', t('dl.unmarkedNote')));
@@ -173,6 +187,8 @@ function drawFile(line, r, now) {
     line.append(button('open', t('lib.open')), button('reveal', t('lib.reveal')));
     line.draggable = true;
   }
+  // (Fichier d'un dossier de l'utilisateur : Orbe n'en tient pas de fiche, donc pas de menu.)
+  if (r.folder) return;
   const more = button('menu', '···', 'more');
   more.title = t('dl.more');
   line.appendChild(more);
@@ -254,7 +270,7 @@ async function load() {
     draw();
     return;
   }
-  data = await O.send('lib:get', { q: q.value, how: fHow.value, space: fSpace.value });
+  data = await O.send('lib:get', { q: q.value, how: fHow.value, space: fSpace.value, from: kind === 'media' && FROM.includes(fFrom.value) ? fFrom.value : 'orbe' });
   rows = (data && data[kind]) || [];
   draw();
   clearTimeout(timer);
@@ -279,6 +295,7 @@ document.getElementById('clear').onclick = async () => {
 q.addEventListener('input', load);
 fHow.addEventListener('change', load);
 fSpace.addEventListener('change', load);
+fFrom.addEventListener('change', load);
 
 list.addEventListener('click', async (e) => {
   const board = e.target.closest('.board');
@@ -314,6 +331,7 @@ list.addEventListener('contextmenu', async (e) => {
   const line = e.target.closest('.line');
   if (!line || (kind !== 'downloads' && kind !== 'media')) return;
   e.preventDefault();
+  if (rows[Number(line.dataset.i)].folder) return;
   await O.send('dl:menu', rows[Number(line.dataset.i)].id);
   load();
 });
