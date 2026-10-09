@@ -5,6 +5,8 @@ const { app, BaseWindow, WebContentsView, Menu, clipboard, ClipboardItem, screen
 const path = require('path');
 const fs = require('fs');
 const { store, uid, SPACE_COLORS } = require('./store');
+const Theme = require('../renderer/theme');
+const sounds = require('./sounds');
 const sessions = require('./sessions');
 const suggest = require('./suggest');
 const adblock = require('./adblock');
@@ -52,6 +54,10 @@ const INTERNAL_PAGES = new Set(['library.html', 'shortcuts.html', 'welcome.html'
 // http et https sont acceptés, jamais file:, orbe: ou chrome:.
 const webUrl = (u) => (/^https?:\/\//i.test(u || '') ? u : null);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+// Messages de l'interface qui ne sont pas un geste de l'utilisateur (aucun son ne les suit).
+const QUIET_ACTIONS = new Set(['ready', 'themeGet', 'suggest', 'select', 'dragZone', 'dragZoneOver', 'sidebarWidth', 'splitResize']);
+// Ce que l'interface reçoit du thème d'un Espace (voir src/renderer/theme.js).
+const themeFields = (s) => ({ color: s.color, color2: s.color2 || '', color3: s.color3 || '', plain: !!s.plain, intensity: typeof s.intensity === 'number' ? s.intensity : 0.5, grain: s.grain || 0, texture: s.texture || 'grain', mode: s.mode || 'auto' });
 
 // --- Mouvements des vues ------------------------------------------------------
 // Durées en millisecondes. Barre latérale : cotes relevées dans Arc (elle revient
@@ -734,6 +740,8 @@ class OrbeWindow {
     if (!incognito) wc.on('dom-ready', () => boosts.apply(wc));
     wc.on('did-navigate-in-page', (e, url, isMainFrame) => { if (isMainFrame) navigated(url); });
     wc.on('update-target-url', (e, url) => rt.owner.linkStatus(rt, url));
+    // Pincer pour zoomer la page (coupé par défaut dans Electron).
+    wc.setVisualZoomLevelLimits(1, 5).catch(() => {});
     wc.on('audio-state-changed', () => {
       const owner = rt.owner;
       if (wc.isCurrentlyAudible()) { rt.playing = true; if (!owner.visibleIds().includes(rt.id)) owner.mediaId = rt.id; }
@@ -1757,26 +1765,22 @@ class OrbeWindow {
     this.setProfile(profile.id);
   }
 
-  setTheme({ color, icon }) {
-    const space = this.space;
-    if (typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color)) space.color = color;
-    if (typeof icon === 'string' && icon.length <= 8) space.icon = icon;
+  // Thème de l'Espace : couleurs (zéro à trois), intensité, texture, mode clair ou
+  // sombre, icône. Chaque valeur est validée par theme.js ; le reste est ignoré.
+  setTheme(patch) {
+    Theme.apply(this.space, patch);
     this.changed();
   }
 
-  // Dégradé (seconde couleur) et grain du fond de l'Espace.
-  setThemeExtra({ color2, grain }) {
-    const space = this.space;
-    if (color2 === '' || (typeof color2 === 'string' && /^#[0-9a-f]{6}$/i.test(color2))) space.color2 = color2;
-    if (typeof grain === 'number' && grain >= 0 && grain <= 1) space.grain = Math.round(grain * 100) / 100;
-    this.changed();
+  setThemeExtra(patch) {
+    this.setTheme(patch);
   }
 
   // --- Vue scindée ----------------------------------------------------------
   splitWith(a, b, quiet) {
     if (a === b) return;
     let g = this.groupOf(a);
-    if (g && g.length >= 4) return this.toast(t('toast.splitMax'));
+    if (g && g.length >= 4) return this.toast(t('toast.splitMax'), 'error');
     this.leaveSplit(b);
     g = this.groupOf(a);
     if (!g) {
@@ -1793,7 +1797,7 @@ class OrbeWindow {
   addSplit() {
     if (!this.activeId) return this.openCommand('new');
     const g = this.groupOf(this.activeId);
-    if (g && g.length >= 4) return this.toast(t('toast.splitMax'));
+    if (g && g.length >= 4) return this.toast(t('toast.splitMax'), 'error');
     this.openCommand('split');
   }
 
@@ -2081,7 +2085,7 @@ class OrbeWindow {
   openTheme() {
     if (!this.sidebarVisible) this.toggleSidebar(true);
     const s = this.space;
-    this.showModal('theme', { color: s.color, icon: s.icon, color2: s.color2 || '', grain: s.grain || 0, colors: SPACE_COLORS, x: this.sidebarWidth + 10 });
+    this.showModal('theme', { space: themeFields(s), icon: s.icon, dark: nativeTheme.shouldUseDarkColors, x: this.sidebarWidth + 10 });
   }
 
   // Bascule ⌃Tab : ordre d'utilisation récente, validée au relâchement de ⌃.
@@ -2232,8 +2236,10 @@ class OrbeWindow {
     } else if (!this.statusView.webContents.isLoading()) show();
   }
 
-  toast(text) {
+  // `sound` : son qui accompagne le message (« error » pour un refus).
+  toast(text, sound) {
     if (this.win.isDestroyed()) return;
+    if (sound) this.sound(sound);
     const send = () => {
       if (this.toastView.webContents.isDestroyed()) return;
       this.win.contentView.addChildView(this.toastView);
@@ -2284,10 +2290,9 @@ class OrbeWindow {
     this.toast(`Zoom ${Math.round(wc.getZoomFactor() * 100)} %`);
   }
 
-  // Son d'interface, joué par la coque (réglage « Sons »).
+  // Son d'interface, joué par la coque (réglages « Sons » : voir sounds.js).
   sound(name) {
-    if (!store.state.settings.sounds || this.ui.webContents.isDestroyed()) return;
-    this.ui.webContents.send('sound', name);
+    sounds.play(this, name);
   }
 
   // ⇧⌘2, comme dans Arc : on choisit une zone (Entrée ou un clic = la page
@@ -2684,7 +2689,7 @@ class OrbeWindow {
         return vm;
       };
       return {
-        space: { id: s.id, name: s.name, icon: s.icon, color: s.color, color2: s.color2 || '', grain: s.grain || 0 },
+        space: { id: s.id, name: s.name, icon: s.icon, ...themeFields(s) },
         pinned: s.pinned.map(nodeVM).map(mark),
         today: s.today.map(tabVM).map(mark),
       };
@@ -2711,7 +2716,7 @@ class OrbeWindow {
       devMode: !!tab && prefs.devMode(tab.url),
       fullScreen: this.win.isFullScreen(),
       spaceDir: dir,
-      space: { id: space.id, name: space.name, icon: space.icon, color: space.color, color2: space.color2 || '', grain: space.grain || 0 },
+      space: { id: space.id, name: space.name, icon: space.icon, ...themeFields(space) },
       spaces: d.spaces.map((s) => ({ id: s.id, name: s.name, icon: s.icon, color: s.color })),
       near: { prev: near(d.spaces[spaceIndex - 1]), next: near(d.spaces[spaceIndex + 1]) },
       favorites: this.favorites.map(tabVM),
@@ -2758,10 +2763,25 @@ class OrbeWindow {
     platform.syncChrome(this.win, { color: space.color, dark: payload.dark, toolbar, translucent: settings.translucent });
     this.ui.webContents.send('state', payload);
     if (this.floatView && !this.floatView.webContents.isDestroyed()) this.floatView.webContents.send('state', payload);
+    sounds.observe(this);
+    // Vues flottantes (barre de commande, bascule, recherche, messages) : aux couleurs de l'Espace.
+    const look = JSON.stringify(this.themeNow());
+    if (look !== this.themeSig) {
+      this.themeSig = look;
+      for (const v of [this.modal, this.findView, this.toastView, this.statusView]) {
+        if (v && !v.webContents.isDestroyed()) v.webContents.send('theme', JSON.parse(look));
+      }
+    }
+  }
+
+  // Thème de l'Espace affiché, tel que le reçoivent les vues flottantes.
+  themeNow() {
+    return { space: themeFields(this.space), dark: nativeTheme.shouldUseDarkColors };
   }
 
   // --- Messages venant de l'interface ---------------------------------------
   handle(action, a) {
+    if (!QUIET_ACTIONS.has(action)) sounds.arm(this); // un geste dans l'interface
     switch (action) {
       case 'ready': return this.sendState();
       // Clic sur l'onglet déjà affiché : rien à faire, et surtout ne pas
@@ -2801,6 +2821,7 @@ class OrbeWindow {
       case 'findClose': return this.closeFind();
       case 'theme': return this.setTheme(a);
       case 'themeExtra': return this.setThemeExtra(a || {});
+      case 'themeGet': return this.themeNow();
       case 'dragZone': return this.dragZone(!!a);
       case 'dragZoneOver': if (this.dropView && !this.dropView.webContents.isDestroyed()) this.dropView.webContents.send('overlay', { mode: 'drop', label: t('view.addSplit'), over: !!a }); return undefined;
       case 'dropSplit': return this.dropSplit(String(a));

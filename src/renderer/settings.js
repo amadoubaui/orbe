@@ -1,9 +1,9 @@
 // Réglages : chaque changement est appliqué immédiatement.
 // Tout champ listé ici (case à cocher ou liste dont l'id est la clé du réglage)
 // est rempli et enregistré automatiquement, quel que soit son volet.
-const FIELDS = ['lang', 'searchEngine', 'suggestions', 'archiveAfterHours', 'maxLiveTabs', 'appearance', 'translucent', 'externalLinks', 'autoPip', 'adblock', 'peekLinks', 'passwordSave', 'passwordFill', 'sounds',
+const FIELDS = ['lang', 'searchEngine', 'suggestions', 'archiveAfterHours', 'maxLiveTabs', 'appearance', 'translucent', 'externalLinks', 'autoPip', 'adblock', 'peekLinks', 'passwordSave', 'passwordFill', 'sounds', 'soundGestures', 'soundVolume',
   'restoreSession', 'warnOnQuit', 'peekShift', 'littleAltClick', 'littleArchiveHours', 'tabKeysFavorites', 'tabKeysNinthLast', 'showToolbar', 'showFullUrl', 'cookieBanners', 'themeData', 'mediaControls', 'haptics', 'boostsEnabled', 'downloadAsk', 'downloadOpenPdf'];
-const NUMERIC = new Set(['archiveAfterHours', 'maxLiveTabs', 'littleArchiveHours']);
+const NUMERIC = new Set(['archiveAfterHours', 'maxLiveTabs', 'littleArchiveHours', 'soundVolume']);
 const el = (id) => document.getElementById(id);
 const make = (tag, className, text) => { const n = document.createElement(tag); if (className) n.className = className; if (text != null) n.textContent = text; return n; };
 
@@ -20,6 +20,8 @@ function fill(s) {
   }
   document.title = t('set.title');
   el('showFullUrl').disabled = !s.showToolbar;
+  el('soundGestures').disabled = !s.sounds;
+  el('soundVolume').disabled = !s.sounds;
   drawDownloadDir();
   drawDev();
 }

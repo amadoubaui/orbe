@@ -32,14 +32,35 @@
 <div id="switcher" class="panel" hidden></div>
 
 <div id="theme" class="panel" hidden>
-  <h3 data-t="theme.title"></h3>
-  <label data-t="theme.color"></label>
-  <div id="theme-colors"></div>
-  <input id="theme-hue" type="range" min="0" max="359" value="250">
-  <label data-t="theme.gradient"></label>
-  <div id="theme-colors2"></div>
-  <label data-t="theme.grain"></label>
-  <input id="theme-grain" type="range" min="0" max="60" value="0">
+  <div id="theme-head">
+    <h3 data-t="theme.title"></h3>
+    <!-- Apparence de l'Espace : automatique, claire, sombre (icônes animées). -->
+    <div id="theme-modes" role="radiogroup">
+      <button class="mode" data-mode="auto" data-t-title="view.auto"><svg class="i" viewBox="0 0 16 16"><path class="star s1" d="M6 2.6l.9 2.5 2.5.9-2.5.9L6 9.4l-.9-2.5-2.5-.9 2.5-.9z"/><path class="star s2" d="M11.4 8.6l.6 1.6 1.6.6-1.6.6-.6 1.6-.6-1.6-1.6-.6 1.6-.6z"/></svg></button>
+      <button class="mode" data-mode="light" data-t-title="view.light"><svg class="i" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.7"/><path class="rays" d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1"/></svg></button>
+      <button class="mode" data-mode="dark" data-t-title="view.dark"><svg class="i" viewBox="0 0 16 16"><path class="moon" d="M12.9 9.6A5.4 5.4 0 0 1 6.4 3.1a5.4 5.4 0 1 0 6.5 6.5z"/></svg></button>
+    </div>
+  </div>
+  <div id="theme-top">
+    <!-- Nuancier : la teinte tourne, la saturation va du centre au bord ; un point par couleur. -->
+    <div id="theme-wheel"><div id="theme-plain" data-t="theme.default"></div></div>
+    <div id="theme-side">
+      <div id="theme-count">
+        <button class="tb" id="theme-less" data-t-title="theme.remove">−</button>
+        <span id="theme-n"></span>
+        <button class="tb" id="theme-more" data-t-title="theme.add">+</button>
+      </div>
+      <label data-t="theme.intensity"></label>
+      <input id="theme-intensity" type="range" min="0" max="100" value="50">
+      <label data-t="theme.grain"></label>
+      <input id="theme-grain" type="range" min="0" max="100" value="0">
+      <div id="theme-textures"></div>
+    </div>
+  </div>
+  <label data-t="theme.presets"></label>
+  <div id="theme-presets"></div>
+  <label data-t="theme.palette"></label>
+  <div id="theme-palettes"></div>
   <label data-t="theme.icon"></label>
   <div id="theme-icons"></div>
   <button id="theme-done" data-t="theme.done"></button>
@@ -63,9 +84,13 @@
 
 <div id="status" hidden></div>
 
+<!-- Balayage de page : la pastille qui suit les doigts (précédent / suivant). -->
+<div id="swipe" hidden><div id="swipe-pill"><svg class="i" viewBox="0 0 16 16"><path d="M9.8 3.5 5.3 8l4.5 4.5"/></svg></div></div>
+
 <div id="toast" hidden></div>
 
 <script src="common.js"></script>
+<script src="theme.js"></script>
 <script src="overlay.js"></script>
 </body>
 </html>

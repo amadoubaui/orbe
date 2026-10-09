@@ -75,6 +75,8 @@ module.exports = {
     await ctx.principal(({ w }) => w.toggleFavorite(w.space.today[5]));
     await jusqua(async () => (await shell.locator('#fav .tile').count()) === 1, 'un favori');
     assert.deepEqual(await today(), ['Page E', 'Page D', 'Page C', 'Page B', 'Page A']);
+    // L'onglet devenu favori a quitté la liste : les lignes finissent de glisser à leur place.
+    await repos();
 
     await t.verifier('saisir une ligne ne déplace rien : elle disparaît, sa place devient la place libre', async () => {
       const repere = await lire();
