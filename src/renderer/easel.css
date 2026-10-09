@@ -100,6 +100,14 @@ html, body { background: var(--base); }
 #marquee, #selbox { position: absolute; left: 0; top: 0; pointer-events: none; }
 #marquee { border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); border-radius: 2px; }
 #selbox { border: 1px solid var(--accent); }
+/* Guides d'alignement : un trait sur toute la hauteur ou la largeur du plan. */
+.guide { position: absolute; left: 0; top: 0; pointer-events: none; background: #f0368c; z-index: 5; }
+#guide-x { width: 1px; height: 100%; }
+#guide-y { height: 1px; width: 100%; }
+#alt { width: 190px; height: 26px; border: 0; outline: 0; border-radius: 7px; background: var(--pill); padding: 0 8px; font-size: 12.5px; user-select: text; }
+#alt:focus { outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent); }
+#b-export { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; }
+#b-export:hover { background: var(--hover); }
 #selbox[data-mode=arrow] { border-color: transparent; }
 .h {
   position: absolute;
@@ -158,6 +166,8 @@ html, body { background: var(--base); }
 
 #tools { left: 50%; bottom: 18px; transform: translateX(-50%); }
 #style { left: 50%; top: 14px; transform: translateX(-50%); }
+/* Avec le champ du texte alternatif, la barre est plus large : elle passe sous le titre pour ne pas le recouvrir. */
+#style.wide { top: 62px; }
 #zoom { right: 14px; bottom: 18px; }
 #zoom button { color: var(--fg); font-size: 15px; }
 #zoom #zoom-val { width: 54px; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--dim); }

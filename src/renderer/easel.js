@@ -248,6 +248,7 @@ function paint(el, it) {
       el.classList.toggle('filled', !!it.fill);
       break;
     case 'image':
+      if (el._img.alt !== (it.alt || '')) el._img.alt = it.alt || '';
       if (el._name !== it.img) {
         el._name = it.img;
         imageUrl(it.img).then((u) => { if (u && el._name === it.img) el._img.src = u; });
@@ -416,8 +417,12 @@ function drawBars() {
   bar.hidden = (!list.length && !drawing) || !!editing;
   if (!bar.hidden) {
     const has = (types) => list.some((it) => types.includes(it.type));
-    const show = { sel: list.length > 0, shape: has(['rect', 'ellipse']), stroke: has(['rect', 'ellipse', 'arrow', 'pen']) || ['rect', 'ellipse', 'arrow', 'pen'].includes(tool), text: has(['text', 'note']) };
+    const show = { sel: list.length > 0, shape: has(['rect', 'ellipse']), stroke: has(['rect', 'ellipse', 'arrow', 'pen']) || ['rect', 'ellipse', 'arrow', 'pen'].includes(tool), text: has(['text', 'note']), image: list.length === 1 && list[0].type === 'image' };
     for (const el of bar.querySelectorAll('[data-for]')) el.hidden = !show[el.dataset.for];
+    // Texte alternatif de l'image sélectionnée (lu par les lecteurs d'écran, gardé dans le tableau).
+    bar.classList.toggle('wide', show.image);
+    const alt = $('alt');
+    if (show.image && document.activeElement !== alt) { alt.value = list[0].alt || ''; alt.dataset.id = list[0].id; }
     const active = list.length ? colorOf(list[0]) : cur.color;
     for (const s of bar.querySelectorAll('.sw')) s.classList.toggle('on', s.dataset.color === active);
     bar.querySelector('[data-do=fill]').classList.toggle('on', list.some((it) => it.fill));
@@ -505,6 +510,7 @@ function startEdit(id, fresh = false) {
   el.classList.add('editing');
   // « plaintext-only » : la zone n'accepte que du texte, même au collage.
   el._tx.contentEditable = 'plaintext-only';
+  el._tx.spellcheck = true; // correcteur pendant la saisie seulement (pas de soulignés sur un tableau au repos)
   el._tx.focus();
   const range = document.createRange();
   range.selectNodeContents(el._tx);
@@ -520,6 +526,7 @@ function endEdit() {
   const { id, el, tx, fresh } = editing;
   editing = null;
   tx.contentEditable = 'false';
+  tx.spellcheck = false;
   el.classList.remove('editing');
   if (document.activeElement === tx) tx.blur();
   getSelection().removeAllRanges();
@@ -641,6 +648,7 @@ stage.addEventListener('pointermove', (e) => {
   drag.cx = e.clientX;
   drag.cy = e.clientY;
   drag.shift = e.shiftKey;
+  drag.free = modKey(e);
   if (!drag.moved && Math.hypot(drag.cx - drag.sx, drag.cy - drag.sy) > 3) { drag.moved = true; beginMove(e); }
   if (drag.kind === 'pen') {
     // Tous les points intermédiaires, pas seulement le dernier de l'image.
@@ -673,6 +681,46 @@ function beginMove(e) {
   drag.list = selected();
   drag.els = drag.list.map((it) => els.get(it.id));
   drag.base = union(drag.list);
+  // Repères des autres éléments : bords et milieux, pour l'aimantation.
+  const ids = new Set(drag.list.map((it) => it.id));
+  drag.gx = [];
+  drag.gy = [];
+  for (const it of items) {
+    if (ids.has(it.id)) continue;
+    const b = bounds(it);
+    drag.gx.push(b.x, b.x + b.w / 2, b.x + b.w);
+    drag.gy.push(b.y, b.y + b.h / 2, b.y + b.h);
+    if (drag.gx.length >= 3000) break;
+  }
+}
+
+// Aimantation d'un déplacement : si un bord ou le milieu du lot déplacé passe à
+// moins de SNAP points (à l'écran) d'un bord ou du milieu d'un autre élément, il
+// s'y cale. Renvoie le décalage à ajouter et la position des guides (ou null).
+const SNAP = 6;
+function nearest(marks, at, size, reach) {
+  let best = null;
+  for (const m of marks) {
+    for (const edge of [0, size / 2, size]) {
+      const gap = m - (at + edge);
+      if (Math.abs(gap) <= reach && (!best || Math.abs(gap) < Math.abs(best.gap))) best = { gap, at: m };
+    }
+  }
+  return best;
+}
+function snapMove(d, dx, dy) {
+  const reach = SNAP / view.z;
+  const x = nearest(d.gx, d.base.x + dx, d.base.w, reach);
+  const y = nearest(d.gy, d.base.y + dy, d.base.h, reach);
+  return { dx: x ? x.gap : 0, dy: y ? y.gap : 0, x: x ? x.at : null, y: y ? y.at : null };
+}
+function drawGuides(snap) {
+  const gx = $('guide-x');
+  const gy = $('guide-y');
+  gx.hidden = !snap || snap.x === null;
+  gy.hidden = !snap || snap.y === null;
+  if (!gx.hidden) gx.style.transform = `translateX(${Math.round(snap.x * view.z + view.x)}px)`;
+  if (!gy.hidden) gy.style.transform = `translateY(${Math.round(snap.y * view.z + view.y)}px)`;
 }
 
 function step(now) {
@@ -688,11 +736,17 @@ function step(now) {
       view.y = d.vy + (d.cy - d.sy);
       applyView();
       break;
-    case 'move':
-      for (const el of d.els) el.style.transform = `translate(${el._bx + dx}px,${el._by + dy}px)`;
-      d.live = { x: d.base.x + dx, y: d.base.y + dy, w: d.base.w, h: d.base.h };
+    case 'move': {
+      // ⌘ (Ctrl ailleurs) maintenu : déplacement libre, sans aimantation.
+      const snap = d.free ? null : snapMove(d, dx, dy);
+      d.mx = dx + (snap ? snap.dx : 0);
+      d.my = dy + (snap ? snap.dy : 0);
+      for (const el of d.els) el.style.transform = `translate(${el._bx + d.mx}px,${el._by + d.my}px)`;
+      d.live = { x: d.base.x + d.mx, y: d.base.y + d.my, w: d.base.w, h: d.base.h };
+      drawGuides(snap);
       drawSel();
       break;
+    }
     case 'resize':
       d.cur = resized(d.it0, d.handle, dx, dy, d.it0.type === 'image' ? !d.shift : d.shift);
       paint(d.el, d.cur);
@@ -741,8 +795,10 @@ function finish(cancel) {
   try { stage.releasePointerCapture(d.pointer); } catch {}
   stage.classList.remove('panning');
   marquee.hidden = true;
-  const dx = (d.cx - d.sx) / view.z;
-  const dy = (d.cy - d.sy) / view.z;
+  drawGuides(null);
+  // Déplacement : la position retenue est celle affichée, aimantation comprise.
+  const dx = d.kind === 'move' && d.mx !== undefined ? d.mx : (d.cx - d.sx) / view.z;
+  const dy = d.kind === 'move' && d.my !== undefined ? d.my : (d.cy - d.sy) / view.z;
   const p = toWorld(d.cx, d.cy);
   switch (d.kind) {
     case 'pan':
@@ -943,7 +999,23 @@ $('style').addEventListener('click', (e) => {
   else if (b.dataset.do) styleAction(b.dataset.do);
 });
 // Un clic sur une barre ne doit pas faire perdre la saisie en cours ni le clavier.
-for (const id of ['tools', 'style', 'zoom']) $(id).addEventListener('mousedown', (e) => e.preventDefault());
+for (const id of ['tools', 'style', 'zoom']) $(id).addEventListener('mousedown', (e) => { if (e.target.id !== 'alt') e.preventDefault(); });
+// Texte alternatif : validé par Entrée ou en quittant le champ ; Échap rend la valeur d'avant.
+function setAlt() {
+  const alt = $('alt');
+  const it = byId(alt.dataset.id);
+  const value = alt.value.trim().slice(0, 500);
+  if (!it || it.type !== 'image' || (it.alt || '') === value) return;
+  patch(new Set([it.id]), (x) => { const next = { ...x }; if (value) next.alt = value; else delete next.alt; return next; });
+}
+$('alt').addEventListener('change', setAlt);
+$('alt').addEventListener('keydown', (e) => {
+  e.stopPropagation();
+  if (e.key === 'Enter') { e.preventDefault(); $('alt').blur(); }
+  if (e.key === 'Escape') { e.preventDefault(); const it = byId($('alt').dataset.id); $('alt').value = (it && it.alt) || ''; $('alt').blur(); }
+});
+$('b-export').addEventListener('mousedown', (e) => e.preventDefault());
+$('b-export').onclick = () => exportPng();
 $('zoom-in').onclick = () => zoomCenter(1.25);
 $('zoom-out').onclick = () => zoomCenter(0.8);
 $('zoom-val').onclick = () => zoomCenter(1 / view.z);
@@ -975,15 +1047,27 @@ function touch(viewOnly) {
 const THUMB_INK = { ink: '#8a8a93', red: '#e5484d', orange: '#f2711c', yellow: '#e0a800', green: '#30a46c', blue: '#3b82f6', purple: '#7c6cf0' };
 
 // Vignette pour la bibliothèque : un dessin simplifié du contenu, sur fond transparent.
-function thumbnail() {
-  const b = union(items);
-  if (!b) return Promise.resolve(null);
-  const W = 400; const H = 250;
+// Lignes d'un texte coupées à la largeur de son cadre, comme à l'écran.
+function wrapLines(g, text, width) {
+  const out = [];
+  for (const para of String(text || '').split('\n')) {
+    let line = '';
+    for (const word of para.split(/(\s+)/)) {
+      if (line && g.measureText(line + word).width > width && word.trim()) { out.push(line.trimEnd()); line = word; } else line += word;
+    }
+    out.push(line);
+  }
+  return out;
+}
+
+// Dessine le tableau dans une image : `k` points d'image par point du tableau,
+// `pad` de marge, `bg` de fond (aucun : transparent), `full` : texte entier, coupé à la largeur.
+function raster({ W, H, k, cx, cy, bg, full }) {
   const c = document.createElement('canvas');
   c.width = W; c.height = H;
   const g = c.getContext('2d');
-  const k = Math.min((W - 24) / Math.max(b.w, 1), (H - 24) / Math.max(b.h, 1), 2);
-  g.translate(W / 2 - (b.x + b.w / 2) * k, H / 2 - (b.y + b.h / 2) * k);
+  if (bg) { g.fillStyle = bg; g.fillRect(0, 0, W, H); }
+  g.translate(W / 2 - cx * k, H / 2 - cy * k);
   g.scale(k, k);
   g.lineCap = 'round'; g.lineJoin = 'round';
   for (const it of items) {
@@ -1003,6 +1087,10 @@ function thumbnail() {
         g.stroke();
       } else if (it.type === 'arrow') {
         g.beginPath(); g.moveTo(it.x, it.y); g.lineTo(it.x + it.w, it.y + it.h); g.stroke();
+        if (full) {
+          const a = Math.atan2(it.h, it.w); const s = 7 + it.sw * 2.4; const x2 = it.x + it.w; const y2 = it.y + it.h;
+          g.beginPath(); g.moveTo(x2, y2); g.lineTo(x2 - s * Math.cos(a + 0.42), y2 - s * Math.sin(a + 0.42)); g.lineTo(x2 - s * Math.cos(a - 0.42), y2 - s * Math.sin(a - 0.42)); g.closePath(); g.fill(); g.stroke();
+        }
       } else if (it.type === 'pen') {
         const sx = it.w / it.pw; const sy = it.h / it.ph;
         g.beginPath(); g.moveTo(it.x + it.pts[0] * sx, it.y + it.pts[1] * sy);
@@ -1013,11 +1101,42 @@ function thumbnail() {
         g.font = `${it.size}px -apple-system, "Segoe UI", sans-serif`;
         g.textBaseline = 'top';
         const pad = it.type === 'note' ? 12 : 4;
-        (it.text || '').split('\n').slice(0, 12).forEach((line, i) => g.fillText(line.slice(0, 80), it.x + pad, it.y + pad + i * it.size * 1.3, Math.max(it.w - pad * 2, 10)));
+        const width = Math.max(it.w - pad * 2, 10);
+        const lines = full ? wrapLines(g, it.text, width) : (it.text || '').split('\n').slice(0, 12).map((l) => l.slice(0, 80));
+        lines.forEach((line, i) => (full ? g.fillText(line, it.x + pad, it.y + pad + i * it.size * 1.3) : g.fillText(line, it.x + pad, it.y + pad + i * it.size * 1.3, width)));
       }
     } catch {}
   }
   return new Promise((resolve) => { try { c.toBlob(async (blob) => resolve(blob ? new Uint8Array(await blob.arrayBuffer()) : null), 'image/png'); } catch { resolve(null); } });
+}
+
+function thumbnail() {
+  const b = union(items);
+  if (!b) return Promise.resolve(null);
+  const W = 400; const H = 250;
+  const k = Math.min((W - 24) / Math.max(b.w, 1), (H - 24) / Math.max(b.h, 1), 2);
+  return raster({ W, H, k, cx: b.x + b.w / 2, cy: b.y + b.h / 2 });
+}
+
+// Export du tableau entier en PNG (« Share Via… », « Save As » d'Arc) : fond blanc, marge,
+// deux points d'image par point du tableau, au plus EXPORT_MAX de côté.
+const EXPORT_MAX = 8000;
+const EXPORT_PAD = 40;
+function exportSize() {
+  const b = union(items);
+  if (!b) return null;
+  const k = Math.min(2, EXPORT_MAX / (b.w + EXPORT_PAD * 2), EXPORT_MAX / (b.h + EXPORT_PAD * 2));
+  return { W: Math.max(1, Math.round((b.w + EXPORT_PAD * 2) * k)), H: Math.max(1, Math.round((b.h + EXPORT_PAD * 2) * k)), k, cx: b.x + b.w / 2, cy: b.y + b.h / 2 };
+}
+async function exportPng() {
+  endEdit();
+  const size = exportSize();
+  if (!size) { flash(t('easel.exportEmpty')); return null; }
+  const data = await raster({ ...size, bg: '#ffffff', full: true });
+  if (!data) return null;
+  const file = await O.send('easel:export', { board: boardId, title, data });
+  if (file) flash(t('easel.exported'));
+  return file;
 }
 
 // Le document part sous forme de texte JSON (une seule chaîne à transmettre,
@@ -1039,7 +1158,11 @@ function save(quick) {
 }
 
 // Onglet masqué ou fermé : on n'attend pas le délai.
-document.addEventListener('visibilitychange', () => { if (document.hidden) { endEdit(); save(true); } });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { endEdit(); save(true); return; }
+  // De retour : l'enregistrement fait en partant n'a pas pu dessiner la vignette, elle est due.
+  if (thumbStale && loaded && !dead) { dirty = true; clearTimeout(saveTimer); saveTimer = setTimeout(save, 500); }
+});
 window.addEventListener('pagehide', () => { endEdit(); save(true); });
 
 // --- Messages du processus principal ---------------------------------------------------
@@ -1061,7 +1184,8 @@ O.on('easel', (m) => {
     if (typing()) document.execCommand(m.op);
     else if (m.op === 'undo') undo();
     else redo();
-  } else if (m.op === 'inbox' && m.board === boardId && loaded) takeInbox();
+  } else if (m.op === 'export') exportPng();
+  else if (m.op === 'inbox' && m.board === boardId && loaded) takeInbox();
   else if (m.op === 'deleted' && m.board === boardId) { dead = true; clearTimeout(saveTimer); $('gone').hidden = false; }
 });
 O.on('settings', (s) => { if (setLang(s.lang)) document.title = title || t('easel.untitled'); });
@@ -1096,7 +1220,8 @@ const E = {
   resetPerf() { Object.assign(perf, { moves: 0, moveMs: 0, moveMax: 0, frames: 0, frameMs: 0, frameMax: 0, gapMax: 0, lastFrame: 0 }); },
   setView(x, y, z) { Object.assign(view, { x, y, z: clamp(z, Z_MIN, Z_MAX) }); applyView(); touch(true); },
   add(list) { const added = list.map((it) => ({ ...it, id: uid() })); commit(items.concat(added)); return added.map((it) => it.id); },
-  addText, addImages, setSel, setTool, undo, redo, duplicate, removeSelected, fit, save, startEdit, endEdit, ingest,
+  addText, addImages, setSel, setTool, undo, redo, duplicate, removeSelected, fit, save, startEdit, endEdit, ingest, exportPng, exportSize, snapMove,
+  get editing() { return editing ? { id: editing.id, spellcheck: editing.tx.spellcheck } : null; },
   ready: null,
 };
 window.E = E;

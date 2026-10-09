@@ -901,7 +901,7 @@ module.exports = async function selftest(ctx) {
   await until(() => store.state.notes.length === 1 && nwc.executeJavaScript('document.querySelectorAll("#items .note").length === 1'), 'note créée');
   await nwc.executeJavaScript(`(() => { const e = document.getElementById('editor'); e.textContent = 'Idées pour Orbe'; e.dispatchEvent(new InputEvent('input')); })()`);
   await until(() => store.state.notes[0].text.startsWith('Idées pour Orbe'), 'note enregistrée');
-  check('⌃⌘N crée une note, enregistrée au fil de la frappe', tabs()[noteTab].internal === true);
+  check('⌃⇧N crée une note, enregistrée au fil de la frappe', tabs()[noteTab].internal === true);
   w.close(noteTab);
   w.activate(a.id);
 

@@ -191,6 +191,103 @@ module.exports = {
       await jusqua(async () => (await ctx.shell.locator('#sidebar .row.tab.active .title').allTextContents())[0] === 'Essai', 'titre de l’onglet');
     });
 
+    await t.verifier('aimantation : un élément amené à 5 points de l’alignement d’un autre s’y cale ; un guide le montre pendant le geste', async () => {
+      const avant = await items();
+      const boites = page.locator('#world .it.rect');
+      const b = await boites.nth(1).boundingBox();
+      const vue = (await etat()).view;
+      // La copie remonte jusqu'à 5 points sous le haut de l'original, décalée de 53 points vers la droite.
+      const dy = (avant[0].y + 5 - avant[2].y) * vue.z;
+      await m.move(b.x + 20, b.y + 20);
+      await m.down();
+      await m.move(b.x + 20 + 53, b.y + 20 + dy, { steps: 8 });
+      await sleep(80);
+      const guide = await page.evaluate(() => { const g = document.getElementById('guide-y'); return g.hidden ? null : Math.round(g.getBoundingClientRect().top); });
+      const haut = (await boites.nth(0).boundingBox()).y;
+      await m.up();
+      await sleep(60);
+      const apres = await items();
+      assert.equal(apres[2].y, avant[0].y, 'bord haut calé sur celui de l’original');
+      assert.ok(proche(apres[2].x, avant[2].x + 53, 1), 'aucun calage en largeur : ' + JSON.stringify(apres[2]));
+      assert.ok(guide !== null && proche(guide, haut, 1), `guide horizontal sur le bord commun (${guide} / ${haut})`);
+      assert.equal(await page.locator('.guide:visible').count(), 0, 'guides effacés au relâchement');
+      await page.keyboard.press('ControlOrMeta+z');
+      assert.equal((await items())[2].y, avant[2].y);
+    });
+
+    await t.verifier('⌘ maintenu pendant le glisser : pas d’aimantation', async () => {
+      const avant = await items();
+      const b = await page.locator('#world .it.rect').nth(1).boundingBox();
+      const vue = (await etat()).view;
+      const dy = (avant[0].y + 5 - avant[2].y) * vue.z;
+      await m.move(b.x + 20, b.y + 20);
+      await m.down();
+      await page.keyboard.down('ControlOrMeta');
+      await m.move(b.x + 20 + 53, b.y + 20 + dy, { steps: 8 });
+      await sleep(60);
+      assert.equal(await page.locator('.guide:visible').count(), 0);
+      await m.up();
+      await page.keyboard.up('ControlOrMeta');
+      await sleep(60);
+      assert.ok(proche((await items())[2].y, avant[0].y + 5, 1), 'position libre, à 5 points de l’alignement');
+      await page.keyboard.press('ControlOrMeta+z');
+      assert.equal((await items())[2].y, avant[2].y);
+    });
+
+    await t.verifier('image sélectionnée : on tape son texte alternatif dans la barre, Entrée valide', async () => {
+      await page.evaluate(async () => {
+        const c = document.createElement('canvas'); c.width = 120; c.height = 80;
+        const g = c.getContext('2d'); g.fillStyle = '#3b82f6'; g.fillRect(0, 0, 120, 80);
+        const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
+        await E.addImages([new File([blob], 'carte.png', { type: 'image/png' })], { x: 900, y: 120 });
+        E.setSel([]);
+      });
+      const image = page.locator('#world .it.image');
+      await jusqua(async () => (await image.count()) === 1 && (await image.locator('img').evaluate((i) => i.complete && i.naturalWidth > 0)), 'image affichée');
+      assert.equal(await page.locator('#alt').isVisible(), false);
+      const c = await ctx.centre(image);
+      await m.click(c.x, c.y);
+      await jusqua(() => page.locator('#alt').isVisible(), 'champ « Texte alternatif »');
+      assert.equal(await page.getAttribute('#alt', 'placeholder'), 'Texte alternatif');
+      await ctx.clic(page, '#alt');
+      await page.keyboard.type('Carte du trajet', { delay: 10 });
+      assert.equal((await etat()).n, 4, 'taper dans le champ ne touche pas au tableau (ni suppression, ni outil)');
+      await page.keyboard.press('Enter');
+      await jusqua(async () => (await image.locator('img').getAttribute('alt')) === 'Carte du trajet', 'attribut alt posé');
+      assert.equal((await items()).find((it) => it.type === 'image').alt, 'Carte du trajet');
+      assert.equal(await page.evaluate(() => document.activeElement.id), '', 'le champ rend le clavier');
+      // Sélectionnée de nouveau : le champ montre le texte enregistré.
+      await m.click(40, 700);
+      await m.click(c.x, c.y);
+      await jusqua(async () => (await page.inputValue('#alt')) === 'Carte du trajet', 'texte relu');
+    });
+
+    await t.verifier('bouton « Exporter le tableau en PNG… » : l’image entière est enregistrée à l’endroit choisi', async () => {
+      const fs = require('fs');
+      const path = require('path');
+      const cible = path.join(ctx.userData, 'export-tableau.png');
+      await ctx.principal(({ req }, file) => { const e = req('easels.js'); global.__export = { avant: e.env.saveDialog, demandes: [] }; e.env.saveDialog = async (parent, opts) => { global.__export.demandes.push(opts.defaultPath); return file; }; }, cible);
+      try {
+        assert.equal(await page.getAttribute('#b-export', 'title'), 'Exporter le tableau en PNG…');
+        // Image sélectionnée : la barre de style, élargie par le champ, ne recouvre ni le titre ni ce bouton.
+        const haut = await page.locator('#top').boundingBox();
+        const style = await page.locator('#style').boundingBox();
+        assert.ok(style.y >= haut.y + haut.height || style.x >= haut.x + haut.width, JSON.stringify([haut, style]));
+        await ctx.clic(page, '#b-export');
+        await jusqua(() => fs.existsSync(cible) && fs.statSync(cible).size > 500, 'fichier PNG écrit');
+        assert.equal(fs.readFileSync(cible).subarray(1, 4).toString(), 'PNG');
+        const taille = await page.evaluate(() => E.exportSize());
+        const lue = await ctx.principal(({ electron }, file) => electron.nativeImage.createFromPath(file).getSize(), cible);
+        assert.deepEqual([lue.width, lue.height], [taille.W, taille.H]);
+        assert.match(path.basename((await ctx.principal(() => global.__export.demandes))[0]), /^Essai\.png$/);
+      } finally {
+        await ctx.principal(({ req }) => { req('easels.js').env.saveDialog = global.__export.avant; });
+      }
+      // L'image d'essai est retirée : la suite compte les éléments.
+      await page.keyboard.press('Delete');
+      assert.equal((await etat()).n, 3);
+    });
+
     await t.verifier('300 éléments : glisser, déplacer la vue et zoomer restent fluides', async () => {
       await page.evaluate(() => {
         const list = [];

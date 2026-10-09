@@ -310,6 +310,120 @@ module.exports = async function bibliothequeTests(ctx) {
   await until(() => shown, 'menu ouvert depuis la page');
   check('clic sur « ··· » dans la page : le menu du fichier', ids(shown).startsWith('open,copy,reveal'));
 
+  // --- Fichier téléchargé : marqué « venu d'Internet » pour le système ---------------------
+  {
+    const http = require('http');
+    const server = http.createServer((req, res) => { res.setHeader('content-disposition', 'attachment; filename="orbe-quarantaine.txt"'); res.end('bonjour'); });
+    await new Promise((r) => server.listen(0, '127.0.0.1', r));
+    const origin = `http://127.0.0.1:${server.address().port}/fichier`;
+    const before = store.state.downloads[0];
+    w.session.downloadURL(origin);
+    const got2 = await until(() => { const x = store.state.downloads[0]; return x && x !== before && x.state === 'completed' && x.marked !== undefined ? x : null; }, 'fichier téléchargé et marqué');
+    if (mac) {
+      const attr = require('child_process').execFileSync('/usr/bin/xattr', ['-p', 'com.apple.quarantine', got2.path]).toString().trim();
+      check('macOS : le fichier téléchargé porte la marque de quarantaine (avertissement du système à l’ouverture)', got2.marked === true && /^0081;[0-9a-f]{8};Orbe;[0-9A-F-]{36}$/.test(attr), attr);
+    } else if (process.platform === 'win32') {
+      const zone = fs.readFileSync(got2.path + ':Zone.Identifier', 'utf8');
+      check('Windows : le fichier téléchargé est marqué « zone Internet » (SmartScreen, avertissement à l’ouverture)', got2.marked === true && /\[ZoneTransfer\]\r\nZoneId=3\r\n/.test(zone) && zone.includes('HostUrl=' + origin), JSON.stringify(zone));
+    }
+    check('la marque ne touche pas au contenu du fichier', fs.readFileSync(got2.path, 'utf8') === 'bonjour');
+    if (process.platform === 'win32') {
+      const priv = path.join(dir, 'prive.txt');
+      fs.writeFileSync(priv, 'x');
+      await downloads.quarantine(priv, origin, false);
+      check('navigation privée : l’adresse d’origine n’est pas écrite à côté du fichier', !fs.readFileSync(priv + ':Zone.Identifier', 'utf8').includes('HostUrl'));
+    }
+    try { fs.unlinkSync(got2.path); } catch {}
+    store.state.downloads.splice(store.state.downloads.indexOf(got2), 1);
+    server.close();
+  }
+
+  // --- Quitter pendant un téléchargement ----------------------------------------------------
+  {
+    const asked2 = [];
+    let agree = false;
+    let quits = 0;
+    downloads.env.confirm = async (parent, opts) => { asked2.push(opts); return agree; };
+    downloads.env.quit = () => { quits += 1; };
+    const event = () => ({ n: 0, preventDefault() { this.n += 1; } });
+    const e0 = event();
+    check('quitter sans téléchargement en cours : aucune question', downloads.beforeQuit(e0) === false && e0.n === 0 && asked2.length === 0);
+    const fake = { state: 'progressing', paused: false, getState() { return this.state; }, isPaused() { return this.paused; } };
+    downloads.internals.items.set('essai-quitter', fake);
+    const e1 = event();
+    downloads.beforeQuit(e1);
+    await until(() => asked2.length === 1, 'question posée');
+    check('quitter pendant un téléchargement : « Des téléchargements sont en cours », l’arrêt est retenu ; « Annuler » ne quitte pas',
+      e1.n === 1 && asked2[0].message === T('dl.quitTitle') && asked2[0].detail.includes('1') && asked2[0].cancelId === 1 && quits === 0);
+    fake.paused = true;
+    const e2 = event();
+    check('téléchargement en pause : il reprendra plus tard, aucune question', downloads.beforeQuit(e2) === false && e2.n === 0);
+    fake.paused = false;
+    agree = true;
+    const e3 = event();
+    downloads.beforeQuit(e3);
+    await until(() => quits === 1, 'arrêt demandé après accord');
+    const e4 = event();
+    check('« Quitter quand même » : Orbe quitte, sans reposer la question', e3.n === 1 && asked2.length === 2 && downloads.beforeQuit(e4) === false && e4.n === 0);
+    downloads.internals.items.delete('essai-quitter');
+  }
+
+  // --- Notes : raccourcis d'Arc, export en fichiers texte -------------------------------------
+  {
+    const notes = require('../src/main/notes');
+    const platform = require('../src/main/platform');
+    const { Menu } = require('electron');
+    const accels = [];
+    const collect = (m) => { for (const it of m.items) { if (it.accelerator) accels.push(it.accelerator); if (it.submenu) collect(it.submenu); } };
+    collect(Menu.getApplicationMenu());
+    check('notes : ⌃⇧N (nouvelle note) et ⌃⌥N (à côté de la page), comme dans Arc ; ⌃⌘N est libre',
+      commands.byName.get('newNote').accel === platform.accel('Ctrl+Shift+N') && commands.byName.get('newNoteSplit').accel === platform.accel('Ctrl+Alt+N')
+      && accels.includes(platform.accel('Ctrl+Shift+N')) && accels.includes(platform.accel('Ctrl+Alt+N')) && !accels.includes('Ctrl+Cmd+N') && new Set(accels).size === accels.length,
+      accels.filter((x, i) => accels.indexOf(x) !== i).join());
+    const notes0 = store.state.notes;
+    store.state.notes = [
+      { id: 'n1', text: 'Courses\npain, lait', at: Date.UTC(2026, 0, 5) },
+      { id: 'n2', text: 'Courses\nautre liste', at: Date.UTC(2026, 0, 6) },
+      { id: 'n3', text: '\n  ../../etc/passwd: <secret>?*  \nsuite', at: Date.UTC(2026, 0, 7) },
+      { id: 'n4', text: 'CON', at: Date.UTC(2026, 0, 8) },
+      { id: 'n5', text: '   \n', at: Date.UTC(2026, 0, 9) },
+      { id: 'n6', text: '.caché\nx', at: Date.UTC(2026, 0, 10) },
+    ];
+    const out = fs.mkdtempSync(path.join(os.tmpdir(), 'orbe-notes-'));
+    const toasts = [];
+    const toast0 = w.toast;
+    w.toast = (text) => { toasts.push(text); };
+    const pick0 = notes.env.pickFolder;
+    const reveal0 = notes.env.reveal;
+    const opened = [];
+    notes.env.reveal = (x) => { opened.push(x); };
+    notes.env.pickFolder = async () => '';
+    check('export des notes : dossier non choisi, rien n’est écrit', (await w.run('exportNotes')) === null && fs.readdirSync(out).length === 0);
+    notes.env.pickFolder = async (parent, opts) => (opts.properties.includes('openDirectory') ? out : '');
+    const done = await w.run('exportNotes');
+    const names = done ? done.files.map((f) => path.basename(f)).sort() : [];
+    check('« Exporter les notes… » : un fichier texte par note, nommé d’après sa première ligne, dans un sous-dossier daté',
+      !!done && path.dirname(done.dir) === out && path.basename(done.dir).startsWith(T('notes.exportFolder') + ' ') && names.length === 5 && names.includes('Courses.txt') && names.includes('Courses (2).txt')
+      && fs.readFileSync(path.join(done.dir, 'Courses.txt'), 'utf8') === 'Courses\nautre liste' && opened.join() === done.dir && toasts[toasts.length - 1] === T('notes.exported', { n: 5 }), names.join(' | '));
+    check('titre piégé : jamais de chemin, de caractère interdit ni de nom réservé ; tout reste dans le dossier choisi',
+      !!done && done.files.every((f) => path.dirname(f) === done.dir) && names.includes('etc passwd secret.txt') && names.includes(T('notes.untitled') + '.txt') && names.includes('caché.txt')
+      && notes.fileName('a/b\\c:d') === 'a b c d' && notes.fileName('...') === T('notes.untitled') && notes.fileName('x'.repeat(300)).length === 80, names.join(' | '));
+    check('la date du fichier est celle de la note', !!done && Math.abs(fs.statSync(path.join(done.dir, 'Courses.txt')).mtimeMs - Date.UTC(2026, 0, 6)) < 2000);
+    const again2 = await w.run('exportNotes');
+    check('second export le même jour : un autre dossier, rien n’est écrasé', !!again2 && again2.dir !== done.dir && fs.readdirSync(done.dir).length === 5 && fs.readdirSync(again2.dir).length === 5);
+    store.state.notes = [];
+    check('aucune note : un message, pas de dossier à choisir', (await w.run('exportNotes')) === null && toasts[toasts.length - 1] === T('notes.exportNone'));
+    check('« Exporter les notes… » est au menu Aide et dans la barre de commande', (() => {
+      const help = Menu.getApplicationMenu().items.find((m) => m.role === 'help' || m.label === T('menu.help'));
+      return !!help && help.submenu.items.some((it) => it.label === T('notes.export')) && w.suggestLocal('exporter les notes').some((i) => i.command === 'exportNotes');
+    })());
+    store.state.notes = notes0;
+    notes.env.pickFolder = pick0;
+    notes.env.reveal = reveal0;
+    w.toast = toast0;
+    try { fs.rmSync(out, { recursive: true, force: true }); } catch {}
+  }
+
   // --- Remise en état ---------------------------------------------------------------------
   Object.assign(downloads.env, env0);
   library.env.startDrag = startDrag0;

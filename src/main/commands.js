@@ -106,10 +106,13 @@ const COMMANDS = [
   // Archive
   { name: 'back', label: 'archive.back', accel: 'Cmd+[', keys: '⌘[', palette: false, run: (w) => wc(w) && wc(w).navigationHistory.goBack() },
   { name: 'forward', label: 'archive.forward', accel: 'Cmd+]', keys: '⌘]', palette: false, run: (w) => wc(w) && wc(w).navigationHistory.goForward() },
-  { name: 'newNote', label: 'notes.new', accel: 'Ctrl+Cmd+N', keys: '⌃⌘N', run: (w) => w.openInternal('notes.html#new') },
+  // ⌃⇧N et ⌃⌥N, comme dans Arc (⌃⌘N y ouvre une fenêtre vierge).
+  { name: 'newNote', label: 'notes.new', accel: 'Ctrl+Shift+N', keys: '⌃⇧N', run: (w) => w.openInternal('notes.html#new') },
   // « New Note (in Split) » d'Arc : la note s'ouvre à côté de la page affichée.
-  { name: 'newNoteSplit', label: 'notes.newSplit', run: (w) => noteBeside(w) },
+  { name: 'newNoteSplit', label: 'notes.newSplit', accel: 'Ctrl+Alt+N', keys: '⌃⌥N', run: (w) => noteBeside(w) },
+  { name: 'exportNotes', label: 'notes.export', run: (w) => require('./notes').exportNotes(w) },
   { name: 'newEasel', label: 'easel.new', accel: 'Ctrl+Shift+E', keys: '⌃⇧E', run: (w) => easels.open(w) },
+  { name: 'exportEasel', label: 'easel.export', run: (w) => easels.exportActive(w) },
   { name: 'easels', label: 'easel.title', run: (w) => w.openInternal('library.html#easels') },
   { name: 'notes', label: 'notes.title', run: (w) => w.openInternal('notes.html') },
   { name: 'media', label: 'lib.media', run: (w) => w.openInternal('library.html#media') },

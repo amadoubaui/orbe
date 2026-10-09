@@ -37,6 +37,7 @@ const env = {
   saveDialog: (parent, opts) => (parent ? dialog.showSaveDialogSync(parent, opts) : dialog.showSaveDialogSync(opts)),
   confirm: async (parent, opts) => (await (parent ? dialog.showMessageBox(parent, opts) : dialog.showMessageBox(opts))).response === 0,
   openPath: (file) => shell.openPath(file),
+  quit: () => app.quit(),
   reveal: (file) => shell.showItemInFolder(file),
   // Corbeille du système : le fichier s'y retrouve, rien n'est détruit.
   trash: (file) => shell.trashItem(file),
@@ -99,6 +100,35 @@ function findRecord(id) {
 }
 const volatileRecords = new Set(); // navigation privée : jamais écrits sur disque
 
+// Marque « venu d'Internet » sur le fichier téléchargé, comme le font Safari et Chrome :
+// c'est elle qui fait dire au système « téléchargé depuis Internet, voulez-vous l'ouvrir ? »
+// (Gatekeeper sur macOS, SmartScreen et la zone Internet sur Windows). Electron ne la pose pas.
+// `withUrl` : faux en navigation privée (l'adresse d'origine n'est pas écrite à côté du fichier).
+function quarantine(file, url, withUrl = true) {
+  return new Promise((resolve) => {
+    if (process.platform === 'darwin') {
+      const value = `0081;${Math.floor(Date.now() / 1000).toString(16)};Orbe;${require('crypto').randomUUID().toUpperCase()}`;
+      require('child_process').execFile('/usr/bin/xattr', ['-w', 'com.apple.quarantine', value, file], { timeout: 5000 }, (err) => resolve(!err));
+    } else if (process.platform === 'win32') {
+      const host = withUrl && /^https?:/i.test(url || '') ? `HostUrl=${String(url).replace(/[\r\n]/g, '')}\r\n` : '';
+      fs.writeFile(file + ':Zone.Identifier', `[ZoneTransfer]\r\nZoneId=3\r\n${host}`, (err) => resolve(!err));
+    } else resolve(false);
+  });
+}
+
+// Quitter pendant qu'un téléchargement avance : la question est posée (« Downloads in progress » d'Arc).
+let quitConfirmed = false;
+function beforeQuit(e) {
+  const running = [...items.values()].filter((it) => { try { return it.getState() === 'progressing' && !it.isPaused(); } catch { return false; } }).length;
+  if (!running || quitConfirmed) return false;
+  e.preventDefault();
+  Promise.resolve(env.confirm(BaseWindow.getFocusedWindow(), {
+    type: 'warning', message: t('dl.quitTitle'), detail: t('dl.quitDetail', { n: running }), buttons: [t('dl.quitAnyway'), t('sheet.cancel')], defaultId: 1, cancelId: 1,
+  })).then((ok) => { if (ok) { quitConfirmed = true; env.quit(); } }).catch(() => {});
+  return true;
+}
+app.on('before-quit', beforeQuit);
+
 function track(d, item, wc, { persist, hooks }) {
   items.set(d.id, item);
   const note = () => {
@@ -127,6 +157,7 @@ function track(d, item, wc, { persist, hooks }) {
     // incomplet, créé pour ce téléchargement, est retiré.
     if (state === 'cancelled' && d.path) fs.unlink(d.path, () => {});
     if (persist) store.save();
+    if (state === 'completed' && d.path) quarantine(d.path, d.url, persist).then((ok) => { d.marked = ok; });
     hooks.onDownload('done', d, wc, item);
     // Ouverture automatique : un vrai PDF, téléchargé à la demande de l'utilisateur.
     if (state === 'completed' && d.gesture && store.state.settings.downloadOpenPdf && !dangerNow(d) && isPdfFile(d.path)) openFile(d, wc);
@@ -333,4 +364,4 @@ async function action(name, a, sender) {
   return undefined;
 }
 
-module.exports = { attach, bindProfile, action, resume, cancel, openFile, copyFile, trash, forget, menuTemplate, downloadDir, isDangerous, isPdfFile, safeName, env, internals: { items, resuming, DANGEROUS, asked, extOf } };
+module.exports = { quarantine, beforeQuit, attach, bindProfile, action, resume, cancel, openFile, copyFile, trash, forget, menuTemplate, downloadDir, isDangerous, isPdfFile, safeName, env, internals: { items, resuming, DANGEROUS, asked, extOf } };

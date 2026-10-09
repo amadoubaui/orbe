@@ -47,7 +47,7 @@ Orbe : `W` = `src/main/window.js`, `C` = `commands.js`, `M` = `menu.js`, `MA` = 
 
 `self lat` = `tests/laterale.js` (barre latérale et menus, 137 vérifications, appelé par `self`) ; `ui 22`, `ui 23` = gestes de la barre latérale, Espaces et dossiers (38 vérifications à la vraie souris), ajoutés le 9 octobre 2026.
 
-`self cmd` = `tests/commande.js` (barre de commande, 55 vérifications) et `self bib` = `tests/bibliotheque.js` (Bibliothèque, 56 vérifications), appelés par `self` ; `ui 24`, `ui 25` = `tests/ui/24-commande-portees.js` et `25-bibliotheque.js` (36 vérifications à la vraie souris et au vrai clavier), ajoutés le 9 octobre 2026. `palette.js`, `library.js`, `downloads.js` : dans `src/main`.
+`self cmd` = `tests/commande.js` (barre de commande, 55 vérifications), `self bib` = `tests/bibliotheque.js` (Bibliothèque, téléchargements, notes : 70 vérifications) et `self easels` = `tests/easels.js` (tableaux), appelés par `self` ; `ui 24`, `ui 25` = `tests/ui/24-commande-portees.js` et `25-bibliotheque.js` (36 vérifications à la vraie souris et au vrai clavier), ajoutés le 9 octobre 2026. `palette.js`, `library.js`, `downloads.js` : dans `src/main`.
 
 Règle appliquée pour ✅ : le code existe **et** un test nommé le couvre. Du code sans test est noté 🟡, même s'il a l'air juste.
 
@@ -487,8 +487,8 @@ Aucun geste n'a été rejoué sur Arc pendant cet inventaire (ils demandent la m
 | BIB-17 | État vide de l'archive : « Nothing here yet! » | binaire | ✅ | | « Rien ici pour l'instant ! » et une ligne d'explication ; self bib ; ui 25 |
 | BIB-18 | View History ⌘Y | menu | ✅ | self | |
 | BIB-19 | Emplacement des téléchargements par profil : dossier, « Other… », « Ask every time » | warren ; binaire `arc.promptForDownload` | ✅ | réglage « Dossier des téléchargements », général ou propre à un profil (prefs.js), et « Toujours demander où enregistrer » (downloads.js) ; self « dossier des téléchargements propre à un profil », « dossier propre au profil : il prime sur le dossier général… », « Toujours demander où enregistrer… » | |
-| BIB-20 | Avertissements de sécurité du système sur les fichiers téléchargés | HC 20498377604887 | 🟡 | non vérifié | |
-| BIB-21 | « Downloads in progress » à la fermeture | binaire | ⬜ | | |
+| BIB-20 | Avertissements de sécurité du système sur les fichiers téléchargés | HC 20498377604887 | ✅ | `downloads.js`:quarantine | Marque « venu d'Internet » posée sur chaque fichier téléchargé (quarantaine macOS, zone Internet Windows) : Electron ne le fait pas ; self bib « le fichier téléchargé porte la marque… » |
+| BIB-21 | « Downloads in progress » à la fermeture | binaire | ✅ | | Question « Des téléchargements sont en cours » avant de quitter ; self bib (4 vérifications) |
 | BIB-22 | Téléchargements renommés automatiquement | HC 19335160678679 | ➖ | | Fonction d'IA, écartée |
 | BIB-23 | Sauvegardes locales de la barre, Help → Restore Data (10 du jour, 1 par jour sur 10 jours…) | HC 25625071960215 ; menu | 🟡 | une copie `.bak` | Historique de sauvegardes |
 | BIB-24 | Lecteur audio miniature en bas de la barre en quittant un onglet qui joue ; plusieurs lecteurs empilés ; titre défilant ; croix | HC 19234766331799 | 🟡 | un seul média, lecture/pause et muet ; aucun test | |
@@ -525,19 +525,19 @@ Aucun geste n'a été rejoué sur Arc pendant cet inventaire (ils demandent la m
 | TAB-1 | New Easel ⌃⇧E | menu | ✅ | self « ⌃⇧E crée un tableau » | |
 | TAB-2 | Le tableau s'ouvre comme onglet épinglé de l'Espace | HC 19231142050071 | 🟡 | onglet interne | |
 | TAB-3 | Dessin, texte, images, formes | HC 20498293324823 | ✅ | self (rectangle, texte, formes, flèche, image collée) ; `tests/easels.js` | |
-| TAB-4 | Guides d'alignement et magnétisme | HC 20498293324823 | ⬜ | | |
-| TAB-5 | Correcteur dans le texte | HC 20498293324823 | 🟡 | non vérifié | |
+| TAB-4 | Guides d'alignement et magnétisme | HC 20498293324823 | ✅ | | Bords et milieux, portée de 6 points, ⌘ pour s'en passer ; self easels (6 vérifications) ; ui 15 (2 vérifications) |
+| TAB-5 | Correcteur dans le texte | HC 20498293324823 | ✅ | `easel.js`:startEdit | Correcteur actif pendant la saisie ; self easels « correcteur actif pendant la saisie, coupé au repos » |
 | TAB-6 | Vidéos intégrées depuis une adresse collée | HC 20498293324823 | ⬜ | | |
 | TAB-7 | Captures vivantes (lecture/pause, ⌘R les rafraîchit) | HC 20498417809815 | ⬜ | captures figées | Gros morceau |
 | TAB-8 | Le lien d'une capture rouvre la page d'origine | binaire `CaptureLinkIconBackground` | ✅ | self | |
-| TAB-9 | Texte alternatif d'une image | binaire | ⬜ | | |
+| TAB-9 | Texte alternatif d'une image | binaire | ✅ | | Champ « Texte alternatif » de l'image sélectionnée ; self easels (3 vérifications) ; ui 15 |
 | TAB-10 | Annuler / rétablir | binaire | ✅ | self | |
-| TAB-11 | Export PNG (« Share Via… »), File → Save As | HC 19231142050071 | ⬜ | | |
+| TAB-11 | Export PNG (« Share Via… »), File → Save As | HC 19231142050071 | ✅ | | Bouton et commande « Exporter le tableau en PNG… » (boîte d'enregistrement) ; pas de feuille de partage ; self easels (4 vérifications) ; ui 15 |
 | TAB-12 | Partage en lecture ou en édition, collaborateurs, commentaires | HC 19231142050071 ; binaire | ➖ | | Demande un serveur |
 | TAB-13 | Liste des tableaux dans la Bibliothèque | menu « View Easels… » | ✅ | self (vignette, réouverture, suppression) | |
 | TAB-14 | Capture… ⇧⌘2 : choisir une zone, les éléments de la page sont détectés ; infobulle « Click or drag to capture a portion of this page » ; curseur en appareil photo | menu ; HC 20498417809815 ; binaire | ✅ | ⇧⌘2 capture toute la partie visible ; la zone n'existe que pour « vers un tableau » (self « capture d'une zone choisie à la souris ») | Fait le 8 oct. (zone + choix de l'action, son original, réglage) |
 | TAB-15 | Après la capture : envoyer, enregistrer, copier, reprendre, ajouter à un tableau | HC 20498417809815 ; binaire | ✅ | copie + fichier d'office | Fait le 8 oct. (zone + choix de l'action, son original, réglage) |
-| TAB-16 | Son à la capture | binaire `capture.wav` | ⬜ | | Voir SON-1 |
+| TAB-16 | Son à la capture | binaire `capture.wav` | ✅ | | Déjà en place (son d'Arc, réglage « Sons ») ; self « capture : le son de capture est demandé » |
 | TAB-17 | Capture Full Page (PNG dans le dossier de téléchargement) | menu ; HC 25481392111895 | ✅ | self | |
 | TAB-18 | Capture in Portrait Mode (page posée sur un fond) | menu ; HC 20468488031511 | ⬜ | | |
 | TAB-19 | Maintenir ⌘⇧ pour lancer une capture (option) | binaire | ⬜ | | |
@@ -547,9 +547,9 @@ Aucun geste n'a été rejoué sur Arc pendant cet inventaire (ils demandent la m
 | Id | Ce que fait Arc | Preuve Arc | État | Preuve Orbe | Note |
 | --- | --- | --- | --- | --- | --- |
 | NOT-1 | Les notes d'Arc ont été retirées en avril 2024 ; « New Note » ouvre l'application de documents du profil (Notion, Google Docs, Word, Confluence) | HC 22557798824855 | ✅ | Orbe garde des notes locales ; self « ⌃⌘N crée une note » | Orbe fait plus qu'Arc actuel |
-| NOT-2 | Raccourci ⌃⇧N d'après les notes de version ; Orbe utilise ⌃⌘N | HC 22557798824855 | 🟡 | M | Divergence à trancher (⌃⌘N est « Blank Window » dans Arc) |
+| NOT-2 | Raccourci ⌃⇧N d'après les notes de version ; Orbe utilise ⌃⌘N | HC 22557798824855 | ✅ | C ; M | Tranché : ⌃⇧N (note) et ⌃⌥N (note à côté), comme dans Arc ; ⌃⌘N libéré ; self bib « notes : ⌃⇧N… » |
 | NOT-3 | Note à côté de la page (en vue scindée) | binaire « Creates a new Note beside your current page » | ✅ | | Commande « Nouvelle note à côté de la page » ; self cmd |
-| NOT-4 | Help → Export Arc Notes | menu | ⬜ | | Export en fichiers texte |
+| NOT-4 | Help → Export Arc Notes | menu | ✅ | | Aide → « Exporter les notes… » : un fichier texte par note ; self bib (7 vérifications) |
 | NOT-5 | Mise en forme (titres 1 à 3, image, lien) | binaire `TextEditor` | 🟡 | texte brut, première ligne en titre | |
 
 ## EXT — Extensions et contrôles du site
@@ -648,7 +648,7 @@ Relevé complet d'Arc par l'accessibilité. Orbe : `menu.js` ; test self « les 
 | MEN-9 | Arc → Sign Out | | ➖ | Pas de compte |
 | MEN-10 | File → New Tab… | ⌘T | ✅ | |
 | MEN-11 | File → New Window | ⌘N | ✅ | |
-| MEN-12 | File → Blank Window | ⌃⌘N | ⬜ | Dans Orbe, « Nouvelle fenêtre » ouvre déjà une fenêtre sans onglet ; ⌃⌘N est pris par « Nouvelle note » |
+| MEN-12 | File → Blank Window | ⌃⌘N | ⬜ | Dans Orbe, « Nouvelle fenêtre » ouvre déjà une fenêtre sans onglet ; ⌃⌘N est libre (la note a pris ⌃⇧N) |
 | MEN-13 | File → New Incognito Window | ⇧⌘N | ✅ | |
 | MEN-14 | File → New Little Arc Window | ⌥⌘N | ✅ | |
 | MEN-15 | File → Restore Last Closed Tab | ⇧⌘T | ✅ | |
@@ -743,7 +743,7 @@ Arc : `menu` pour ceux de la barre de menus, sinon la source indiquée. Orbe : `
 | RAC-1 | ⌘T | Barre de commande, nouvel onglet | menu | ✅ | |
 | RAC-2 | ⌘L | Modifier l'adresse | menu | ✅ | |
 | RAC-3 | ⌘N / ⇧⌘N / ⌥⌘N | Fenêtre, fenêtre privée, petite fenêtre | menu | ✅ | |
-| RAC-4 | ⌃⌘N | Fenêtre vierge | menu | ⬜ | Conflit avec « Nouvelle note » |
+| RAC-4 | ⌃⌘N | Fenêtre vierge | menu | ⬜ | ⌃⌘N est libre depuis que la note a pris ⌃⇧N |
 | RAC-5 | ⌘W / ⇧⌘W | Archiver l'onglet, fermer la fenêtre | menu | ✅ | |
 | RAC-6 | ⇧⌘T | Rouvrir | menu | ✅ | |
 | RAC-7 | ⌘Z / ⇧⌘Z | Annuler, rétablir (actions de la barre) | menu | 🟡 | |
@@ -771,7 +771,7 @@ Arc : `menu` pour ceux de la barre de menus, sinon la source indiquée. Orbe : `
 | RAC-29 | ⇧⌘L / ⇧⌘J | Bibliothèque, téléchargements | menu | ✅ | |
 | RAC-30 | ⇧⌘2 | Capture | menu | 🟡 | |
 | RAC-31 | ⌃⇧E | Nouveau tableau | menu | ✅ | |
-| RAC-32 | ⌃⇧N / ⌃⌥N | Nouvelle note, note en vue scindée | HC 22557798824855 | 🟡 | ⌃⌘N dans Orbe |
+| RAC-32 | ⌃⇧N / ⌃⌥N | Nouvelle note, note en vue scindée | HC 22557798824855 | ✅ | ⌃⇧N et ⌃⌥N ; self bib « notes : ⌃⇧N… » |
 | RAC-33 | ⇧⌘S / ⌘P | Enregistrer la page, imprimer | menu | 🟡 | Sans test |
 | RAC-34 | ⌥⌘U / ⌥⌘I / ⌥⌘C / ⌥⌘J | Source, outils, inspecteur, console | menu | 🟡 | Sans test |
 | RAC-35 | ⌃D | Mode développeur du site | menu | ✅ | `toggleDevMode` : barre d’outils et adresse entière pour le site ; Alt+Shift+D sous Windows ; self |

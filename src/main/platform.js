@@ -25,7 +25,8 @@ const WIN_ACCEL = {
   'Ctrl+Cmd+F': 'F11', // Plein écran
   'Shift+Cmd+2': 'Alt+Shift+2', // Capture (Ctrl+Shift+2 vise le volet 2)
   'Ctrl+Shift+Cmd+C': 'Alt+Shift+C', // Copier en citation
-  'Ctrl+Cmd+N': 'Alt+Shift+N', // Nouvelle note (Ctrl+N ouvre une fenêtre)
+  'Ctrl+Shift+N': 'Alt+Shift+N', // Nouvelle note (Ctrl+Shift+N ouvre la navigation privée)
+  'Ctrl+Alt+N': 'Alt+Shift+M', // Note à côté de la page (Ctrl+Alt+N ouvre une petite fenêtre)
   'Ctrl+D': 'Alt+Shift+D', // Mode développeur du site (Ctrl+D épingle l'onglet)
   // ⌃1…⌃9 change d'Espace sur macOS ; Ctrl+1…9 vise les onglets sous Windows.
   ...Object.fromEntries([1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => [`Ctrl+${n}`, `Alt+${n}`])),
