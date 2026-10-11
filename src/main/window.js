@@ -2565,21 +2565,94 @@ class OrbeWindow {
     if (sp) this.switchSpace(sp.id);
   }
 
-  newSpace() {
-    if (!this.shared) return;
+  // Panneau de création d'un Espace, comme dans Arc : nom, icône, couleur, profil, puis
+  // « Créer ». Toutes les entrées passent par ici (menu, commande, « + », geste au bout de
+  // la rangée, Bibliothèque) ; rien n'est créé avant la validation (`createSpace`).
+  askNewSpace() {
+    if (!this.shared) return false;
+    if (this.modalMode === 'space') return true;
+    if (!this.sidebarVisible) this.toggleSidebar(true);
     const used = new Set(this.data.spaces.map((s) => s.color));
-    const color = SPACE_COLORS.find((c) => !used.has(c));
-    const space = store.makeSpace(t('spaces.defaultName'), '✨', color);
+    const tone = Number((store.state.window || {}).emojiTone) || 0;
+    this.showModal('space', {
+      colors: SPACE_COLORS,
+      color: SPACE_COLORS.find((c) => !used.has(c)) || SPACE_COLORS[0],
+      icon: '✨',
+      tone: clamp(Math.floor(tone), 0, 5),
+      profiles: this.data.profiles.map((p) => ({ id: String(p.id), name: String(p.name) })),
+      profileId: this.space.profileId,
+      x: this.sidebarWidth + 10,
+    });
+    return true;
+  }
+
+  // Ce que le panneau envoie, vérifié en entier avant de créer quoi que ce soit : nom
+  // (80 caractères au plus ; vide : le nom par défaut), icône (un émoji, icons.js), couleur
+  // (#rrggbb) ou thème prêt (theme.js), profil existant — ou 'new' : un profil neuf.
+  // Renvoie null si une valeur est refusée.
+  static checkSpace(a, profiles) {
+    if (!a || typeof a !== 'object') return null;
+    if (a.name != null && typeof a.name !== 'string') return null;
+    const name = (a.name || '').replace(/\s+/g, ' ').trim();
+    if (name.length > 80) return null;
+    if (!icons.valid(a.icon)) return null;
+    const out = { name, icon: a.icon, profileId: 'default' };
+    if (a.preset != null) {
+      if (typeof a.preset !== 'string' || !Theme.PRESETS.some((p) => p.id === a.preset)) return null;
+      out.preset = a.preset;
+    } else if (a.color != null) {
+      if (!Theme.isHex(a.color)) return null;
+      out.color = a.color.toLowerCase();
+    }
+    if (a.profileId === 'new') out.newProfile = true;
+    else if (typeof a.profileId === 'string' && profiles.some((p) => p.id === a.profileId)) out.profileId = a.profileId;
+    else return null;
+    return out;
+  }
+
+  createSpace(a) {
+    if (!this.shared || this.modalMode !== 'space') return false;
+    const ok = OrbeWindow.checkSpace(a, this.data.profiles);
+    if (!ok) return false;
+    if (Number.isInteger(a.tone) && a.tone >= 0 && a.tone <= 5 && store.state.window) store.state.window.emojiTone = a.tone;
+    this.hideModal();
+    const space = this.newSpace(ok);
+    // « Personnaliser le thème… » : l'Espace est créé, puis l'éditeur de thème s'ouvre sur lui.
+    if (space && a.theme === true) this.openTheme();
+    return !!space;
+  }
+
+  // Création directe (essais, import, et `createSpace` une fois le panneau validé). Sans
+  // argument : Espace au nom par défaut, dont le champ de nom s'ouvre aussitôt.
+  newSpace(opts) {
+    if (!this.shared) return null;
+    const o = opts || {};
+    const used = new Set(this.data.spaces.map((s) => s.color));
+    const color = o.color || SPACE_COLORS.find((c) => !used.has(c));
+    const space = store.makeSpace(o.name || t('spaces.defaultName'), o.icon || '✨', color);
+    if (o.preset) Theme.apply(space, { preset: o.preset });
+    // Profil neuf demandé par le panneau : il naît avec l'Espace, et repart avec lui (⌘Z).
+    const profile = o.newProfile ? { id: uid(), name: t('profiles.name', { n: this.data.profiles.length + 1 }) } : null;
+    const addProfile = () => { if (profile && !this.data.profiles.includes(profile)) { this.data.profiles.push(profile); this.data.favs[profile.id] = this.data.favs[profile.id] || []; } };
+    const dropProfile = () => {
+      if (!profile || this.data.spaces.some((s) => s.profileId === profile.id) || (this.data.favs[profile.id] || []).length) return;
+      const i = this.data.profiles.indexOf(profile);
+      if (i >= 0) this.data.profiles.splice(i, 1);
+      delete this.data.favs[profile.id];
+    };
+    addProfile();
+    if (profile) space.profileId = profile.id;
+    else if (o.profileId && this.data.profiles.some((p) => p.id === o.profileId)) space.profileId = o.profileId;
     // Comme dans Arc : le nouvel Espace se place juste après celui qui est affiché.
     this.data.spaces.splice(this.data.spaces.indexOf(this.space) + 1, 0, space);
     this.switchSpace(space.id);
     let back = null;
-    this.record('undo.newSpace', () => { back = this.removeSpace(space.id); }, () => back && back());
+    this.record('undo.newSpace', () => { back = this.removeSpace(space.id); dropProfile(); this.changed(); }, () => { addProfile(); if (back) back(); });
     const entry = this.undoStack[this.undoStack.length - 1];
-    if (entry) entry.created = space.id; // ⌘Z dans son champ de nom encore intact : voir commands.js
+    if (entry && !opts) entry.created = space.id; // ⌘Z dans son champ de nom encore intact : voir commands.js
     this.changed();
     // « New Space Created », comme dans Arc — avec « Annuler » : un Espace créé par mégarde
-    // (geste au bout de la rangée) se retire d'un clic, comme par ⌘Z.
+    // se retire d'un clic, comme par ⌘Z.
     this.toast(t('toast.spaceCreated'), null, () => {
       const i = this.undoStack.indexOf(entry);
       if (i < 0 || !this.data.spaces.includes(space)) return;
@@ -2587,7 +2660,8 @@ class OrbeWindow {
       this.mute(() => entry.undo());
       this.changed();
     }, { label: t('edit.undo'), stay: 5000 });
-    this.askRename(space.id);
+    if (!opts) this.askRename(space.id);
+    return space;
   }
 
   // Réordonne les Espaces (glisser une pastille) : l'Espace `id` passe devant
@@ -3585,23 +3659,47 @@ class OrbeWindow {
       this.findText = text;
       const total = found ? found.matches : 0;
       const turns = a.all ? Math.min(total, REPLACE_MAX) : Math.min(total, 1);
+      let patience = 1500; // ms passées à attendre une sélection, en tout
       for (let i = 0; i < turns && found && found.matches; i++) {
         wc.stopFindInPage('keepSelection');
-        // La sélection est-elle l'occurrence, dans une zone modifiable ? Sinon on se place juste après.
+        // La sélection est-elle l'occurrence, dans une zone modifiable ? `true` : oui ; `false` :
+        // c'est l'occurrence, hors d'une zone modifiable ; `null` : la sélection n'est pas (encore)
+        // l'occurrence. `skip` : on renonce, et on se place juste après.
         const selected = (skip) => wc.executeJavaScript(`(() => {
           const want = ${JSON.stringify(text.toLowerCase())};
           const e = document.activeElement;
-          if (e && /^(INPUT|TEXTAREA)$/.test(e.tagName) && !e.readOnly && !e.disabled && typeof e.selectionStart === 'number' && e.value.slice(e.selectionStart, e.selectionEnd).toLowerCase() === want) return true;
+          if (e && /^(INPUT|TEXTAREA)$/.test(e.tagName) && typeof e.selectionStart === 'number' && e.value.slice(e.selectionStart, e.selectionEnd).toLowerCase() === want) return !e.readOnly && !e.disabled;
           const s = getSelection();
           const node = s.rangeCount ? s.getRangeAt(0).commonAncestorContainer : null;
           const host = node && (node.nodeType === 1 ? node : node.parentElement);
-          if (host && host.isContentEditable && String(s).toLowerCase() === want) return true;
+          if (String(s).toLowerCase() === want) { if (host && host.isContentEditable) return true; if (${skip ? 'true' : 'false'}) s.collapseToEnd(); return false; }
           if (${skip ? 'true' : 'false'} && s.rangeCount) s.collapseToEnd();
-          return false;
-        })()`).catch(() => false);
-        // (Quelques essais : la fin de la recherche, elle aussi, peut arriver un instant après.)
-        let editable = false;
-        for (let k = 0; k < 4 && editable !== true && !wc.isDestroyed(); k++) editable = await selected(k === 3);
+          return null;
+        })()`).catch(() => null);
+        // La recherche annonce son résultat avant que la page ait posé la sélection sur
+        // l'occurrence : sur une machine chargée, quatre questions de suite ne suffisaient pas,
+        // l'occurrence était sautée et le tour perdu (la dernière n'était alors jamais atteinte).
+        // On laisse donc un instant à la sélection ; si elle ne vient pas, la recherche est
+        // reprise au même endroit (elle redésigne la même occurrence) et l'on redemande. Le tout
+        // dans la limite d'une patience commune au remplacement (une occurrence dans un cadre
+        // ne sera jamais la sélection de cette page).
+        const ask = async () => {
+          let r = null;
+          for (let k = 0; r === null && !wc.isDestroyed(); k++) {
+            r = await selected(false);
+            if (r !== null || k >= 9 || (k >= 3 && patience <= 0)) break;
+            if (k >= 3) { await new Promise((res) => setTimeout(res, 25)); patience -= 25; }
+          }
+          return r;
+        };
+        let editable = await ask();
+        if (editable === null && patience > 0 && !wc.isDestroyed() && this.activeRt === rt && this.findOpen) {
+          found = await this.findAwait(wc, text, { forward: true, findNext: true });
+          if (!found || !found.matches) break;
+          wc.stopFindInPage('keepSelection');
+          editable = await ask();
+        }
+        if (editable !== true && !wc.isDestroyed()) editable = await selected(true);
         if (wc.isDestroyed() || this.activeRt !== rt || !this.findOpen) break;
         if (editable === true) {
           wc.replace(by);
@@ -4354,7 +4452,7 @@ class OrbeWindow {
       { label: t('spaces.export'), visible: this.shared, click: () => this.exportSpace() },
       { type: 'separator' },
       { label: t('tabs.newFolder'), click: () => this.newFolder() },
-      { label: t('spaces.new'), enabled: this.shared, click: () => this.newSpace() },
+      { label: t('spaces.new'), enabled: this.shared, click: () => this.askNewSpace() },
       { type: 'separator' },
       { label: t('spaces.delete'), enabled: this.data.spaces.length > 1, click: () => this.deleteSpace() },
     ];
@@ -4408,7 +4506,7 @@ class OrbeWindow {
     const create = [
       { label: t('tabs.newTab'), click: () => this.openCommand('new') },
       { label: t('tabs.newFolder'), click: () => this.newFolder() },
-      { label: t('spaces.new'), enabled: this.shared, click: () => this.newSpace() },
+      { label: t('spaces.new'), enabled: this.shared, click: () => this.askNewSpace() },
       { type: 'separator' },
     ];
     if (plus) {
@@ -4752,6 +4850,7 @@ class OrbeWindow {
       case 'findClose': return this.closeFind();
       case 'findReplace': return this.replaceFound(a);
       case 'icon': return this.chooseIcon(a);
+      case 'spaceCreate': return this.createSpace(a);
       case 'theme': return this.setTheme(a);
       case 'themeExtra': return this.setThemeExtra(a || {});
       case 'themeGet': return this.themeNow();

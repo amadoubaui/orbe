@@ -1115,6 +1115,9 @@ module.exports = async function selftest(ctx) {
   // Finitions, deuxième série : « Premiers pas », Échap en plein écran, quatre côtés, onglet hors de la fenêtre (tests/finitions2.js)
   await require('./finitions2')({ ...ctx, check });
 
+  // Panneau de création d'un Espace (tests/creation-espace.js)
+  await require('./creation-espace')({ ...ctx, check });
+
   // Tableaux (tests/easels.js)
   await require('./easels')({ ...ctx, check });
 

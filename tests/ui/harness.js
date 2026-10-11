@@ -268,6 +268,17 @@ async function lancer() {
   };
 
   // Texte de l'interface dans la langue courante (clé de src/shared/locales.js).
+  // Panneau de création d'un Espace (déjà demandé : menu, « + », geste) : on attend qu'il soit
+  // ouvert et que son champ de nom ait le clavier, on tape le nom, Entrée crée l'Espace.
+  ctx.panneauEspace = () => jusqua(async () => (await ctx.etat()).modale === 'space'
+    && ctx.modal.evaluate(() => { const i = document.getElementById('space-input'); return !!i && !document.getElementById('space').hidden && document.activeElement === i; }), 'panneau de création d’un Espace');
+  ctx.creerEspace = async (nom) => {
+    await ctx.panneauEspace();
+    if (nom) await ctx.modal.keyboard.type(nom, { delay: 5 });
+    await ctx.modal.keyboard.press('Enter');
+    await jusqua(async () => { const e = await ctx.etat(); return !e.modale && (!nom || e.espace === nom); }, 'Espace créé' + (nom ? ' : ' + nom : ''));
+  };
+
   ctx.texte = (cle) => ctx.shell.evaluate((k) => t(k), cle);
 
   // --- Gestes courants --------------------------------------------------------
