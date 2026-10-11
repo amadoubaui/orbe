@@ -57,16 +57,36 @@ const BENCHES = {
       const url = `https://${host}/${word(1000 + (i * 7) % 300)}/${i}-${word(2000 + (i * 13) % 900)}`;
       store.state.history[url] = { url, visits: 1 + (i % 9), last: now - i * 60000, title: `${word(i * 3)} ${word(i * 5 + 1)} ${word(i * 11 + 2)} — ${word(i % 400)}`, favicon: `https://${host}/favicon.ico` };
     }
+    // Forme d'un vrai profil ancien : les onglets sont répartis dans plusieurs Espaces (un dossier
+    // de trois onglets épinglés, deux épinglés seuls, le reste dans « Aujourd'hui »), eux-mêmes
+    // répartis dans plusieurs profils. Sans cela : tous dans le premier Espace.
+    const nSpaces = Number(process.env.ORBE_BENCH_SPACES) || 0;
+    const nProfiles = Number(process.env.ORBE_BENCH_PROFILES) || 0;
+    const d = w.data;
+    for (let i = 1; i < nProfiles; i++) { const id = 'profil' + i; d.profiles.push({ id, name: 'Profil ' + (i + 1) }); d.favs[id] = []; }
+    for (let i = 1; i < nSpaces; i++) { const sp = store.makeSpace('Espace ' + (i + 1), '✨'); if (nProfiles) sp.profileId = d.profiles[i % d.profiles.length].id; d.spaces.push(sp); }
     for (let i = 0; i < tabs; i++) {
-      const tab = w.createTab(`https://site${i}.exemple.fr/page/${i}`);
+      const space = d.spaces[nSpaces ? i % d.spaces.length : d.spaces.indexOf(w.space)];
+      const tab = w.createTab(`https://site${i}.exemple.fr/page/${i}`, { space });
       tab.title = `Onglet ${i} — exemple`;
+      if (!nSpaces) continue;
+      const rank = Math.floor(i / d.spaces.length);
+      if (rank < 5) {
+        space.today.splice(space.today.indexOf(tab.id), 1);
+        tab.homeUrl = tab.url;
+        if (rank < 3) {
+          let folder = space.pinned.find((n) => n.type === 'folder');
+          if (!folder) { folder = { type: 'folder', id: 'dossier' + i, name: 'Dossier', open: true, children: [] }; space.pinned.push(folder); }
+          folder.children.push({ type: 'tab', id: tab.id });
+        } else space.pinned.push({ type: 'tab', id: tab.id });
+      }
     }
     const tab = w.newTab(base + '/leger');
     await until(() => w.data.tabs[tab.id].title === 'Léger');
     store.saveHistory(true);
     await sleep(300);
     store.flush();
-    out({ bench: 'prepare', history, tabs });
+    out({ bench: 'prepare', history, tabs, espaces: d.spaces.length, profils: d.profiles.length });
   },
 
   // Démarrage : de la création du processus à la coque peinte et à la première page.
@@ -297,6 +317,185 @@ const BENCHES = {
       resident, empreinte, images: trous.length, pireTrou: round(Math.max(...trous), 0), trousDePlusDe50ms: trous.filter((x) => x > 50).length,
       messageMedian: round(median(lat), 1), messageP95: round(sorted[Math.floor(sorted.length * 0.95)], 1), messagePire: round(sorted[sorted.length - 1], 0),
     });
+  },
+  // Gestes courants sur le profil préparé : changement d'Espace (état poussé → barre latérale
+  // peinte), changement d'onglet (activate → image de la page), temps de render() dans la coque,
+  // défilement de la barre latérale (écarts entre images), puis mémoire avec dix onglets vivants.
+  async gestes({ first: w, base }) {
+    const rt = await until(() => w.activeRt);
+    await until(() => !rt.wc.isLoading());
+    await sleep(1500);
+    const ui = w.ui.webContents;
+    const depart = processes();
+    let ack = null;
+    const handle = w.handle.bind(w);
+    w.handle = (action, a) => (action === 'mesureRendu' ? (ack && ack(), undefined) : handle(action, a));
+    await ui.executeJavaScript(`(() => {
+      window.__r = [];
+      if (typeof render === 'function') { const r0 = render; window.render = function () { const t = performance.now(); const v = r0.apply(this, arguments); window.__r.push(performance.now() - t); return v; }; }
+      O.on('state', () => { requestAnimationFrame(() => { const c = new MessageChannel(); c.port1.onmessage = () => O.send('mesureRendu'); c.port2.postMessage(0); }); });
+    })()`);
+    const painted = async (act) => { const done = new Promise((r) => { ack = r; }); const t0 = performance.now(); act(); await Promise.race([done, sleep(3000)]); return performance.now() - t0; };
+    const renders = async () => { const r = await ui.executeJavaScript('window.__r.splice(0)'); return r; };
+    // Changement d'Espace : aller-retour entre le premier et le suivant (ou un Espace créé pour l'occasion).
+    const home = w.spaceId;
+    let other = w.data.spaces.find((sp) => sp.id !== home);
+    if (!other) { other = require('../src/main/store').makeSpace('Autre', '✨'); w.data.spaces.push(other); }
+    await painted(() => w.sendState());
+    await renders();
+    const espace = [];
+    for (let i = 0; i < 16; i++) { espace.push(await painted(() => w.switchSpace(i % 2 ? home : other.id))); await sleep(500); }
+    const renduEspace = await renders();
+    // Un titre change : le cas le plus fréquent en naviguant.
+    const tab = w.data.tabs[w.activeId];
+    const titre = [];
+    for (let i = 0; i < 20; i++) { titre.push(await painted(() => { tab.title = 'Titre ' + i; w.sendState(); })); await sleep(40); }
+    const renduTitre = await renders();
+    // Changement d'onglet entre deux onglets vivants.
+    const a = w.activeId;
+    const b = w.newTab(base + '/leger?b').id;
+    await until(() => w.data.tabs[b].title === 'Léger');
+    await sleep(600);
+    const onglet = [];
+    const synchrone = [];
+    for (let i = 0; i < 20; i++) {
+      const id = i % 2 ? b : a;
+      const t0 = performance.now();
+      w.activate(id);
+      synchrone.push(performance.now() - t0);
+      await w.activeRt.wc.executeJavaScript('new Promise((r) => requestAnimationFrame(() => r()))', true);
+      onglet.push(performance.now() - t0);
+      await sleep(150);
+    }
+    // Défilement de la barre latérale : 1,5 s de défilement continu, écarts entre images.
+    const defilement = await ui.executeJavaScript(`new Promise((done) => {
+      const el = document.getElementById('scroll');
+      const gaps = []; let last = 0; const t0 = performance.now(); let dir = 1;
+      const f = (t) => {
+        if (last) gaps.push(t - last);
+        last = t;
+        if (el.scrollTop + el.clientHeight >= el.scrollHeight - 1) dir = -1; else if (el.scrollTop <= 0) dir = 1;
+        el.scrollTop += dir * 14;
+        if (t - t0 < 1500) requestAnimationFrame(f); else done({ gaps, haut: el.scrollHeight, vue: el.clientHeight, lignes: document.querySelectorAll('#scroll .row').length });
+      };
+      requestAnimationFrame(f);
+    })`);
+    const g = [...defilement.gaps].sort((x, y) => x - y);
+    // Dix onglets vivants de plus (même site local) : processus et mémoire.
+    for (let i = 0; i < 9; i++) w.newTab(`${base}/leger?m=${i}`, { background: true });
+    await sleep(3500);
+    const p90 = (list) => round([...list].sort((x, y) => x - y)[Math.floor(list.length * 0.9)] || 0, 2);
+    out({
+      bench: 'gestes', onglets: Object.keys(w.data.tabs).length, espaces: w.data.spaces.length,
+      espaceVersPeinture: round(median(espace), 2), espaceP90: p90(espace), renduEspace: round(median(renduEspace), 2), renduEspaceMax: round(Math.max(0, ...renduEspace), 2),
+      titreVersPeinture: round(median(titre), 2), renduTitre: round(median(renduTitre), 3),
+      ongletSynchrone: round(median(synchrone), 2), ongletVersImage: round(median(onglet), 2), ongletP90: p90(onglet),
+      defilement: { images: g.length, mediane: round(median(g), 2), p95: round(g[Math.floor(g.length * 0.95)] || 0, 2), pire: round(g[g.length - 1] || 0, 1), lignes: defilement.lignes },
+      depart, dixVivants: processes(),
+    });
+  },
+
+  // Repos : ce que coûte Orbe quand rien ne se passe. Quatre périodes de `ORBE_BENCH_IDLE` ms
+  // (20 s par défaut) : une page fixe ; la même avec un onglet qui joue hors de vue (lecteur
+  // miniature) ; fenêtre réduite dans le Dock ; fenêtre masquée. Pour chacune : secondes de
+  // processeur par famille de processus (ms de calcul par seconde écoulée), réveils, états
+  // poussés à la coque, animations en cours dans la coque, fichiers du profil réécrits.
+  async repos({ first: w, base }) {
+    const fs = require('fs');
+    const path = require('path');
+    const span = Number(process.env.ORBE_BENCH_IDLE) || 20000;
+    const rt = await until(() => w.activeRt);
+    await until(() => !rt.wc.isLoading());
+    const ui = w.ui.webContents;
+    const send = ui.send.bind(ui);
+    let pushes = 0;
+    let bytes = 0;
+    ui.send = (ch, ...args) => { if (ch === 'state' || ch === 'state-patch') { pushes += 1; bytes += JSON.stringify(args).length; } return send(ch, ...args); };
+    const dir = app.getPath('userData');
+    const scan = (d, into = new Map()) => {
+      let list = [];
+      try { list = fs.readdirSync(d, { withFileTypes: true }); } catch {}
+      for (const e of list) {
+        const p = path.join(d, e.name);
+        if (e.isDirectory()) scan(p, into);
+        else { try { const st = fs.statSync(p); into.set(p, st.mtimeMs + ':' + st.size + ':' + st.ino); } catch {} }
+      }
+      return into;
+    };
+    const cpu = () => {
+      const o = { principal: process.cpuUsage().user / 1e6 + process.cpuUsage().system / 1e6, graphique: 0, coque: 0, pages: 0, autres: 0, reveils: 0 };
+      for (const m of app.getAppMetrics()) {
+        const s = (m.cpu && m.cpu.cumulativeCPUUsage) || 0;
+        o.reveils += (m.cpu && m.cpu.idleWakeupsPerSecond) || 0;
+        if (m.type === 'Browser') continue;
+        if (m.type === 'GPU') o.graphique += s;
+        else if (m.type === 'Tab') { if (m.pid === ui.getOSProcessId()) o.coque += s; else o.pages += s; } else o.autres += s;
+      }
+      return o;
+    };
+    const period = async () => {
+      await sleep(2500);
+      pushes = 0; bytes = 0;
+      app.getAppMetrics();
+      const a = cpu();
+      const files = new Map();
+      let before = scan(dir);
+      const t0 = Date.now();
+      while (Date.now() - t0 < span) {
+        await sleep(2000);
+        const now = scan(dir);
+        for (const [p, sig] of now) if (before.get(p) !== sig) { const f = files.get(p) || { n: 0, octets: 0 }; f.n += 1; f.octets += Number(sig.split(':')[1]); files.set(p, f); }
+        before = now;
+      }
+      const s = (Date.now() - t0) / 1000;
+      const b = cpu();
+      const vue = await Promise.race([ui.executeJavaScript(`({ etat: document.visibilityState, animations: document.getAnimations().filter((x) => x.playState === 'running').length })`), sleep(1500).then(() => ({ etat: '?', animations: -1 }))]);
+      const ours = [...files].filter(([p]) => !/\/(Cache|Code Cache|GPUCache|DawnCache|GraphiteDawnCache|DawnGraphiteCache|DawnWebGPUCache|blob_storage|Shared Dictionary)\//.test(p));
+      return {
+        principal: round((b.principal - a.principal) * 1000 / s, 1), graphique: round((b.graphique - a.graphique) * 1000 / s, 1), coque: round((b.coque - a.coque) * 1000 / s, 1),
+        pages: round((b.pages - a.pages) * 1000 / s, 1), autres: round((b.autres - a.autres) * 1000 / s, 1), reveils: round(b.reveils, 0),
+        etats: round(pushes * 60 / s, 1), etatsKo: round(bytes * 60 / s / 1024, 1), visible: vue.etat === 'visible' ? 1 : 0, animations: vue.animations,
+        ecritures: round(ours.reduce((n, [, f]) => n + f.n, 0) * 60 / s, 1), ecrituresKo: round(ours.reduce((n, [, f]) => n + f.octets, 0) * 60 / s / 1024, 0),
+        fichiers: ours.map(([p, f]) => path.relative(dir, p) + '×' + f.n).join(' '),
+      };
+    };
+    // ORBE_BENCH_PERIODES=lecteur,masquee : seulement ces périodes. ORBE_BENCH_CSS : règles ajoutées à la
+    // coque avant la période « lecteur » (pour isoler le coût d'une animation en la coupant).
+    const only = (process.env.ORBE_BENCH_PERIODES || '').split(',').filter(Boolean);
+    const wanted = (name) => !only.length || only.includes(name);
+    const res = {};
+    if (wanted('fixe')) res.fixe = await period();
+    // Barre latérale masquée : la surveillance du bord gauche (pollPeek) tourne. Coût d'un passage.
+    if (wanted('bord') && typeof w.pollPeek === 'function') {
+      const t0 = performance.now();
+      for (let i = 0; i < 2000; i++) w.pollPeek();
+      res.bord = { microsecondesParPassage: round((performance.now() - t0) / 2, 2), auPremierPlan: w.win.isFocused() ? 1 : 0 };
+    }
+    // Un onglet joue, puis on le quitte : son lecteur miniature apparaît dans la barre latérale.
+    const calm = w.activeId;
+    const piste = w.newTab(base + '/piste').id;
+    await until(() => w.data.tabs[piste].title === 'Piste');
+    await w.activeRt.wc.executeJavaScript('start()', true);
+    await until(() => w.activeRt.wc.isCurrentlyAudible(), 8000).catch(() => {});
+    w.activate(calm);
+    if (process.env.ORBE_BENCH_CSS) await ui.insertCSS(process.env.ORBE_BENCH_CSS);
+    if (wanted('lecteur')) { res.lecteur = await period(); res.lecteur.lecteurs = (w.players || []).length; }
+    // Fenêtre entièrement recouverte par une autre (à lancer avec --naturel 1, sinon Chromium ne ralentit rien).
+    if (wanted('recouverte')) {
+      const { BaseWindow } = require('electron');
+      const cover = new BaseWindow({ ...w.win.getBounds(), alwaysOnTop: true, backgroundColor: '#444444', title: 'Mesure : fenêtre qui recouvre' });
+      cover.showInactive();
+      await sleep(4000);
+      res.recouverte = await period();
+      cover.destroy();
+      await sleep(500);
+    }
+    if (wanted('reduite')) { w.win.minimize(); res.reduite = await period(); w.win.restore(); await sleep(800); }
+    if (wanted('masquee')) { w.win.hide(); res.masquee = await period(); w.win.show(); }
+    const fichiers = {};
+    for (const k of Object.keys(res)) { if (res[k].fichiers !== undefined) fichiers[k] = res[k].fichiers; delete res[k].fichiers; }
+    console.log('FICHIERS ' + JSON.stringify(fichiers));
+    out({ bench: 'repos', ...res });
   },
 };
 
