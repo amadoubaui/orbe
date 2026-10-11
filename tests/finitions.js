@@ -656,6 +656,25 @@ module.exports = async function finitionsTests(ctx) {
   check('… le texte fixe de la page n’est jamais modifié, et un message dit le nombre de remplacements', (await js('document.getElementById("bas").textContent')) === 'un chat en bas' && toasts.includes(T('find.replaced', { n: 3 })), toasts.join('|'));
   replaced = await w.handle('findReplace', { text: 'chat', with: 'loup' });
   check('occurrence hors d’une zone modifiable : rien n’est remplacé, un message l’explique', replaced === 0 && (await js('document.getElementById("bas").textContent')) === 'un chat en bas' && toasts[toasts.length - 1] === T('find.replacedNone', { n: 0 }));
+  // Machine chargée : la page pose la sélection sur l'occurrence après que la recherche a rendu
+  // son résultat. Les six premières questions « la sélection est-elle l'occurrence ? » restent
+  // sans réponse utile ; aucune occurrence ne doit être sautée pour autant.
+  await js('document.getElementById("zone").value = "chat et chat"; document.getElementById("riche").textContent = "un chat riche"; document.getElementById("bas").textContent = "sans rien"; document.activeElement.blur(); getSelection().removeAllRanges();');
+  w.handle('find', { text: 'chat' });
+  await until(() => w.findLast && w.findLast.matches === 3, 'trois occurrences trouvées');
+  {
+    const page = w.activeRt.wc;
+    const vraie = page.executeJavaScript;
+    let muettes = 6;
+    page.executeJavaScript = function tardive(code, ...rest) {
+      if (muettes > 0 && String(code).includes('const want =')) { muettes -= 1; return Promise.resolve(null); }
+      return vraie.call(this, code, ...rest);
+    };
+    try { replaced = await w.handle('findReplace', { text: 'chat', with: 'loup', all: true }); } finally { page.executeJavaScript = vraie; }
+    check('« Tout » : une sélection qui arrive en retard (machine chargée) ne fait sauter aucune occurrence',
+      replaced === 3 && muettes === 0 && (await js('document.getElementById("zone").value')) === 'loup et loup' && (await js('document.getElementById("riche").textContent')) === 'un loup riche', JSON.stringify([replaced, muettes, await js('document.getElementById("zone").value'), await js('document.getElementById("riche").textContent')]));
+    await js('document.getElementById("bas").textContent = "un chat en bas"');
+  }
   check('remplacement refusé sans barre « Remplacer » ouverte, ou avec une demande mal formée', (await w.handle('findReplace', null)) === 0 && (await w.handle('findReplace', { text: '' })) === 0);
   w.closeFind();
   commands.run(w, 'find');

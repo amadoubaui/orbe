@@ -3659,23 +3659,47 @@ class OrbeWindow {
       this.findText = text;
       const total = found ? found.matches : 0;
       const turns = a.all ? Math.min(total, REPLACE_MAX) : Math.min(total, 1);
+      let patience = 1500; // ms passées à attendre une sélection, en tout
       for (let i = 0; i < turns && found && found.matches; i++) {
         wc.stopFindInPage('keepSelection');
-        // La sélection est-elle l'occurrence, dans une zone modifiable ? Sinon on se place juste après.
+        // La sélection est-elle l'occurrence, dans une zone modifiable ? `true` : oui ; `false` :
+        // c'est l'occurrence, hors d'une zone modifiable ; `null` : la sélection n'est pas (encore)
+        // l'occurrence. `skip` : on renonce, et on se place juste après.
         const selected = (skip) => wc.executeJavaScript(`(() => {
           const want = ${JSON.stringify(text.toLowerCase())};
           const e = document.activeElement;
-          if (e && /^(INPUT|TEXTAREA)$/.test(e.tagName) && !e.readOnly && !e.disabled && typeof e.selectionStart === 'number' && e.value.slice(e.selectionStart, e.selectionEnd).toLowerCase() === want) return true;
+          if (e && /^(INPUT|TEXTAREA)$/.test(e.tagName) && typeof e.selectionStart === 'number' && e.value.slice(e.selectionStart, e.selectionEnd).toLowerCase() === want) return !e.readOnly && !e.disabled;
           const s = getSelection();
           const node = s.rangeCount ? s.getRangeAt(0).commonAncestorContainer : null;
           const host = node && (node.nodeType === 1 ? node : node.parentElement);
-          if (host && host.isContentEditable && String(s).toLowerCase() === want) return true;
+          if (String(s).toLowerCase() === want) { if (host && host.isContentEditable) return true; if (${skip ? 'true' : 'false'}) s.collapseToEnd(); return false; }
           if (${skip ? 'true' : 'false'} && s.rangeCount) s.collapseToEnd();
-          return false;
-        })()`).catch(() => false);
-        // (Quelques essais : la fin de la recherche, elle aussi, peut arriver un instant après.)
-        let editable = false;
-        for (let k = 0; k < 4 && editable !== true && !wc.isDestroyed(); k++) editable = await selected(k === 3);
+          return null;
+        })()`).catch(() => null);
+        // La recherche annonce son résultat avant que la page ait posé la sélection sur
+        // l'occurrence : sur une machine chargée, quatre questions de suite ne suffisaient pas,
+        // l'occurrence était sautée et le tour perdu (la dernière n'était alors jamais atteinte).
+        // On laisse donc un instant à la sélection ; si elle ne vient pas, la recherche est
+        // reprise au même endroit (elle redésigne la même occurrence) et l'on redemande. Le tout
+        // dans la limite d'une patience commune au remplacement (une occurrence dans un cadre
+        // ne sera jamais la sélection de cette page).
+        const ask = async () => {
+          let r = null;
+          for (let k = 0; r === null && !wc.isDestroyed(); k++) {
+            r = await selected(false);
+            if (r !== null || k >= 9 || (k >= 3 && patience <= 0)) break;
+            if (k >= 3) { await new Promise((res) => setTimeout(res, 25)); patience -= 25; }
+          }
+          return r;
+        };
+        let editable = await ask();
+        if (editable === null && patience > 0 && !wc.isDestroyed() && this.activeRt === rt && this.findOpen) {
+          found = await this.findAwait(wc, text, { forward: true, findNext: true });
+          if (!found || !found.matches) break;
+          wc.stopFindInPage('keepSelection');
+          editable = await ask();
+        }
+        if (editable !== true && !wc.isDestroyed()) editable = await selected(true);
         if (wc.isDestroyed() || this.activeRt !== rt || !this.findOpen) break;
         if (editable === true) {
           wc.replace(by);
