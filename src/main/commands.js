@@ -342,14 +342,22 @@ function appInfo() {
   return [`Orbe ${app.getVersion()}`, `Electron ${process.versions.electron}`, `Chromium ${process.versions.chrome}`, `${process.platform} ${process.arch} ${require('os').release()}`].join('\n');
 }
 
+// La saisie en cours dans `target` a-t-elle quelque chose à annuler elle-même ? Un seul cas
+// où elle n'a rien à défaire : le champ de nom qui s'ouvre à la création d'un Espace, tant
+// qu'on n'y a pas touché et que cette création est la dernière action — ⌘Z annule alors la
+// création. Partout ailleurs (renommage ordinaire compris), ⌘Z reste l'annulation du texte.
+function typingIn(target, w) {
+  const shell = !!w && !!w.shellView && target === w.shellView.webContents;
+  const last = shell ? w.undoStack[w.undoStack.length - 1] : null;
+  const fresh = last && typeof last.created === 'string' ? last.created : '';
+  return target.executeJavaScript(`(() => { const e = document.activeElement; if (!e) return false; if (${JSON.stringify(fresh)} && e.matches('input.rename') && e.value === e.defaultValue && typeof editing === 'string' && editing === ${JSON.stringify(fresh)}) return false; return e.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(e.tagName); })()`).catch(() => true);
+}
+
 async function undo(w, way = 'undo') {
   const target = require('electron').webContents.getFocusedWebContents();
   // Un tableau au premier plan annule lui-même (ses éléments, ou le texte en cours de saisie).
   if (easels.history(target, way)) return;
-  let typing = false;
-  if (target) {
-    typing = await target.executeJavaScript('(() => { const e = document.activeElement; return !!e && (e.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(e.tagName)); })()').catch(() => true);
-  }
+  const typing = target ? await typingIn(target, w) : false;
   // Dans un champ de texte, ou sans action de la barre latérale à défaire : la page.
   if ((typing || !w.replay(way)) && target) target[way]();
 }
@@ -416,4 +424,4 @@ function run(win, name, arg) {
   }
 }
 
-module.exports = { TRANSFORMS, tracing: () => trace.state.on, minimizeAll, COMMANDS, byName, run, hooks, makeDefault, setSetting, appInfo, clearArchive, LIBRARY_SECTIONS, librarySection, REPO_URL };
+module.exports = { TRANSFORMS, tracing: () => trace.state.on, minimizeAll, COMMANDS, byName, run, hooks, makeDefault, setSetting, appInfo, clearArchive, LIBRARY_SECTIONS, librarySection, REPO_URL, typingIn };

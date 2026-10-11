@@ -97,16 +97,17 @@ function dynamicList(w) {
   const loc = tab ? w.locate(w.activeId) : null;
   const dirs = folders(w.space.pinned);
   const exts = w.incognito ? [] : extensionActions(w);
-  const labelled = COMMANDS.filter((c) => c.palette !== false && c.paletteLabel).map((c) => [c, c.paletteLabel(w)]);
+  const shortcuts = require('./shortcuts');
+  // Le raccourci affiché fait partie de la ligne : changé dans les Réglages, la liste est refaite.
+  const labelled = COMMANDS.filter((c) => c.palette !== false && c.paletteLabel).map((c) => [c, c.paletteLabel(w), shortcuts.keysOf(c.name)]);
   const sig = [
     store.state.settings.lang, w.spaceId, loc ? loc.list : '', d.spaces.map((s) => s.id + s.icon + s.name).join('\n'),
-    dirs.map((f) => f.id + f.name).join('\n'), exts.map((x) => x.id + (x.title || x.name) + x.enabled).join('\n'), labelled.map((x) => x[1]).join('\n'),
+    dirs.map((f) => f.id + f.name).join('\n'), exts.map((x) => x.id + (x.title || x.name) + x.enabled).join('\n'), labelled.map((x) => x[1] + '\t' + x[2]).join('\n'),
   ].join('\u0001');
   const had = dynamic.get(w);
   if (had && had.sig === sig) return had.list;
-  const shortcuts = require('./shortcuts');
   const list = [];
-  for (const [c, key] of labelled) if (key) list.push({ command: c.name, title: t(key), shortcut: shortcuts.keysOf(c.name) });
+  for (const [c, key, keys] of labelled) if (key) list.push({ command: c.name, title: t(key), shortcut: keys });
   for (const s of d.spaces) {
     const name = `${s.icon} ${s.name}`;
     if (s.id !== w.spaceId) list.push({ command: 'focusSpace', arg: s.id, title: t('cmd.focusSpace', { space: name }), sub: t('cmd.space') });

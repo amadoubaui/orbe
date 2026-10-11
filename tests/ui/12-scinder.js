@@ -39,7 +39,8 @@ module.exports = {
       });
       // La barre est bien à l'écran, au-dessus de sa page (rien ne la recouvre).
       const boite = await shell.locator('#pane-bars .pane-bar').nth(1).boundingBox();
-      assert.equal(await ctx.vueAu(boite.x + boite.width / 2, boite.y + boite.height / 2), shell.url());
+      // (La zone de dépôt reste un tiers de seconde après le lâcher, le temps du rebond de la bulle : on lit une fois qu'elle s'est retirée.)
+      await jusqua(async () => (await ctx.vueAu(boite.x + boite.width / 2, boite.y + boite.height / 2)) === shell.url(), 'barre du volet à l’écran, zone de dépôt retirée');
       assert.equal(await shell.locator('#pane-bars .pane-bar').nth(1).locator('[data-pane="menu"]').isVisible(), true);
     });
 

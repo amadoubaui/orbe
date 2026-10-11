@@ -638,6 +638,7 @@ function startRename(id) {
   editing = id;
   const input = document.createElement('input');
   input.className = 'rename';
+  input.defaultValue = current; // « pas encore touché » se lit ainsi (⌘Z, voir commands.js)
   input.value = current;
   holder.textContent = '';
   holder.appendChild(input);
@@ -888,7 +889,15 @@ const PAGER = {
   idle: 90, // sans événement pendant ce temps (ms), les doigts sont considérés levés
   response: 0.2, // ressort du glissement : réponse (s), amortissement critique (≈ 240 ms)
   elastic: 0.55, // raideur de l'élastique au bout de la rangée
-  create: 260, // tiré d'autant (px, relâchement déduit) au-delà du dernier Espace : un nouvel Espace est créé
+  // Nouvel Espace au bout de la rangée : un geste voulu, en deux temps. Tirer d'autant (px,
+  // relâchement déduit) au-delà du dernier Espace ARME la pastille « + » (elle prend la
+  // couleur de l'Espace) ; il faut alors garder les doigts posés, immobiles, le temps
+  // qu'un anneau se referme. Un balayage vif, même fort, ne crée rien : son inertie continue
+  // d'envoyer des événements qui s'éteignent, et la pastille se désarme avant tout silence.
+  create: 320,
+  createKeep: 0.7, // armée, la pastille le reste tant que le geste ne retombe pas sous cette part du seuil
+  createHold: 450, // doigts immobiles pendant ce temps (ms, après `idle`) : l'Espace est créé
+  jitter: 2, // armée : un frémissement des doigts (px) ne compte pas comme un mouvement
 };
 const pagerEl = $('pager');
 const scroller = $('scroll');
@@ -978,6 +987,36 @@ function slidePlus(p) {
   slide.plus.style.transform = `translateX(${Math.round((1 - p) * 26)}px) scale(${(0.6 + 0.4 * p).toFixed(3)})`;
 }
 
+// Pastille armée ou non (voir PAGER.create). Désarmée, le compte à rebours s'arrête.
+function slideArm(on) {
+  if (!slide || !!slide.armed === !!on) return;
+  slide.armed = !!on;
+  if (!on) slideHoldStop();
+  if (slide.plus) slide.plus.classList.toggle('armed', !!on);
+}
+
+function slideHoldStop() {
+  if (!slide || !slide.hold) return;
+  clearTimeout(slide.hold);
+  slide.hold = null;
+  if (slide.plus) slide.plus.classList.remove('hold');
+}
+
+// Les doigts se sont immobilisés, pastille armée : l'anneau se referme, puis l'Espace est créé.
+function slideHold() {
+  if (!slide || !slide.armed || slide.hold || !slide.plus) return;
+  slide.plus.style.setProperty('--hold', PAGER.createHold + 'ms');
+  slide.plus.classList.add('hold');
+  slide.hold = setTimeout(() => {
+    if (!slide || !slide.armed || !slide.plus) return;
+    slide.hold = null;
+    slide.armed = false;
+    slide.plus.classList.add('go');
+    send('command', 'newSpace');
+    slideFly(0, slideEnd);
+  }, PAGER.createHold);
+}
+
 // Prépare l'image fixe et la teinte de l'Espace `vm`, du côté `dir` (+1 : à droite).
 function slideGhost(vm, dir) {
   if (slide.ghost) slide.ghost.remove();
@@ -1047,6 +1086,7 @@ function slideFly(to, done) {
 function slideEnd() {
   if (!slide) return;
   const { pending, other, after, ghost, plus } = slide;
+  clearTimeout(slide.hold);
   if (plus) plus.remove();
   slideStop();
   clearTimeout(slide.swap);
@@ -1081,6 +1121,8 @@ function slideCommit() {
 // Les doigts sont levés (ou le geste s'est arrêté) : retour à l'Espace courant.
 function slideRelease() {
   if (!slide || slide.phase !== 'drag') return;
+  // Pastille armée : doigts posés, immobiles — la liste reste tirée le temps de l'anneau.
+  if (slide.armed) return void slideHold();
   slideFly(0, slideEnd);
 }
 
@@ -1141,6 +1183,12 @@ sidebar.addEventListener('wheel', (e) => {
     return;
   }
   if (slide && slide.commit) return; // un glissement décidé va à son terme
+  if (slide && slide.armed) {
+    if (Math.abs(e.deltaX) <= PAGER.jitter) return; // doigts posés : un frémissement ne change rien
+    // Le geste repart dans l'autre sens : on renonce, la liste revient, le reste du geste est ignoré.
+    if (e.deltaX < 0) { wheelLocked = true; slideArm(false); slideFly(0, slideEnd); return; }
+    slideHoldStop(); // il continue : le compte à rebours reprendra au prochain arrêt
+  }
   let x = e.deltaX;
   if (!slide) slideBegin();
   else { x += slideNow(); slideStop(); slide.phase = 'drag'; } // reprise en plein retour
@@ -1154,22 +1202,17 @@ sidebar.addEventListener('wheel', (e) => {
     // Bout de la rangée : la liste résiste, et ce qui a été tiré se relâche peu à peu.
     slide.raw = (slide.raw || 0) * 0.92 + e.deltaX;
     slideSet(elastic(slide.raw, W));
-    // Au-delà du dernier Espace : un « + » sort du bord et grandit avec le geste ;
-    // tiré franchement jusqu'au bout, il crée un nouvel Espace (comme dans Arc).
-    // Un balayage ordinaire n'y arrive pas : ce qui est tiré se relâche à mesure.
+    // Au-delà du dernier Espace : un « + » sort du bord et grandit avec le geste ; tiré
+    // franchement jusqu'au bout, il s'arme, et c'est en gardant les doigts posés qu'on crée
+    // le nouvel Espace (voir PAGER.create). Rien n'est créé pendant le mouvement.
     if (dir > 0 && slide.raw > 0 && !S.incognito) {
-      const p = Math.min(1, slide.raw / PAGER.create);
-      slidePlus(p);
-      if (p >= 1) {
-        wheelLocked = true;
-        slide.plus.classList.add('go');
-        send('command', 'newSpace');
-        slideFly(0, slideEnd);
-      }
-    } else slidePlus(0);
+      slidePlus(Math.min(1, slide.raw / PAGER.create));
+      slideArm(slide.armed ? slide.raw >= PAGER.create * PAGER.createKeep : slide.raw >= PAGER.create);
+    } else { slideArm(false); slidePlus(0); }
     return;
   }
   slide.raw = 0;
+  slideArm(false);
   slidePlus(0);
   slideSet(Math.max(-W, Math.min(W, x)));
   const far = Math.abs(slide.x) >= Math.min(W * PAGER.commit, PAGER.commitMax);
@@ -1702,7 +1745,7 @@ function setZone(on, e) {
   if (on === zoneOn && key === zoneKey) return;
   zoneOn = on;
   zoneKey = key;
-  send('dragZoneOver', on && e ? { x: e.clientX, y: e.clientY } : false);
+  send('dragZoneOver', on && e ? { x: e.clientX, y: e.clientY, id: drag ? drag.id : '' } : false);
 }
 function zoneKeyAt(x, y) {
   const panes = (S && S.panes) || [];
@@ -1729,8 +1772,9 @@ document.addEventListener('drop', (e) => {
   e.preventDefault();
   e.stopPropagation();
   const id = drag.id;
-  endDrag();
+  // Le dépôt d'abord : la zone, encore affichée, y fait rebondir la bulle de l'onglet.
   send('dropSplit', { id, x: e.clientX, y: e.clientY });
+  endDrag();
 }, true);
 
 function overSidebar(e) {

@@ -1159,6 +1159,9 @@ module.exports = async function selftest(ctx) {
   // Sensations : fichiers récents au survol de la Bibliothèque… (tests/sensations.js)
   await require('./sensations')({ ...ctx, check });
 
+  // Derniers points : onglet réveillé puis arrêté, raccourcis dans la barre de commande, nouvel Espace au bout de la rangée… (tests/derniers.js)
+  await require('./derniers')({ ...ctx, check });
+
   // Correctifs de la revue de sécurité : quarantaine, sauvegardes, aiguillage, Boosts, adresses étroites.
   await require('./securite')({ ...ctx, check });
 

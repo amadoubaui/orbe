@@ -16,6 +16,9 @@ module.exports = {
       const g = ids.length > 1 ? w.groupOf(ids[0]) : null;
       return { titres: ids.map((id) => w.data.tabs[id].title), actif: w.activeId ? w.data.tabs[w.activeId].title : null, empile: !!g && w.isVertical(g), pages: ids.map((id) => win.live.get(id).view.getBounds()) };
     });
+    // Page B à l'écran et chargée : le bouton montre « Actualiser » (et non « Arrêter »).
+    const pageBChargee = () => jusqua(async () => (await shell.locator('#reload-icon').getAttribute('href')) === '#i-reload'
+      && (await ctx.principal(({ w }, u) => !!w.activeRt && !w.activeRt.loading && w.activeRt.wc.getURL() === u, ctx.url('/b'))), 'Page B chargée, bouton « Actualiser »');
     const fenetres = () => ctx.principal(({ win }) => win.OrbeWindow.all.map((x) => ({ actif: x.activeId ? x.data.tabs[x.activeId].title : null, prive: x.incognito })));
 
     // --- Premiers pas -------------------------------------------------------------------
@@ -310,9 +313,14 @@ module.exports = {
       }
       await ctx.clic(shell, ctx.ligne('Page B'));
       await jusqua(async () => (await volets()).actif === 'Page B', 'Page B affichée');
+      // Page B dormait (elle a changé de fenêtre plus haut) : le clic la réveille, et tant qu'elle
+      // charge le bouton est « Arrêter ». On attend qu'il redevienne « Actualiser », comme on le
+      // lirait à l'écran ; cliquer avant arrêterait le réveil au lieu d'actualiser.
+      await pageBChargee();
       const vus = ctx.hits['/b'];
       await ctx.clic(shell, '#b-reload');
       await jusqua(() => ctx.hits['/b'] > vus, 'page rechargée');
+      await pageBChargee();
       await ctx.principal(({ w }, l) => w.setSidebarWidth(l), avant);
       await jusqua(async () => (await ctx.etat()).largeur === avant, 'largeur rétablie');
       // Entre le bouton de la barre et les flèches : la zone qui déplace la fenêtre (un vrai déplacement ne se pilote pas d'ici).
@@ -347,6 +355,7 @@ module.exports = {
     await t.verifier('au-dessus de la page, une bande déplace la fenêtre ; elle s’arrête où la page commence, et la page reçoit toujours les clics', async () => {
       await ctx.clic(shell, ctx.ligne('Page B'));
       await jusqua(async () => (await volets()).actif === 'Page B', 'Page B affichée');
+      await pageBChargee(); // l'écouteur posé plus bas ne survivrait pas à un chargement en cours
       const e = await ctx.principal(({ w }) => w.contentRect());
       const sous = (x, y) => shell.evaluate(([px, py]) => { const el = document.elementFromPoint(px, py); const cs = el ? getComputedStyle(el) : null; return el ? { id: el.id, region: cs.getPropertyValue('app-region') || cs.getPropertyValue('-webkit-app-region') } : null; }, [x, y]);
       assert.deepEqual(await sous(e.x + e.width / 2, 4), { id: 'page-drag', region: 'drag' });
