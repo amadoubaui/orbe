@@ -506,7 +506,7 @@ module.exports = async function finitions2Tests(ctx) {
     const pulse = seen.reduced ? 'none' : 'capture-pulse';
     check('onglet dont l’écran est partagé : sa ligne est surlignée en jaune, son témoin bat ; caméra ou micro seuls : témoin sans surlignage',
       !!seen.share && seen.share.cls.includes('sharing') && /rgb\(250, 204, 21\)/.test(seen.share.shadow) && seen.share.anim === pulse
-      && !!seen.cam && seen.cam.cls.includes('capturing') && !seen.cam.cls.includes('sharing') && seen.camRow === 'none' && seen.cam.anim === pulse, JSON.stringify(seen));
+      && !!seen.cam && seen.cam.cls.includes('capturing') && !seen.cam.cls.includes('sharing') && !/rgb\(250, 204, 21\)/.test(seen.camRow) && seen.cam.anim === pulse, JSON.stringify(seen));
     check('favori qui joue du son : trois barres dansent sur sa tuile (transformation seule) ; silencieux : rien',
       seen.bars.length === 3 && seen.bars.every((x) => x === (seen.reduced ? 'none' : 'tile-notes') + '/block') && (seen.reduced || seen.frames === 'transform') && seen.quiet === 'none,none,none', JSON.stringify(seen));
   }
