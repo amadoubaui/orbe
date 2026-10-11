@@ -1,0 +1,172 @@
+// Derniers points : onglet réveillé puis arrêté, raccourcis dans la barre de commande,
+// nouvel Espace au bout de la rangée (geste délibéré, annulable), aperçu d'un dossier au
+// survol, bulle et rebond du glisser vers une vue scindée, écran de création d'un Espace.
+// Appelé par tests/selftest.js, ou seul :
+//   ORBE_SCENARIO=tests/derniers.js node scripts/dev.js --selftest
+const http = require('http');
+const outils = require('./outils');
+
+const { sleep } = outils;
+const until = (fn, label, timeout = 10000) => outils.until(fn, label, timeout);
+const PAGER_HOLD = 90 + 450; // PAGER.idle + PAGER.createHold (src/renderer/shell.js)
+
+module.exports = async function derniersTests(ctx) {
+  const { first: w, store, win, OrbeWindow, shortcuts } = ctx;
+  let failed = 0;
+  const check = ctx.check || ((name, ok, detail = '') => { if (!ok) failed += 1; console.log(`${ok ? '  ✓' : '  ✗'} ${name}${ok || !detail ? '' : ' — ' + detail}`); });
+  const ui = (js) => w.ui.webContents.executeJavaScript(js);
+  const d = w.data;
+  const T = (k, v) => store.t(k, null, v);
+
+  await until(() => ui('typeof S === "object" && S !== null'), 'coque chargée');
+  const home = w.spaceId;
+  const homeActive = w.activeBySpace[home];
+  const sidebar0 = w.sidebarVisible;
+  if (!w.sidebarVisible) w.toggleSidebar(true);
+  const archive0 = store.state.archive.length;
+  const spaces0 = d.spaces.length;
+
+  // Pages locales ; « /lente » ne répond qu'après un délai (le temps d'arrêter le chargement).
+  const hits = {};
+  const server = await new Promise((resolve) => {
+    const srv = http.createServer((req, res) => {
+      hits[req.url] = (hits[req.url] || 0) + 1;
+      res.setHeader('content-type', 'text/html; charset=utf-8');
+      const page = () => res.end(`<!doctype html><meta charset="utf-8"><title>Derniers ${req.url}</title><h1>${req.url}</h1>`);
+      if (req.url === '/lente' && hits[req.url] === 1) return setTimeout(page, 1500);
+      return page();
+    });
+    srv.listen(0, '127.0.0.1', () => resolve(srv));
+  });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const mine = (x) => String(x.url || '').startsWith(base);
+
+  const space = store.makeSpace('Derniers', '🧪', '#0ea5e9');
+  d.spaces.push(space);
+  w.switchSpace(space.id);
+
+  // --- Onglet réveillé, chargement arrêté, puis « Actualiser » ---------------------------
+  {
+    const a = w.createTab(base + '/a', { space, index: 0 });
+    const b = w.createTab(base + '/lente', { space, index: 1 });
+    w.activate(a.id);
+    await until(() => { const rt = win.live.get(a.id); return rt && !rt.wc.isLoading() && rt.wc.getURL() === base + '/a'; }, 'page A chargée');
+    OrbeWindow.destroyView(b.id); // endormi : la ligne reste, la page n'existe plus
+    w.activate(b.id); // réveil : le chargement commence
+    const rt = await until(() => win.live.get(b.id), 'onglet réveillé');
+    await until(() => rt.wc.isLoading(), 'chargement commencé');
+    w.run('stop'); // « Arrêter » (le bouton pendant le chargement, ⌘. ou Échap)
+    await until(() => !rt.wc.isLoading(), 'chargement arrêté');
+    const vide = rt.wc.getURL();
+    w.reload(false);
+    const ok = await until(() => !rt.wc.isLoading() && rt.wc.getURL() === base + '/lente' && rt.wc.getTitle() === 'Derniers /lente', 'page rechargée', 6000).then(() => true, () => false);
+    check('onglet réveillé dont le chargement a été arrêté : « Actualiser » charge sa page (elle ne reste pas vide)', ok, `adresse après l’arrêt : « ${vide} », après actualiser : « ${rt.wc.getURL()} »`);
+  }
+
+  // --- Barre de commande : raccourci changé dans les Réglages --------------------------------
+  {
+    const keys0 = store.state.settings.shortcuts;
+    const row = (name) => w.commandList().find((c) => c.command === name && !c.arg);
+    const avant = [row('reload') && row('reload').shortcut, row('toggleSidebar') && row('toggleSidebar').shortcut];
+    const r1 = shortcuts.assign('reload', 'Ctrl+Alt+R');
+    const r2 = shortcuts.assign('toggleSidebar', 'Ctrl+Alt+B');
+    const apres = [row('reload') && row('reload').shortcut, row('toggleSidebar') && row('toggleSidebar').shortcut];
+    check('raccourci changé : la barre de commande le montre aussitôt, y compris pour une action dont le nom dépend de la fenêtre (« Masquer la barre latérale »)',
+      r1.ok && r2.ok && avant.join() === '⌘R,⌘S' && apres.join() === '⌃⌥R,⌃⌥B', JSON.stringify([avant, apres]));
+    const tape = w.suggestLocal(T('view.hideSidebar')).find((x) => x.command === 'toggleSidebar');
+    check('… et la suggestion tapée porte le nouveau raccourci', !!tape && tape.subtitle === '⌃⌥B', JSON.stringify(tape || null));
+    store.state.settings.shortcuts = keys0;
+    shortcuts.hooks.changed();
+    check('… raccourcis rétablis : la barre de commande revient aux raccourcis d’origine', row('reload').shortcut === '⌘R' && row('toggleSidebar').shortcut === '⌘S');
+  }
+
+  // --- Nouvel Espace au bout de la rangée : geste voulu, annulable (GES-2) ---------------------
+  {
+    w.hideModal();
+    w.switchSpace(space.id);
+    await until(() => ui(`!slide && S.space.id === ${JSON.stringify(space.id)} && S.near.next === null`), 'dernier Espace affiché');
+    if (await ui('reducedMotion.matches')) {
+      for (const n of ['balayage vif au bout de la rangée', 'tirer puis garder les doigts posés', 'tirer, puis repartir dans l’autre sens']) outils.ignorer(n, '« Réduire les animations » actif');
+    } else {
+      const n0 = d.spaces.length;
+      // Suite d'événements de molette (px), espacés de 8 ms ; rend ce que la pastille a montré en route.
+      const geste = (deltas) => ui(`(async () => { const vu = { arme: false, compte: false, max: 0 }; for (const dx of ${JSON.stringify(deltas)}) { document.getElementById('scroll').dispatchEvent(new WheelEvent('wheel', { deltaX: dx, bubbles: true, cancelable: true })); const el = document.querySelector('#pager .pager-plus'); if (el) { vu.arme = vu.arme || el.classList.contains('armed'); vu.compte = vu.compte || el.classList.contains('hold'); vu.max = Math.max(vu.max, Number(el.dataset.p)); } await new Promise((r) => setTimeout(r, 8)); } const el = document.querySelector('#pager .pager-plus'); vu.fin = el ? { arme: el.classList.contains('armed'), compte: el.classList.contains('hold') } : null; return vu; })()`);
+      // 1. Balayage vif et fort, doigts levés en plein élan : l'inertie s'éteint peu à peu.
+      const elan = []; for (let v = 110; v >= 1; v *= 0.93) elan.push(Math.round(v));
+      const vif = await geste(elan);
+      await until(() => ui('!slide'), 'retour de la liste', 4000);
+      await sleep(PAGER_HOLD + 200);
+      check('balayage vif au bout de la rangée, même fort (la pastille s’arme en route) : son élan s’éteint, la pastille se désarme, aucun Espace n’est créé',
+        vif.arme && vif.max === 1 && !vif.compte && d.spaces.length === n0 && w.space === space, JSON.stringify(vif) + ' ' + d.spaces.length);
+      // 2. Tirer, puis repartir dans l'autre sens : on renonce.
+      const renonce = await geste([...Array(12).fill(70), -20, -20, -10]);
+      await until(() => ui('!slide'), 'retour de la liste', 4000);
+      await sleep(PAGER_HOLD + 200);
+      check('tirer jusqu’à armer la pastille, puis repartir dans l’autre sens : la liste revient, aucun Espace n’est créé', renonce.arme && d.spaces.length === n0, JSON.stringify(renonce));
+      // 3. Tirer franchement, puis garder les doigts posés (plus aucun événement, à un frémissement près).
+      const tire = await geste([...Array(12).fill(70), 1, -1, 1]);
+      check('tirer franchement au-delà du dernier Espace : la pastille s’arme (couleur de l’Espace), rien n’est créé pendant le mouvement', tire.arme && tire.fin && tire.fin.arme && d.spaces.length === n0, JSON.stringify(tire));
+      await until(() => ui(`(() => { const el = document.querySelector('#pager .pager-plus.hold'); return !!el && getComputedStyle(el, '::after').animationName === 'pager-hold'; })()`), 'anneau du compte à rebours', 3000).catch(() => {});
+      const anneau = await ui(`!!document.querySelector('#pager .pager-plus.hold')`) && d.spaces.length === n0;
+      await until(() => d.spaces.length === n0 + 1, 'nouvel Espace', 4000).catch(() => {});
+      const cree = d.spaces.length === n0 + 1 ? w.space : null;
+      check('doigts posés, immobiles : un anneau se referme autour de la pastille, puis le nouvel Espace est créé — un seul', anneau && !!cree && cree !== space && d.spaces.length === n0 + 1, `${anneau} ${d.spaces.length}/${n0 + 1}`);
+      await until(() => ui('!slide'), 'fin du glissement', 4000);
+      const msg = w.toastShown || {};
+      check('le message « Nouvel Espace créé » propose « Annuler »', msg.text === T('toast.spaceCreated') && msg.label === T('edit.undo') && typeof w.toastAction === 'function', JSON.stringify(msg));
+      const pile = w.undoStack.length;
+      w.toastClick();
+      check('clic sur « Annuler » : l’Espace créé est retiré, l’Espace d’avant est affiché, et ⌘Z n’a plus rien à annuler pour lui',
+        d.spaces.length === n0 && !d.spaces.includes(cree) && w.space === space && w.undoStack.length === pile - 1, `${d.spaces.length}/${n0} ${w.undoStack.length}/${pile}`);
+      await sleep(120); // la demande de nom (60 ms) est passée
+      w.hideModal();
+    }
+    // ⌘Z après une création, et suppression d'un Espace vide : sans question.
+    const n1 = d.spaces.length;
+    w.newSpace();
+    const neuf = w.space;
+    const champ = `document.querySelector('#space-name input.rename')`;
+    await until(() => ui(`!slide && !!${champ} && document.activeElement === ${champ}`), 'champ de nom du nouvel Espace');
+    const intact = await ctx.commands.typingIn(w.shellView.webContents, w);
+    await ui(`${champ}.value = 'Travail'`);
+    const touche = await ctx.commands.typingIn(w.shellView.webContents, w);
+    await ui(`${champ}.value = ${champ}.defaultValue`);
+    check('nouvel Espace, champ de nom pas encore touché : ⌘Z n’est pas pris par le champ (il annulera la création) ; dès qu’on y a tapé, ⌘Z annule la saisie', intact === false && touche === true, `${intact} ${touche}`);
+    w.replay('undo');
+    check('nouvel Espace, puis ⌘Z : il est retiré', d.spaces.length === n1 && !d.spaces.includes(neuf) && w.space === space);
+    await until(() => ui(`!slide && !${champ}`), 'champ de nom retiré');
+    w.newSpace();
+    const vide = w.space;
+    const fini = await Promise.race([w.deleteSpace(vide.id).then(() => true), sleep(1500).then(() => false)]);
+    check('supprimer un Espace vide : aucune question, il part aussitôt ; ⌘Z le rétablit', fini && !d.spaces.includes(vide) && d.spaces.length === n1 && (w.replay('undo'), d.spaces.some((x) => x.id === vide.id)), String(fini));
+    const remis = d.spaces.find((x) => x.id === vide.id);
+    if (remis) w.removeSpace(remis.id);
+    w.hideToast();
+    w.undoStack.length = 0;
+    w.redoStack.length = 0;
+    await sleep(120);
+    w.switchSpace(space.id);
+    w.changed();
+    await until(() => ui(`!slide && S.space.id === ${JSON.stringify(space.id)}`), 'retour à l’Espace d’essai');
+  }
+
+  // --- Remise en état ---------------------------------------------------------------------
+  w.switchSpace(space.id);
+  for (const id of Object.keys(d.tabs)) if (mine(d.tabs[id])) { OrbeWindow.destroyView(id); delete d.tabs[id]; }
+  space.today = []; space.pinned = []; space.splits = [];
+  delete w.activeBySpace[space.id];
+  d.spaces.splice(d.spaces.indexOf(space), 1);
+  store.state.archive = store.state.archive.filter((x) => !mine(x));
+  for (const u of Object.keys(store.state.history)) if (u.startsWith(base)) delete store.state.history[u];
+  check('derniers points, remise en état : Espaces et archive retrouvent leur taille', d.spaces.length === spaces0 && store.state.archive.length === archive0, `${d.spaces.length}/${spaces0} ${store.state.archive.length}/${archive0}`);
+  w.closed.length = 0;
+  w.undoStack.length = 0;
+  w.redoStack.length = 0;
+  w.spaceId = home;
+  if (homeActive && d.tabs[homeActive]) w.activeBySpace[home] = homeActive;
+  if (w.sidebarVisible !== sidebar0) w.toggleSidebar(sidebar0);
+  w.layout();
+  w.changed();
+  await new Promise((r) => server.close(r));
+  if (!ctx.check && failed) throw new Error(`${failed} vérification(s) en échec`);
+};

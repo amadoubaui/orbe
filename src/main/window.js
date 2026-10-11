@@ -2574,8 +2574,17 @@ class OrbeWindow {
     this.switchSpace(space.id);
     let back = null;
     this.record('undo.newSpace', () => { back = this.removeSpace(space.id); }, () => back && back());
+    const entry = this.undoStack[this.undoStack.length - 1];
     this.changed();
-    this.toast(t('toast.spaceCreated')); // « New Space Created », comme dans Arc
+    // « New Space Created », comme dans Arc — avec « Annuler » : un Espace créé par mégarde
+    // (geste au bout de la rangée) se retire d'un clic, comme par ⌘Z.
+    this.toast(t('toast.spaceCreated'), null, () => {
+      const i = this.undoStack.indexOf(entry);
+      if (i < 0 || !this.data.spaces.includes(space)) return;
+      this.undoStack.splice(i, 1);
+      this.mute(() => entry.undo());
+      this.changed();
+    }, { label: t('edit.undo'), stay: 5000 });
     this.askRename(space.id);
   }
 
@@ -2788,7 +2797,10 @@ class OrbeWindow {
     const spaces = this.data.spaces;
     const space = spaces.find((s) => s.id === id);
     if (!space || spaces.length < 2 || this.incognito) return;
-    const r = await dialog.showMessageBox(this.win, {
+    // Espace vide (aucun onglet, aucun épinglé, aucun dossier) : rien à perdre, il part sans
+    // question — et revient par ⌘Z. La question protège les onglets d'un Espace qui en a.
+    const empty = !space.today.length && !space.pinned.length;
+    const r = empty ? { response: 0 } : await dialog.showMessageBox(this.win, {
       type: 'warning',
       message: t('spaces.deleteConfirm', { name: space.name }),
       detail: t('spaces.deleteDetail'),
@@ -3836,18 +3848,21 @@ class OrbeWindow {
   // `sound` : son qui accompagne le message (« error » pour un refus).
   // `action` : ce que fait un clic sur le message (aller à l'onglet qui vient de
   // s'ouvrir…) ; sans action, le clic le fait seulement disparaître.
-  toast(text, sound, action) {
+  // `action` : ce que fait un clic sur le message ; `label` : le nom de cette action, montré
+  // comme un bouton ; `stay` : durée d'affichage (ms).
+  toast(text, sound, action, { label = '', stay = 2100 } = {}) {
     if (this.win.isDestroyed()) return;
     if (sound) this.sound(sound);
     this.toastAction = typeof action === 'function' ? action : null;
+    this.toastShown = { text, label: this.toastAction ? label : '' };
     const send = () => {
       if (this.gone || this.toastView.webContents.isDestroyed()) return;
       this.win.contentView.addChildView(this.toastView);
       this.layout();
       this.toastView.setVisible(true);
-      this.toastView.webContents.send('overlay', { mode: 'toast', text, action: !!this.toastAction });
+      this.toastView.webContents.send('overlay', { mode: 'toast', text, action: !!this.toastAction, label: this.toastAction ? String(label) : '', stay });
       clearTimeout(this.toastTimer);
-      this.toastTimer = setTimeout(() => this.hideToast(), 2100);
+      this.toastTimer = setTimeout(() => this.hideToast(), stay);
     };
     if (!this.toastView) {
       this.toastView = this.makeUiView('overlay.html#toast');

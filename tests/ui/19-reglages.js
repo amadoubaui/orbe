@@ -232,9 +232,19 @@ module.exports = {
 
     await t.verifier('la barre de commande montre le nouveau raccourci', async () => {
       await ctx.nouvelOnglet();
-      await ctx.modal.keyboard.type('Actualiser la page', { delay: 8 });
-      await jusqua(async () => (await ctx.modal.locator('#cmd-list .cmd').allTextContents()).some((x) => x.includes('Actualiser la page') && x.includes('⌃⌥R')), 'raccourci dans les suggestions');
-      await ctx.modal.keyboard.press('Escape');
+      try {
+        await ctx.modal.keyboard.type('Actualiser la page', { delay: 8 });
+        await jusqua(async () => (await ctx.modal.locator('#cmd-list .cmd').allTextContents()).some((x) => x.includes('Actualiser la page') && x.includes('⌃⌥R')), 'raccourci dans les suggestions');
+      } catch (err) {
+        // Échec rare, jamais reproduit à la demande : ce que la barre montrait à cet instant.
+        const vu = await ctx.modal.evaluate(() => ({ fermee: document.getElementById('command').hidden, saisie: document.getElementById('cmd-input').value, lignes: [...document.querySelectorAll('#cmd-list .cmd')].map((x) => x.textContent) })).catch(() => null);
+        const su = await ctx.principal(({ w, req }) => ({ mode: w.modalMode, raccourci: req('shortcuts.js').keysOf('reload') })).catch(() => null);
+        err.message += ' — barre : ' + JSON.stringify(vu) + ' ; processus principal : ' + JSON.stringify(su);
+        throw err;
+      } finally {
+        // Barre laissée ouverte, elle ferait échouer toute la suite du groupe.
+        if (await ctx.commandeOuverte()) await ctx.modal.keyboard.press('Escape');
+      }
       await jusqua(async () => !(await ctx.commandeOuverte()), 'barre refermée');
     });
 

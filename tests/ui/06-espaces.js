@@ -217,8 +217,14 @@ module.exports = {
       assert.ok(vus.every((v) => v && v.pos === 'absolute'), 'pastille présente dès le premier pas : ' + JSON.stringify(vus));
       assert.ok(vus[2].p > vus[1].p && vus[1].p > vus[0].p && vus[2].p < 1 && vus[2].echelle > vus[0].echelle && vus[2].x < vus[0].x && vus[2].opacite > vus[0].opacite, 'elle avance et grandit avec le geste : ' + JSON.stringify(vus));
       assert.equal((await ctx.etat()).espaces.length, 2, 'rien n’est créé avant le bout');
-      // Le geste continue, franc : au bout, le nouvel Espace ; la suite du geste (inertie) n'en crée pas d'autre.
-      for (let i = 0; i < 14; i++) { await shell.mouse.wheel(40, 0); await ctx.sleep(16); }
+      // Le geste continue, franc : la pastille s'arme (couleur de l'Espace) ; rien n'est créé pendant le mouvement.
+      const armee = () => shell.evaluate(() => { const el = document.querySelector('#pager .pager-plus'); return !!el && el.classList.contains('armed'); });
+      let vueArmee = false;
+      for (let i = 0; i < 14; i++) { await shell.mouse.wheel(60, 0); await ctx.sleep(16); vueArmee = vueArmee || await armee(); }
+      assert.ok(vueArmee, 'pastille armée au bout du geste');
+      assert.equal((await ctx.etat()).espaces.length, 2, 'rien n’est créé tant que les doigts bougent');
+      // Doigts posés (plus aucun événement) : l'anneau se referme, puis le nouvel Espace — un seul.
+      await jusqua(() => shell.evaluate(() => !!document.querySelector('#pager .pager-plus.hold')), 'anneau du compte à rebours');
       await jusqua(async () => (await ctx.etat()).espaces.length === 3, 'nouvel Espace créé');
       await jusqua(() => shell.locator('#space-name input.rename').count(), 'champ de nom du nouvel Espace');
       await ctx.sleep(300);
@@ -226,10 +232,45 @@ module.exports = {
       assert.equal(e.espaces.length, 3, 'un seul Espace créé');
       assert.equal(e.espaces[2].nom, e.espace, 'il est affiché, à la suite du dernier');
       assert.equal(await shell.locator('#pager .pager-plus').count(), 0, 'la pastille est retirée');
-      // Remise en place : l'Espace d'essai est supprimé.
+      // Le message propose « Annuler » : un vrai clic dessus retire l'Espace créé.
+      const toast = await ctx.attendrePage('overlay.html#toast');
+      await jusqua(async () => (await toast.locator('#toast .act').count()) === 1 && (await toast.locator('#toast .act').textContent()) === (await ctx.texte('edit.undo')), 'bouton « Annuler » du message');
+      assert.ok((await toast.locator('#toast').textContent()).startsWith(await ctx.texte('toast.spaceCreated')));
+      await ctx.clic(toast, '#toast .act');
+      await jusqua(async () => (await ctx.etat()).espaces.length === 2 && (await pastilles.count()) === 2, 'Espace créé retiré par « Annuler »');
+      // La barre revient à l'Espace d'avant en glissant ; le champ de nom part avec l'Espace retiré.
+      await repos();
+      await jusqua(async () => (await shell.locator('#space-name input.rename').count()) === 0 && (await nom()) === 'Projets', 'Espace d’avant affiché, sans champ de nom');
+      await ctx.menu('Ctrl+2');
+      await jusqua(async () => (await nom()) === 'Projets', 'Espace Projets');
+      await repos();
+    });
+
+    await animer('balayage vif au bout de la rangée, doigts levés en plein élan : la pastille se désarme avec l’inertie, aucun Espace n’est créé', async () => {
+      await ctx.sleep(400);
+      await repos();
+      const c = await ctx.centre(shell.locator('#scroll'));
+      await shell.mouse.move(c.x, c.y);
+      let arme = false;
+      for (let v = 110; v >= 1; v *= 0.9) { await shell.mouse.wheel(Math.round(v), 0); await ctx.sleep(12); arme = arme || await shell.evaluate(() => !!document.querySelector('#pager .pager-plus.armed')); }
+      assert.ok(arme, 'le geste était assez fort pour armer la pastille');
+      await repos();
+      await ctx.sleep(700); // plus long que le compte à rebours : rien ne vient
+      assert.equal((await ctx.etat()).espaces.length, 2, 'aucun Espace créé');
+      assert.equal(await nom(), 'Projets');
+    });
+
+    await t.verifier('Espace vide : « Supprimer l’Espace » le retire sans poser de question ; ⌘Z le rétablit', async () => {
+      await ctx.principal(({ w }) => { w.newSpace(); });
+      await jusqua(async () => (await ctx.etat()).espaces.length === 3, 'Espace vide créé');
+      await jusqua(() => shell.locator('#space-name input.rename').count(), 'champ de nom');
       await shell.keyboard.press('Escape');
-      await ctx.principal(({ w }) => { w.removeSpace(w.space.id); });
-      await jusqua(async () => (await ctx.etat()).espaces.length === 2 && (await pastilles.count()) === 2, 'Espace d’essai retiré');
+      await ctx.menu('spaces.delete');
+      await jusqua(async () => (await ctx.etat()).espaces.length === 2 && (await pastilles.count()) === 2, 'Espace vide supprimé sans question');
+      await ctx.menu('Cmd+Z');
+      await jusqua(async () => (await ctx.etat()).espaces.length === 3, 'Espace rétabli');
+      await ctx.principal(({ w }) => { const s = w.data.spaces[w.data.spaces.length - 1]; w.removeSpace(s.id); w.undoStack.length = 0; });
+      await jusqua(async () => (await ctx.etat()).espaces.length === 2 && (await pastilles.count()) === 2, 'remise en place');
       await ctx.menu('Ctrl+2');
       await jusqua(async () => (await nom()) === 'Projets', 'Espace Projets');
       await repos();

@@ -642,6 +642,14 @@ O.on('overlay', (p) => {
     show('toast');
     const el = $('toast');
     el.textContent = p.text;
+    // Action nommée (« Annuler ») : montrée comme un bouton, à la suite du message.
+    if (p.action && p.label) {
+      const act = document.createElement('span');
+      act.className = 'act';
+      act.textContent = p.label;
+      el.appendChild(act);
+    }
+    el.style.setProperty('--stay', (Math.max(600, Number(p.stay) || 2100) - 200) + 'ms');
     el.style.cursor = p.action ? 'pointer' : '';
     el.classList.remove('in');
     void el.offsetWidth;

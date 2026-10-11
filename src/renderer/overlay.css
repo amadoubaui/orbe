@@ -236,7 +236,9 @@
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
 }
 /* Entrée au ressort, sortie brève ; la vue est retirée au bout de 2,1 s (window.js). */
-#toast.in { animation: toast-in var(--spring-bouncy) both, toast-out 180ms var(--ease-in) 1900ms forwards; }
+#toast.in { animation: toast-in var(--spring-bouncy) both, toast-out 180ms var(--ease-in) var(--stay, 1900ms) forwards; }
+#toast .act { margin-left: 10px; padding: 2px 8px; border-radius: 6px; background: rgba(255, 255, 255, 0.18); font-weight: 600; }
+#toast:hover .act { background: rgba(255, 255, 255, 0.3); }
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, -10px) scale(0.96); } }
 @keyframes toast-out { to { opacity: 0; transform: translate(-50%, -4px); } }
 

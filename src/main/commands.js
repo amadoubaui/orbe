@@ -342,14 +342,19 @@ function appInfo() {
   return [`Orbe ${app.getVersion()}`, `Electron ${process.versions.electron}`, `Chromium ${process.versions.chrome}`, `${process.platform} ${process.arch} ${require('os').release()}`].join('\n');
 }
 
+// La saisie en cours dans `target` a-t-elle quelque chose à annuler elle-même ? Dans la barre
+// latérale, un champ de nom auquel on n'a pas touché (celui qui s'ouvre à la création d'un
+// Espace ou d'un dossier) n'a rien à défaire : ⌘Z y annule l'action de la barre (la création).
+function typingIn(target, w) {
+  const shell = !!w && !!w.shellView && target === w.shellView.webContents;
+  return target.executeJavaScript(`(() => { const e = document.activeElement; if (!e) return false; if (${shell} && e.matches('input.rename') && e.value === e.defaultValue) return false; return e.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(e.tagName); })()`).catch(() => true);
+}
+
 async function undo(w, way = 'undo') {
   const target = require('electron').webContents.getFocusedWebContents();
   // Un tableau au premier plan annule lui-même (ses éléments, ou le texte en cours de saisie).
   if (easels.history(target, way)) return;
-  let typing = false;
-  if (target) {
-    typing = await target.executeJavaScript('(() => { const e = document.activeElement; return !!e && (e.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(e.tagName)); })()').catch(() => true);
-  }
+  const typing = target ? await typingIn(target, w) : false;
   // Dans un champ de texte, ou sans action de la barre latérale à défaire : la page.
   if ((typing || !w.replay(way)) && target) target[way]();
 }
@@ -416,4 +421,4 @@ function run(win, name, arg) {
   }
 }
 
-module.exports = { TRANSFORMS, tracing: () => trace.state.on, minimizeAll, COMMANDS, byName, run, hooks, makeDefault, setSetting, appInfo, clearArchive, LIBRARY_SECTIONS, librarySection, REPO_URL };
+module.exports = { TRANSFORMS, tracing: () => trace.state.on, minimizeAll, COMMANDS, byName, run, hooks, makeDefault, setSetting, appInfo, clearArchive, LIBRARY_SECTIONS, librarySection, REPO_URL, typingIn };
