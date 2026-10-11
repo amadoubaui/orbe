@@ -195,27 +195,21 @@ module.exports = async function derniersTests(ctx) {
     await until(() => w.activeId === t3.id, 'onglet du dossier affiché', 4000).catch(() => {});
     check('aperçu d’un dossier : Entrée affiche l’onglet trouvé ; le dossier reste replié et l’aperçu s’efface', w.activeId === t3.id && dossier.open === false && sous.open === false && (await until(async () => (await vu()) === null, 'aperçu effacé', 3000).then(() => true, () => false)));
     await until(() => ui(`!document.getElementById('folder-peek')`), 'panneau retiré', 3000).catch(() => {});
-    // Dossier vide, dossier ouvert, glisser en cours : pas d'aperçu.
-    await ui(`${tete('der-dossier')}.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, relatedTarget: null })), document.getElementById('sidebar').dispatchEvent(new PointerEvent('pointerover', { bubbles: true }))`);
-    await survol('der-vide');
-    await sleep(700);
-    const pasVide = await vu();
-    await ui(`document.getElementById('sidebar').dispatchEvent(new PointerEvent('pointerover', { bubbles: true })); document.body.classList.add('dragging')`);
-    await survol('der-dossier');
-    await sleep(700);
-    const pasGlisser = await vu();
-    await ui(`document.body.classList.remove('dragging'); document.getElementById('sidebar').dispatchEvent(new PointerEvent('pointerover', { bubbles: true }))`);
-    await survol('der-dossier');
-    const p2 = await until(vu, 'aperçu de nouveau', 4000).catch(() => null);
+    // Dossier vide, dossier ouvert, glisser en cours : pas d'aperçu. (Ouverture demandée
+    // directement, aux mêmes conditions qu'un survol : sur une machine d'essai, le vrai pointeur
+    // ou un changement de premier plan peut couper l'attente d'un survol simulé.)
+    const montrer = (id) => ui(`folderPeek.show(${JSON.stringify(id)})`);
+    const pasVide = await montrer('der-vide');
+    await ui(`document.body.classList.add('dragging')`);
+    const pasGlisser = await montrer('der-dossier');
+    await ui(`document.body.classList.remove('dragging')`);
+    const p2 = await montrer('der-dossier');
     dossier.open = true;
     w.changed();
     const efface = await until(async () => (await ui(`!document.getElementById('folder-peek')`)), 'aperçu effacé à l’ouverture', 3000).then(() => true, () => false);
-    await ui(`document.getElementById('sidebar').dispatchEvent(new PointerEvent('pointerover', { bubbles: true }))`);
-    await survol('der-dossier');
-    await sleep(700);
-    const pasOuvert = await vu();
+    const pasOuvert = await montrer('der-dossier');
     check('pas d’aperçu pour un dossier vide, pendant un glisser, ni pour un dossier ouvert ; l’aperçu s’efface quand son dossier s’ouvre',
-      pasVide === null && pasGlisser === null && !!p2 && efface && pasOuvert === null, JSON.stringify([pasVide, pasGlisser, !!p2, efface, pasOuvert]));
+      pasVide === false && pasGlisser === false && p2 === true && efface && pasOuvert === false, JSON.stringify([pasVide, pasGlisser, p2, efface, pasOuvert]));
     await ui('folderPeek.close(true)');
     w.activate(space.today[0]);
     space.pinned = space.pinned.filter((n) => n !== dossier && n !== videF);

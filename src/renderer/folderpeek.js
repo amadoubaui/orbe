@@ -158,5 +158,15 @@
     const box = panel.head.parentElement;
     if (!panel.head.isConnected || !box || box.classList.contains('open') || !S || !find(S.pinned, panel.id)) close(true);
   }).observe(pinned, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
-  window.folderPeek = { close, open: () => (panel ? panel.id : null), DWELL };
+  // Ouvre tout de suite l'aperçu du dossier `id`, aux mêmes conditions qu'un survol
+  // (replié, non vide, aucun glisser ni renommage en cours). Rend vrai s'il s'est ouvert.
+  function show(id) {
+    const head = pinned.querySelector(`.folder > .row[data-id="${CSS.escape(String(id))}"]`);
+    if (!head) return false;
+    close(true);
+    over = head;
+    open(head);
+    return !!panel && panel.head === head;
+  }
+  window.folderPeek = { close, show, open: () => (panel ? panel.id : null), DWELL };
 })();
