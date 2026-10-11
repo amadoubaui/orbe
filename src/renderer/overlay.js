@@ -2,11 +2,12 @@
 // bascule d'onglets, thème), de barre de recherche ou de notification.
 const $ = (id) => document.getElementById(id);
 const send = O.send;
-const panels = ['command', 'switcher', 'theme', 'icons', 'find', 'toast', 'peek', 'status', 'drop', 'swipe'];
+const panels = ['command', 'switcher', 'theme', 'space', 'icons', 'find', 'toast', 'peek', 'status', 'drop', 'swipe'];
 let mode = null;
 
 function show(name) {
   mode = name;
+  $('icons').classList.remove('beside');
   for (const p of panels) $(p).hidden = p !== name;
 }
 
@@ -513,7 +514,7 @@ function iconsMove(delta) {
 }
 
 function openIcons(p) {
-  show('icons');
+  if (p.kind !== 'draft') show('icons');
   iconsState = { kind: p.kind, current: p.current || '', tone: p.tone || 0, at: -1 };
   $('icons').style.left = (p.x || 260) + 'px';
   $('icons-tones').textContent = '';
@@ -538,11 +539,11 @@ iconsInput.addEventListener('keydown', (e) => {
   e.preventDefault();
   const all = iconButtons();
   const b = all[iconsState.at] || (iconsInput.value.trim() ? all[0] : null);
-  if (b) send('icon', { emoji: b.dataset.e, tone: iconsState.tone });
+  if (b) pickIcon(b.dataset.e);
 });
 iconsList.addEventListener('click', (e) => {
   const b = e.target.closest('.em-pick');
-  if (b) send('icon', { emoji: b.dataset.e, tone: iconsState.tone });
+  if (b) pickIcon(b.dataset.e);
 });
 // Les boutons ne prennent pas le clavier : on continue de taper dans le champ.
 for (const id of ['icons-list', 'icons-tones', 'icons-reset']) $(id).addEventListener('mousedown', (e) => e.preventDefault());
@@ -555,6 +556,133 @@ $('icons-tones').addEventListener('click', (e) => {
   iconsList.scrollTop = top;
 });
 $('icons-reset').onclick = () => send('icon', { emoji: '', tone: iconsState.tone });
+
+// Émoji choisi : pour un Espace en cours de création, il reste dans le panneau (rien n'est
+// encore créé) ; sinon il part au processus principal.
+function pickIcon(emoji) {
+  if (iconsState.kind !== 'draft') return send('icon', { emoji, tone: iconsState.tone });
+  draft.icon = emoji;
+  draft.tone = iconsState.tone;
+  closeDraftIcons();
+  return drawSpace();
+}
+
+// --- Création d'un Espace -----------------------------------------------------
+// Nom, icône, couleur (ou thème prêt), profil. Le brouillon reste ici : seul « Créer »
+// (ou Entrée) l'envoie, et le processus principal le vérifie avant de créer l'Espace.
+const SPACE_W = 316;
+const spaceInput = $('space-input');
+let draft = null; // { icon, tone, color, preset, profileId, x }
+const draftIconsOpen = () => mode === 'space' && !$('icons').hidden;
+
+function closeDraftIcons() {
+  $('icons').hidden = true;
+  $('icons').classList.remove('beside');
+  spaceInput.focus();
+}
+
+function drawSpace() {
+  $('space-icon').textContent = draft.icon;
+  for (const b of $('space-colors').children) { const on = !draft.preset && b.dataset.c === draft.color; b.classList.toggle('sel', on); b.setAttribute('aria-checked', String(on)); }
+  for (const b of $('space-presets').children) { const on = b.dataset.preset === draft.preset; b.classList.toggle('sel', on); b.setAttribute('aria-checked', String(on)); }
+  for (const b of $('space-profiles').children) { const on = b.dataset.profile === draft.profileId; b.classList.toggle('sel', on); b.setAttribute('aria-checked', String(on)); }
+  // Le panneau prend la couleur choisie : c'est l'aperçu.
+  const preset = OrbeTheme.PRESETS.find((x) => x.id === draft.preset);
+  const look = OrbeTheme.palette({ color: preset ? preset.colors[0] : draft.color }, document.documentElement.dataset.scheme === 'dark');
+  document.documentElement.style.setProperty('--accent', look.accent);
+  document.documentElement.style.setProperty('--on-accent', look.onAccent);
+}
+
+function openSpace(p) {
+  show('space');
+  const colors = (p.colors || []).filter(OrbeTheme.isHex);
+  draft = { icon: p.icon || '✨', tone: p.tone || 0, color: OrbeTheme.isHex(p.color) ? p.color : colors[0] || OrbeTheme.DEFAULT_COLOR, preset: '', profileId: String(p.profileId || 'default'), x: p.x || 260 };
+  $('space').style.left = draft.x + 'px';
+  $('icons').hidden = true;
+  const colorsBox = $('space-colors');
+  colorsBox.textContent = '';
+  for (const c of colors) {
+    const b = Object.assign(document.createElement('button'), { className: 'sw-color' });
+    b.dataset.c = c;
+    b.style.background = c;
+    b.setAttribute('role', 'radio');
+    colorsBox.appendChild(b);
+  }
+  const presetsBox = $('space-presets');
+  presetsBox.textContent = '';
+  for (const x of OrbeTheme.PRESETS) {
+    const look = OrbeTheme.palette({ colors: x.colors, accent: x.colors[0], intensity: 1, grain: 0, texture: x.texture, mode: 'light' }, false);
+    const b = Object.assign(document.createElement('button'), { className: 'preset', title: t('theme.preset.' + x.id) });
+    b.dataset.preset = x.id;
+    b.style.background = OrbeTheme.paint(look);
+    b.setAttribute('role', 'radio');
+    presetsBox.appendChild(b);
+  }
+  // Les noms de profil viennent de l'utilisateur : posés comme du texte.
+  const profilesBox = $('space-profiles');
+  profilesBox.textContent = '';
+  for (const pr of [...(p.profiles || []), { id: 'new', name: t('space.newProfile') }]) {
+    const b = Object.assign(document.createElement('button'), { className: 'space-profile', textContent: String(pr.name) });
+    b.dataset.profile = String(pr.id);
+    b.setAttribute('role', 'radio');
+    profilesBox.appendChild(b);
+  }
+  spaceInput.value = '';
+  drawSpace();
+  // L'animation d'entrée rejoue à chaque ouverture.
+  const el = $('space');
+  el.style.animation = 'none';
+  void el.offsetWidth;
+  el.style.animation = '';
+  spaceInput.focus();
+}
+
+function submitSpace(theme) {
+  if (!draft) return;
+  const a = { name: spaceInput.value, icon: draft.icon, tone: draft.tone, profileId: draft.profileId, theme: !!theme };
+  if (draft.preset) a.preset = draft.preset; else a.color = draft.color;
+  send('spaceCreate', a);
+}
+
+$('space-icon').onclick = () => {
+  if (draftIconsOpen()) return closeDraftIcons();
+  // À droite du panneau si la place y est, sinon par-dessus.
+  const beside = draft.x + SPACE_W + 8;
+  openIcons({ kind: 'draft', current: draft.icon, tone: draft.tone, x: beside + SPACE_W + 8 <= window.innerWidth ? beside : draft.x });
+  $('icons').classList.add('beside');
+  $('icons').hidden = false;
+  iconsInput.focus();
+  return undefined;
+};
+$('space-colors').addEventListener('click', (e) => {
+  const b = e.target.closest('.sw-color');
+  if (!b) return;
+  draft.color = b.dataset.c;
+  draft.preset = '';
+  drawSpace();
+});
+$('space-presets').addEventListener('click', (e) => {
+  const b = e.target.closest('.preset');
+  if (!b) return;
+  draft.preset = b.dataset.preset;
+  drawSpace();
+});
+$('space-profiles').addEventListener('click', (e) => {
+  const b = e.target.closest('.space-profile');
+  if (!b) return;
+  draft.profileId = b.dataset.profile;
+  drawSpace();
+});
+// Pastilles et profils ne prennent pas le clavier : on continue de taper le nom.
+for (const id of ['space-colors', 'space-presets', 'space-profiles']) $(id).addEventListener('mousedown', (e) => e.preventDefault());
+$('space-theme').onclick = () => submitSpace(true);
+$('space-create').onclick = () => submitSpace(false);
+$('space-cancel').onclick = () => send('closeOverlay');
+spaceInput.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' || e.isComposing) return;
+  e.preventDefault();
+  submitSpace(false);
+});
 
 // --- Recherche dans la page -------------------------------------------------
 const findInput = $('find-input');
@@ -590,6 +718,7 @@ O.on('overlay', (p) => {
   else if (p.mode === 'switcher') openSwitcher(p);
   else if (p.mode === 'theme') openTheme(p);
   else if (p.mode === 'icons') openIcons(p);
+  else if (p.mode === 'space') openSpace(p);
   else if (p.mode === 'command-value') {
     // Barre de commande déjà ouverte : une autre adresse à modifier (adresse d'un épinglé).
     if (mode === 'command' && typeof p.value === 'string') { input.value = p.value; input.select(); input.dispatchEvent(new Event('input')); }
@@ -679,6 +808,8 @@ O.on('overlay', (p) => {
     void el.offsetWidth;
     el.classList.add('in');
   } else {
+    // Panneau de création refermé : la vue reprend les couleurs de l'Espace affiché.
+    if (draft) { draft = null; send('themeGet').then(applyLook).catch(() => {}); }
     show(null);
   }
 });
@@ -709,7 +840,8 @@ $('peek-split').onclick = () => send('peekSplit');
 $('backdrop').addEventListener('mousedown', (e) => {
   // Barre de commande : le point du clic part avec la fermeture (la barre latérale reste cliquable).
   if (mode === 'command') send('closeOverlay', { x: e.clientX, y: e.clientY });
-  else if (mode === 'theme' || mode === 'icons') send('closeOverlay');
+  else if (draftIconsOpen()) closeDraftIcons();
+  else if (mode === 'theme' || mode === 'icons' || mode === 'space') send('closeOverlay');
   else if (mode === 'peek') send('peekClose');
 });
 // Bascule d'onglets : Tab ne déplace pas le focus, relâcher ⌃ valide.
@@ -719,6 +851,7 @@ document.addEventListener('keyup', (e) => {
 document.addEventListener('keydown', (e) => {
   if (mode === 'switcher' && e.key === 'Tab') e.preventDefault();
   if (e.key !== 'Escape') return;
+  if (draftIconsOpen()) { e.preventDefault(); closeDraftIcons(); return; }
   if (mode === 'find') send('findClose');
   else if (mode === 'peek') send('peekClose');
   else if (mode) send('closeOverlay');

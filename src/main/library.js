@@ -361,7 +361,7 @@ async function action(name, a, sender) {
       return false;
     }
     case 'lib:newSpace':
-      if (w) w.newSpace();
+      if (w) w.askNewSpace();
       return !!w;
     case 'lib:boost': {
       const o = a && typeof a === 'object' ? a : {};
