@@ -12,6 +12,8 @@ Ce document est d'abord un travail de recherche ; les points cochés ont été r
 
 Un **deuxième tour** de recherche (11 oct., de la 0.12 à la 0.15.1) est en section 8 ter :
 mesures version contre version, coût au repos, et les points ENER, DEM-10 à 12, PERF-30 et 31.
+Un **troisième tour** (section 8 quater) explique le coût d'une animation (ENER-4, ENER-7) et
+décompose le retard de la vue modale (DEM-12, DEM-13).
 
 ## 1. Comment les chiffres ont été pris
 
@@ -1097,24 +1099,52 @@ Classés par gain ressenti rapporté au risque.
   mouvement réduit) et relancé au survol ; pulsation remplacée par un point fixe après dix
   secondes. Gain : 7 % d'un cœur pendant ces états. Risque : goût — ce sont des signes de vie
   voulus ; à décider. Effort S.
-- ⬜ **ENER-4 — Comprendre pourquoi une animation minuscule coûte une fenêtre entière.**
-  Un trait de 2 px ou un cœur de 11 px coûtent 50 à 200 ms/s de processeur graphique : toute la
-  fenêtre (3 456 × 2 234 points d'écran) est recomposée à 120 Hz. À essayer, chiffres à l'appui
-  (`repos` avec `ORBE_BENCH_CSS`) : sans translucidité (`vibrancy`), sans le grain, avec la zone
-  animée isolée (`contain: strict`, couche propre). Si une cause simple ressort, toutes les
-  animations d'Orbe — y compris pendant les chargements — coûteraient moins. Gain : inconnu ;
-  risque : aucun tant que ce n'est qu'une mesure. Effort M.
+  **Précision d'ENER-4 (8 quater)** : ces +45 et +42 ms/s avaient été relevés sur un élément posé
+  hors de la barre latérale. À leur vraie place, fenêtre sans le clavier (le cas d'une musique
+  d'ambiance ou d'une visioconférence dans une autre application), le coût est de **107 à 193 ms/s**
+  de processeur graphique : voir ENER-7.
+- ✅ **ENER-4 — Comprendre pourquoi une animation minuscule coûte une fenêtre entière.** *(compris et mesuré le 11 oct., section 8 quater ; aucun changement de l'application)*
+  Compris et mesuré (section 8 quater). Deux causes qui s'ajoutent, aucune n'est la taille de la
+  fenêtre : (1) un coût **fixe par image**, 120 fois par seconde, dans le processus graphique et
+  dans la coque (35 à 42 + 18 à 23 ms/s), le même pour une fenêtre de 700 × 500 ou de
+  1 728 × 1 035, avec ou sans translucidité, grain, couche isolée ; (2) fenêtre **sans le
+  clavier**, `body.blurred #sidebar > * { opacity: 0.7 }` enferme l'animation dans un groupe
+  translucide que le compositeur doit redessiner à part à chaque image : **×3 à ×5**
+  (107 à 193 ms/s). Aucun changement sans effet sur l'aspect n'a été trouvé : rien n'est modifié
+  dans l'application ; les suites possibles sont ENER-7.
+- ⬜ **ENER-7 — Fenêtre à l'arrière-plan : ne plus composer un groupe translucide par image.**
+  Décision de goût, chiffres en 8 quater (égaliseur d'un favori, charge 4 à 5, fenêtre sans le
+  clavier) : tel quel **167 ms/s** graphique et 32 coque ; (a) animations sans fin **figées** tant
+  que la fenêtre n'a pas le clavier (`animation-play-state: paused` sous `body.blurred`) :
+  **0,6** et 0,6 — l'égaliseur et la pulsation de capture ne bougent plus dans une fenêtre
+  d'arrière-plan ; (b) ne plus estomper le groupe qui contient l'animation : **35** et 18 — la
+  rangée des favoris (ou la ligne d'adresse pendant une capture) reste à pleine opacité ;
+  (c) estomper les éléments un à un plutôt que le groupe : **53** et 29 — presque invisible, mais
+  pas identique (une tuile active laisse voir son fond à travers l'icône). Recommandé : (a), qui
+  règle aussi ENER-3 pour le cas le plus long (Orbe derrière une autre application). Effort S.
 - ⬜ **DEM-11 — Charger au besoin les modules que le lancement n'utilise pas.**
   Après DEM-10 il reste 20 à 28 ms de `require` avant « prêt » (13–21 en 0.12). `sessions.js`
   en tire 5 à 9 : `passwords` 1,1–2,1 ms, `ext-api` 1,3–1,8, `permissions` 0,7–1,4, `extensions`
   0,9–1,3, `downloads` 0,4–0,8. Gain attendu : 3 à 6 ms. Ces modules gardent des frontières de
   sécurité (mots de passe, autorisations, extensions) : l'ordre de leur chargement ne doit pas
   changer sans relecture. Risque moyen pour un gain faible : **en bas de liste**. Effort M.
-- ⬜ **DEM-12 — Vue modale : +56 à +75 ms depuis la 0.12.** La vue modale (barre de commande) est
-  prête 489–516 ms après le lancement contre 433–441 ; l'écart avec la coque chargée est passé
-  de 64 à 81 ms. Sans effet visible (la première barre de commande s'ouvre toujours en 17–21 ms)
-  mais c'est du travail fait pendant que la première page se peint. À décomposer (taille de
-  `overlay.js`, 725 lignes, et de ses feuilles de style). Gain : inconnu ; risque faible. Effort S.
+- ➖ **DEM-12 — Vue modale : +56 à +75 ms depuis la 0.12.** Décomposé (8 quater, `mesures.js
+  modale`), **rien à gagner pour la personne** : +24 ms viennent de la coque elle-même, chargée
+  plus tard (DEM-13) ; +15 ms sont l'attente voulue du premier rendu de la barre latérale
+  (8 bis), dont 12 se regagnent aussitôt (la demande n'attend plus derrière ce rendu) ; +11 ms
+  sont la page de la vue, plus lourde (textes 79 → 132 Ko copiés deux fois par vue, `emojis.js`,
+  `overlay.js` 20 → 39 Ko). Essayé puis **retiré** : ne demander d'abord qu'une vue (coque
+  chargée → vue modale prête **85 → 49 ms**, « vue modale prête » 548 → 506 ms), car les deux
+  autres se chargent alors juste après et la première barre de commande, demandée à cet
+  instant, passe de 24 à 55 ms : le travail est déplacé, pas supprimé (barre affichée au plus
+  tôt à 572 → 561 ms, dans le bruit). Essayé aussi : n'envoyer qu'une langue aux vues
+  (516 → 511 ms, dans le bruit, pour un changement du pont de l'interface) : écarté.
+- ⬜ **DEM-13 — La page de la coque se charge 22 ms plus lentement qu'en 0.12.** Relevé en passant
+  (8 quater) : de la navigation à l'événement `load` de `shell.html`, 95 ms (88–110) en 0.12,
+  118 ms (104–136) aujourd'hui, profil vide, charge 4. C'est l'essentiel du retard de toutes les
+  étapes suivantes (barre rendue, vue modale). Non décomposé (scripts de la coque 105 → 150 Ko,
+  textes 79 → 132 Ko transmis par un appel synchrone puis recopiés par le pont : 8 ms par vue,
+  mesuré sur la vue modale). Gain : inconnu, 10 à 20 ms au mieux ; risque faible à moyen. Effort M.
 - ➖ **PERF-30 — Ne pas envoyer un état identique au précédent.** Écarté après mesure :
   `sendState` envoie bien 60 fois sur 60 un état identique si on l'appelle 60 fois (0,12 ms côté
   principal, 1,5 ms de tâche dans la coque à 200 onglets), mais au repos **aucun** état n'est
@@ -1135,11 +1165,147 @@ Classés par gain ressenti rapporté au risque.
 
 ### Ce que je recommande ensuite
 
-1. Décider d'ENER-3 (c'est une affaire de goût, le chiffre est là).
-2. ENER-4 : une demi-journée de mesures qui peut alléger **toutes** les animations.
-3. Refaire `repos` sur l'application empaquetée, fenêtre réellement recouverte par une autre
+1. Décider d'ENER-7 et d'ENER-3 ensemble (affaire de goût ; les chiffres sont en 8 quater).
+2. Refaire `repos` sur l'application empaquetée, fenêtre réellement recouverte par une autre
    application et sur batterie (`powermetrics` demande les droits d'administrateur) : la
    consommation en watts n'a pas pu être relevée ici, seulement le temps de processeur.
+
+## 8 quater. Troisième tour (branche `ener-4`, 11 oct.) : coût d'une animation, vue modale
+
+Deux points ouverts de 8 ter, repris par la mesure. Aucun changement dans l'application : les
+causes sont trouvées et chiffrées, les suites sont des décisions (ENER-7) ou sans gain (DEM-12).
+Outils ajoutés : `mesures.js repos --variante <nom>…` (une animation posée dans la coque, une
+chose changée à la fois, variantes en alternance ; table `VARIANTES` de `tests/mesures.js`),
+`ORBE_BENCH_TRACE=<fichier>` (trace du compositeur, 3 s) et la mesure `modale`.
+
+**Lecture des chiffres.** Ce sont des temps de processeur (ms de calcul par seconde écoulée),
+pas des durées. Ils dépendent de la charge autrement qu'on l'attend : le même égaliseur coûte
+107 à 118 ms/s machine chargée (charge 14 à 22) et 167 à 193 ms/s machine calme (charge 4 à 5),
+sans doute parce que le travail passe alors sur les cœurs économes (supposé, non vérifié). Ne
+comparer que des colonnes d'une même série. Fenêtres discrètes pour toutes les séries (aucune
+fenêtre visible n'a été utilisée) : la fenêtre d'essai n'a donc **jamais le clavier**.
+
+### ENER-4 : ce que coûte une animation, et pourquoi
+
+Égaliseur d'essai : trois barres de 3 × 8 px animées par `tile-notes` (transformation seule),
+posées dans la coque, page fixe, fenêtre de 1 360 × 860. Série 1 : 3 tours de 8 s en alternance,
+17 variantes, charge 9 à 16.
+
+| Variante | graphique (ms/s) | coque (ms/s) | réveils/s |
+| --- | --- | --- | --- |
+| témoin, aucune animation | 0,6 (0,4–0,7) | 0,5 | 16 |
+| égaliseur, sur le fond de la coque | **42,4** (31,5–42,8) | **23,1** | 328 |
+| fenêtre de 700 × 500 | 38,0 (32,1–38,5) | 20,6 | 325 |
+| fenêtre de 1 728 × 1 035 (tout l'écran) | 37,5 (35,8–39,5) | 20,9 | 318 |
+| sans translucidité (`setVibrancy(null)`, fond blanc) | 34,8 (31,9–38,8) | 19,8 | 339 |
+| fenêtre et coque à fond opaque | 38,0 (37,6–45,0) | 21,3 | 338 |
+| sans le grain | 43,1 (40,2–47,0) | 25,9 | 320 |
+| zone isolée (`contain: strict`, `isolation`, `will-change`) | 37,2 (31,3–53,8) | 21,1 | 341 |
+| page de l'onglet masquée / vue modale masquée | 36,7 / 38,5 | 21,4 / 21,2 | 325 / 312 |
+| pulsation d'opacité (`capture-pulse`) au lieu de l'égaliseur | 40,9 (30,4–42,5) | 22,5 | 313 |
+| même mouvement sur `height` (hors compositeur) | 74,7 (67,0–87,9) | 66,5 | 340 |
+| `steps(4)` : 8 positions par cycle | 20,8 (17,0–23,4) | 12,3 | 267 |
+| `steps(13)` : 29 positions par seconde | 34,1 (28,3–43,2) | 19,6 | 314 |
+| minuterie à 12 images par seconde, sans animation CSS | 20,2 (19,8–25,1) | 12,8 | 263 |
+| minuterie à 30 images par seconde | 37,0 (33,8–41,1) | 31,6 | 325 |
+| **le même égaliseur dans `#sidebar`** | **115** (76,7–117,8) | 27,5 | 322 |
+
+Ce que la série écarte : **la taille de la fenêtre, la translucidité, le grain, l'isolation de
+la zone** ne changent rien (les variantes `sans-flou` et `sans-masque` existent mais n'ont pas
+été mesurées : la trace les rend sans objet). La trace du compositeur le confirme : 361 images en
+3 s (120 par seconde), mais le dessin lui-même est négligeable (`DirectRenderer::DrawFrame`,
+17 µs par image, aucune passe de rendu : chaque couche part telle quelle vers CoreAnimation). La
+fenêtre n'est **pas** redessinée en entier ; ce qui coûte est le **tour de manège de chaque
+image** (signal de l'écran, ordonnanceurs, envoi et accusé de l'image, remise à CoreAnimation) :
+environ 0,3 ms de processeur graphique et 0,2 ms de coque, 120 fois par seconde. Ce coût ne
+baisse pas en proportion du nombre d'images : 12 images par seconde coûtent encore la moitié de
+120, parce que le compositeur reste éveillé entre deux images (263 réveils par seconde). Il n'y
+a donc pas de demi-mesure utile : une animation tourne (≈ 40 + 20 ms/s) ou ne tourne pas (≈ 1).
+`transform` et `opacity` restent le bon choix (`height` : le double, et le triple dans la coque).
+
+Ce que la série trouve : dans la barre latérale, la même animation coûte **trois fois plus**.
+La trace montre une passe de rendu de plus à chaque image (`DirectRenderer::DrawRenderPass`,
+3 quadrilatères : les trois barres). Cause : `body.blurred #sidebar > * { opacity: 0.7 }`
+(`shell.css`, « fenêtre passée à l'arrière-plan »). Un groupe translucide qui contient
+plusieurs couches doit être composé à part puis fondu : dès qu'une animation tourne dans un
+enfant de la barre, ce groupe est redessiné 120 fois par seconde. Série 2 (2 tours de 8 s,
+charge 16 à 22) :
+
+| Variante (fenêtre sans le clavier) | graphique (ms/s) | coque (ms/s) |
+| --- | --- | --- |
+| égaliseur sur le fond de la coque (hors de tout groupe) | 39,8 | 22,1 |
+| égaliseur dans `#sidebar` | **114,6** | 26,3 |
+| le même, sans l'opacité de l'arrière-plan | **36,5** | 20,0 |
+| dans un groupe à 70 % de 11 × 8 px / 44 × 44 / 250 × 800 | 79,0 / 102,7 / 104,2 | 18,2 / 21,9 / 20,0 |
+| **vraie règle** : favori qui joue (`.tile.audible .dot i`) | **118,1** (103–118) | 22,0 |
+| **vraie règle** : note de capture (`#capture-note`) | **108,5** (102–109) | 21,5 |
+
+La taille du groupe compte peu (79 à 104) : c'est d'avoir une passe de plus qui coûte. Série 3,
+machine calme (3 tours de 8 s, charge 4 à 5), pour chiffrer les suites possibles (ENER-7) :
+
+| Favori qui joue, fenêtre sans le clavier | graphique (ms/s) | coque (ms/s) | réveils/s |
+| --- | --- | --- | --- |
+| témoin, aucune animation | 0,6 | 0,4 | 16 |
+| tel quel | **167,3** (jusqu'à 192,7) | 31,7 | 308 |
+| sans l'opacité de l'arrière-plan (= fenêtre qui a le clavier, supposé) | 35,1 (32,5–40,4) | 18,0 | 335 |
+| égaliseur figé tant que la fenêtre n'a pas le clavier | **0,6** (0,5–0,6) | 0,6 | 52 |
+| opacité portée par les éléments, pas par le groupe | 52,9 (31,3–55,6) | 29,1 | 317 |
+| note de capture, telle quelle | 106,5 (97,4–160,1) | 18,7 | 338 |
+
+(Un tour de « tel quel » sur trois n'a pas reçu la classe `audible` — la tuile venait d'être
+redessinée — et a mesuré 1,5 ms/s sans animation : défaut de la variante, pas de l'application ;
+la médiane et le maximum viennent des deux autres.)
+
+Conséquences :
+
+- Le cas le plus long des animations sans fin est aussi le plus cher : une musique dans un
+  favori ou une visioconférence **pendant qu'on travaille dans une autre application**, donc
+  fenêtre d'Orbe sans le clavier : 11 à 19 % d'un cœur dans le processus graphique, plus 2 à 3 %
+  dans la coque, tant que dure l'état.
+- Les +45 ms/s d'ENER-3 étaient sous-estimés (élément d'essai hors de la barre).
+- Les chiffres d'ENER-1 et d'ENER-2 ont tous été pris fenêtre sans le clavier, avant comme
+  après : ils restent comparables entre eux.
+- Non vérifié : la fenêtre qui **a** le clavier (interdit ici : prendre le clavier de la
+  personne). La variante « sans l'opacité » en tient lieu.
+- `tests/mesures.js` : la période « lecteur » commençait parfois avant que le titre du lecteur
+  ait commencé à défiler et comptait ce défilement (107 ms/s et une animation en cours, au lieu
+  de 11 à 18 ms/s et aucune). Vérifié à part : le défilement s'arrête bien après un aller-retour
+  (27,9 s pour 221 px), avec ou sans note de mise à jour. Le scénario attend maintenant la carte.
+
+### DEM-12 : d'où viennent les millisecondes de la vue modale
+
+`mesures.js modale` horodate les étapes en enveloppant `fillSpares`, `adoptSpare` et
+`spareReady` sur la fenêtre (rien à modifier dans la version mesurée). Profil vide, 7 tours en
+alternance, charge 4,1 ; ms depuis la création du processus :
+
+| Étape | 0.12 | aujourd'hui | écart |
+| --- | --- | --- | --- |
+| coque chargée | 403 (383–447) | 427 (404–458) | **+24** |
+| dont : page de la coque, navigation → `load` | 95,5 (88–110) | 118 (104–136) | +22 |
+| coque chargée → réserve demandée | −1,1 | 15,4 (11–21) | **+16,5** (attente voulue du premier rendu) |
+| demandée → première vue créée | 14,5 (3,9–18,8) | 2,3 | **−12** (ne passe plus derrière ce rendu) |
+| vue créée → vue chargée (trois vues de front) | 46,9 (42–64) | 58,3 (55–64) | **+11** |
+| dont : scripts et styles de la page de la vue | 37,3 | 45,4 | +8 |
+| vue chargée → vue modale prête | 3,9 | 4,2 | 0 |
+| **vue modale prête** | 460 (448–511) | 506 (486–544) | **+46** |
+
+Dans la page d'une vue (instrumentation provisoire, non gardée ; 5 tours, charge 4,9) : le
+script de préchargement ne démarre que 26 ms après le début de la navigation (trois vues se
+partagent le fil de la coque) ; l'appel synchrone qui rapporte les textes dure 4,1 ms, leur
+recopie par le pont 4,2 ms ; feuilles de style puis scripts 7 ms (`emojis.js` 0,6 ms,
+`overlay.js` 0,2 ms d'exécution : c'est leur chargement qui compte, pas leur exécution).
+
+Deux essais, mesurés en alternance contre `main`, non gardés :
+
+| Essai | « vue modale prête » | reste | Verdict |
+| --- | --- | --- | --- |
+| n'envoyer que le français aux vues (9 tours, charge 5,5) | 516 → 511 (492–623) | barre rendue 463 → 447 (422–528) | dans le bruit ; change le pont de l'interface |
+| une seule vue demandée d'abord, les autres une fois la vue modale née (7 tours, charge 5,1) | coque chargée → prête **84,5 → 48,6** (46–57) | dernière vue de la réserve prête au même moment (95 → 94 ms après la coque) | gain réel sur l'étape… |
+| le même, 200 onglets / 13 Espaces / 10 profils (9 tours, charge 5,6) | 548 → **506** (0.12 : 467) | première barre de commande **24 → 55 ms** | … mais déplacé : la barre demandée à cet instant attend les deux autres vues |
+
+Le second essai ramène l'étape sous celle de la 0.12, mais la somme « vue modale prête +
+première barre » passe de 572 à 561 ms : rien de plus tôt pour la personne, et rien du tout pour
+qui n'appuie pas sur ⌘T dans la demi-seconde du lancement. Retiré.
 
 ## 9. Animations des vues natives (ANIM)
 

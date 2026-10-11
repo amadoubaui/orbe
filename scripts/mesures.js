@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Mesures de vitesse et de mémoire d'Orbe (voir docs/suivi/ameliorations.md).
-//   node scripts/mesures.js <mesure> [--tours 8] [--arbre <dossier>]… [--app <Orbe.app>] [--avec "--drapeau=…"] [--historique 8500] [--onglets 300] [--espaces 13] [--profils 10] [--pause 0] [--naturel 1] [--visible 1]
+//   node scripts/mesures.js <mesure> [--tours 8] [--variante <nom>]… [--arbre <dossier>]… [--app <Orbe.app>] [--avec "--drapeau=…"] [--historique 8500] [--onglets 300] [--espaces 13] [--profils 10] [--pause 0] [--naturel 1] [--visible 1]
 // Mesures : demarrage, memoire, navigation, commande, etat, voisins, gestes, repos (tests/mesures.js).
 // --espaces / --profils : les onglets du profil sont répartis dans autant d'Espaces et de profils
 // (forme d'un vrai profil ancien). --naturel 1 : sans le drapeau qui empêche Chromium de mettre
@@ -10,6 +10,9 @@
 // toujours pas le clavier), pour les mesures qui en dépendent (fenêtre réellement recouverte)
 // ou pour comparer ; --compare-visible 1 : les deux, en alternance. Une application empaquetée
 // (--app) ne charge pas ce module : ses fenêtres restent visibles.
+// --variante <nom> (mesure « repos ») : chaque cible est doublée d'une jumelle par variante de
+// tests/mesures.js (VARIANTES : une animation posée dans la coque, sans translucidité, etc.),
+// toutes en alternance ; la période mesurée est alors « variante ».
 // Plusieurs --arbre (ou --app) : les lancements alternent (A, B, A, B…) pour annuler
 // la dérive d'une machine chargée ; la médiane de chaque valeur est affichée avec
 // la charge moyenne relevée. Les profils sont temporaires, jamais le vrai.
@@ -42,6 +45,13 @@ if (Number(opt('compare-visible', [0])[0])) for (const t of targets.filter((x) =
 // --avec "<drapeaux de Chromium>" : chaque cible est doublée d'une jumelle lancée avec ces drapeaux.
 for (const flags of opt('avec', [])) {
   for (const t of targets.filter((x) => !x.extra)) targets.push({ ...t, name: t.name + ' ' + flags.replace(/^--/, ''), extra: flags.split(/\s+/).filter(Boolean) });
+}
+
+// --variante <nom> : jumelles par variante ; la cible d'origine ne sert alors plus.
+const variants = opt('variante', []);
+if (variants.length) {
+  const bases = targets.splice(0);
+  for (const t of bases) for (const v of variants) targets.push({ ...t, name: (bases.length > 1 ? t.name + ' ' : '') + v, env: { ORBE_BENCH_VARIANTE: v, ORBE_BENCH_PERIODES: 'variante' } });
 }
 
 function wav(seconds = 60) {
@@ -95,7 +105,7 @@ const SWITCHES = natural ? [] : ['--disable-backgrounding-occluded-windows'];
 
 function launch(target, env) {
   const scenario = path.join(root, 'tests', 'mesures.js');
-  const base = { ...process.env, ORBE_SCENARIO: scenario, ...env };
+  const base = { ...process.env, ORBE_SCENARIO: scenario, ...env, ...(target.env || {}) };
   if (target.visible) base.ORBE_TEST_VISIBLE = 'inactif'; else delete base.ORBE_TEST_VISIBLE;
   delete base.ORBE_UI_FOCUS;
   // Le module vient de cet arbre-ci : les versions anciennes mesurées ne l'ont pas.
@@ -109,6 +119,9 @@ function launch(target, env) {
   return new Promise((resolve) => child.on('exit', (code) => {
     const line = text.split('\n').find((l) => l.startsWith('MESURE '));
     if (!line) console.error(`[${target.name}] sans mesure (code ${code})\n${text.slice(-1600)}`);
+    // Animations encore en cours à la fin d'une période : dites une fois par cible.
+    const anims = [...new Set(text.split('\n').filter((l) => l.startsWith('ANIMATIONS ')))];
+    if (anims.length) target.anims = anims.map((l) => l.slice(11)).join(' | ');
     const extra = text.split('\n').find((l) => l.startsWith('FICHIERS '));
     if (extra) target.files = extra.slice(9);
     resolve(line ? JSON.parse(line.slice(7)) : null);
@@ -153,6 +166,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     });
     console.log([k.padEnd(28), ...cells].join(''));
   }
+  for (const t of targets) if (t.anims) console.log(`\nAnimations en cours en fin de période (dernier tour, ${t.name}) : ${t.anims}`);
   for (const t of targets) if (t.files) console.log(`\nFichiers du profil réécrits (dernier tour, ${t.name}) : ${t.files}`);
   try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {}
 })();

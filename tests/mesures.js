@@ -44,6 +44,55 @@ function word(n) {
   return out;
 }
 
+// Variantes de la mesure « repos » (scripts/mesures.js --variante <nom>, ENER-4) : une petite
+// animation posée dans la coque, page fixe, et une chose changée à la fois. L'élément d'essai a
+// la taille et les règles de l'égaliseur d'un favori qui joue (`.tile.audible .dot i`).
+const ANIM = `#mes-anim { position: fixed; left: 30px; top: 320px; z-index: 5; width: 11px; height: 8px; display: flex; align-items: flex-end; justify-content: space-between; pointer-events: none; }
+  #mes-anim i { display: block; width: 3px; height: 8px; border-radius: 1.5px; background: var(--accent); transform-origin: center bottom; animation: tile-notes 900ms ease-in-out infinite; }
+  #mes-anim i:nth-child(2) { animation-delay: -300ms; } #mes-anim i:nth-child(3) { animation-delay: -600ms; }`;
+const POSE = (parent = 'document.body') => `(() => { const d = document.createElement('div'); d.id = 'mes-anim'; d.innerHTML = '<i></i><i></i><i></i>'; ${parent}.append(d); })()`;
+const GROUPE = `(() => { const g = document.createElement('div'); g.id = 'mes-g'; g.textContent = 'x'; document.body.append(g); const d = document.createElement('div'); d.id = 'mes-anim'; d.innerHTML = '<i></i><i></i><i></i>'; g.append(d); })()`;
+const VARIANTES = {
+  temoin: {},
+  egaliseur: { css: ANIM, js: POSE() },
+  // Dans la barre latérale (couche propre : will-change: transform) plutôt que sur le fond.
+  'dans-barre': { css: ANIM + ' #mes-anim { position: absolute; }', js: POSE('document.getElementById("sidebar")') },
+  // Les vraies règles, à leur vraie place : un favori qui joue, la note de capture.
+  'vrai-egaliseur': { main: async (w) => { const id = w.activeId; const sp = w.space; sp.today.splice(sp.today.indexOf(id), 1); (w.data.favs[sp.profileId] = w.data.favs[sp.profileId] || []).push(id); w.sendState(); await sleep(600); }, js: `document.querySelector('.tile').classList.add('audible')` },
+  'vrai-capture': { js: `document.getElementById('capture-note').hidden = false` },
+  'barre-fixe': { css: ANIM, js: POSE('document.getElementById("sidebar")') },
+  'barre-sans-couche': { css: ANIM + ' #mes-anim { position: absolute; } #sidebar { will-change: auto !important; }', js: POSE('document.getElementById("sidebar")') },
+  'barre-isole': { css: ANIM + ' #mes-anim { position: absolute; isolation: isolate; will-change: transform; }', js: POSE('document.getElementById("sidebar")') },
+  // Fenêtre sans le clavier : `body.blurred #sidebar > *` est à 70 % d'opacité (groupe à composer à part).
+  'barre-nette': { css: ANIM + ' #mes-anim { position: absolute; } body.blurred #sidebar > * { opacity: 1 !important; }', js: POSE('document.getElementById("sidebar")') },
+  // L'animation dans un groupe à 70 % d'opacité, de trois tailles (hors de la barre latérale).
+  'groupe-petit': { css: ANIM + ' #mes-g { position: fixed; left: 30px; top: 320px; width: 11px; height: 8px; opacity: 0.7; z-index: 5; } #mes-anim { position: absolute; left: 0; top: 0; }', js: GROUPE },
+  'groupe-moyen': { css: ANIM + ' #mes-g { position: fixed; left: 14px; top: 300px; width: 44px; height: 44px; opacity: 0.7; z-index: 5; } #mes-anim { position: absolute; left: 16px; top: 30px; }', js: GROUPE },
+  'groupe-grand': { css: ANIM + ' #mes-g { position: fixed; left: 0; top: 46px; width: 250px; height: 800px; opacity: 0.7; z-index: 5; } #mes-anim { position: absolute; left: 30px; top: 280px; }', js: GROUPE },
+  // Deux façons de ne plus composer ce groupe, fenêtre sans le clavier : figer l'égaliseur ; estomper les feuilles plutôt que le groupe.
+  'vrai-egaliseur-fige': { main: (w) => VARIANTES['vrai-egaliseur'].main(w), css: 'body.blurred .tile.audible .dot i { animation-play-state: paused; }', js: `document.querySelector('.tile').classList.add('audible')` },
+  'vrai-egaliseur-feuilles': { main: (w) => VARIANTES['vrai-egaliseur'].main(w), css: 'body.blurred #fav { opacity: 1 !important; } body.blurred #fav .tile > :not(.dot), body.blurred #fav .tile .dot i { opacity: 0.7; }', js: `document.querySelector('.tile').classList.add('audible')` },
+  'vrai-egaliseur-net': { main: (w) => VARIANTES['vrai-egaliseur'].main(w), css: 'body.blurred #sidebar > * { opacity: 1 !important; }', js: `document.querySelector('.tile').classList.add('audible')` },
+  pulsation: { css: ANIM + ' #mes-anim i { animation: capture-pulse 1.6s ease-in-out infinite; }', js: POSE() },
+  // Même mouvement sur une propriété que le compositeur ne sait pas animer seul.
+  hauteur: { css: ANIM + ' @keyframes mes-h { 0%, 100% { height: 3px; } 50% { height: 8px; } } #mes-anim i { animation-name: mes-h; }', js: POSE() },
+  'pas-8': { css: ANIM + ' #mes-anim i { animation-timing-function: steps(4, jump-none); }', js: POSE() },
+  // Cadence réduite par le script : une image sur N (minuterie), sans animation CSS.
+  'minuterie-12': { css: ANIM + ' #mes-anim i { animation: none; }', js: POSE() + `; (() => { const b = [...document.querySelectorAll('#mes-anim i')]; let n = 0; setInterval(() => { n += 1; b.forEach((x, i) => { x.style.transform = 'scaleY(' + (0.675 + 0.325 * Math.sin((n / 10.8 + i / 3) * 2 * Math.PI)).toFixed(3) + ')'; }); }, 83); })()` },
+  'minuterie-30': { css: ANIM + ' #mes-anim i { animation: none; }', js: POSE() + `; (() => { const b = [...document.querySelectorAll('#mes-anim i')]; let n = 0; setInterval(() => { n += 1; b.forEach((x, i) => { x.style.transform = 'scaleY(' + (0.675 + 0.325 * Math.sin((n / 27 + i / 3) * 2 * Math.PI)).toFixed(3) + ')'; }); }, 33); })()` },
+  'pas-30': { css: ANIM + ' #mes-anim i { animation-timing-function: steps(13, jump-none); }', js: POSE() },
+  isole: { css: ANIM + ' #mes-anim { contain: strict; isolation: isolate; will-change: transform; }', js: POSE() },
+  'sans-grain': { css: ANIM + ' body::before, #tint::after, #sidebar::before { display: none !important; }', js: POSE() },
+  'sans-flou': { css: ANIM + ' * { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }', js: POSE() },
+  'sans-masque': { css: ANIM + ' * , *::before, *::after { -webkit-mask: none !important; mask: none !important; }', js: POSE() },
+  'sans-vibrancy': { css: ANIM, js: POSE(), main: (w) => { w.win.setVibrancy(null); w.win.setBackgroundColor('#ffffff'); } },
+  'fond-opaque': { css: ANIM + ' html { background: #f2f2f4 !important; }', js: POSE(), main: (w) => { w.win.setVibrancy(null); w.win.setBackgroundColor('#f2f2f4'); w.ui.setBackgroundColor('#f2f2f4'); } },
+  'petite-fenetre': { css: ANIM, js: POSE(), main: (w) => w.win.setSize(700, 500) },
+  'grande-fenetre': { css: ANIM, js: POSE(), main: (w) => { const { screen } = require('electron'); const a = screen.getPrimaryDisplay().workArea; w.win.setBounds(a); } },
+  'sans-page': { css: ANIM, js: POSE(), main: (w) => { w.activeRt.view.setVisible(false); } },
+  'sans-modale': { css: ANIM, js: POSE(), main: (w) => { for (const v of w.win.contentView.children) if (v !== w.ui && !(w.activeRt && v === w.activeRt.view)) { try { v.setVisible(false); } catch {} } } },
+};
+
 const BENCHES = {
   // Prépare un profil : un onglet, et au besoin un gros historique et beaucoup d'onglets.
   async prepare({ first: w, store, base }) {
@@ -116,6 +165,38 @@ const BENCHES = {
       bench: 'demarrage', fenetre: round(shown - t0, 0), coqueChargee: round(shellLoaded - t0, 0), coquePeinte: round(shellPaint - t0, 0),
       barreRendue: round(sidebar - t0, 0), pagePeinte: round(page - t0, 0), modalePrete: round(modal - t0, 0), commande: command, ...processes(), vivants: win.live.size,
     });
+  },
+
+  // Vue modale (DEM-12) : les étapes entre la coque chargée et la vue modale prête, en ms depuis
+  // la création du processus, puis ce que la page de la vue a coûté (navigation, scripts).
+  // Les méthodes sont enveloppées sur la fenêtre : la mesure se joue telle quelle sur une ancienne version.
+  async modale({ first: w }) {
+    const t0 = process.getCreationTime();
+    const at = () => round(performance.timeOrigin + performance.now() - t0, 1);
+    const ui = w.ui.webContents;
+    const e = { demandes: 0 };
+    const fill = w.fillSpares.bind(w);
+    w.fillSpares = (...a) => { const before = w.wanted.length; const t = performance.now(); const r = fill(...a); if (w.wanted.length > before && !e.reserveDemandee) { e.reserveDemandee = at(); e.demandes = w.wanted.length - before; e.demandeMs = round(performance.now() - t, 2); } return r; };
+    const adopt = w.adoptSpare.bind(w);
+    w.adoptSpare = (d) => {
+      const r = adopt(d);
+      if (r && r.createWindow) { const make = r.createWindow; r.createWindow = (o) => { const t = performance.now(); const wc = make(o); e.vuesCreeesMs = round((e.vuesCreeesMs || 0) + performance.now() - t, 2); if (!e.premiereVueCreee) e.premiereVueCreee = at(); e.derniereVueCreee = at(); wc.once('dom-ready', () => { if (!e.premiereVueDom) e.premiereVueDom = at(); }); wc.once('did-finish-load', () => { if (!e.premiereVueChargee) e.premiereVueChargee = at(); e.derniereVueChargee = at(); }); return wc; }; }
+      return r;
+    };
+    const ready = w.spareReady.bind(w);
+    w.spareReady = (...a) => { const had = !!w.modal; const r = ready(...a); if (!had && w.modal) e.modaleCreee = at(); return r; };
+    ui.once('dom-ready', () => { e.coqueDom = at(); });
+    await new Promise((r) => ui.once('did-finish-load', r));
+    e.coqueChargee = at();
+    ui.executeJavaScript(`new Promise((r) => { const go = () => (typeof S === 'object' && S ? requestAnimationFrame(() => requestAnimationFrame(() => r())) : setTimeout(go, 2)); go(); })`).then(() => { e.barreRendue = at(); });
+    await until(() => w.modal && !w.modal.webContents.isLoading(), 5000).catch(() => {});
+    e.modalePrete = at();
+    await sleep(1200);
+    // Dans la page de la vue modale : navigation et ressources (durées, en ms).
+    const page = await w.modal.webContents.executeJavaScript(`(() => { const n = performance.getEntriesByType('navigation')[0] || {}; const r = {}; for (const x of performance.getEntriesByType('resource')) r[x.name.split('/').pop().replace(/\W/g, '_')] = Math.round(x.duration * 10) / 10; return { reponse: n.responseEnd, interactif: n.domInteractive, domFini: n.domContentLoadedEventEnd, charge: n.loadEventEnd, scripts: n.domContentLoadedEventStart - n.responseEnd, ressources: r }; })()`).catch(() => ({}));
+    const shell = await ui.executeJavaScript(`(() => { const n = performance.getEntriesByType('navigation')[0] || {}; return { interactif: n.domInteractive, charge: n.loadEventEnd }; })()`).catch(() => ({}));
+    for (const k of Object.keys(page)) if (typeof page[k] === 'number') page[k] = round(page[k], 1);
+    out({ bench: 'modale', etapes: e, ecarts: { chargeeADemande: round(e.reserveDemandee - e.coqueChargee, 1), demandeAVue: round(e.premiereVueCreee - e.reserveDemandee, 1), vueAChargee: round(e.premiereVueChargee - e.premiereVueCreee, 1), chargeeAPrete: round(e.modalePrete - e.premiereVueChargee, 1), coqueChargeeAPrete: round(e.modalePrete - e.coqueChargee, 1) }, page, coque: shell });
   },
 
   // Mémoire : au repos, puis après avoir ouvert toutes les vues d'appoint.
@@ -466,7 +547,8 @@ const BENCHES = {
       }
       const s = (Date.now() - t0) / 1000;
       const b = cpu();
-      const vue = await Promise.race([ui.executeJavaScript(`({ etat: document.visibilityState, animations: document.getAnimations().filter((x) => x.playState === 'running').length })`), sleep(1500).then(() => ({ etat: '?', animations: -1 }))]);
+      const vue = await Promise.race([ui.executeJavaScript(`({ etat: document.visibilityState, animations: document.getAnimations().filter((x) => x.playState === 'running').length, noms: document.getAnimations().filter((x) => x.playState === 'running').map((x) => (x.animationName || x.transitionProperty || '?') + ' (' + Math.round(x.currentTime) + ' ms) sur ' + (x.effect && x.effect.target ? x.effect.target.tagName.toLowerCase() + '#' + x.effect.target.id + '.' + x.effect.target.className + ' dans .' + (x.effect.target.parentElement || {}).className : '?')).join(' ; ') })`), sleep(1500).then(() => ({ etat: '?', animations: -1 }))]);
+      if (vue.noms) console.log('ANIMATIONS ' + vue.noms);
       const ours = [...files].filter(([p]) => !/\/(Cache|Code Cache|GPUCache|DawnCache|GraphiteDawnCache|DawnGraphiteCache|DawnWebGPUCache|blob_storage|Shared Dictionary)\//.test(p));
       return {
         principal: round((b.principal - a.principal) * 1000 / s, 1), graphique: round((b.graphique - a.graphique) * 1000 / s, 1), coque: round((b.coque - a.coque) * 1000 / s, 1),
@@ -482,6 +564,26 @@ const BENCHES = {
     const wanted = (name) => !only.length || only.includes(name);
     const res = {};
     if (wanted('fixe')) res.fixe = await period();
+    // Une variante (voir VARIANTES) : page fixe, une animation posée dans la coque, une chose changée.
+    if (wanted('variante') && process.env.ORBE_BENCH_VARIANTE) {
+      const v = VARIANTES[process.env.ORBE_BENCH_VARIANTE];
+      if (!v) throw new Error('variante inconnue : ' + process.env.ORBE_BENCH_VARIANTE);
+      if (v.main) await v.main(w);
+      if (v.css) await ui.insertCSS(v.css);
+      if (v.js) await ui.executeJavaScript(v.js);
+      await sleep(1500);
+      // ORBE_BENCH_TRACE=<fichier> : trace du compositeur pendant 3 s (lue par scripts/trace-images.js).
+      if (process.env.ORBE_BENCH_TRACE) {
+        const { contentTracing } = require('electron');
+        await contentTracing.startRecording({ included_categories: ['viz', 'gpu', 'cc', 'benchmark', 'disabled-by-default-viz.quads', 'disabled-by-default-viz.surface_id_flow', 'disabled-by-default-cc.debug'] });
+        await sleep(3000);
+        await contentTracing.stopRecording(process.env.ORBE_BENCH_TRACE);
+      }
+      const b = w.win.getBounds();
+      res.variante = { ...(await period()), largeur: b.width, hauteur: b.height, vues: w.win.contentView.children.length, sansClavier: (await ui.executeJavaScript(`document.body.classList.contains('blurred')`)) ? 1 : 0 };
+      out({ bench: 'repos', ...res, variante: (({ fichiers, ...r }) => r)(res.variante) });
+      return;
+    }
     // Barre latérale masquée : la surveillance du bord gauche (pollPeek) tourne. Coût d'un passage.
     if (wanted('bord') && typeof w.pollPeek === 'function') {
       const t0 = performance.now();
@@ -506,6 +608,10 @@ const BENCHES = {
     await until(() => w.activeRt.wc.isCurrentlyAudible(), 8000).catch(() => {});
     w.activate(calm);
     if (process.env.ORBE_BENCH_CSS) await ui.insertCSS(process.env.ORBE_BENCH_CSS);
+    // La carte du lecteur met un instant à paraître, son titre à défiler : sans cette attente, la
+    // période commençait parfois avant le défilement et le comptait (107 ms/s au lieu de 11).
+    await until(() => ui.executeJavaScript(`!!document.querySelector('#media .mp')`), 8000).catch(() => {});
+    await sleep(800);
     // Régime établi : on laisse finir ce qui ne joue qu'une fois (40 s au plus ; un mouvement sans fin reste compté).
     await until(() => ui.executeJavaScript(`document.getAnimations().filter((x) => x.playState === 'running').length === 0`), Number(process.env.ORBE_BENCH_REST) || 40000).catch(() => {});
     if (wanted('lecteur')) { res.lecteur = await period(); res.lecteur.lecteurs = (w.players || []).length; }
