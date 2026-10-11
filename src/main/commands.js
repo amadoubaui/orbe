@@ -97,7 +97,7 @@ const COMMANDS = [
   { name: 'toggleDevMode', label: 'view.devMode', accel: 'Ctrl+D', keys: '⌃D', run: (w) => w.toggleDevMode() },
   { name: 'fullscreen', label: 'view.fullscreen', accel: 'Ctrl+Cmd+F', keys: '⌃⌘F', run: (w) => w.win.setFullScreen(!w.win.isFullScreen()) },
   // Espaces
-  { name: 'newSpace', label: 'spaces.new', run: (w) => w.newSpace() },
+  { name: 'newSpace', label: 'spaces.new', run: (w) => w.askNewSpace() },
   { name: 'editTheme', label: 'spaces.editTheme', run: (w) => w.openTheme() },
   { name: 'renameSpace', label: 'spaces.rename', run: (w) => w.askRename(w.spaceId) },
   { name: 'deleteSpace', label: 'spaces.delete', palette: false, run: (w) => w.deleteSpace() },

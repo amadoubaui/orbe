@@ -15,9 +15,7 @@ module.exports = {
     const repos = () => jusqua(() => shell.evaluate(() => !slide && !document.querySelector('#pager .ghost')), 'listes au repos'); // eslint-disable-line no-undef
     const nouvelEspace = async (nom) => {
       await ctx.menu('spaces.new');
-      await jusqua(() => shell.locator('#space-name input.rename').count(), 'champ de nom de l’Espace');
-      await shell.keyboard.type(nom, { delay: 10 });
-      await shell.keyboard.press('Enter');
+      await ctx.creerEspace(nom);
       await jusqua(async () => (await ctx.etat()).espace === nom, 'Espace ' + nom);
       await repos();
     };

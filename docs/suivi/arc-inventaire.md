@@ -250,7 +250,7 @@ Actions de la barre de commande relevées dans Arc (libellés du binaire et du c
 | Id | Ce que fait Arc | Preuve Arc | État | Preuve Orbe | Note |
 | --- | --- | --- | --- | --- | --- |
 | ESP-1 | Un Espace a ses épinglés, ses onglets du jour, son thème, son icône | HC 19228064149143 | ✅ | self « nouvel Espace créé et affiché » | |
-| ESP-2 | Création par le « + » : nom, icône, profil, thème, puis « Create Space » | HC 19228064149143 ; binaire `ARC_SpaceCreation` | 🟡 | création directe puis renommage ; ui 06 | Création directe (Espace créé à la suite de l’Espace affiché, nom à saisir aussitôt, message avec « Annuler », ⌘Z) puis thème, icône et profil par le menu de l’Espace ; ui 06. Reste à faire : l’écran de création d’Arc (nom, icône, profil, thème, puis « Créer ») — un panneau à construire, et les essais de création à reprendre ; rien ne le bloque |
+| ESP-2 | Création par le « + » : nom, icône, profil, thème, puis « Create Space » | HC 19228064149143 ; binaire `ARC_SpaceCreation` | ✅ | création directe puis renommage ; ui 06 | Panneau de création au-dessus du « + » : nom (champ actif, nom par défaut en indication), icône par le sélecteur d’émojis, douze couleurs et huit thèmes prêts, profil (existants, celui de l’Espace affiché par défaut, ou « Nouveau profil… ») avec une ligne d’explication, « Créer » / « Annuler », Entrée et Échap ; rien n’est créé avant « Créer ». Toutes les entrées y mènent (commande, barre de menus, menu de l’Espace, « + », Bibliothèque, geste au bout de la rangée) ; demande vérifiée dans le processus principal (W.checkSpace) ; message « Nouvel Espace créé » avec « Annuler » et ⌘Z gardés. self tests/creation-espace.js (31 vérifications) ; ui 31 (8 vérifications, souris et clavier réels) ; geste : self fin2 et derniers |
 | ESP-3 | Le nouvel Espace se place à côté de l'Espace actif | HC 20498377604887 | ✅ | non vérifié | self lat « nouvel Espace : il se place juste après l’Espace affiché » ; ui 23 |
 | ESP-4 | Changer d'Espace : clic sur l'icône du bas | HC 19228064149143 | ✅ | ui 06 | |
 | ESP-5 | Balayage horizontal à deux doigts sur la barre | HC 19228064149143 ; binaire `space_swiping.mp4` | ✅ | SH:378-383 (seuil 70 px) ; ui 06 | Voir GES-1 |
@@ -890,13 +890,13 @@ Arc : `menu` pour ceux de la barre de menus, sinon la source indiquée. Orbe : `
 
 ## Bilan chiffré
 
-656 lignes au total : 571 ✅, 21 🟡, 10 ⬜, 54 ➖.
+656 lignes au total : 572 ✅, 20 🟡, 10 ⬜, 54 ➖.
 
 | Domaine | ✅ | 🟡 | ⬜ | ➖ | Total |
 | --- | --- | --- | --- | --- | --- |
 | Barre latérale (BL) | 103 | 3 | 0 | 5 | 111 |
 | Barre de commande (CMD) | 49 | 0 | 0 | 4 | 53 |
-| Espaces et profils (ESP) | 23 | 1 | 0 | 0 | 24 |
+| Espaces et profils (ESP) | 24 | 0 | 0 | 0 | 24 |
 | Vie des onglets (ONG) | 27 | 0 | 0 | 2 | 29 |
 | Vue scindée (SCI) | 18 | 0 | 0 | 0 | 18 |
 | Aperçu (APE) | 11 | 0 | 1 | 0 | 12 |
@@ -915,7 +915,7 @@ Arc : `menu` pour ceux de la barre de menus, sinon la source indiquée. Orbe : `
 | Raccourcis (RAC) | 46 | 0 | 0 | 2 | 48 |
 | Import et accueil (IMP) | 11 | 1 | 0 | 2 | 14 |
 | Divers (DIV) | 26 | 1 | 0 | 5 | 32 |
-| **Total** | **571** | **21** | **10** | **54** | **656** |
+| **Total** | **572** | **20** | **10** | **54** | **656** |
 
 Lecture : un 🟡 recouvre deux cas, que les colonnes « Preuve Orbe » et « Note » distinguent : du code présent mais sans test (un test suffit à le passer en ✅), ou une fonction réellement incomplète. La part de chacun n'a pas été comptée.
 

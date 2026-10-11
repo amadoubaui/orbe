@@ -68,6 +68,26 @@
   <button id="theme-done" data-t="theme.done"></button>
 </div>
 
+<!-- Création d'un Espace : nom, icône, couleur, profil ; rien n'est créé avant « Créer ». -->
+<div id="space" class="panel" role="dialog" hidden>
+  <h3 data-t="space.title"></h3>
+  <div id="space-id">
+    <button id="space-icon" data-t-title="space.icon"></button>
+    <input id="space-input" spellcheck="false" autocomplete="off" maxlength="80" data-t-ph="spaces.defaultName">
+  </div>
+  <label data-t="space.color"></label>
+  <div id="space-colors" role="radiogroup"></div>
+  <div id="space-presets" role="radiogroup"></div>
+  <button id="space-theme" class="space-link" data-t="space.theme"></button>
+  <label data-t="spaces.profile"></label>
+  <div id="space-profiles" role="radiogroup"></div>
+  <p id="space-hint" data-t="space.profileHint"></p>
+  <div id="space-actions">
+    <button id="space-cancel" data-t="dialog.cancel"></button>
+    <button id="space-create" data-t="space.create"></button>
+  </div>
+</div>
+
 <!-- Sélecteur d'icône (Espace, dossier, onglet) : recherche, teintes de peau, émojis par rubrique. -->
 <div id="icons" class="panel" hidden>
   <div id="icons-head">

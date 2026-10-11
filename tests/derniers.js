@@ -111,9 +111,12 @@ module.exports = async function derniersTests(ctx) {
       check('tirer franchement au-delà du dernier Espace : la pastille s’arme (couleur de l’Espace), rien n’est créé pendant le mouvement', tire.arme && tire.fin && tire.fin.arme && d.spaces.length === n0, JSON.stringify(tire));
       await until(() => ui(`(() => { const el = document.querySelector('#pager .pager-plus.hold'); return !!el && getComputedStyle(el, '::after').animationName === 'pager-hold'; })()`), 'anneau du compte à rebours', 3000).catch(() => {});
       const anneau = await ui(`!!document.querySelector('#pager .pager-plus.hold')`) && d.spaces.length === n0;
-      await until(() => d.spaces.length === n0 + 1, 'nouvel Espace', 4000).catch(() => {});
+      await until(() => w.modalMode === 'space', 'panneau de création', 4000).catch(() => {});
+      const panneau = w.modalMode === 'space' && d.spaces.length === n0;
+      await sleep(300); // un second déclenchement se verrait ici
+      w.handle('spaceCreate', { name: '', icon: '✨', profileId: 'default' });
       const cree = d.spaces.length === n0 + 1 ? w.space : null;
-      check('doigts posés, immobiles : un anneau se referme autour de la pastille, puis le nouvel Espace est créé — un seul', anneau && !!cree && cree !== space && d.spaces.length === n0 + 1, `${anneau} ${d.spaces.length}/${n0 + 1}`);
+      check('doigts posés, immobiles : un anneau se referme autour de la pastille, puis le panneau de création s’ouvre ; « Créer » crée l’Espace — un seul', anneau && panneau && !!cree && cree !== space && d.spaces.length === n0 + 1, `${anneau} ${panneau} ${d.spaces.length}/${n0 + 1}`);
       await until(() => ui('!slide'), 'fin du glissement', 4000);
       const msg = w.toastShown || {};
       check('le message « Nouvel Espace créé » propose « Annuler »', msg.text === T('toast.spaceCreated') && msg.label === T('edit.undo') && typeof w.toastAction === 'function', JSON.stringify(msg));

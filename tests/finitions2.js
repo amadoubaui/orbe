@@ -218,13 +218,16 @@ module.exports = async function finitions2Tests(ctx) {
     w.switchSpace(d.spaces[d.spaces.length - 1].id);
     await until(() => ui(`!slide && S.space.id === ${JSON.stringify(space.id)} && S.near.next === null`), 'dernier Espace affiché');
     const reduced = await ui('reducedMotion.matches');
-    if (reduced) ignorer('tirer franchement au-delà du dernier Espace : un nouvel Espace est créé', '« Réduire les animations » actif');
+    if (reduced) ignorer('tirer franchement au-delà du dernier Espace : le panneau de création s’ouvre', '« Réduire les animations » actif');
     else {
       const n = d.spaces.length;
       await ui(`(async () => { for (let i = 0; i < 40 && !wheelLocked; i++) { document.getElementById('scroll').dispatchEvent(new WheelEvent('wheel', { deltaX: 60, bubbles: true, cancelable: true })); await new Promise((r) => setTimeout(r, 8)); } })()`);
+      await until(() => w.modalMode === 'space', 'panneau de création');
+      check('tirer franchement au-delà du dernier Espace : le panneau de création s’ouvre, rien n’est encore créé', d.spaces.length === n && w.space === space);
+      w.handle('spaceCreate', { name: 'Au bout', icon: '✨', profileId: 'default' });
       await until(() => d.spaces.length === n + 1, 'nouvel Espace');
       const created = d.spaces[d.spaces.length - 1];
-      check('tirer franchement au-delà du dernier Espace : un nouvel Espace est créé et affiché', w.space === created && created.id !== space.id);
+      check('… « Créer » : le nouvel Espace est créé et affiché, à la suite du dernier', w.space === created && created.id !== space.id && created.name === 'Au bout');
       await until(() => ui('!slide'), 'fin du glissement');
       await sleep(200);
       w.hideModal();
