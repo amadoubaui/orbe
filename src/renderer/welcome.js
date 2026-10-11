@@ -70,7 +70,37 @@ async function refreshInfo() {
   document.getElementById('row-import').hidden = !info.arc;
   drawColors();
   drawDefault();
+  startMusic();
 }
+
+// Musique de l'accueil : une phrase de sept secondes (fichier original, fabriqué par
+// scripts/make-sounds.js), jouée une fois à l'ouverture si le réglage « Sons » le
+// permet. Le bouton en haut à droite la coupe, ou la rejoue. Pendant les essais, le
+// fichier est chargé mais rien n'est joué (`mute`).
+const music = { audio: null, asked: false, button: document.getElementById('music') };
+function playMusic(m) {
+  if (!music.audio) {
+    music.audio = new Audio('musique/welcome.wav');
+    music.audio.addEventListener('playing', () => music.button.classList.add('playing'));
+    for (const n of ['ended', 'pause']) music.audio.addEventListener(n, () => music.button.classList.remove('playing'));
+  }
+  const a = music.audio;
+  a.volume = Math.max(0, Math.min(1, Number(m.volume) || 0));
+  if (m.mute) { a.load(); return; }
+  a.currentTime = 0;
+  a.play().catch(() => {});
+}
+function startMusic() {
+  if (music.asked || !info || !info.music) return;
+  music.asked = true;
+  music.button.hidden = !info.music.on;
+  if (info.music.on) playMusic(info.music);
+}
+music.button.onclick = () => {
+  const on = music.button.getAttribute('aria-pressed') !== 'true';
+  music.button.setAttribute('aria-pressed', String(on));
+  if (!on) { if (music.audio) music.audio.pause(); } else if (info && info.music) playMusic(info.music);
+};
 
 const browsers = mountImport(document.getElementById('welcome-browsers'), { preferCurrent: true, stay: true });
 refreshInfo();

@@ -303,6 +303,10 @@ module.exports = async function finitionsTests(ctx) {
   w.toggleFavorite(lot[24]);
   w.changed();
   await until(() => ui(`S.today.length === ${space.today.length} && S.favorites.some((x) => x.id === '${lot[24]}') && document.querySelectorAll('#today .row.tab').length === ${space.today.length}`), 'barre à jour');
+  // Un onglet du lot peut être en train de charger son adresse morte : l'échec arrive un peu
+  // plus tard, change l'état de sa ligne et la fait redessiner à bon droit (vu sur la machine
+  // d'intégration macOS : « ERR_UNSAFE_PORT » tombé pendant la mesure). On attend qu'aucun ne charge.
+  await until(() => lot.every((id) => { const rt = ctx.win.live.get(id); return !rt || (!rt.loading && !rt.wc.isLoading()); }), 'onglets du lot au repos');
   await sleep(450); // fin des animations d'apparition : les lignes sont au repos
   const rows = await ui(`document.querySelectorAll('#today .row.tab, #pinned .row.tab, #fav .tile').length`);
   const drawnAfter = async (act) => {

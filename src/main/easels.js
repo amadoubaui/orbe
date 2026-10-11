@@ -245,6 +245,21 @@ async function save(a) {
   return true;
 }
 
+// Tableau supprimé : son onglet épinglé redevient un onglet du jour (épinglé, il resterait
+// dans la barre sans plus rien ouvrir). La page, si elle est ouverte, dit que le tableau n'existe plus.
+function unpin(id) {
+  let all = [];
+  try { all = require('./window').OrbeWindow.all; } catch { return; }
+  for (const w of all) {
+    for (const [tabId, tab] of Object.entries(w.data.tabs)) {
+      if (!tab.internal || !String(tab.url).split('#')[0].endsWith('easel.html?id=' + id)) continue;
+      const loc = w.locate(tabId);
+      if (!loc || loc.list === 'today') continue;
+      try { w.move({ id: tabId, to: 'today', index: 0 }); } catch (err) { console.error('[orbe] tableau supprimé', err.message); }
+    }
+  }
+}
+
 function remove(id) {
   if (!ID.test(String(id)) || !loadIndex().has(id)) return false;
   index.delete(id);
@@ -254,6 +269,7 @@ function remove(id) {
   sweepDeleted(id);
   // Une page encore ouverte sur ce tableau cesse d'enregistrer.
   for (const wc of pagesOf(id)) wc.send('easel', { op: 'deleted', board: id });
+  unpin(id);
   return true;
 }
 
@@ -392,8 +408,15 @@ function takeInbox(id) {
 // Ouvre un tableau dans un onglet (un onglet par tableau) ; sans identifiant, en crée un.
 function open(w, id) {
   if (!w) return null;
-  const board = id && loadIndex().has(id) ? id : create().id;
-  w.openInternal('easel.html?id=' + board);
+  const known = !!id && loadIndex().has(id);
+  const board = known ? id : create().id;
+  const tab = w.openInternal('easel.html?id=' + board);
+  // Un tableau neuf s'ouvre comme onglet épinglé de l'Espace, comme dans Arc : il reste
+  // dans la barre d'une séance à l'autre. (Pas en navigation privée : rien n'y est épinglé.
+  // Un tableau rouvert depuis la Bibliothèque reste un onglet du jour.)
+  if (!known && tab && !w.incognito) {
+    try { w.move({ id: tab.id, to: 'pinned', index: w.space.pinned.length }); } catch (err) { console.error('[orbe] tableau épinglé', err.message); }
+  }
   return board;
 }
 

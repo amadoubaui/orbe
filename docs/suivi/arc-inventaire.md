@@ -385,7 +385,7 @@ Actions de la barre de commande relevées dans Arc (libellés du binaire et du c
 | THM-10 | Fond de fenêtre rendu par un shader (Metal) | binaire `ARC_WindowThemeUI/default.metallib` | 🟡 | dégradé CSS + carreau de texture (image fixe, aucun filtre par image) | À comparer à l'œil avec Arc |
 | THM-11 | Retour haptique en tournant les molettes du thème | inverse ; HC 20498377604887 | ➖ | | Electron 44 n'expose aucune interface haptique (aucune occurrence de « haptic » dans `electron.d.ts`, `NSHapticFeedbackManager` absent) ; il faudrait un module natif, contraire au choix « aucune dépendance ». Le réglage reste enregistré, affiché comme indisponible |
 | THM-12 | Les couleurs du thème gagnent menus, champs, barre de commande, sélecteur d'onglets, messages | HC 20498417809815 | ✅ | W `themeNow` → événement `theme` ; OV `applyLook` : accent, panneaux teintés à 9 %, ligne choisie, message et pastille d'adresse teintés, apparence de l'Espace ; ui 22 « barre de commande, bascule et messages » | Les menus natifs du système gardent leurs couleurs |
-| THM-13 | Barre latérale translucide sur le bureau | non vérifié (mesure faite en thème sombre opaque) | 🟡 | réglage `translucent` : fond de la barre à 80 % d'opacité sur l'effet `sidebar` ; ui 22 « barre translucide » | Le réglage est vérifié ; le rendu du matériau sur le bureau reste à juger à l'œil. Le contraste du texte est calculé pour un fond opaque |
+| THM-13 | Barre latérale translucide sur le bureau | non vérifié (mesure faite en thème sombre opaque) | 🟡 | réglage `translucent` : fond de la barre à 80 % d'opacité sur l'effet `sidebar` ; ui 22 « barre translucide » | Le contraste du texte est maintenant calculé sur le fond tel qu’il s’affiche (80 % du thème + 20 % de l’arrière-plan, aux deux extrêmes supposés du matériau : noir à gris foncé en sombre, gris moyen à blanc en clair) : 4,60 au pire sur 3 000 thèmes au hasard, contre 3,14 avant (2 367 thèmes sous 4,5) ; self tests/sensations.js (4 vérif.), ui 29-sensations « barre translucide, thème gris moyen… ». Reste à l’œil : le rendu du matériau sur un vrai bureau, et les bornes de l’arrière-plan (posées par hypothèse, non mesurées) |
 | THM-14 | Fenêtre privée noire | observé | ✅ | W:105-112 | |
 | THM-15 | Barre d'outils teintée par la couleur de la page | HC 20498293324823 ; binaire `TopBarColorCache` | ✅ | | couleur de thème de la page (meta theme-color, « #rrggbb » seulement) : la barre d’outils en prend la teinte, texte clair ou sombre selon la couleur ; self tests/details.js |
 | THM-16 | Le redimensionnement de la fenêtre utilise la couleur de fond de la page | HC 20498293324823 | ✅ | fond blanc fixe | la vue de l’onglet prend la couleur de fond calculée de la page (lue comme des nombres) ; self tests/details.js |
@@ -405,7 +405,7 @@ Chiffres d'Arc : seuls ANI-1 à ANI-4 ont été mesurés. Pour le reste, l'exist
 | ANI-3 | Barre de commande : apparition sans délai perceptible | mesuré (pas d'image intermédiaire à 60 images/s) | ✅ | `pop` 130 ms | Fait le 8 oct. (cotes et durées d'Arc) |
 | ANI-4 | Vue scindée : ouverture et fermeture immédiates | M-13, M-14 | ✅ | sans animation ; self | Identique |
 | ANI-5 | Miroitement au démarrage | HC 20498417809815 | ✅ | | reflet qui traverse la barre latérale au premier affichage (900 ms, transformation et opacité) ; ui 27-details : médiane 8,3 ms, 0 mise en page |
-| ANI-6 | Animation de fenêtre au redémarrage | HC 20498417809815 | ⬜ | | |
+| ANI-6 | Animation de fenêtre au redémarrage | HC 20498417809815 | ⬜ | | Non fait : l’animation d’Arc n’a pas été observée (ni durée ni forme) ; macOS anime déjà l’ouverture de la fenêtre, et le reflet du premier affichage existe (ANI-5) |
 | ANI-7 | Boutons plus, fermer, actualiser, précédent, suivant animés | HC 20498417809815 | ✅ | SC `.ib svg` : « actualiser » fait un tour à chaque clic, les flèches partent dans leur sens à la pression, le « + » et la croix pivotent ; ui 23 « boutons animés » |  |
 | ANI-8 | Indicateur de chargement en lueur en haut de la fenêtre | HC 20498377604887 ; binaire (shader) | ✅ | SC `#glow` : lueur à la couleur de l'Espace le long du bord haut de la page, plus le reflet de la pastille ; transformations seules ; ui 23 « chargement » (120 images/s, pas de mise en page par image) | Lueur CSS, pas un shader ; à comparer à l'œil avec Arc |
 | ANI-9 | Téléchargement : le fichier « saute » dans l'icône de la Bibliothèque ; plusieurs à la fois | HC 20498377604887 | ✅ | anneau de progression | un fichier tombe dans l’icône de la Bibliothèque à chaque téléchargement commencé (4 à la fois, décalés de 110 ms), l’icône rebondit ; self tests/details.js, ui 27-details : médiane 8,3 ms |
@@ -417,17 +417,17 @@ Chiffres d'Arc : seuls ANI-1 à ANI-4 ont été mesurés. Pour le reste, l'exist
 | ANI-15 | Messages (toasts) animés, aux couleurs du thème | HC 20498293324823 | ✅ | entrée au ressort, sortie de 180 ms ; pilule sombre teintée à 26 % par la couleur de l'Espace ; ui 22 « messages » |  |
 | ANI-16 | Petite fenêtre : animation d'ouverture | HC 20498417809815 | ✅ | | opacité 0→1 et montée de 14 pt en 180 ms (position et opacité de la fenêtre seulement), coupée par « Réduire les animations » ; self tests/details.js, ui 25 |
 | ANI-17 | Passage en plein écran simplifié | HC 20498417809815 | 🟡 | natif | |
-| ANI-18 | Image dans l'image : élastique sous la taille minimale, lancer vers un coin | inverse ; HC 20498417809815 | ⬜ | fenêtre native de Chromium | |
-| ANI-19 | Le lecteur audio rejoint la position de l'image dans l'image en s'animant | HC 20498377604887 | ⬜ | | |
+| ANI-18 | Image dans l'image : élastique sous la taille minimale, lancer vers un coin | inverse ; HC 20498417809815 | ⬜ | fenêtre native de Chromium | Dépend d’une fenêtre d’image dans l’image propre à Orbe : voir BIB-28 (la fenêtre native de Chromium ne se pilote pas) |
+| ANI-19 | Le lecteur audio rejoint la position de l'image dans l'image en s'animant | HC 20498377604887 | ⬜ | | Dépend d’une fenêtre d’image dans l’image propre à Orbe : voir BIB-28 (sa position n’est pas lisible) |
 | ANI-20 | Pastille d'état du lien : s'étend après 1,5 s, s'écarte de la souris | HC 20498377604887 | ✅ | | courte (420 pt) puis étendue après 1,5 s (160 ms), passe de l’autre côté quand le pointeur vient dessus (140 ms) ; self tests/details.js (5 vérif.) |
 | ANI-21 | Apparition et retrait d'une ligne d'onglet | non vérifié | ✅ | SH `flip` : la ligne paraît ou s'efface (opacité, échelle), les voisines glissent à leur place (240 ms, ressort) ; ui 23 « fermer un onglet », « nouvel onglet » | Une mise en page par changement, aucune par image (mesuré) |
 | ANI-22 | Les lignes s'écartent pendant un glisser | non vérifié | ✅ | ui 17 ; transformations de 140 ms, relevé unique des positions, aucune mise en page pendant le geste | Mesures dans ameliorations.md (PERF-25) |
 | ANI-23 | Ouverture d'un dossier : hauteur animée | non vérifié | ✅ | SH `flip` : le contenu paraît en fondu, la suite de la liste glisse ; au repli elle remonte ; ui 23 « dossier » | Glissement par transformation plutôt qu'une hauteur animée |
-| ANI-24 | Changement d'onglet : coupe franche | non vérifié | 🟡 | coupe franche | Sans doute identique |
+| ANI-24 | Changement d'onglet : coupe franche | non vérifié | ✅ | coupe franche | coupe franche vérifiée : la page choisie est posée entière dans le même tour, l’autre retirée, aucun trajet animé ; dans la barre, seul le fond des deux lignes se fond en 150 ms ; self tests/sensations.js « changement d’onglet : coupe franche… ». Comportement d’Arc non mesuré |
 | ANI-25 | Sélecteur ⌃⇥ : apparition | non vérifié | ✅ | sans animation | apparition au ressort (240 ms, échelle 0,96 → 1) ; durée d'Arc non vérifiée |
 | ANI-26 | Bandeau de mise à jour : replié, s'ouvre au survol, bouton en dégradé ; cœur animé | HC 21489650267031 ; binaire `update-heart-animation.json` | ✅ | ligne discrète, cœur qui bat ; au survol elle devient un bouton en dégradé et la croix paraît, sans changer de taille ; ui 24 | Pas de repli en largeur (il déplacerait la barre) : fondu et transformations seulement |
-| ANI-27 | Icônes animées de la Bibliothèque (archive, captures, Espaces, tableaux, téléchargements, Boosts) | binaire `ARC_HomeButton/*.json` (Lottie) | ⬜ | | |
-| ANI-28 | Logo animé (vague) et orbe vidéo | binaire `logo-wave.json`, `orb.mp4`, `background.mp4` | ⬜ | | Accueil |
+| ANI-27 | Icônes animées de la Bibliothèque (archive, captures, Espaces, tableaux, téléchargements, Boosts) | binaire `ARC_HomeButton/*.json` (Lottie) | ✅ | | icônes dessinées pour Orbe (SVG) sur les sept sections de la Bibliothèque, animées une fois au survol et à la sélection (horloge qui tourne, couvercle, flèche qui tombe, etc. ; 420 à 620 ms, transformations et opacité), figées par « Réduire les animations » ; ui 29-sensations (3 vérif.). Pas de Lottie : mouvements CSS |
+| ANI-28 | Logo animé (vague) et orbe vidéo | binaire `logo-wave.json`, `orb.mp4`, `background.mp4` | ✅ | | logo de l’accueil animé : trois anneaux partent du logo (1,8 s, décalés de 260 ms), l’anneau blanc s’enroule puis respire, halo de couleurs qui tourne ; transformations et opacité, coupé par « Réduire les animations » ; ui 29-sensations (médiane 8,3 ms, 95e centile 10,2 ms, 1 mise en page). Dessin CSS, pas de vidéo |
 | ANI-29 | « Réduire les animations » du système respecté | non vérifié | ✅ | `base.css` (durées à zéro), SH (`reducedMotion` : ni glissement, ni rebond, ni balayage d'Espace animé), W `motion()` ; ui 23 « Réduire les animations », ui 17 |  |
 
 ## SON — Sons et retour haptique
@@ -437,8 +437,8 @@ Arc contient en tout trois fichiers son. Aucun autre son n'existe dans l'applica
 | Id | Ce que fait Arc | Preuve Arc | État | Preuve Orbe | Note |
 | --- | --- | --- | --- | --- | --- |
 | SON-1 | Son de capture : `capture.wav`, 0,63 s, stéréo 48 kHz 24 bits | binaire `ARC_SoundEffects.bundle` | ✅ | aucun son dans Orbe (recherche dans `src/`) | Fait le 8 oct. (zone + choix de l'action, son original, réglage) |
-| SON-2 | Son `event.m4a`, 3,52 s, stéréo 44,1 kHz | binaire | ⬜ | | Moment où il joue : non vérifié (probablement un événement d'accueil ou de carte de membre) ; à écouter avec le propriétaire |
-| SON-3 | Musique d'accueil `intro-music.mp3`, 21,3 s, pendant la création du compte ; vidéo `demo.mov` | binaire `ARC_AuthFeature` ; inverse | ⬜ | accueil silencieux | Musique originale courte, coupable |
+| SON-2 | Son `event.m4a`, 3,52 s, stéréo 44,1 kHz | binaire | ➖ | | Écarté : le paquet de sons d’Arc ne contient que capture.wav et event.m4a, et rien dans le binaire ne relie ce dernier à un événement (recherche des libellés le 9 oct., sans lancer Arc). Un son sans moment connu n’a rien à accompagner ; Orbe a ses propres sons de gestes (réglage « Sons des gestes ») |
+| SON-3 | Musique d'accueil `intro-music.mp3`, 21,3 s, pendant la création du compte ; vidéo `demo.mov` | binaire `ARC_AuthFeature` ; inverse | 🟡 | musique originale à l’ouverture de l’accueil (welcome.js, sounds.js `music`) | Musique originale de 7 s synthétisée par scripts/make-sounds.js (src/renderer/musique/welcome.wav, 301 Ko : quatre accords tenus, arpège, note finale), jouée une fois à l’ouverture de l’accueil à 70 % du volume des sons, coupable par un bouton, absente si « Sons » est coupé ; self tests/sensations.js (fichier identique au script, niveau, bords à zéro, réglages), ui 29-sensations (bouton). Reste : l’écouter (aucune oreille ne l’a jugée) ; pas de vidéo de démonstration |
 | SON-4 | Réglage « Play Arc sound effects » (Advanced) | binaire ; HC 20498417809815 | ✅ | | Fait le 8 oct. (zone + choix de l'action, son original, réglage) |
 | SON-5 | Pas de son pour copier l'adresse, changer d'Espace, fermer un onglet ou finir un téléchargement | binaire (seuls trois fichiers) | ✅ | par défaut, Orbe est muet aussi ; self « réglage par défaut : ouvrir un onglet ne demande aucun son » | Orbe propose en plus, sur demande, des sons de gestes (réglage « Sons des gestes », coupé par défaut : voir DESIGN-4) |
 | SON-6 | Retour haptique en réordonnant les onglets, réglage « Haptic feedback when reordering tabs » | binaire ; HC 20498293324823, 20498377604887 | ➖ | | Electron 44 n'expose aucune interface haptique (aucune occurrence de « haptic » dans `electron.d.ts`, `NSHapticFeedbackManager` absent) ; il faudrait un module natif, contraire au choix « aucune dépendance ». Le réglage reste enregistré, affiché comme indisponible |
@@ -446,7 +446,7 @@ Arc contient en tout trois fichiers son. Aucun autre son n'existe dans l'applica
 | SON-8 | Retour haptique dans le sélecteur de thème | inverse ; HC 20498377604887 | ➖ | | Même cause que SON-6 |
 | SON-9 | Retour haptique dans le lecteur vidéo miniature (taille maximale atteinte) | HC 20498377604887 ; binaire `_shouldPerformMaxScaleHaptic` | ➖ | | Même cause que SON-6 |
 | SON-10 | Cran haptique en changeant de page | binaire `performsPageDetentHaptics` | ➖ | | Même cause que SON-6 |
-| SON-11 | Notifications des sites avec son | binaire `UNAuthorizationOptions.sound` | 🟡 | notifications natives d'Electron ; non testé | |
+| SON-11 | Notifications des sites avec son | binaire `UNAuthorizationOptions.sound` | 🟡 | notifications natives d'Electron ; non testé | Le son est celui du système : une notification de site le joue sauf si la page la demande silencieuse ; rien dans Orbe ne le coupe. Aucun essai automatique n’entend un son du système : à vérifier à l’oreille |
 
 ## GES — Gestes du pavé tactile
 
@@ -458,7 +458,7 @@ Aucun geste n'a été rejoué sur Arc pendant cet inventaire (ils demandent la m
 | GES-2 | Au bout de la liste des Espaces : résistance élastique puis nouvel Espace | inverse | ✅ | résistance élastique et retour au ressort (SH `PAGER`) ; self, ui 06 | résistance élastique et retour au ressort (SH PAGER) ; tiré franchement au-delà du dernier Espace, un « + » sort du bord et grandit, puis un nouvel Espace est créé (un seul par geste ; un balayage ordinaire n’y arrive pas) ; self « au bout de la rangée, vers la droite… », ui 06 « tirer franchement au-delà du dernier Espace… » |
 | GES-3 | Balayage à deux doigts sur la page : précédent / suivant | non vérifié (comportement de Chromium) | ✅ | `src/preload/swipe.js` + `src/main/swipe.js` : balayage horizontal que la page n'a pas consommé, pastille qui suit les doigts au bord de la page, navigation au seuil (130 px) ou sur un geste vif ; ui 23 (quatre vérifications, molette simulée) | Seuil et vitesse à régler main sur le pavé ; Arc fait glisser la page entière, Orbe montre une pastille |
 | GES-4 | Pincer pour zoomer la page | non vérifié | ✅ | W : `setVisualZoomLevelLimits(1, 5)` sur chaque onglet (coupé par défaut dans Electron, d'après sa documentation) ; ui 23 « pincer pour zoomer la page » (pincement simulé) |  |
-| GES-5 | Image dans l'image : pincer pour redimensionner, deux doigts pour déplacer, ⌘défilement pour zoomer, double-clic pour revenir à l'onglet | HC 20498417809815 | ⬜ | fenêtre native | |
+| GES-5 | Image dans l'image : pincer pour redimensionner, deux doigts pour déplacer, ⌘défilement pour zoomer, double-clic pour revenir à l'onglet | HC 20498417809815 | ⬜ | fenêtre native | Dépend d’une fenêtre d’image dans l’image propre à Orbe : voir BIB-28 ; la fenêtre native se déplace et se redimensionne à la souris |
 | GES-6 | Tableaux : pincer pour zoomer | HC 20498293324823 | ✅ | `easel.js` : pincement (Ctrl + molette, tel que Chromium le transmet) = zoom centré sur le pointeur ; ui 15 « pincement » |  |
 | GES-7 | Capture : zoomer et déplacer l'image avant de l'enregistrer | binaire « Zoom and pan to edit your screenshot » | ⬜ | | |
 | GES-8 | Lecteur miniature : glisser vers le haut pour chercher précisément | binaire « Drag upwards to seek precisely » | ✅ | | lecteurs empilés (4 au plus), titre/artiste/pochette de mediaSession (tenus pour hostiles : textContent, pochette recodée), titre défilant, croix, recherche en glissant, fine quand le pointeur monte ; self tests/medias.js (23 vérif.), ui 26-medias (11 vérif., médiane 8,3 ms, 0 mise en page) |
@@ -471,11 +471,11 @@ Aucun geste n'a été rejoué sur Arc pendant cet inventaire (ils demandent la m
 | BIB-1 | Bibliothèque ouverte par l'icône du bas ou ⇧⌘L | menu ; HC 19230634389911 | ✅ | M ; nat | S'ouvre dans un onglet, pas dans un panneau |
 | BIB-2 | Sections : Media, Downloads, Easels & Notes, Spaces, Archived Tabs, Boosts | HC 19230634389911 ; menu Window | ✅ | `library.js` | Historique, Archive, Téléchargements, Médias, Tableaux, Espaces, Boosts (les notes ont leur page) ; self bib ; ui 25 |
 | BIB-3 | Elle rouvre sur la dernière section utilisée | HC 20498377604887 | ✅ | | self bib « ⇧⌘L rouvre la Bibliothèque sur cette section » ; ui 25 |
-| BIB-4 | Survol de l'icône : fichiers récents, à ouvrir ou à glisser dehors | HC 19230634389911 | ⬜ | | Noté dans la feuille de route |
-| BIB-5 | Clic droit sur l'icône : types de fichiers affichés (captures, téléchargements, médias) | HC 19230634389911 ; binaire | ⬜ | | |
+| BIB-4 | Survol de l'icône : fichiers récents, à ouvrir ou à glisser dehors | HC 19230634389911 | ✅ | | survol de l’icône (320 ms) : panneau des 5 derniers fichiers encore sur le disque, dans la barre (libpeek.js) ; clic = ouvrir, glisser = vrai fichier hors d’Orbe ; noms posés par textContent, ni chemin ni adresse envoyés à la barre ; les captures d’Orbe rejoignent la Bibliothèque ; self tests/sensations.js (15 vérif.), ui 29-sensations (10 vérif., apparition 340 ms au ressort, médiane 8,3 ms, 0 mise en page) |
+| BIB-5 | Clic droit sur l'icône : types de fichiers affichés (captures, téléchargements, médias) | HC 19230634389911 ; binaire | ✅ | | clic droit sur l’icône : « Au survol, montrer » Captures, Téléchargements, Médias (cases, réglage libraryPeek) et « Ouvrir la Bibliothèque » ; self tests/sensations.js, ui 29-sensations « clic droit sur l’icône… » |
 | BIB-6 | Glisser un fichier hors de la Bibliothèque, même Arc en arrière-plan | HC 20498417809815 | ✅ | | webContents.startDrag avec l'icône du fichier ; self bib ; ui 25 (vraie souris, système remplacé par un témoin) |
-| BIB-7 | Médias du Bureau, de Documents et de Téléchargements à côté des captures ; filtre « Show media from: » | binaire | ⬜ | téléchargements et captures d'Orbe, en liste | Grille de vignettes |
-| BIB-8 | Les vidéos se lisent en aperçu | HC 20498417809815 | ⬜ | | |
+| BIB-7 | Médias du Bureau, de Documents et de Téléchargements à côté des captures ; filtre « Show media from: » | binaire | ✅ | téléchargements et captures d'Orbe, en liste | Bibliothèque → Médias : « Afficher les médias de : » Orbe, Téléchargements, Bureau, Documents. Un dossier n’est lu que lorsqu’il vient d’être choisi (jamais au démarrage, choix non retenu : macOS demande alors l’accord) ; premier niveau seulement, ni liens ni fichiers cachés ; la page reçoit identifiant et nom, jamais de chemin ; ouvrir, afficher, glisser ; self tests/sensations.js (6 vérif.), ui 29-sensations (3 vérif.). En liste, sans vignettes (aucun fichier n’est décodé) |
+| BIB-8 | Les vidéos se lisent en aperçu | HC 20498417809815 | ⬜ | | Non fait, pour une raison de conception : lire une vidéo téléchargée dans la page interne de la Bibliothèque y ferait décoder du contenu venu du web (voir docs/securite-navigation.md, « Fichiers récents et médias des dossiers ») ; il y faut une vue web à part, en bac à sable |
 | BIB-9 | Supprimer un élément l'envoie à la corbeille | HC 20498293324823 ; binaire « Move to Trash » | ✅ | `downloads.js`:trash | shell.trashItem ; self bib « Placer dans la corbeille » ; ui 25 |
 | BIB-10 | Menu d'un téléchargement : Open, Copy, Show in Finder, Hide from Arc, Move to Trash, Cancel | binaire « Download Context Menu » | ✅ | `downloads.js`:menuTemplate | Menu « ··· » et clic droit : Ouvrir, Copier, Afficher, Partager, Masquer, Corbeille, Pause/Reprendre/Annuler ; self bib (10 vérifications) ; ui 25 |
 | BIB-11 | Envoyer une capture par iMessage ou AirDrop ; ouvrir dans Aperçu | binaire | ✅ | | Article « Partager » (feuille de partage macOS) dans le menu du fichier ; self bib ; la feuille elle-même reste à voir à l'œil |
@@ -495,7 +495,7 @@ Aucun geste n'a été rejoué sur Arc pendant cet inventaire (ils demandent la m
 | BIB-25 | Lecteur : précédent/suivant (Spotify), ±15 s, volume de l'onglet, micro | binaire | 🟡 | précédent / suivant (gestionnaires `mediaSession` de la page), ±15 s, recherche, muet de l’onglet, volume (défiler ou tirer le haut-parleur : règle les lecteurs de la page, niveau lisible sous l’icône) ; self tests/medias.js « volume depuis le lecteur… », ui 26-medias « volume de l’onglet… » | Reste le micro. Le volume est celui des lecteurs du cadre principal de la page (Electron n’offre que le muet par onglet) |
 | BIB-26 | Touches multimédia du clavier | HC 20498417809815 | 🟡 | défaut de Chromium (touches multimédia vers la session active) | Demande une main sur le clavier : aucun essai automatique ne peut presser une touche multimédia |
 | BIB-27 | Image dans l'image automatique en quittant un onglet vidéo ; pas si l'onglet est muet | HC 19234766331799 ; binaire | ✅ | self (deux vérifications) | |
-| BIB-28 | Fenêtre d'image dans l'image propre à Arc : retour à l'onglet, fermer, réduire, vitesse, flèches pour chercher, espace pour pause | HC 20498377604887 ; binaire | 🟡 | fenêtre native de Chromium (lecture/pause, retour à l’onglet, fermer) | Fenêtre propre à Orbe non faite ; la voie technique (fenêtre d’Orbe recevant la vidéo) reste à étudier |
+| BIB-28 | Fenêtre d'image dans l'image propre à Arc : retour à l'onglet, fermer, réduire, vitesse, flèches pour chercher, espace pour pause | HC 20498377604887 ; binaire | 🟡 | fenêtre native de Chromium (lecture/pause, retour à l’onglet, fermer) | Étudié le 9 oct. sur Electron 44 : aucune interface ne donne la fenêtre native d’image dans l’image (ni position, ni taille, ni commandes) ; `documentPictureInPicture` est annoncé aux pages mais `requestWindow()` échoue (« Internal error: no window », essai sur une page locale) ; recopier la vidéo dans une fenêtre d’Orbe (captureStream) échoue pour les vidéos protégées ou d’une autre origine. Une fenêtre propre à Orbe demanderait de déplacer la vue de l’onglet dans une petite fenêtre : chantier à part, non livré faute de robustesse |
 | BIB-29 | Désactivable par site et globalement | HC 25590734716823 | ✅ | réglage global `autoPip` | réglage global autoPip + case par site dans le menu d’une vidéo (pipOffSites) ; self tests/details.js |
 | BIB-30 | Google Meet : image dans l'image avec commandes de réunion | HC 20498293324823 | ➖ | | Propre à un service |
 | BIB-31 | Cast | menu | ➖ | | Écarté : Electron ne fournit ni Chromecast ni le sélecteur de diffusion de Chrome |
@@ -523,11 +523,11 @@ Aucun geste n'a été rejoué sur Arc pendant cet inventaire (ils demandent la m
 | Id | Ce que fait Arc | Preuve Arc | État | Preuve Orbe | Note |
 | --- | --- | --- | --- | --- | --- |
 | TAB-1 | New Easel ⌃⇧E | menu | ✅ | self « ⌃⇧E crée un tableau » | |
-| TAB-2 | Le tableau s'ouvre comme onglet épinglé de l'Espace | HC 19231142050071 | 🟡 | onglet interne | |
+| TAB-2 | Le tableau s'ouvre comme onglet épinglé de l'Espace | HC 19231142050071 | ✅ | onglet interne | un tableau neuf (⌃⇧E) s’ouvre comme onglet épinglé de l’Espace, à la suite des épinglés (pas en navigation privée) ; rouvert depuis la Bibliothèque, son onglet revient sans doublon ; supprimé, son onglet redevient un onglet du jour ; self tests/sensations.js (4 vérif.), ui 29-sensations « ⌃⇧E : le tableau neuf… » |
 | TAB-3 | Dessin, texte, images, formes | HC 20498293324823 | ✅ | self (rectangle, texte, formes, flèche, image collée) ; `tests/easels.js` | |
 | TAB-4 | Guides d'alignement et magnétisme | HC 20498293324823 | ✅ | | Bords et milieux, portée de 6 points, ⌘ pour s'en passer ; self easels (6 vérifications) ; ui 15 (2 vérifications) |
 | TAB-5 | Correcteur dans le texte | HC 20498293324823 | ✅ | `easel.js`:startEdit | Correcteur actif pendant la saisie ; self easels « correcteur actif pendant la saisie, coupé au repos » |
-| TAB-6 | Vidéos intégrées depuis une adresse collée | HC 20498293324823 | ⬜ | | |
+| TAB-6 | Vidéos intégrées depuis une adresse collée | HC 20498293324823 | ⬜ | | Non fait, pour une raison de conception : la page du tableau est une page interne, de confiance (canal de l’interface, session interne). Y intégrer un lecteur d’un site (cadre YouTube, Vimeo…) y ferait entrer du contenu web : les autorisations, le bloqueur et les téléchargements sont jugés par webContents, donc au nom de la page interne. Il faudrait une vue web distincte (session du profil, bac à sable) posée par-dessus le tableau et suivie au défilement et au zoom : à concevoir avec la relecture de sécurité |
 | TAB-7 | Captures vivantes (lecture/pause, ⌘R les rafraîchit) | HC 20498417809815 | ⬜ | captures figées | Gros morceau |
 | TAB-8 | Le lien d'une capture rouvre la page d'origine | binaire `CaptureLinkIconBackground` | ✅ | self | |
 | TAB-9 | Texte alternatif d'une image | binaire | ✅ | | Champ « Texte alternatif » de l'image sélectionnée ; self easels (3 vérifications) ; ui 15 |
@@ -794,8 +794,8 @@ Arc : `menu` pour ceux de la barre de menus, sinon la source indiquée. Orbe : `
 | Id | Ce que fait Arc | Preuve Arc | État | Preuve Orbe | Note |
 | --- | --- | --- | --- | --- | --- |
 | IMP-1 | Accueil en plusieurs étapes : compte, import, thème, sites favoris, bloqueur, navigateur par défaut, carte de membre | popsci ; inverse | ✅ | accueil en cinq étapes (`welcome.html`) : bienvenue, import depuis les navigateurs trouvés, couleur de l’Espace, navigateur par défaut, premiers gestes et soutien ; « Passer l’accueil » à chaque étape, jamais réaffiché (`window.welcomed`) ; self « accueil : une étape à la fois… », « étape couleur : un clic teinte l’Espace affiché… », « « Commencer à naviguer » referme l’accueil, qui ne reviendra pas » (tests/accueil.js, 13) ; ui 24 « accueil : cinq étapes… » | Pas de compte, pas de carte de membre (Orbe n’en a pas) ; bloqueur actif d’office ; pas d’étape « sites favoris » : les signets importés arrivent épinglés |
-| IMP-2 | Accueil avec éclat de couleurs et musique | inverse ; binaire `intro-music.mp3`, `orb.mp4` | 🟡 | halo de couleurs animé autour de l’orbe à l’ouverture de l’accueil (CSS, coupé par « Réduire les animations ») ; aucun test | Pas de musique. Voir SON-3 |
-| IMP-3 | Petites vidéos d'apprentissage : épingler, changer d'Espace, nouvel onglet, vue scindée | binaire `pinning.mp4`, `space_swiping.mp4`, `new_tab.mp4`, `split_view.mp4` | ⬜ | six raccourcis listés | Enregistrer quatre vidéos d'Orbe |
+| IMP-2 | Accueil avec éclat de couleurs et musique | inverse ; binaire `intro-music.mp3`, `orb.mp4` | ✅ | halo de couleurs animé autour de l’orbe à l’ouverture de l’accueil (CSS, coupé par « Réduire les animations ») ; aucun test | halo de couleurs, vague du logo et musique originale de 7 s à l’ouverture de l’accueil (réglage « Sons », bouton pour la couper, muette pendant les essais) ; self tests/sensations.js (6 vérif.), ui 29-sensations (3 vérif.). La musique reste à écouter : voir SON-3 |
+| IMP-3 | Petites vidéos d'apprentissage : épingler, changer d'Espace, nouvel onglet, vue scindée | binaire `pinning.mp4`, `space_swiping.mp4`, `new_tab.mp4`, `split_view.mp4` | ✅ | six raccourcis listés | six démonstrations animées dessinées dans l’accueil (nouvel onglet, épingler, changer d’Espace, vue scindée, masquer la barre, petite fenêtre) : boucles de 4,2 s en transformations et opacité, figées par « Réduire les animations » ; ui 29-sensations (3 vérif., médiane 8,3 ms, 95e centile 10,1 ms, 0 mise en page). Dessins CSS à la place de vidéos enregistrées |
 | IMP-4 | Textes d'accueil : « Open your first tab », « Pin tabs to save for later », « Spaces for work and life », « Multitask with Split View » | binaire | ✅ | dernière étape de l’accueil : « Ouvre ton premier onglet », « Épingle un onglet pour le garder », « Change d’Espace : travail, perso… », « Deux pages côte à côte », chacun avec son raccourci en vigueur ; self « dernière étape : premiers gestes avec leurs raccourcis… » | Textes propres à Orbe, français et anglais |
 | IMP-5 | Onglets et dossier « Arc Basics » posés au départ | binaire | ✅ | | Premier lancement : dossier « Premiers pas » en tête des épinglés (raccourcis essentiels, centre d’aide, nouveautés), onglets en veille tant qu’on ne les ouvre pas ; posé une seule fois (starter.js) ; self fin2 « premier lancement… » (4) ; ui 29 « premier lancement : le dossier « Premiers pas »… » |
 | IMP-6 | Import depuis Chrome, Safari, Firefox, Brave, Edge, Opera, Vivaldi : signets vers les épinglés, mots de passe, cookies, plusieurs profils | HC 19335089616791 ; binaire | ✅ | lecture directe des profils (`import-browsers.js`) : Chrome, Brave, Edge, Vivaldi, Opera, Chromium (JSON), Firefox (places.sqlite par le sqlite3 du système, sinon sauvegarde mozLz40), Safari (liste de propriétés binaire), plusieurs profils ; aperçu des comptes, import en onglets épinglés, annulation ; self « Chrome : barre de favoris au premier niveau… », « Firefox sans sqlite3 : dernière sauvegarde… », « Safari : liste de propriétés binaire décodée… », « Windows : Chrome, Brave et Opera sous AppData… », « signets par milliers… plafonnés » (tests/import-navigateurs.js, 36) ; ui 24 « « Importer » : un Espace au nom du navigateur… » ; Arc (self) ; fichier HTML (self, ui 19) ; mots de passe par CSV (self) | Signets seulement. Hors périmètre, par choix : mots de passe en lecture directe (CSV à la place), cookies (chiffrés par chaque navigateur), historique. Profils d’essai fabriqués d’après les formats : vrais profils et « Accès complet au disque » pour Safari à vérifier à la main |
@@ -890,7 +890,7 @@ Arc : `menu` pour ceux de la barre de menus, sinon la source indiquée. Orbe : `
 
 ## Bilan chiffré
 
-656 lignes au total : 518 ✅, 50 🟡, 43 ⬜, 45 ➖.
+656 lignes au total : 538 ✅, 41 🟡, 29 ⬜, 48 ➖ (recompté le 9 octobre 2026).
 
 | Domaine | ✅ | 🟡 | ⬜ | ➖ | Total |
 | --- | --- | --- | --- | --- | --- |
@@ -899,23 +899,23 @@ Arc : `menu` pour ceux de la barre de menus, sinon la source indiquée. Orbe : `
 | Espaces et profils (ESP) | 21 | 1 | 2 | 0 | 24 |
 | Vie des onglets (ONG) | 25 | 1 | 1 | 2 | 29 |
 | Vue scindée (SCI) | 17 | 1 | 0 | 0 | 18 |
-| Aperçu (APE) | 10 | 0 | 2 | 0 | 12 |
+| Aperçu (APE) | 11 | 0 | 1 | 0 | 12 |
 | Petite fenêtre (PET) | 12 | 4 | 0 | 0 | 16 |
 | Thèmes (THM) | 15 | 2 | 1 | 2 | 20 |
-| Animations (ANI) | 20 | 3 | 6 | 0 | 29 |
-| Sons et haptique (SON) | 3 | 1 | 2 | 5 | 11 |
-| Gestes (GES) | 6 | 1 | 2 | 0 | 9 |
-| Bibliothèque et médias (BIB) | 21 | 3 | 4 | 3 | 31 |
+| Animations (ANI) | 24 | 1 | 4 | 0 | 29 |
+| Sons et haptique (SON) | 3 | 2 | 0 | 6 | 11 |
+| Gestes (GES) | 7 | 0 | 2 | 0 | 9 |
+| Bibliothèque et médias (BIB) | 24 | 3 | 1 | 3 | 31 |
 | Boosts (BOO) | 12 | 0 | 0 | 1 | 13 |
-| Tableaux et capture (TAB) | 14 | 1 | 3 | 1 | 19 |
-| Notes (NOT) | 4 | 1 | 0 | 0 | 5 |
-| Extensions et site (EXT) | 12 | 4 | 5 | 1 | 22 |
-| Réglages (REG) | 31 | 2 | 0 | 11 | 44 |
+| Tableaux et capture (TAB) | 15 | 0 | 3 | 1 | 19 |
+| Notes (NOT) | 5 | 0 | 0 | 0 | 5 |
+| Extensions et site (EXT) | 19 | 0 | 2 | 1 | 22 |
+| Réglages (REG) | 31 | 1 | 0 | 12 | 44 |
 | Menus (MEN) | 85 | 5 | 1 | 5 | 96 |
 | Raccourcis (RAC) | 44 | 1 | 1 | 2 | 48 |
-| Import et accueil (IMP) | 8 | 1 | 4 | 1 | 14 |
+| Import et accueil (IMP) | 10 | 1 | 1 | 2 | 14 |
 | Divers (DIV) | 24 | 3 | 0 | 5 | 32 |
-| **Total** | **518** | **50** | **43** | **45** | **656** |
+| **Total** | **538** | **41** | **29** | **48** | **656** |
 
 Lecture : un 🟡 recouvre deux cas, que les colonnes « Preuve Orbe » et « Note » distinguent : du code présent mais sans test (un test suffit à le passer en ✅), ou une fonction réellement incomplète. La part de chacun n'a pas été comptée.
 

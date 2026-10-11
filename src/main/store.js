@@ -24,6 +24,8 @@ const DEFAULT_SETTINGS = {
   archiveAfterHours: 12,
   appearance: 'auto',
   translucent: true,
+  // Survol de l'icône de la Bibliothèque : sortes de fichiers montrées (src/main/library.js).
+  libraryPeek: ['captures', 'downloads', 'media'],
   showToolbar: false,
   sidebarWidth: 250,
   maxLiveTabs: 30,
