@@ -1,7 +1,15 @@
 #!/usr/bin/env node
 // Mesures de vitesse et de mémoire d'Orbe (voir docs/suivi/ameliorations.md).
-//   node scripts/mesures.js <mesure> [--tours 8] [--arbre <dossier>]… [--app <Orbe.app>] [--avec "--drapeau=…"] [--historique 8500] [--onglets 300] [--pause 0]
-// Mesures : demarrage, memoire, navigation, commande, etat, voisins (tests/mesures.js).
+//   node scripts/mesures.js <mesure> [--tours 8] [--arbre <dossier>]… [--app <Orbe.app>] [--avec "--drapeau=…"] [--historique 8500] [--onglets 300] [--espaces 13] [--profils 10] [--pause 0] [--naturel 1] [--visible 1]
+// Mesures : demarrage, memoire, navigation, commande, etat, voisins, gestes, repos (tests/mesures.js).
+// --espaces / --profils : les onglets du profil sont répartis dans autant d'Espaces et de profils
+// (forme d'un vrai profil ancien). --naturel 1 : sans le drapeau qui empêche Chromium de mettre
+// au ralenti une fenêtre recouverte (pour mesurer justement ce ralenti).
+// Sur macOS les fenêtres mesurées sont invisibles et ne prennent ni le clavier ni la souris
+// (tests/discret.js, comme les essais) ; --visible 1 : fenêtres visibles (mais qui ne prennent
+// toujours pas le clavier), pour les mesures qui en dépendent (fenêtre réellement recouverte)
+// ou pour comparer ; --compare-visible 1 : les deux, en alternance. Une application empaquetée
+// (--app) ne charge pas ce module : ses fenêtres restent visibles.
 // Plusieurs --arbre (ou --app) : les lancements alternent (A, B, A, B…) pour annuler
 // la dérive d'une machine chargée ; la médiane de chaque valeur est affichée avec
 // la charge moyenne relevée. Les profils sont temporaires, jamais le vrai.
@@ -19,17 +27,37 @@ const rounds = Number(opt('tours', [8])[0]);
 const pause = Number(opt('pause', [0])[0]);
 const history = Number(opt('historique', [0])[0]);
 const tabs = Number(opt('onglets', [0])[0]);
+const spaces = Number(opt('espaces', [0])[0]);
+const profiles = Number(opt('profils', [0])[0]);
+const natural = !!Number(opt('naturel', [0])[0]);
+const shown = !!Number(opt('visible', [0])[0]);
 const targets = [
   ...opt('arbre', []).map((dir) => ({ name: path.basename(path.resolve(dir)), dir: path.resolve(dir) })),
   ...opt('app', []).map((p) => ({ name: path.basename(p), app: path.resolve(p) })),
 ];
 if (!targets.length) targets.push({ name: 'sources', dir: root });
+if (shown) for (const t of targets) t.visible = true;
+// --compare-visible 1 : chaque cible est doublée d'une jumelle aux fenêtres visibles (tours alternés).
+if (Number(opt('compare-visible', [0])[0])) for (const t of targets.filter((x) => !x.visible)) targets.push({ ...t, name: t.name + ' visible', visible: true });
 // --avec "<drapeaux de Chromium>" : chaque cible est doublée d'une jumelle lancée avec ces drapeaux.
 for (const flags of opt('avec', [])) {
   for (const t of targets.filter((x) => !x.extra)) targets.push({ ...t, name: t.name + ' ' + flags.replace(/^--/, ''), extra: flags.split(/\s+/).filter(Boolean) });
 }
 
+function wav(seconds = 60) {
+  const rate = 8000;
+  const n = rate * seconds;
+  const buf = Buffer.alloc(44 + n * 2);
+  buf.write('RIFF', 0); buf.writeUInt32LE(36 + n * 2, 4); buf.write('WAVEfmt ', 8);
+  buf.writeUInt32LE(16, 16); buf.writeUInt16LE(1, 20); buf.writeUInt16LE(1, 22);
+  buf.writeUInt32LE(rate, 24); buf.writeUInt32LE(rate * 2, 28); buf.writeUInt16LE(2, 32); buf.writeUInt16LE(16, 34);
+  buf.write('data', 36); buf.writeUInt32LE(n * 2, 40);
+  for (let i = 0; i < n; i++) buf.writeInt16LE(Math.round(40 * Math.sin((2 * Math.PI * 220 * i) / rate)), 44 + i * 2);
+  return buf;
+}
+
 function serve() {
+  const sound = wav();
   const page = (title, body) => `<!doctype html><meta charset="utf-8"><title>${title}</title><body style="font:16px sans-serif">${body}</body>`;
   const form = '<form action="/leger" method="post"><input name="login" autocomplete="username"><input type="password" name="pass"><button>Connexion</button></form>';
   const px = Buffer.from('R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==', 'base64');
@@ -52,6 +80,9 @@ function serve() {
       </script>`));
     }
     if (url.pathname === '/temoin') return res.end(page('Témoin', '<h1>Témoin</h1><p id="p">0</p><script>let n = 0; const p = document.getElementById("p"); const f = () => { p.textContent = String(n += 1); requestAnimationFrame(f); }; requestAnimationFrame(f);</script>'));
+    // Un son quasi inaudible (−58 dB) qui tourne en boucle : l'onglet compte comme « audible ».
+    if (url.pathname === '/son.wav') { res.setHeader('content-type', 'audio/wav'); res.setHeader('accept-ranges', 'bytes'); res.setHeader('content-length', sound.length); return res.end(sound); }
+    if (url.pathname === '/piste') return res.end(page('Piste', '<audio id="a" src="/son.wav" loop></audio><h1>Piste</h1><script>window.start = async () => { navigator.mediaSession.metadata = new MediaMetadata({ title: "Un morceau au titre nettement plus long que la barre latérale", artist: "Artiste" }); await document.getElementById("a").play(); return true; };</script>'));
     if (url.pathname === '/px') { res.setHeader('content-type', 'image/gif'); return res.end(px); }
     res.statusCode = 404;
     return res.end(page('404', ''));
@@ -60,20 +91,26 @@ function serve() {
 }
 
 // Fenêtre recouverte par une autre (machine partagée) : sans cela Chromium ralentit ses minuteries.
-const SWITCHES = ['--disable-backgrounding-occluded-windows'];
+const SWITCHES = natural ? [] : ['--disable-backgrounding-occluded-windows'];
 
 function launch(target, env) {
   const scenario = path.join(root, 'tests', 'mesures.js');
   const base = { ...process.env, ORBE_SCENARIO: scenario, ...env };
+  if (target.visible) base.ORBE_TEST_VISIBLE = 'inactif'; else delete base.ORBE_TEST_VISIBLE;
+  delete base.ORBE_UI_FOCUS;
+  // Le module vient de cet arbre-ci : les versions anciennes mesurées ne l'ont pas.
+  const discreet = process.platform === 'darwin' && !process.env.CI ? ['-r', path.join(root, 'tests', 'discret.js')] : [];
   const child = target.app
     ? spawn(path.join(target.app, 'Contents', 'MacOS', 'Orbe'), ['--selftest', '--orbe-test', ...SWITCHES, ...(target.extra || [])], { env: base })
-    : spawn(process.execPath, [ensure(), target.dir, '--selftest', ...SWITCHES, ...(target.extra || [])], { env: base });
+    : spawn(process.execPath, [ensure(), ...discreet, target.dir, '--selftest', ...SWITCHES, ...(target.extra || [])], { env: base });
   let text = '';
   child.stdout.on('data', (d) => { text += d; });
   child.stderr.on('data', (d) => { text += d; });
   return new Promise((resolve) => child.on('exit', (code) => {
     const line = text.split('\n').find((l) => l.startsWith('MESURE '));
     if (!line) console.error(`[${target.name}] sans mesure (code ${code})\n${text.slice(-1600)}`);
+    const extra = text.split('\n').find((l) => l.startsWith('FICHIERS '));
+    if (extra) target.files = extra.slice(9);
     resolve(line ? JSON.parse(line.slice(7)) : null);
   }));
 }
@@ -96,7 +133,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   for (const t of targets) {
     t.profile = path.join(tmp, t.name + '-' + targets.indexOf(t));
     t.runs = [];
-    await launch(t, { ORBE_BENCH: 'prepare', ORBE_BENCH_BASE: base, ORBE_USER_DATA: t.profile, ORBE_BENCH_HISTORY: String(history), ORBE_BENCH_TABS: String(tabs) });
+    await launch(t, { ORBE_BENCH: 'prepare', ORBE_BENCH_BASE: base, ORBE_USER_DATA: t.profile, ORBE_BENCH_HISTORY: String(history), ORBE_BENCH_TABS: String(tabs), ORBE_BENCH_SPACES: String(spaces), ORBE_BENCH_PROFILES: String(profiles) });
   }
   for (let i = 0; i < rounds; i++) {
     for (const t of targets) {
@@ -107,7 +144,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   }
   server.close();
   const keys = [...new Set(targets.flatMap((t) => t.runs.flatMap((r) => Object.keys(r))))];
-  console.log(`\n${bench} — ${rounds} tours${pause ? `, ${pause} s de pause` : ''}${history ? `, ${history} visites` : ''}${tabs ? `, ${tabs} onglets` : ''} — médianes (min–max)`);
+  console.log(`\n${bench} — ${rounds} tours${pause ? `, ${pause} s de pause` : ''}${history ? `, ${history} visites` : ''}${tabs ? `, ${tabs} onglets` : ''}${spaces ? `, ${spaces} Espaces` : ''}${profiles ? `, ${profiles} profils` : ''}${natural ? ', fenêtre laissée à Chromium' : ''} — médianes (min–max)`);
   console.log(['mesure'.padEnd(28), ...targets.map((t) => t.name.padStart(26))].join(''));
   for (const k of keys) {
     const cells = targets.map((t) => {
@@ -116,5 +153,6 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     });
     console.log([k.padEnd(28), ...cells].join(''));
   }
+  for (const t of targets) if (t.files) console.log(`\nFichiers du profil réécrits (dernier tour, ${t.name}) : ${t.files}`);
   try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {}
 })();

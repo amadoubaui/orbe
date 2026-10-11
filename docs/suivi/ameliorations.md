@@ -10,6 +10,9 @@ M = un à deux jours, L = plus) et un état.
 Ce document est d'abord un travail de recherche ; les points cochés ont été réalisés depuis
 (mesures avant / après : sections 8 bis et 9).
 
+Un **deuxième tour** de recherche (11 oct., de la 0.12 à la 0.15.1) est en section 8 ter :
+mesures version contre version, coût au repos, et les points ENER, DEM-10 à 12, PERF-30 et 31.
+
 ## 1. Comment les chiffres ont été pris
 
 | | |
@@ -902,6 +905,242 @@ seconde (« balayage lent » échoue), et sous écran verrouillé la vidéo d'es
 `--selftest` pose désormais `disable-backgrounding-occluded-windows`, ce qui règle le premier
 cas ; les deux autres demandent un écran déverrouillé (l'intégration continue n'est pas concernée).
 
+## 8 ter. Deuxième tour de recherche (branche `recherche-2`, 11 oct.) : de la 0.12 à la 0.15.1
+
+Orbe a beaucoup grandi depuis le premier tour (0.12 → 0.15.1 : lecteurs miniatures, centre de
+contrôle du site, survols, thèmes, sons, sauvegardes, recherche de mise à jour, trois scripts de
+préchargement, rendu à clés de la barre latérale…). Le code du processus principal est passé de
+677 Ko à 1 039 Ko (+53 %), celui de la coque de 105 à 150 Ko. Ce tour mesure ce que cette
+croissance a coûté, version contre version, puis ce que coûte Orbe **quand rien ne se passe**.
+
+**Lecture rapide.** Presque tout a tenu : gestes, frappe, navigation, mémoire et disque sont au
+niveau de la 0.12. Deux régressions réelles ont été trouvées, toutes deux corrigées ici :
+des **animations sans fin** qui faisaient travailler le processeur graphique en permanence
+pendant qu'un onglet joue en arrière-plan ou qu'une mise à jour est annoncée (jusqu'à 20 % d'un
+cœur, des heures durant), et **une vingtaine de millisecondes** de plus avant la fenêtre.
+
+### Méthode
+
+- `node scripts/mesures.js <mesure> --arbre <avant> --arbre .` : lancements **en alternance**,
+  médiane (min–max), charge moyenne relevée à chaque tour. « 0.12 » et « 0.13 » sont les
+  étiquettes `v0.12.0` et `v0.13.0` extraites à part ; « main » est `13f7c44` (0.15.1) ;
+  « branche » est `recherche-2`. Les scénarios (`tests/mesures.js`) sont ceux de cette branche,
+  joués tels quels sur les anciennes versions.
+- **Profil** : temporaire, de la forme d'un vrai profil ancien — 13 Espaces, 10 profils,
+  200 onglets (par Espace : un dossier de trois onglets épinglés, deux épinglés seuls, le reste
+  dans « Aujourd'hui »). Options nouvelles : `--espaces`, `--profils`. Le vrai profil n'a
+  jamais été ouvert.
+- **Mesures nouvelles** : `gestes` (changement d'Espace et d'onglet jusqu'à l'image, temps de
+  `render()`, défilement, dix onglets vivants), `repos` (processeur par famille de processus en
+  ms de calcul par seconde écoulée, réveils, états poussés, animations en cours, fichiers du
+  profil réécrits — page fixe, lecteur miniature, note de mise à jour, fenêtre recouverte,
+  réduite, masquée), `divers` (sauvegarde de l'état, surveillance du bord gauche).
+- **Machine** : celle de la section 1, partagée (une autre suite d'essais tournait) : charge
+  moyenne de 4 à 11 selon les séries, donnée dans chaque tableau.
+- Mémoire : `app.getAppMetrics()` (résidente, majorée comme en 8 bis).
+
+**Fenêtres discrètes.** Depuis `13f7c44` les fenêtres d'essai sont invisibles sur macOS
+(`tests/discret.js`). `scripts/mesures.js` charge désormais ce module de la même façon : l'écran
+reste libre pendant les mesures. `--visible 1` les montre (sans jamais prendre le clavier :
+`ORBE_TEST_VISIBLE=inactif`), `--compare-visible 1` alterne les deux. Une application empaquetée
+(`--app`) ne charge pas le module et reste visible.
+
+Ce que la transparence change (démarrage, branche, 5 tours en alternance) :
+
+| ms depuis la création du processus | discrète | visible, sans le clavier (charge 7,2) | visible, au premier plan (charge 5,3 ; discrète : 2e colonne) |
+| --- | --- | --- | --- |
+| fenêtre créée | 309 (290–370) | 290 (274–308) | 309 → 307 |
+| coque chargée | 401 (398–483) | 463 (443–500) | 414 → 554 |
+| coque peinte | 390 (370–472) | 444 (426–472) | 393 → 473 |
+| barre latérale rendue | 424 (413–499) | 490 (461–513) | 428 → 567 |
+| première page peinte | 403 (392–480) | 422 (412–454) | 416 → 491 |
+| vue modale prête | 479 (468–566) | 566 (529–591) | 483 → 646 |
+
+Une fenêtre transparente **peint 20 à 90 ms plus tôt** qu'une fenêtre visible, et 75 à 160 ms
+plus tôt qu'une fenêtre qui prend le premier plan (icône du Dock, activation). Les temps de
+démarrage ci-dessous sont donc **comparables entre versions** (même mode) mais **optimistes
+d'environ 60 à 140 ms en valeur absolue** ; les temps sans peinture (fenêtre créée, calculs,
+mémoire, processus) ne bougent pas. Le coût des animations, lui, est le même fenêtre visible ou
+non (lecteur, `main` : 185 ms/s discrète, 169 ms/s visible).
+
+### Tableau : 0.12, 0.13, aujourd'hui
+
+« Aujourd'hui » est `main` avant les corrections de ce tour (la colonne suivante les donne).
+
+| Mesure | 0.12 | 0.13 | 0.15.1 (`main`) | Charge | Verdict |
+| --- | --- | --- | --- | --- | --- |
+| **Démarrage, profil vide** : fenêtre créée (ms) | 286 (281–321) | 303 (285–322) | **309** (296–313) | 5,2 | +23 ms |
+| coque peinte | 380 | 382 | 397 | 5,2 | +17 ms |
+| barre latérale rendue (interactive) | 432 | 443 | 455 | 5,2 | +23 ms |
+| première page peinte | 392 | 401 | 412 | 5,2 | +20 ms |
+| vue modale prête | 433 | 459 | 489 | 5,2 | +56 ms |
+| première barre de commande | 18 | 21 | 21 | 5,2 | tenu |
+| **Démarrage, 200 onglets / 13 Espaces / 10 profils** : fenêtre créée | 286 (279–291) | 294 (288–298) | **316** (293–321) | 7,2 | +30 ms |
+| coque peinte / barre rendue / page peinte | 376 / 440 / 392 | 381 / 442 / 388 | 409 / 450 / 430 | 7,2 | +33 / +10 / +38 ms |
+| vue modale prête | 441 | 457 | 516 | 7,2 | +75 ms |
+| `require` du processus principal avant « prêt » | 13–21 ms | 17–25 ms | **28–36 ms** | 7–8 | +13 ms, dont 7 pour un seul module (DEM-10) |
+| **Processus / mémoire au démarrage** (vide) | 5 / 482 Mo | 5 / 488 Mo | 5 / 480 Mo | 5,2 | tenu |
+| avec 200 onglets restaurés (endormis) | 5 / 486 Mo | 5 / 488 Mo | 5 / 490 Mo | 7,2 | tenu : un onglet restauré ne coûte rien |
+| avec 10 onglets vivants de plus (pages légères) | 15 / 1 313 Mo | 15 / 1 271 Mo | 15 / 1 289 Mo | 5,3 | tenu (≈ 75 Mo résidents par onglet vivant) |
+| **Navigation** (chargement complet) : page légère | 8,0 ms | 7,7 | 8,4 | 10 | tenu |
+| page à 12 cadres (trois scripts de préchargement) | 51,2 (49–56) | 51,2 (50–52) | 52,9 (51–56) | 10 | **+1,7 ms pour 12 cadres** : tenu |
+| page à 150 sous-ressources | 77,1 (75–90) | 77,5 (76–87) | 86,2 (74–100) | 10 | dans le bruit (minimums égaux) |
+| **État envoyé à la coque**, 200 onglets : taille | 11,1 Ko | 11,2 Ko | 11,8 Ko | 5,5 | tenu |
+| construction + envoi (processus principal) | 0,09 ms | 0,10 | 0,12 | 5,5 | +30 %, négligeable |
+| aller-retour jusqu'au rendu / tâche de la coque | 1,0 / 1,3 ms | 0,9 / 1,4 | 0,95 / 1,5 | 5,5 | tenu |
+| 1 000 onglets : taille / envoi / aller-retour | 45,1 Ko / 0,23 / 1,8 ms | 45,1 / 0,24 / 1,8 | 47,6 / 0,35 / 1,9 | 7,2 | tenu |
+| **`render()`**, un titre change, 200 lignes dans un Espace | 0,8 ms | 0,8 | **0,4** | 7 | mieux (rendu à clés) |
+| reconstruction (changer d'Espace), 200 lignes | 4,2 ms | 4,7 | 4,8 | 7 | tenu |
+| **Changement d'Espace** → barre peinte, 13 Espaces | 11,2 ms | 8,8 | 8,2 | 5,3 | une image |
+| un Espace de 200 onglets | 14,2 | 13,4 | 16,2 (14,7–19,2) | 7 | deux images, tenu |
+| **Changement d'onglet** → image de la page | 7,7 ms (dont 2,2 synchrones) | 7,6 | 7,5 | 5,3 | une image |
+| **Barre de commande**, 8 000 visites : frappe → liste | 1,3 ms | 1,4 | 1,3 | 9 | tenu |
+| frappe → peinture / calcul principal | 6,4 / 0,43 ms | 6,6 / 0,40 | 6,5 / 0,41 | 9 | tenu |
+| **Défilement de la barre**, 213 lignes : médiane / 95e / pire | 8,3 / 9,3 / 9,4 ms | idem | idem | 7 | 120 images/s, aucune perdue |
+| **Repos, page fixe** : graphique / coque / pages | — | — | 0,4 / 0,2 / 0,1 ms par s | 4,8 | excellent ; 9 réveils par s |
+| états poussés à la coque, au repos | — | — | 0 par minute | 4,8 | excellent |
+| **Repos, un onglet joue hors de vue** (lecteur miniature) | (pas de lecteur) | (pas de lecteur) | **185 ms/s** graphique (93–217), 40–47 coque, 334 réveils/s | 4–8 | **régression** (ENER-1) |
+| **Repos, mise à jour annoncée** | (pas de note) | (pas de note) | **71 ms/s** graphique (40–71), 25 coque, 220 réveils/s | 5–10 | **régression** (ENER-2) |
+| Fenêtre réduite ou masquée, lecteur présent | — | — | 0,3–0,5 / 0,1–0,6 ms par s | 5–8 | Chromium arrête tout |
+| **Disque au repos** : fichiers du profil réécrits | — | — | `history.json` une fois après la visite, puis rien | 4,8 | excellent |
+
+Non mesuré : 50 et 200 onglets **vivants** (≈ 4 et 15 Go sur une machine de 16 Go partagée ; la
+veille automatique de MEM-3 les endormirait de toute façon). L'ordre de grandeur est donné par
+les dix onglets vivants : 74 à 79 Mo résidents par page légère, inchangé depuis la 0.12.
+
+### Ce qui tourne quand rien ne se passe
+
+Toutes les minuteries périodiques du code (recherche de `setInterval`), et ce qu'elles coûtent :
+
+| Minuterie | Période | Quand | Coût relevé |
+| --- | --- | --- | --- |
+| `media.js` : question posée aux pages qui jouent hors de vue | 1 s | seulement s'il y a un lecteur ; s'arrête seule | non mesurable (processus principal : 4,7 ms/s avec, 4,4 sans, mesure comprise) ; aucun état poussé tant que la position suit |
+| `window.js` : `pollPeek`, bord gauche | 80 ms | seulement barre latérale masquée | 0,14 µs par passage fenêtre en arrière-plan, 0,96 µs au premier plan (12 µs par seconde) |
+| `window.js` : `statusPoll`, adresse du lien survolé | — | seulement pendant un survol de lien | passager |
+| `capture-state.js` | — | seulement pendant une capture | passager |
+| `little.js` | — | seulement pendant l'animation de la petite fenêtre | passager |
+| `page.js` (dans les pages) | 250 ms, 60 fois au plus | après la saisie d'un mot de passe | passager, borné à 15 s |
+| `tasks.js` (gestionnaire de tâches) | 2,5 s | page ouverte et visible | — |
+| `main.js` : veille des onglets | 60 s | toujours (pas en essai) | — |
+| `main.js` : archivage | 10 min | toujours | — |
+| `backups.js` : sauvegarde de l'état | 1 h, et au lancement | toujours (pas en essai) | 0,45 ms pour 44 Ko (200 onglets), 1,4 ms pour 189 Ko (1 000 onglets) |
+| `updates.js` | 6 h | si la recherche est active | une requête |
+
+Rien à reprendre de ce côté : aucune minuterie ne tourne sans raison. **Le coût au repos venait
+des animations CSS**, pas des minuteries. Relevé en coupant chaque animation tour à tour
+(`ORBE_BENCH_CSS`, lecteur miniature présent, 10 s, deux tours, charge 4–5) :
+
+| Lecteur miniature (`main`) | graphique (ms/s) | coque (ms/s) | réveils/s | animations en cours |
+| --- | --- | --- | --- | --- |
+| tel quel (titre qui défile + trait d'avancement) | 207 / 217 | 47 / 47 | 338 / 318 | 2 |
+| sans le défilement du titre | 188 / 185 | 46 / 44 | 320 / 323 | 1 |
+| sans la transition de l'avancement | 201 / 193 | 46 / 43 | 335 / 328 | 1 |
+| sans les deux | **1,4 / 1,1** | 0,6 / 0,6 | 41 / 40 | 0 |
+| avancement en 60 pas (`steps(60)`) seul | 22 / 21 | 17 / 18 | 167 / 167 | 1 |
+
+Une **seule** animation en cours, quelle que soit sa taille (un trait de 2 px), fait composer
+la fenêtre à la cadence de l'écran (120 images par seconde) : c'est tout ou rien. Même une
+animation « à pas », qui ne change rien entre deux pas, garde le compositeur éveillé (22 + 17 ms/s).
+Les deux animations du lecteur duraient autant que la lecture : la musique d'une journée de
+travail coûtait un cinquième de cœur en continu, écran allumé.
+
+**Fenêtre recouverte.** Essai court, fenêtres visibles, sans le drapeau qui empêche Chromium de
+ralentir (`--naturel 1 --visible 1`, `main`, 8 s) : recouverte par une autre fenêtre **d'Orbe**,
+la coque reste « visible » et le coût ne baisse pas (169 → 173 ms/s graphique). Le cas d'une
+fenêtre recouverte par **une autre application** n'a pas été mesuré (il aurait fallu occuper
+l'écran) ; le constat de 8 bis (minuteries ralenties à une par seconde) laisse penser que
+Chromium ralentit alors. Réduite ou masquée, tout s'arrête (tableau ci-dessus).
+
+### Points
+
+Classés par gain ressenti rapporté au risque.
+
+- ✅ **ENER-1 — Lecteur miniature : plus rien ne tourne en continu pendant la lecture.** *(fait le 11 oct.)*
+  Problème : la barre d'avancement était une transition CSS étirée jusqu'à la fin de la piste, le
+  titre trop long défilait sans fin ; chacune suffisait à faire composer la fenêtre 120 fois par
+  seconde. Changement : l'avancement est posé par une minuterie (un pas par point d'écran
+  environ, quatre par seconde au plus, arrêtée fenêtre masquée — `STEP` dans `players.js`) ; le
+  titre défile **un aller-retour** quand il apparaît ou change, et de nouveau quand le pointeur
+  quitte la carte, puis se repose. Mesuré (12 s, piste de 60 s, deux tours en alternance,
+  charge 5–8) : graphique **185 → 13 ms/s**, coque **40 → 5,9 ms/s**, réveils 334 → 165 par
+  seconde ; fenêtre visible : 169 → 15 ms/s. Une piste de 4 min (un pas par seconde) coûte
+  moins encore. Risque : le défilement du titre **se voit** — il ne tourne plus en boucle ;
+  pour revenir en arrière, une valeur dans `shell.css` (`2 alternate` → `infinite alternate`).
+  Essais : « l'avancement progresse par pas, sans transition ni animation en cours », « le titre
+  trop long ne défile pas sans fin » (`tests/medias.js`), essai d'interface des lecteurs mis à jour.
+- ✅ **ENER-2 — Note de mise à jour : le cœur bat trois fois, puis se repose.** *(fait le 11 oct.)*
+  Problème : `update-heart` tournait sans fin tant que la note restait au bas de la barre — des
+  jours, si l'on remet la mise à jour à plus tard. Mesuré (12 s, page fixe, charge 5–10) :
+  graphique **71 → 0,1 ms/s**, coque **25 → 0,4 ms/s**, réveils 220 → 6 par seconde. Risque :
+  nul (le cœur reste, immobile). Essai : « le cœur de la note bat quelques fois puis se repose »
+  (`tests/mises-a-jour.js`).
+- ✅ **ENER-0 — Verrou : aucune animation sans fin hors d'un état passager.** *(fait le 11 oct.)*
+  `tests/performances.js` relit `shell.css` : seules six règles peuvent porter `infinite`
+  (chargement : `#url.loading::after`, `#glow i`, `.spinner` ; capture : `#capture-note`,
+  `.row.capturing .act.cap` ; favori qui joue : `.tile.audible .dot i`), et la coque au repos
+  n'a aucune animation en cours. Toute nouvelle animation sans fin doit être justifiée ici.
+- ✅ **DEM-10 — Icônes : ne rien construire au lancement.** *(fait le 11 oct.)*
+  Problème : `src/main/icons.js` (24 lignes) construisait au chargement un `Intl.Segmenter` et une
+  expression régulière à classes Unicode : **6,8 à 7,0 ms** avant la fenêtre, la moitié de ce
+  que le processus principal a pris depuis la 0.12, pour un geste rare (choisir un émoji).
+  Changement : construits au premier émoji vérifié. Mesuré : `require('./window')` 12,3–14,0 →
+  4,4–6,9 ms ; « prêt » 64–85 → 55–77 ms (quatre tours en alternance, charge 7) ; démarrage avec
+  200 onglets (7 tours, charge 6,4) : fenêtre **308 → 295 ms**, barre rendue 462 → 432, première
+  page 421 → 400. Risque : nul (même vérification). Essai : « icônes : rien n'est construit au
+  chargement du module ».
+- ⬜ **ENER-3 — Favori qui joue, capture en cours : les deux animations sans fin qui restent.**
+  L'égaliseur d'un favori audible (`tile-notes`) et la pulsation de capture (`capture-pulse`)
+  tournent tant que dure l'état : une journée de musique, une heure de visioconférence. Mesuré
+  en posant la même animation sur un élément de même taille (10 s, charge 10) : égaliseur
+  **+45 ms/s** graphique et **+28 ms/s** coque, pulsation **+42** et **+24**, réveils 163 → 330
+  par seconde. Proposé : égaliseur figé après quelques mesures (barres à mi-hauteur, comme en
+  mouvement réduit) et relancé au survol ; pulsation remplacée par un point fixe après dix
+  secondes. Gain : 7 % d'un cœur pendant ces états. Risque : goût — ce sont des signes de vie
+  voulus ; à décider. Effort S.
+- ⬜ **ENER-4 — Comprendre pourquoi une animation minuscule coûte une fenêtre entière.**
+  Un trait de 2 px ou un cœur de 11 px coûtent 50 à 200 ms/s de processeur graphique : toute la
+  fenêtre (3 456 × 2 234 points d'écran) est recomposée à 120 Hz. À essayer, chiffres à l'appui
+  (`repos` avec `ORBE_BENCH_CSS`) : sans translucidité (`vibrancy`), sans le grain, avec la zone
+  animée isolée (`contain: strict`, couche propre). Si une cause simple ressort, toutes les
+  animations d'Orbe — y compris pendant les chargements — coûteraient moins. Gain : inconnu ;
+  risque : aucun tant que ce n'est qu'une mesure. Effort M.
+- ⬜ **DEM-11 — Charger au besoin les modules que le lancement n'utilise pas.**
+  Après DEM-10 il reste 20 à 28 ms de `require` avant « prêt » (13–21 en 0.12). `sessions.js`
+  en tire 5 à 9 : `passwords` 1,1–2,1 ms, `ext-api` 1,3–1,8, `permissions` 0,7–1,4, `extensions`
+  0,9–1,3, `downloads` 0,4–0,8. Gain attendu : 3 à 6 ms. Ces modules gardent des frontières de
+  sécurité (mots de passe, autorisations, extensions) : l'ordre de leur chargement ne doit pas
+  changer sans relecture. Risque moyen pour un gain faible : **en bas de liste**. Effort M.
+- ⬜ **DEM-12 — Vue modale : +56 à +75 ms depuis la 0.12.** La vue modale (barre de commande) est
+  prête 489–516 ms après le lancement contre 433–441 ; l'écart avec la coque chargée est passé
+  de 64 à 81 ms. Sans effet visible (la première barre de commande s'ouvre toujours en 17–21 ms)
+  mais c'est du travail fait pendant que la première page se peint. À décomposer (taille de
+  `overlay.js`, 725 lignes, et de ses feuilles de style). Gain : inconnu ; risque faible. Effort S.
+- ➖ **PERF-30 — Ne pas envoyer un état identique au précédent.** Écarté après mesure :
+  `sendState` envoie bien 60 fois sur 60 un état identique si on l'appelle 60 fois (0,12 ms côté
+  principal, 1,5 ms de tâche dans la coque à 200 onglets), mais au repos **aucun** état n'est
+  poussé (0 par minute, page fixe comme lecteur présent), et PERF-23 avait compté 1 à 3 envois par
+  seconde en chargement. Rien à gagner.
+- ➖ **ENER-5 — Arrêter la question posée aux pages qui jouent quand la fenêtre est masquée.**
+  Écarté : une question par seconde, sans état poussé tant que la position suit ; le processus
+  principal passe de 4,4 à 4,7 ms/s, mesure comprise.
+- ➖ **ENER-6 — Surveillance du bord gauche (`pollPeek`, 80 ms).** Écarté : 0,96 µs par passage.
+- ➖ **DISQUE-1 — Écritures au repos.** Écarté : aucune écriture récurrente du profil (une de
+  `history.json` après la visite, une ligne de journal de `Local Storage`).
+- ➖ **DISQUE-2 — Sauvegarde horaire de l'état, faite sur le fil principal avant la première
+  fenêtre.** Écarté : 0,45 ms pour l'état d'un profil de 200 onglets (44 Ko), 1,4 ms à 1 000.
+- ➖ **MEM-10 — Mémoire de la coque après trois versions de fonctions.** Écarté : 480 Mo
+  résidents au démarrage contre 482 en 0.12, 5 processus ; rien n'a grossi.
+- ➖ **PERF-31 — Coût des trois scripts de préchargement.** Écarté : +1,7 ms sur une page à
+  12 cadres (51,2 → 52,9 ms, charge 10), soit 0,14 ms par cadre.
+
+### Ce que je recommande ensuite
+
+1. Décider d'ENER-3 (c'est une affaire de goût, le chiffre est là).
+2. ENER-4 : une demi-journée de mesures qui peut alléger **toutes** les animations.
+3. Refaire `repos` sur l'application empaquetée, fenêtre réellement recouverte par une autre
+   application et sur batterie (`powermetrics` demande les droits d'administrateur) : la
+   consommation en watts n'a pas pu être relevée ici, seulement le temps de processeur.
+
 ## 9. Animations des vues natives (ANIM)
 
 ### Bascule de la barre latérale
@@ -1232,7 +1471,9 @@ Mesuré, et à laisser tel quel :
 - les onglets restaurés chargés seulement quand on les ouvre (un seul processus d'onglet au démarrage, quel que soit le nombre d'onglets) ;
 - la liste du bloqueur chargée 1,2 s après le démarrage (6 ms) et la décision à 0,25 µs ;
 - les scripts de préchargement sur les pages sans cadre (0,5 ms) ;
-- les `require` du processus principal (15 ms pour tout Orbe).
+- les `require` du processus principal (15 ms pour tout Orbe en 0.12 ; 20 à 28 ms en 0.15.1 après DEM-10, voir 8 ter) ;
+- les minuteries périodiques : aucune ne tourne sans raison (tableau en 8 ter) ;
+- l'état envoyé à la coque (12 Ko et 0,12 ms à 200 onglets, aucun envoi au repos).
 
 ## 12. Les 20 premiers à faire
 

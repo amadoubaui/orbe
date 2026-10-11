@@ -127,6 +127,8 @@ module.exports = async function majTests(ctx) {
   // Note de la barre latérale.
   await until(() => ui('!document.getElementById("update-note").hidden'), 'note de mise à jour affichée');
   check('barre latérale : une ligne discrète annonce la version', (await ui('document.getElementById("update-open").textContent')) === 'Orbe 9.9.9 est disponible');
+  check('le cœur de la note bat quelques fois puis se repose : pas d’animation sans fin (ENER-2)',
+    Number(await ui('getComputedStyle(document.getElementById("update-open"), "::before").animationIterationCount')) <= 5);
   await ui('document.getElementById("update-open").click()');
   await until(() => shown === 1, 'clic sur la note');
   check('un clic sur la note ouvre la carte des mises à jour, sans nouvelle requête', shown === 1 && seen.length === 1);

@@ -217,7 +217,9 @@ async function lancer() {
     // Attend que l'élément ne bouge plus (barre latérale en cours d'animation).
     let box = null;
     await jusqua(async () => {
-      const b = await loc.boundingBox();
+      let b = await loc.boundingBox();
+      // Survol perdu entre-temps (même cause) : l'élément a disparu, on le révèle de nouveau.
+      if (!b && options.survol) { await options.survol.hover(); await sleep(50); b = await loc.boundingBox(); }
       const stable = b && box && b.x === box.x && b.y === box.y && b.width === box.width;
       box = b;
       if (!stable) await sleep(50);

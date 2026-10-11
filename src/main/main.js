@@ -128,8 +128,9 @@ function routeFor(url) {
   return prefs.routeFor(String(url));
 }
 
-function newWindow(opts = {}) {
-  return OrbeWindow.open(opts);
+// `from` : la fenêtre d'où vient la demande (celle du menu). Sans elle, la fenêtre active.
+function newWindow(opts = {}, from) {
+  return OrbeWindow.open(opts, from || OrbeWindow.focused);
 }
 
 // Fenêtre des réglages, à volets (src/main/panes.js). `pane` : volet à afficher.

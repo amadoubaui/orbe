@@ -20,7 +20,9 @@
 const { app, BaseWindow, BrowserWindow } = require('electron');
 
 const visible = process.env.ORBE_TEST_VISIBLE === '1' || process.env.ORBE_UI_FOCUS === '1' || /[\\/]natif[\\/]/.test(process.env.ORBE_SCENARIO || '');
-const invisible = !visible && process.platform === 'darwin' && !process.env.CI;
+// ORBE_TEST_VISIBLE=inactif (scripts/mesures.js --visible 1) : fenêtres visibles, mais toujours
+// sans prendre le clavier ni passer devant par elles-mêmes.
+const invisible = !visible && process.platform === 'darwin' && !process.env.CI && process.env.ORBE_TEST_VISIBLE !== 'inactif';
 
 if (!visible) {
   const opacite = BaseWindow.prototype.setOpacity;
