@@ -6,8 +6,9 @@
 // (forme d'un vrai profil ancien). --naturel 1 : sans le drapeau qui empêche Chromium de mettre
 // au ralenti une fenêtre recouverte (pour mesurer justement ce ralenti).
 // Sur macOS les fenêtres mesurées sont invisibles et ne prennent ni le clavier ni la souris
-// (tests/discret.js, comme les essais) ; --visible 1 : fenêtres ordinaires, pour les mesures qui
-// en dépendent (fenêtre réellement recouverte) ou pour comparer. Une application empaquetée
+// (tests/discret.js, comme les essais) ; --visible 1 : fenêtres visibles (mais qui ne prennent
+// toujours pas le clavier), pour les mesures qui en dépendent (fenêtre réellement recouverte)
+// ou pour comparer ; --compare-visible 1 : les deux, en alternance. Une application empaquetée
 // (--app) ne charge pas ce module : ses fenêtres restent visibles.
 // Plusieurs --arbre (ou --app) : les lancements alternent (A, B, A, B…) pour annuler
 // la dérive d'une machine chargée ; la médiane de chaque valeur est affichée avec
@@ -95,7 +96,7 @@ const SWITCHES = natural ? [] : ['--disable-backgrounding-occluded-windows'];
 function launch(target, env) {
   const scenario = path.join(root, 'tests', 'mesures.js');
   const base = { ...process.env, ORBE_SCENARIO: scenario, ...env };
-  if (target.visible) base.ORBE_TEST_VISIBLE = '1'; else delete base.ORBE_TEST_VISIBLE;
+  if (target.visible) base.ORBE_TEST_VISIBLE = 'inactif'; else delete base.ORBE_TEST_VISIBLE;
   delete base.ORBE_UI_FOCUS;
   // Le module vient de cet arbre-ci : les versions anciennes mesurées ne l'ont pas.
   const discreet = process.platform === 'darwin' && !process.env.CI ? ['-r', path.join(root, 'tests', 'discret.js')] : [];

@@ -507,7 +507,7 @@ const BENCHES = {
     w.activate(calm);
     if (process.env.ORBE_BENCH_CSS) await ui.insertCSS(process.env.ORBE_BENCH_CSS);
     // Régime établi : on laisse finir ce qui ne joue qu'une fois (40 s au plus ; un mouvement sans fin reste compté).
-    await until(() => ui.executeJavaScript(`document.getAnimations().filter((x) => x.playState === 'running').length === 0`), 40000).catch(() => {});
+    await until(() => ui.executeJavaScript(`document.getAnimations().filter((x) => x.playState === 'running').length === 0`), Number(process.env.ORBE_BENCH_REST) || 40000).catch(() => {});
     if (wanted('lecteur')) { res.lecteur = await period(); res.lecteur.lecteurs = (w.players || []).length; }
     // Fenêtre entièrement recouverte par une autre (à lancer avec --naturel 1, sinon Chromium ne ralentit rien).
     if (wanted('recouverte')) {
