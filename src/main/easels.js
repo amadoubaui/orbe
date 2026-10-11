@@ -412,9 +412,9 @@ function open(w, id) {
   const board = known ? id : create().id;
   const tab = w.openInternal('easel.html?id=' + board);
   // Un tableau neuf s'ouvre comme onglet épinglé de l'Espace, comme dans Arc : il reste
-  // dans la barre d'une séance à l'autre. (Pas en navigation privée : rien n'y est épinglé.
+  // dans la barre d'une séance à l'autre. (Ni en navigation privée ni dans une fenêtre vierge : rien n'y est épinglé.
   // Un tableau rouvert depuis la Bibliothèque reste un onglet du jour.)
-  if (!known && tab && !w.incognito) {
+  if (!known && tab && w.shared) {
     try { w.move({ id: tab.id, to: 'pinned', index: w.space.pinned.length }); } catch (err) { console.error('[orbe] tableau épinglé', err.message); }
   }
   return board;

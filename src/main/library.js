@@ -159,8 +159,12 @@ async function folderRows(from, q) {
     entries = await fs.promises.readdir(dir, { withFileTypes: true });
   } catch { return []; }
   const found = [];
+  // Un fichier téléchargé par Orbe que le système n'a pas pu marquer garde sa confirmation :
+  // il ne reparaît pas ici, où il s'ouvrirait sans elle.
+  const unmarked = new Set(store.state.downloads.filter((d) => d && d.marked === false && d.path).map((d) => d.path));
   for (const e of entries) {
     if (!e.isFile() || e.name.startsWith('.') || !MEDIA.test(e.name)) continue;
+    if (unmarked.has(path.join(dir, e.name))) continue;
     if (q && !e.name.toLowerCase().includes(q)) continue;
     const file = path.join(dir, e.name);
     try {
@@ -187,6 +191,7 @@ function folderFile(id) {
   if (!known) return null;
   try {
     if (path.dirname(known.file) !== known.dir || !MEDIA.test(known.file) || !fs.lstatSync(known.file).isFile()) return null;
+    if (store.state.downloads.some((d) => d && d.marked === false && d.path === known.file)) return null;
   } catch { return null; }
   return known.file;
 }
@@ -273,6 +278,10 @@ function reapplyBoost(host) {
 }
 
 // --- Messages ----------------------------------------------------------------------
+// Les dossiers de l'utilisateur (Bureau, Documents, Téléchargements) ne sont lus, et leurs
+// fichiers ouverts ou glissés, qu'à la demande de la page Bibliothèque elle-même.
+const fromLibrary = (sender) => { try { return !!sender && !sender.isDestroyed() && sender.getURL().startsWith('orbe://app/library.html'); } catch { return false; } };
+
 async function action(name, a, sender) {
   const s = store.state;
   const w = env.window(sender);
@@ -288,7 +297,7 @@ async function action(name, a, sender) {
         downloads: fileRows(s.downloads, q, false),
         // Médias : images, vidéos et sons téléchargés, plus les captures d'Orbe.
         // (`from` : un dossier de l'utilisateur, lu parce qu'il vient d'être choisi.)
-        media: FROM.includes(o.from) && o.from !== 'orbe' ? await folderRows(o.from, q) : fileRows(s.downloads, q, true),
+        media: FROM.includes(o.from) && o.from !== 'orbe' && fromLibrary(sender) ? await folderRows(o.from, q) : fileRows(s.downloads, q, true),
         spaces: spaceRows(w, q),
         boosts: boostRows(q),
         // Pour les filtres de l'archive.
@@ -323,10 +332,10 @@ async function action(name, a, sender) {
     }
     // Un PDF s'ouvre dans un onglet ; un fichier exécutable demande confirmation.
     case 'lib:openFile':
-      if (typeof a === 'string' && a.startsWith('f:')) { const file = folderFile(a); if (file) downloads.env.openPath(file); return !!file; }
+      if (typeof a === 'string' && a.startsWith('f:')) { const file = fromLibrary(sender) ? folderFile(a) : null; if (file) downloads.env.openPath(file); return !!file; }
       return downloads.action('dl:open', a, sender);
     case 'lib:drag': {
-      const file = typeof a === 'string' && a.startsWith('f:') ? folderFile(a) : null;
+      const file = typeof a === 'string' && a.startsWith('f:') && fromLibrary(sender) ? folderFile(a) : null;
       if (file && sender && !sender.isDestroyed()) {
         const icon = dragIcon(file);
         if (!icon || icon.isEmpty()) return false;

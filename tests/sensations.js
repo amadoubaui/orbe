@@ -240,12 +240,21 @@ module.exports = async function sensationsTests(ctx) {
     const asked = [];
     library.env.mediaDir = (from) => { asked.push(from); return from === 'desktop' ? desk : path.join(root, 'absent'); };
     store.state.downloads = [];
-    const lib = (name, a) => library.action(name, a, w.ui.webContents);
+    // Les dossiers de l'utilisateur ne se lisent qu'à la demande de la page Bibliothèque.
+    const mediaTab = w.openInternal('library.html#media');
+    const fenetres = require('../src/main/window');
+    const mediaWc = () => { const rt = fenetres.live.get(mediaTab.id); return rt ? rt.wc : null; };
+    await until(() => mediaWc() && mediaWc().getURL().startsWith('orbe://app/library.html') && !mediaWc().isLoading(), 'page Bibliothèque ouverte');
+    const lib = (name, a) => library.action(name, a, mediaWc());
+    const other = (name, a) => library.action(name, a, w.ui.webContents);
     await lib('lib:get', {});
     await lib('lib:get', { from: 'orbe' });
     await lib('lib:get', { from: '../../etc' });
     check('médias : sans choix d’un dossier (ou avec un choix inconnu), aucun dossier de l’utilisateur n’est lu', asked.length === 0, asked.join());
+    const refused = await other('lib:get', { from: 'desktop' });
+    check('dossier de l’utilisateur demandé par une autre page interne que la Bibliothèque : rien n’est lu', asked.length === 0 && refused.media.length === 0, asked.join());
     const got = await lib('lib:get', { from: 'desktop' });
+    check('identifiant d’un fichier de dossier présenté par une autre page : ni ouvert ni glissé', (await other('lib:openFile', got.media[0].id)) === false && (await other('lib:drag', got.media[0].id)) === false);
     check('« Afficher les médias de : Bureau » : les médias du premier niveau, du plus récent au plus ancien — ni fichier caché, ni autre type, ni sous-dossier, ni lien',
       asked.join() === 'desktop' && got.media.map((r) => r.name).join('|') === [HOSTILE, 'film.mp4', 'vieux.jpg'].join('|'), JSON.stringify(got.media.map((r) => r.name)) + (linked ? '' : ' (liens non permis ici)'));
     check('médias d’un dossier : la page reçoit un identifiant et un nom, jamais un chemin', got.media.every((r) => /^f:[0-9a-f]{20}$/.test(r.id) && !JSON.stringify(r).includes(root) && r.folder === 'desktop' && r.total === 10));

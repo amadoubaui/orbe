@@ -47,7 +47,7 @@ function list() {
       const mine = tabs.get(m.pid);
       if (mine) {
         row.kind = 'tab';
-        row.titles = mine.slice(0, 8).map(({ rt }) => { const tab = rt.owner && rt.owner.data.tabs[rt.id]; return String((tab && (tab.title || tab.url)) || '').slice(0, 80); });
+        row.titles = mine.slice(0, 8).map(({ rt }) => { if (rt.owner && rt.owner.incognito) return t('tasks.private'); const tab = rt.owner && rt.owner.data.tabs[rt.id]; return String((tab && (tab.title || tab.url)) || '').slice(0, 80); });
         row.more = Math.max(0, mine.length - 8);
         row.canEnd = mine.some((x) => x.main);
       } else if (ui.has(m.pid)) { row.kind = 'ui'; row.name = t('tasks.ui'); }
