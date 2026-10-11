@@ -304,3 +304,15 @@ body.peek-out #backdrop, body.peek-out #peek { animation: fade-out var(--peek-ms
 #drop::before { content: ''; position: absolute; inset: 0; }
 #drop-label { width: 50%; margin: 10px; border-radius: 12px; border: 2px dashed transparent; display: grid; place-items: center; color: transparent; font-size: 15px; font-weight: 600; transition: all 120ms; }
 #drop.over #drop-label { background: color-mix(in srgb, var(--accent) 30%, rgba(0, 0, 0, 0.35)); border-color: var(--accent); color: #fff; }
+/* L'onglet glissé, devenu bulle au milieu du côté visé ; au dépôt, elle rebondit puis s'efface avec la zone. */
+.drop-bubble { display: flex; align-items: center; gap: 8px; max-width: min(80%, 320px); height: 38px; padding: 0 16px 0 12px; border-radius: 19px; background: color-mix(in srgb, var(--accent) 70%, #000 10%); color: #fff; font-size: 13px; font-weight: 600; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3); opacity: 0; transform: scale(0.6); }
+#drop.over .drop-bubble { opacity: 1; transform: none; transition: transform var(--spring-bouncy), opacity 120ms var(--ease-out); }
+.drop-ic { width: 16px; height: 16px; flex: none; display: grid; place-items: center; }
+.drop-ic img, .drop-ic .letter { width: 16px; height: 16px; border-radius: 4px; }
+.drop-name { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+#drop.done { pointer-events: none; }
+#drop.done #drop-label { transition: none; animation: drop-fade 320ms var(--ease-out) both; }
+#drop.done .drop-bubble { transition: none; animation: drop-bounce 320ms var(--ease-out) both; }
+@keyframes drop-bounce { 0% { transform: scale(1); opacity: 1; } 35% { transform: scale(1.18); opacity: 1; } 70% { transform: scale(0.94); opacity: 1; } 100% { transform: scale(1); opacity: 0; } }
+@keyframes drop-fade { to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { #drop.over .drop-bubble { transition: none; } #drop.done #drop-label, #drop.done .drop-bubble { animation: none; opacity: 0; } }

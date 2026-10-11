@@ -216,6 +216,64 @@ module.exports = async function derniersTests(ctx) {
     w.changed();
   }
 
+  // --- Glisser vers une vue scindée : l'onglet devient une bulle, rebond au dépôt (ANI-12, SCI-17) ---
+  {
+    const { forceMotion } = require('../src/main/motion');
+    const A = space.today[0];
+    const x1 = w.createTab(base + '/bulle-1', { space, index: space.today.length });
+    x1.title = '<i>Bulle</i> & <img src=x onerror=alert(1)>';
+    const x2 = w.createTab(base + '/bulle-2', { space, index: space.today.length });
+    x2.title = 'Seconde';
+    w.activate(A);
+    w.changed();
+    const zone = (js) => w.dropView.webContents.executeJavaScript(js);
+    const r = w.contentRect();
+    const droite = { x: r.x + r.width * 0.75, y: r.y + r.height / 2 };
+    const before = forceMotion(true);
+    w.dragZone(true);
+    await until(() => w.dropView && !w.dropView.webContents.isLoading() && zone('!document.getElementById("drop").hidden'), 'zone de dépôt');
+    w.handle('dragZoneOver', { ...droite, id: x1.id });
+    const lu = `(() => { const d = document.getElementById('drop'); const l = document.getElementById('drop-label'); const b = l.querySelector('.drop-bubble'); const lr = l.getBoundingClientRect(); const br = b ? b.getBoundingClientRect() : null;
+      return { over: d.classList.contains('over'), done: d.classList.contains('done'), nom: b ? b.querySelector('.drop-name').textContent : null, balises: b ? b.querySelectorAll('.drop-name *').length : -1, texte: b ? '' : l.textContent,
+        centre: br ? Math.abs((br.left + br.right) / 2 - (lr.left + lr.right) / 2) < 2 && Math.abs((br.top + br.bottom) / 2 - (lr.top + lr.bottom) / 2) < 2 : false, gauche: Math.round(lr.left),
+        anim: b ? getComputedStyle(b).animationName : '', props: b ? [...new Set(b.getAnimations().filter((a) => a.animationName === 'drop-bounce').flatMap((a) => a.effect.getKeyframes().flatMap((k) => Object.keys(k))))].filter((k) => !['offset', 'easing', 'composite', 'computedOffset'].includes(k)).sort().join() : '' }; })()`;
+    const b1 = await until(async () => { const v = await zone(lu); return v.over && v.nom ? v : null; }, 'bulle de l’onglet', 4000).catch(() => null);
+    check('glisser un onglet au-dessus de la page : il devient une bulle (icône et titre) au milieu du côté visé ; son titre est du texte, jamais du HTML',
+      !!b1 && b1.nom === x1.title && b1.balises === 0 && b1.centre && b1.gauche > r.width / 2 - 20 && !b1.done, JSON.stringify(b1));
+    w.handle('dragZoneOver', { ...droite, id: 'inconnu' });
+    const b0 = await until(async () => { const v = await zone(lu); return v.nom === null ? v : null; }, 'libellé seul', 3000).catch(() => null);
+    check('zone de dépôt : un identifiant qui ne désigne aucun onglet de la fenêtre ne montre aucune bulle (le libellé seul)', !!b0 && b0.texte === T('view.addSplit') && w.dropBubble(42) === null && w.dropBubble('inconnu') === null, JSON.stringify(b0));
+    w.handle('dragZoneOver', { ...droite, id: x1.id });
+    await until(async () => (await zone(lu)).nom === x1.title, 'bulle revenue', 3000).catch(() => {});
+    w.handle('dropSplit', { id: x1.id, ...droite });
+    w.handle('dragZone', false); // la coque annonce ensuite la fin du glisser : le rebond n'est pas coupé
+    const b2 = await until(async () => { const v = await zone(lu); return v.done ? v : null; }, 'rebond', 3000).catch(() => null);
+    check('onglet lâché sur la page : la vue est scindée aussitôt et la bulle rebondit une fois à sa place (transformation et opacité seulement)',
+      w.visibleIds().join() === [A, x1.id].join() && !!b2 && b2.anim === 'drop-bounce' && b2.props === 'opacity,transform' && w.dropView.getVisible(), JSON.stringify(b2) + ' ' + w.visibleIds().length);
+    const parti = await until(() => !w.dropView.getVisible(), 'zone retirée', 3000).then(() => true, () => false);
+    check('… puis la zone de dépôt se retire d’elle-même', parti);
+    // « Réduire les animations » : pas de rebond, la zone part aussitôt.
+    forceMotion(false);
+    w.activate(A);
+    w.dragZone(true);
+    await until(() => w.dropView.getVisible(), 'zone de dépôt');
+    w.handle('dragZoneOver', { ...droite, id: x2.id });
+    w.handle('dropSplit', { id: x2.id, ...droite });
+    check('« Réduire les animations » : l’onglet lâché scinde la vue, sans rebond — la zone de dépôt part aussitôt', w.visibleIds().includes(x2.id) && !w.dropView.getVisible(), String(w.dropView.getVisible()));
+    forceMotion(before);
+    // Glisser abandonné : la zone part aussitôt, rien ne rebondit.
+    w.dragZone(true);
+    w.handle('dragZoneOver', { ...droite, id: x2.id });
+    w.handle('dragZone', false);
+    check('glisser abandonné au-dessus de la page : la zone part aussitôt', !w.dropView.getVisible());
+    w.run('separateAll');
+    w.activate(A);
+    for (const tab of [x1, x2]) { OrbeWindow.destroyView(tab.id); space.today.splice(space.today.indexOf(tab.id), 1); delete d.tabs[tab.id]; }
+    space.splits = [];
+    w.layout();
+    w.changed();
+  }
+
   // --- Remise en état ---------------------------------------------------------------------
   w.switchSpace(space.id);
   for (const id of Object.keys(d.tabs)) if (mine(d.tabs[id])) { OrbeWindow.destroyView(id); delete d.tabs[id]; }

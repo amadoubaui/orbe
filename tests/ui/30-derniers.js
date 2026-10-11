@@ -83,5 +83,42 @@ module.exports = {
       await jusqua(async () => (await shell.locator('#pinned .folder.open').count()) === 0, 'dossier replié');
       await shell.mouse.move(700, 500, { steps: 3 });
     });
+
+    // --- Bulle et rebond du glisser vers une vue scindée (ANI-12, SCI-17) -------------------
+    await t.verifier('glisser « Page D » au-dessus de la page : l’onglet devient une bulle à son nom au milieu du côté visé ; lâché, la vue est scindée et la bulle rebondit, puis la zone se retire', async () => {
+      await ctx.clic(shell, ctx.ligne('Page A'));
+      await jusqua(async () => (await ctx.etat()).actifUrl === ctx.url('/a'), 'Page A affichée');
+      const e = await ctx.principal(({ w }) => w.contentRect());
+      let vu = null;
+      await ctx.glisser(await ctx.centre(ctx.ligne('Page D')), () => ({ x: e.x + e.width * 0.75, y: e.y + e.height / 2 }), {
+        avantLacher: async () => {
+          const zone = await ctx.attendrePage('overlay.html#drop');
+          vu = await jusqua(() => zone.evaluate(() => {
+            const b = document.querySelector('#drop.over .drop-bubble');
+            if (!b || getComputedStyle(b).opacity !== '1') return null;
+            const l = document.getElementById('drop-label').getBoundingClientRect();
+            const r = b.getBoundingClientRect();
+            return { nom: b.querySelector('.drop-name').textContent, dx: Math.round((r.left + r.right) / 2 - (l.left + l.right) / 2), dy: Math.round((r.top + r.bottom) / 2 - (l.top + l.bottom) / 2), gauche: Math.round(l.left), largeur: innerWidth };
+          }), 'bulle de l’onglet dans la zone');
+        },
+      });
+      assert.equal(vu.nom, 'Page D');
+      assert.ok(Math.abs(vu.dx) <= 2 && Math.abs(vu.dy) <= 2 && vu.gauche >= vu.largeur / 2 - 2, 'bulle au milieu de la moitié droite : ' + JSON.stringify(vu));
+      const zone = await ctx.attendrePage('overlay.html#drop');
+      const visible = () => ctx.principal(({ w }) => !!w.dropView && w.dropView.getVisible());
+      if (!reduit) {
+        // Le rebond se lit pendant qu'il joue ; il est bref : on l'accepte déjà fini si la zone est déjà partie.
+        const rebond = await zone.evaluate(() => { const d = document.getElementById('drop'); const b = d.querySelector('.drop-bubble'); return { fini: d.classList.contains('done'), anim: b ? getComputedStyle(b).animationName : '' }; });
+        assert.ok((rebond.fini && rebond.anim === 'drop-bounce') || !(await visible()), 'rebond de la bulle : ' + JSON.stringify(rebond));
+      }
+      await jusqua(async () => (await ctx.principal(({ w }) => w.visibleIds().map((id) => w.data.tabs[id].title).join())) === 'Page A,Page D', 'vue scindée A | D');
+      await jusqua(async () => !(await visible()), 'zone de dépôt retirée');
+      // La page du nouveau volet reçoit de nouveau les clics.
+      const page = ctx.onglet('/d');
+      await page.evaluate(() => { window.__clics = 0; document.addEventListener('mousedown', () => { window.__clics += 1; }, true); });
+      await page.mouse.click(40, 40);
+      assert.equal(await page.evaluate(() => window.__clics), 1);
+      await ctx.menu('view.closeSplit');
+    });
   },
 };

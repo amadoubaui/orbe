@@ -1745,7 +1745,7 @@ function setZone(on, e) {
   if (on === zoneOn && key === zoneKey) return;
   zoneOn = on;
   zoneKey = key;
-  send('dragZoneOver', on && e ? { x: e.clientX, y: e.clientY } : false);
+  send('dragZoneOver', on && e ? { x: e.clientX, y: e.clientY, id: drag ? drag.id : '' } : false);
 }
 function zoneKeyAt(x, y) {
   const panes = (S && S.panes) || [];
@@ -1772,8 +1772,9 @@ document.addEventListener('drop', (e) => {
   e.preventDefault();
   e.stopPropagation();
   const id = drag.id;
-  endDrag();
+  // Le dépôt d'abord : la zone, encore affichée, y fait rebondir la bulle de l'onglet.
   send('dropSplit', { id, x: e.clientX, y: e.clientY });
+  endDrag();
 }, true);
 
 function overSidebar(e) {

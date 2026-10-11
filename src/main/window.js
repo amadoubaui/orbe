@@ -137,6 +137,7 @@ const themeFields = (s) => ({ color: s.color, color2: s.color2 || '', color3: s.
 // --- Mouvements des vues ------------------------------------------------------
 // Durées, pose animée des vues et suivi de leur vol : src/main/motion.js.
 const { MOTION, motion, forceMotion, place, boundsOf, inFlight, stats } = require('./motion');
+const DROP_BOUNCE = 320; // la zone de dépôt reste le temps du rebond de la bulle (ms)
 // Nom horodaté d'une capture ; deux captures dans la même seconde ne s'écrasent pas.
 let lastStamp = '';
 let stampCount = 0;
@@ -3647,11 +3648,22 @@ class OrbeWindow {
     if (this.win.isDestroyed()) return;
     this.dragSince = on ? Date.now() : 0; // voir fillSpares
     if (!on) {
-      if (this.dropView) { this.dropView.setVisible(false); try { this.win.contentView.removeChildView(this.dropView); } catch {} }
+      const hide = () => { this.dropLinger = null; if (this.dropView && !this.win.isDestroyed()) { this.dropView.setVisible(false); try { this.win.contentView.removeChildView(this.dropView); } catch {} } };
+      // Onglet lâché sur la page : la bulle rebondit à sa place, puis la zone se retire (ANI-12).
+      // (La fin du glisser est annoncée deux fois — dépôt, puis fin : le rebond en cours va à son terme.)
+      const wait = motion(DROP_BOUNCE);
+      if (this.dropBounce && wait && this.dropView && !this.dropView.webContents.isDestroyed()) {
+        this.dropView.webContents.send('overlay', { mode: 'drop', label: t('view.addSplit'), over: true, zone: this.dropBounce.zone, tab: this.dropBounce.tab, done: true });
+        clearTimeout(this.dropLinger);
+        this.dropLinger = setTimeout(hide, wait);
+      } else if (!this.dropLinger) hide();
+      this.dropBounce = null;
       clearTimeout(this.spareLater);
       this.fillSpares();
       return;
     }
+    clearTimeout(this.dropLinger);
+    this.dropLinger = null;
     if (!this.activeId || this.peekState || this.modalMode) return;
     const show = () => {
       if (this.win.isDestroyed() || this.dropView.webContents.isDestroyed()) return;
@@ -3695,15 +3707,26 @@ class OrbeWindow {
   dragZoneOver(a) {
     if (!this.dropView || this.dropView.webContents.isDestroyed()) return;
     const at = a && typeof a === 'object' && Number.isFinite(a.x) && Number.isFinite(a.y) ? this.dropTargetAt(a.x, a.y) : null;
-    this.dropView.webContents.send('overlay', { mode: 'drop', label: t('view.addSplit'), over: !!a, zone: at ? at.zone : null });
+    this.dropView.webContents.send('overlay', { mode: 'drop', label: t('view.addSplit'), over: !!a, zone: at ? at.zone : null, tab: a && typeof a === 'object' ? this.dropBubble(a.id) : null });
+  }
+
+  // Ce que montre la bulle de l'onglet glissé au-dessus de la page : son titre et son icône.
+  // L'identifiant vient de l'interface : il doit désigner un onglet de cette fenêtre.
+  dropBubble(id) {
+    const loc = typeof id === 'string' ? this.locate(id) : null;
+    const tab = loc && loc.node.type !== 'folder' ? this.data.tabs[id] : null;
+    if (!tab) return null;
+    return { title: String(tab.customTitle || tab.title || tab.url || '').slice(0, 120), favicon: this.incognito ? '' : (webUrl(tab.favicon) || ''), icon: tab.icon || '' };
   }
 
   // `at` : point du dépôt dans la fenêtre ; sans lui, le nouvel onglet se place après le volet actif.
   dropSplit(id, at) {
-    this.dragZone(false);
     const loc = this.locate(id);
+    const target = loc && loc.node.type !== 'folder' && this.activeId && at && Number.isFinite(at.x) && Number.isFinite(at.y) ? this.dropTargetAt(at.x, at.y) : null;
+    // Dépôt qui va changer la vue : la bulle rebondit là où l'onglet se pose.
+    this.dropBounce = target && id !== target.id && this.dropView && this.dropView.getVisible() ? { zone: target.zone, tab: this.dropBubble(id) } : null;
+    this.dragZone(false);
     if (!loc || loc.node.type === 'folder' || !this.activeId) return;
-    const target = at && Number.isFinite(at.x) && Number.isFinite(at.y) ? this.dropTargetAt(at.x, at.y) : null;
     const anchor = target ? target.id : this.activeId;
     if (id === anchor) return;
     // Onglet déjà dans cette vue scindée : il change seulement de place.

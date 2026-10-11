@@ -628,11 +628,35 @@ O.on('overlay', (p) => {
     document.body.classList.add(p.leaving ? 'peek-out' : 'peek');
   } else if (p.mode === 'drop') {
     show('drop');
-    $('drop-label').textContent = p.label;
-    $('drop').classList.toggle('over', !!p.over);
+    const label = $('drop-label');
+    const box = $('drop');
+    // L'onglet glissé devient une bulle au milieu du côté visé (icône et titre, posés comme
+    // du texte) ; sans onglet connu, le libellé « Ajouter à la vue scindée ».
+    const key = p.tab ? JSON.stringify(p.tab) : '';
+    if (label._key !== key || (!p.tab && label.textContent !== p.label)) {
+      label._key = key;
+      label.textContent = '';
+      if (p.tab) {
+        const bubble = document.createElement('span');
+        bubble.className = 'drop-bubble';
+        const ic = document.createElement('span');
+        ic.className = 'drop-ic';
+        ic.appendChild(p.tab.icon ? emojiEl(p.tab.icon) : faviconEl(p.tab.favicon, p.tab.title));
+        const name = document.createElement('span');
+        name.className = 'drop-name';
+        name.textContent = p.tab.title;
+        bubble.append(ic, name);
+        label.appendChild(bubble);
+        label.title = p.label;
+      } else label.textContent = p.label;
+    }
+    box.classList.toggle('over', !!p.over);
     // Côté visé (moitié d'un volet), donné par le processus principal ; sinon la moitié droite.
     const z = p.zone;
-    $('drop-label').style.cssText = z ? `position:absolute;margin:0;left:${z.x + 6}px;top:${z.y + 6}px;width:${Math.max(40, z.w - 12)}px;height:${Math.max(40, z.h - 12)}px` : '';
+    label.style.cssText = z ? `position:absolute;margin:0;left:${z.x + 6}px;top:${z.y + 6}px;width:${Math.max(40, z.w - 12)}px;height:${Math.max(40, z.h - 12)}px` : '';
+    // Lâché : la bulle rebondit une fois (transformation et opacité), la zone s'efface.
+    box.classList.remove('done');
+    if (p.done) { void box.offsetWidth; box.classList.add('done'); }
   } else if (p.mode === 'swipe') {
     drawSwipe(p);
   } else if (p.mode === 'status') {
