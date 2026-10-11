@@ -150,6 +150,72 @@ module.exports = async function derniersTests(ctx) {
     await until(() => ui(`!slide && S.space.id === ${JSON.stringify(space.id)}`), 'retour à l’Espace d’essai');
   }
 
+  // --- Aperçu d'un dossier replié au survol (BL-74) -----------------------------------------
+  {
+    const dead = (n) => `${base}/dossier-${n}`;
+    const mk = (n, title) => { const tab = w.createTab(dead(n), { space, index: space.today.length }); tab.title = title; tab.homeUrl = tab.url; space.today.splice(space.today.indexOf(tab.id), 1); return tab; };
+    const t1 = mk(1, 'Été à Saint-Malo');
+    const t2 = mk(2, '<b>Gras</b> & <img src=x onerror=alert(1)>');
+    const t3 = mk(3, 'Recette de crêpes');
+    const sous = { type: 'folder', id: 'der-sous', name: 'Cuisine', open: false, children: [{ type: 'tab', id: t3.id }] };
+    const dossier = { type: 'folder', id: 'der-dossier', name: 'Voyages', open: false, children: [{ type: 'tab', id: t1.id }, { type: 'tab', id: t2.id }, sous] };
+    const videF = { type: 'folder', id: 'der-vide', name: 'Vide', open: false, children: [] };
+    space.pinned.push(dossier, videF);
+    w.changed();
+    const tete = (id) => `document.querySelector('#pinned .row[data-id="${id}"]')`;
+    await until(() => ui(`!slide && !!${tete('der-dossier')} && !!${tete('der-vide')} && typeof folderPeek === 'object'`), 'dossiers dans la barre');
+    const survol = (id) => ui(`${tete(id)}.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }))`);
+    const vu = () => ui(`(() => { const p = document.getElementById('folder-peek'); if (!p || p.classList.contains('out')) return null; const s = document.getElementById('sidebar').getBoundingClientRect(); const r = p.getBoundingClientRect(); const h = ${tete('der-dossier')}.getBoundingClientRect();
+      return { noms: [...p.querySelectorAll('.fp-name')].map((e) => e.textContent), subs: [...p.querySelectorAll('.fp-sub')].map((e) => e.textContent), balises: p.querySelectorAll('.fp-name *').length, dedans: r.left >= s.left && r.right <= s.right && r.top >= s.top && r.bottom <= s.bottom, sous: Math.round(r.top - h.bottom), invite: p.querySelector('.fp-search').placeholder, vide: p.querySelectorAll('.fp-empty').length, sel: [...p.querySelectorAll('.fp-row')].findIndex((e) => e.classList.contains('sel')), ferme: !${tete('der-dossier')}.parentElement.classList.contains('open') }; })()`);
+    await survol('der-dossier');
+    await sleep(150);
+    const tot = await vu();
+    const p1 = await until(vu, 'aperçu du dossier', 4000).catch(() => null);
+    check('survol d’un dossier replié : après un court instant (pas avant), la liste de ses onglets paraît sous lui, dans la barre, sous-dossiers compris',
+      tot === null && !!p1 && p1.noms.join('|') === [t1.title, t2.title, t3.title].join('|') && p1.subs.join() === 'Cuisine' && p1.dedans && p1.sous >= 0 && p1.sous <= 8 && p1.ferme && p1.invite === T('fpeek.search', { name: 'Voyages' }), JSON.stringify([tot, p1]));
+    check('aperçu d’un dossier : un titre venu d’un site est du texte, jamais du HTML', !!p1 && p1.balises === 0 && p1.noms[1] === t2.title);
+    const taper = (q) => ui(`(() => { const i = document.querySelector('#folder-peek .fp-search'); i.focus(); i.value = ${JSON.stringify(q)}; i.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+    await taper('ete');
+    const f1 = await vu();
+    await taper('cuisine');
+    const f2 = await vu();
+    await taper('zzz');
+    const f3 = await vu();
+    check('aperçu d’un dossier : le champ filtre les onglets (sans tenir compte des accents ; le nom d’un sous-dossier compte), le premier résultat est sélectionné ; rien ne correspond : c’est dit',
+      !!f1 && f1.noms.join() === t1.title && f1.sel === 0 && !!f2 && f2.noms.join() === t3.title && !!f3 && f3.noms.length === 0 && f3.vide === 1, JSON.stringify([f1, f2, f3]));
+    await taper('crêpes');
+    await ui(`document.querySelector('#folder-peek .fp-search').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))`);
+    await until(() => w.activeId === t3.id, 'onglet du dossier affiché', 4000).catch(() => {});
+    check('aperçu d’un dossier : Entrée affiche l’onglet trouvé ; le dossier reste replié et l’aperçu s’efface', w.activeId === t3.id && dossier.open === false && sous.open === false && (await until(async () => (await vu()) === null, 'aperçu effacé', 3000).then(() => true, () => false)));
+    await until(() => ui(`!document.getElementById('folder-peek')`), 'panneau retiré', 3000).catch(() => {});
+    // Dossier vide, dossier ouvert, glisser en cours : pas d'aperçu.
+    await ui(`${tete('der-dossier')}.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, relatedTarget: null })), document.getElementById('sidebar').dispatchEvent(new PointerEvent('pointerover', { bubbles: true }))`);
+    await survol('der-vide');
+    await sleep(700);
+    const pasVide = await vu();
+    await ui(`document.getElementById('sidebar').dispatchEvent(new PointerEvent('pointerover', { bubbles: true })); document.body.classList.add('dragging')`);
+    await survol('der-dossier');
+    await sleep(700);
+    const pasGlisser = await vu();
+    await ui(`document.body.classList.remove('dragging'); document.getElementById('sidebar').dispatchEvent(new PointerEvent('pointerover', { bubbles: true }))`);
+    await survol('der-dossier');
+    const p2 = await until(vu, 'aperçu de nouveau', 4000).catch(() => null);
+    dossier.open = true;
+    w.changed();
+    const efface = await until(async () => (await ui(`!document.getElementById('folder-peek')`)), 'aperçu effacé à l’ouverture', 3000).then(() => true, () => false);
+    await ui(`document.getElementById('sidebar').dispatchEvent(new PointerEvent('pointerover', { bubbles: true }))`);
+    await survol('der-dossier');
+    await sleep(700);
+    const pasOuvert = await vu();
+    check('pas d’aperçu pour un dossier vide, pendant un glisser, ni pour un dossier ouvert ; l’aperçu s’efface quand son dossier s’ouvre',
+      pasVide === null && pasGlisser === null && !!p2 && efface && pasOuvert === null, JSON.stringify([pasVide, pasGlisser, !!p2, efface, pasOuvert]));
+    await ui('folderPeek.close(true)');
+    w.activate(space.today[0]);
+    space.pinned = space.pinned.filter((n) => n !== dossier && n !== videF);
+    for (const tab of [t1, t2, t3]) { OrbeWindow.destroyView(tab.id); delete d.tabs[tab.id]; }
+    w.changed();
+  }
+
   // --- Remise en état ---------------------------------------------------------------------
   w.switchSpace(space.id);
   for (const id of Object.keys(d.tabs)) if (mine(d.tabs[id])) { OrbeWindow.destroyView(id); delete d.tabs[id]; }
