@@ -67,17 +67,20 @@ module.exports = async function derniersTests(ctx) {
   {
     const keys0 = store.state.settings.shortcuts;
     const row = (name) => w.commandList().find((c) => c.command === name && !c.arg);
+    // Écriture des raccourcis selon le système (⌘R sur macOS, Ctrl+R ailleurs).
+    const defauts = [shortcuts.keysOf('reload'), shortcuts.keysOf('toggleSidebar')];
+    const neufs = [shortcuts.display('Ctrl+Alt+R'), shortcuts.display('Ctrl+Alt+B')];
     const avant = [row('reload') && row('reload').shortcut, row('toggleSidebar') && row('toggleSidebar').shortcut];
     const r1 = shortcuts.assign('reload', 'Ctrl+Alt+R');
     const r2 = shortcuts.assign('toggleSidebar', 'Ctrl+Alt+B');
     const apres = [row('reload') && row('reload').shortcut, row('toggleSidebar') && row('toggleSidebar').shortcut];
     check('raccourci changé : la barre de commande le montre aussitôt, y compris pour une action dont le nom dépend de la fenêtre (« Masquer la barre latérale »)',
-      r1.ok && r2.ok && avant.join() === '⌘R,⌘S' && apres.join() === '⌃⌥R,⌃⌥B', JSON.stringify([avant, apres]));
+      r1.ok && r2.ok && defauts.every(Boolean) && avant.join() === defauts.join() && apres.join() === neufs.join() && neufs.join() !== defauts.join(), JSON.stringify([avant, apres]));
     const tape = w.suggestLocal(T('view.hideSidebar')).find((x) => x.command === 'toggleSidebar');
-    check('… et la suggestion tapée porte le nouveau raccourci', !!tape && tape.subtitle === '⌃⌥B', JSON.stringify(tape || null));
+    check('… et la suggestion tapée porte le nouveau raccourci', !!tape && tape.subtitle === neufs[1], JSON.stringify(tape || null));
     store.state.settings.shortcuts = keys0;
     shortcuts.hooks.changed();
-    check('… raccourcis rétablis : la barre de commande revient aux raccourcis d’origine', row('reload').shortcut === '⌘R' && row('toggleSidebar').shortcut === '⌘S');
+    check('… raccourcis rétablis : la barre de commande revient aux raccourcis d’origine', row('reload').shortcut === defauts[0] && row('toggleSidebar').shortcut === defauts[1]);
   }
 
   // --- Nouvel Espace au bout de la rangée : geste voulu, annulable (GES-2) ---------------------
@@ -253,8 +256,12 @@ module.exports = async function derniersTests(ctx) {
     w.handle('dropSplit', { id: x1.id, ...droite });
     w.handle('dragZone', false); // la coque annonce ensuite la fin du glisser : le rebond n'est pas coupé
     const b2 = await until(async () => { const v = await zone(lu); return v.done ? v : null; }, 'rebond', 3000).catch(() => null);
-    check('onglet lâché sur la page : la vue est scindée aussitôt et la bulle rebondit une fois à sa place (transformation et opacité seulement)',
-      w.visibleIds().join() === [A, x1.id].join() && !!b2 && b2.anim === 'drop-bounce' && b2.props === 'opacity,transform' && w.dropView.getVisible(), JSON.stringify(b2) + ' ' + w.visibleIds().length);
+    // « Réduire les animations » du système (machines d'intégration) : la feuille de style coupe le rebond.
+    const calme = await zone('matchMedia("(prefers-reduced-motion: reduce)").matches');
+    check('onglet lâché sur la page : la vue est scindée aussitôt, la zone de dépôt reste le temps du rebond',
+      w.visibleIds().join() === [A, x1.id].join() && !!b2 && w.dropView.getVisible(), JSON.stringify(b2) + ' ' + w.visibleIds().length);
+    if (calme) outils.ignorer('la bulle rebondit une fois à sa place (transformation et opacité seulement)', '« Réduire les animations » actif');
+    else check('la bulle rebondit une fois à sa place (transformation et opacité seulement)', !!b2 && b2.anim === 'drop-bounce' && b2.props === 'opacity,transform', JSON.stringify(b2));
     const parti = await until(() => !w.dropView.getVisible(), 'zone retirée', 3000).then(() => true, () => false);
     check('… puis la zone de dépôt se retire d’elle-même', parti);
     // « Réduire les animations » : pas de rebond, la zone part aussitôt.
