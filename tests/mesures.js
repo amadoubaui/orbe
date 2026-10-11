@@ -321,7 +321,7 @@ const BENCHES = {
   // Gestes courants sur le profil préparé : changement d'Espace (état poussé → barre latérale
   // peinte), changement d'onglet (activate → image de la page), temps de render() dans la coque,
   // défilement de la barre latérale (écarts entre images), puis mémoire avec dix onglets vivants.
-  async gestes({ first: w, base }) {
+  async gestes({ first: w, store, base }) {
     const rt = await until(() => w.activeRt);
     await until(() => !rt.wc.isLoading());
     await sleep(1500);
@@ -340,7 +340,7 @@ const BENCHES = {
     // Changement d'Espace : aller-retour entre le premier et le suivant (ou un Espace créé pour l'occasion).
     const home = w.spaceId;
     let other = w.data.spaces.find((sp) => sp.id !== home);
-    if (!other) { other = require('../src/main/store').makeSpace('Autre', '✨'); w.data.spaces.push(other); }
+    if (!other) { other = store.makeSpace('Autre', '✨'); w.data.spaces.push(other); }
     await painted(() => w.sendState());
     await renders();
     const espace = [];
@@ -395,12 +395,12 @@ const BENCHES = {
     });
   },
 
-  // Repos : ce que coûte Orbe quand rien ne se passe. Quatre périodes de `ORBE_BENCH_IDLE` ms
+  // Repos : ce que coûte Orbe quand rien ne se passe. Plusieurs périodes de `ORBE_BENCH_IDLE` ms
   // (20 s par défaut) : une page fixe ; la même avec un onglet qui joue hors de vue (lecteur
-  // miniature) ; fenêtre réduite dans le Dock ; fenêtre masquée. Pour chacune : secondes de
+  // miniature) ; mise à jour annoncée ; fenêtre réduite dans le Dock ; fenêtre masquée. Pour chacune : secondes de
   // processeur par famille de processus (ms de calcul par seconde écoulée), réveils, états
   // poussés à la coque, animations en cours dans la coque, fichiers du profil réécrits.
-  async repos({ first: w, base }) {
+  async repos({ first: w, win, base }) {
     const fs = require('fs');
     const path = require('path');
     const span = Number(process.env.ORBE_BENCH_IDLE) || 20000;
@@ -471,6 +471,16 @@ const BENCHES = {
       for (let i = 0; i < 2000; i++) w.pollPeek();
       res.bord = { microsecondesParPassage: round((performance.now() - t0) / 2, 2), auPremierPlan: w.win.isFocused() ? 1 : 0 };
     }
+    // Une mise à jour est annoncée au bas de la barre latérale (cœur qui bat), page fixe.
+    if (wanted('note') && win.hooks && win.hooks.updateNote) {
+      const note = win.hooks.updateNote;
+      win.hooks.updateNote = () => ({ version: '9.9.9' });
+      w.sendState();
+      await sleep(Number(process.env.ORBE_BENCH_NOTE_WAIT) || 6000); // l'annonce est là depuis un moment
+      res.note = await period();
+      win.hooks.updateNote = note;
+      w.sendState();
+    }
     // Un onglet joue, puis on le quitte : son lecteur miniature apparaît dans la barre latérale.
     const calm = w.activeId;
     const piste = w.newTab(base + '/piste').id;
@@ -479,11 +489,13 @@ const BENCHES = {
     await until(() => w.activeRt.wc.isCurrentlyAudible(), 8000).catch(() => {});
     w.activate(calm);
     if (process.env.ORBE_BENCH_CSS) await ui.insertCSS(process.env.ORBE_BENCH_CSS);
+    // Régime établi : on laisse finir ce qui ne joue qu'une fois (40 s au plus ; un mouvement sans fin reste compté).
+    await until(() => ui.executeJavaScript(`document.getAnimations().filter((x) => x.playState === 'running').length === 0`), 40000).catch(() => {});
     if (wanted('lecteur')) { res.lecteur = await period(); res.lecteur.lecteurs = (w.players || []).length; }
     // Fenêtre entièrement recouverte par une autre (à lancer avec --naturel 1, sinon Chromium ne ralentit rien).
     if (wanted('recouverte')) {
       const { BaseWindow } = require('electron');
-      const cover = new BaseWindow({ ...w.win.getBounds(), alwaysOnTop: true, backgroundColor: '#444444', title: 'Mesure : fenêtre qui recouvre' });
+      const cover = new BaseWindow({ ...w.win.getBounds(), alwaysOnTop: true, backgroundColor: '#444444', focusable: false, title: 'Mesure : fenêtre qui recouvre' });
       cover.showInactive();
       await sleep(4000);
       res.recouverte = await period();
@@ -491,7 +503,7 @@ const BENCHES = {
       await sleep(500);
     }
     if (wanted('reduite')) { w.win.minimize(); res.reduite = await period(); w.win.restore(); await sleep(800); }
-    if (wanted('masquee')) { w.win.hide(); res.masquee = await period(); w.win.show(); }
+    if (wanted('masquee')) { w.win.hide(); res.masquee = await period(); w.win.showInactive(); }
     const fichiers = {};
     for (const k of Object.keys(res)) { if (res[k].fichiers !== undefined) fichiers[k] = res[k].fichiers; delete res[k].fichiers; }
     console.log('FICHIERS ' + JSON.stringify(fichiers));

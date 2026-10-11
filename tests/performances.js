@@ -551,5 +551,20 @@ module.exports = async function performancesTests(ctx) {
     check('profil neuf : pas d’historique, premier lancement reconnu sans le lire', empty.hadHistory === false && empty.historyPending === true && Object.keys(empty.state.history).length === 0);
   }
 
+  // --- Repos : aucune animation sans fin hors d'un état passager (ENER-1, ENER-2) -----
+  // Une animation en cours, même minuscule, fait composer la fenêtre entière à chaque image
+  // d'écran (mesuré : 200 ms de processeur graphique par seconde). Seules celles liées à un
+  // état passager (chargement, capture, son d'un favori) peuvent tourner sans fin.
+  {
+    const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'shell.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    const endless = [];
+    for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) if (/animation[^;]*\binfinite\b/.test(m[2])) endless.push(m[1].trim().replace(/\s+/g, ' '));
+    const allowed = ['#capture-note', '.row.capturing .act.cap', '#url.loading::after', '#glow i', '.tile.audible .dot i', '.spinner'];
+    const extra = endless.filter((x) => !allowed.includes(x));
+    check('coque : aucune animation sans fin hors d’un état passager (chargement, capture, favori qui joue)', extra.length === 0 && endless.length > 0, JSON.stringify(extra.length ? extra : endless));
+    const idle = await until(() => ui(`document.getAnimations().filter((x) => x.playState === 'running').length === 0`), 'coque au repos', 20000).catch(() => false);
+    check('coque au repos (page fixe) : aucune animation en cours', idle === true, await ui(`JSON.stringify(document.getAnimations().filter((x) => x.playState === 'running').map((x) => (x.animationName || x.transitionProperty || x.id) + ' ' + (x.effect && x.effect.target ? x.effect.target.id || x.effect.target.className : '')))`));
+  }
+
   if (!ctx.check && failed) throw new Error(`${failed} vérification(s) en échec`);
 };

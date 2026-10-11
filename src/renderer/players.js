@@ -3,8 +3,9 @@
 //
 // Tout ce qui vient de la page (titre, artiste) est posé par `textContent` ; la
 // pochette est une image recodée par le processus principal (src/main/media.js).
-// Mouvements : transformations et opacité seulement — le titre trop long défile,
-// la barre d'avancement s'étire, les commandes remplacent le titre au survol.
+// Mouvements : transformations et opacité seulement — le titre trop long défile
+// un aller-retour, la barre d'avancement avance par pas, les commandes remplacent
+// le titre au survol. Au repos, aucune animation ne tourne (rien n'est composé).
 (() => {
   const act = (id, name, value) => O.send('mediaAct', { id, act: name, value });
   const svg = (name) => `<svg class="i"><use href="#i-${name}"/></svg>`;
@@ -58,6 +59,7 @@
     el.append(open, ctl, play, x, bar);
     el._ = { art, title, inner, sub, prev, back, fwd, next, mute, play, bar, fill };
     scrub(el, bar);
+    el.addEventListener('pointerleave', () => replay(el));
     volume(el, mute);
     return el;
   }
@@ -153,29 +155,42 @@
     el._.fill.style.transform = `scaleX(${v.toFixed(4)})`;
   }
 
-  // Avancement : posé à la position connue, puis étiré d'un seul trait jusqu'à la
-  // fin, à la vitesse de la lecture. Le processus principal ne renvoie une
-  // position que si elle s'écarte de celle-ci : rien n'est recalculé entre-temps.
+  // Avancement : posé à la position connue, puis avancé par petits pas (un point d'écran
+  // environ, quatre fois par seconde au plus) par une minuterie. Le processus principal ne
+  // renvoie une position que si elle s'écarte de celle-ci. Pas de transition étirée jusqu'à
+  // la fin de la piste : une animation en cours, même d'un trait de 2 px, fait composer la
+  // fenêtre entière à chaque image d'écran tant que dure la lecture (ENER-1 : 200 ms de
+  // processeur graphique par seconde, contre 1 ms ainsi).
+  const STEP = { points: 240, min: 250, max: 2000 }; // pas : durée / `points`, borné (ms)
+  function step(el) {
+    clearTimeout(el._tick);
+    el._tick = 0;
+    const g = el._prog;
+    if (!g || !el.isConnected || el.classList.contains('scrub')) return;
+    const pos = Math.min(g.duration, g.position + (g.playing ? (performance.now() - g.at) / 1000 : 0));
+    el._.fill.style.transform = `scaleX(${Math.min(1, pos / g.duration).toFixed(4)})`;
+    // Fenêtre masquée ou réduite : plus rien ne tourne ; `visibilitychange` relance.
+    if (!g.playing || pos >= g.duration || document.hidden) return;
+    el._tick = setTimeout(() => step(el), Math.max(STEP.min, Math.min(STEP.max, (g.duration / STEP.points) * 1000)));
+  }
   function progress(el, p, force) {
     if (el.classList.contains('scrub')) return;
-    const f = el._.fill;
     const has = !!(p && p.duration);
     if (el._.bar.hidden === has) el._.bar.hidden = !has;
-    if (!has) { el._prog = null; return; }
+    if (!has) { el._prog = null; clearTimeout(el._tick); el._tick = 0; return; }
     const g = el._prog;
     const now = performance.now();
     if (!force && g && g.playing === !!p.playing && Math.abs(g.duration - p.duration) < 0.5
       && Math.abs(p.position - Math.min(p.duration, g.position + (g.playing ? (now - g.at) / 1000 : 0))) < 1.5) return;
     el._prog = { position: p.position, duration: p.duration, playing: !!p.playing, at: now };
-    f.style.transition = 'none';
-    f.style.transform = `scaleX(${Math.min(1, p.position / p.duration).toFixed(4)})`;
-    if (!p.playing) return;
-    void f.offsetWidth; // la position de départ est validée avant l'étirement
-    f.style.transition = `transform ${Math.max(0, p.duration - p.position).toFixed(2)}s linear`;
-    f.style.transform = 'scaleX(1)';
+    el._.fill.style.transition = 'none';
+    step(el);
   }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) for (const el of cards.values()) step(el); });
 
-  // Titre plus long que sa place : il défile (aller-retour), sauf mouvement réduit.
+  // Titre plus long que sa place : il défile un aller-retour quand il apparaît ou change,
+  // et de nouveau quand le pointeur quitte la carte, puis se repose (sauf mouvement réduit :
+  // il ne défile pas). Un défilement sans fin coûtait autant que l'avancement (ENER-1).
   function marquee(el) {
     const { title, inner } = el._;
     requestAnimationFrame(() => {
@@ -186,6 +201,13 @@
         title.classList.add('run');
       } else title.classList.remove('run');
     });
+  }
+  function replay(el) {
+    const { title, inner } = el._;
+    if (!title.classList.contains('run') || inner.getAnimations().some((a) => a.playState === 'running')) return;
+    title.classList.remove('run');
+    void inner.offsetWidth; // l'animation repart de zéro
+    title.classList.add('run');
   }
 
   function fill(el, p) {

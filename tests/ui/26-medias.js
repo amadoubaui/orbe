@@ -53,20 +53,25 @@ module.exports = {
       });
 
       const animer = (titre, fn) => (reduit ? t.ignorer(titre, '« Réduire les animations » est actif') : t.avecEcran('verifier', titre, fn));
-      await animer('titre trop long : il défile par une transformation seule, sans mise en page ; la barre d’avancement s’étire de même', async () => {
+      await animer('titre trop long : il défile un aller-retour par une transformation seule, sans mise en page ; l’avancement progresse par pas, sans animation', async () => {
+        // Le défilement se repose après un aller-retour ; le pointeur qui quitte la carte le relance.
+        await carte(p1).dispatchEvent('pointerleave');
         const a = await jusqua(() => carte(p1).evaluate((el) => {
           const span = el.querySelector('.mp-title.run span');
           if (!span) return null;
           const an = span.getAnimations()[0];
           const fill = el.querySelector('.mp-bar i');
           const tr = fill.getAnimations().map((x) => x.transitionProperty);
-          return an ? { nom: an.animationName, etat: an.playState, props: [...new Set(an.effect.getKeyframes().flatMap((k) => Object.keys(k)))].filter((k) => !['offset', 'easing', 'composite', 'computedOffset'].includes(k)), duree: an.effect.getTiming().duration, decalage: parseFloat(getComputedStyle(span.parentElement).getPropertyValue('--shift')), barre: tr } : null;
+          return an ? { nom: an.animationName, etat: an.playState, tours: an.effect.getTiming().iterations, props: [...new Set(an.effect.getKeyframes().flatMap((k) => Object.keys(k)))].filter((k) => !['offset', 'easing', 'composite', 'computedOffset'].includes(k)), duree: an.effect.getTiming().duration, decalage: parseFloat(getComputedStyle(span.parentElement).getPropertyValue('--shift')), barre: tr } : null;
         }), 'titre qui défile');
         assert.equal(a.nom, 'mp-marquee');
         assert.equal(a.etat, 'running');
         assert.deepEqual(a.props, ['transform']);
         assert.ok(a.decalage < -40 && a.duree > 4000, JSON.stringify(a));
-        assert.deepEqual(a.barre, ['transform'], 'avancement : une seule transition, sur transform');
+        assert.equal(a.tours, 2, 'un aller-retour, pas un défilement sans fin');
+        assert.deepEqual(a.barre, [], 'avancement : aucune transition en cours (pas posés par minuterie)');
+        const x0 = await carte(p1).locator('.mp-bar i').evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).a);
+        await jusqua(async () => (await carte(p1).locator('.mp-bar i').evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).a)) > x0, 'avancement qui progresse');
         const cdp = await shell.context().newCDPSession(shell);
         await cdp.send('Performance.enable');
         const compteurs = async () => Object.fromEntries((await cdp.send('Performance.getMetrics')).metrics.map((x) => [x.name, x.value]));

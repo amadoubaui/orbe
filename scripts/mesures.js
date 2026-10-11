@@ -1,10 +1,14 @@
 #!/usr/bin/env node
 // Mesures de vitesse et de mémoire d'Orbe (voir docs/suivi/ameliorations.md).
-//   node scripts/mesures.js <mesure> [--tours 8] [--arbre <dossier>]… [--app <Orbe.app>] [--avec "--drapeau=…"] [--historique 8500] [--onglets 300] [--espaces 13] [--profils 10] [--pause 0] [--naturel 1]
+//   node scripts/mesures.js <mesure> [--tours 8] [--arbre <dossier>]… [--app <Orbe.app>] [--avec "--drapeau=…"] [--historique 8500] [--onglets 300] [--espaces 13] [--profils 10] [--pause 0] [--naturel 1] [--visible 1]
 // Mesures : demarrage, memoire, navigation, commande, etat, voisins, gestes, repos (tests/mesures.js).
 // --espaces / --profils : les onglets du profil sont répartis dans autant d'Espaces et de profils
 // (forme d'un vrai profil ancien). --naturel 1 : sans le drapeau qui empêche Chromium de mettre
 // au ralenti une fenêtre recouverte (pour mesurer justement ce ralenti).
+// Sur macOS les fenêtres mesurées sont invisibles et ne prennent ni le clavier ni la souris
+// (tests/discret.js, comme les essais) ; --visible 1 : fenêtres ordinaires, pour les mesures qui
+// en dépendent (fenêtre réellement recouverte) ou pour comparer. Une application empaquetée
+// (--app) ne charge pas ce module : ses fenêtres restent visibles.
 // Plusieurs --arbre (ou --app) : les lancements alternent (A, B, A, B…) pour annuler
 // la dérive d'une machine chargée ; la médiane de chaque valeur est affichée avec
 // la charge moyenne relevée. Les profils sont temporaires, jamais le vrai.
@@ -25,11 +29,15 @@ const tabs = Number(opt('onglets', [0])[0]);
 const spaces = Number(opt('espaces', [0])[0]);
 const profiles = Number(opt('profils', [0])[0]);
 const natural = !!Number(opt('naturel', [0])[0]);
+const shown = !!Number(opt('visible', [0])[0]);
 const targets = [
   ...opt('arbre', []).map((dir) => ({ name: path.basename(path.resolve(dir)), dir: path.resolve(dir) })),
   ...opt('app', []).map((p) => ({ name: path.basename(p), app: path.resolve(p) })),
 ];
 if (!targets.length) targets.push({ name: 'sources', dir: root });
+if (shown) for (const t of targets) t.visible = true;
+// --compare-visible 1 : chaque cible est doublée d'une jumelle aux fenêtres visibles (tours alternés).
+if (Number(opt('compare-visible', [0])[0])) for (const t of targets.filter((x) => !x.visible)) targets.push({ ...t, name: t.name + ' visible', visible: true });
 // --avec "<drapeaux de Chromium>" : chaque cible est doublée d'une jumelle lancée avec ces drapeaux.
 for (const flags of opt('avec', [])) {
   for (const t of targets.filter((x) => !x.extra)) targets.push({ ...t, name: t.name + ' ' + flags.replace(/^--/, ''), extra: flags.split(/\s+/).filter(Boolean) });
@@ -87,9 +95,13 @@ const SWITCHES = natural ? [] : ['--disable-backgrounding-occluded-windows'];
 function launch(target, env) {
   const scenario = path.join(root, 'tests', 'mesures.js');
   const base = { ...process.env, ORBE_SCENARIO: scenario, ...env };
+  if (target.visible) base.ORBE_TEST_VISIBLE = '1'; else delete base.ORBE_TEST_VISIBLE;
+  delete base.ORBE_UI_FOCUS;
+  // Le module vient de cet arbre-ci : les versions anciennes mesurées ne l'ont pas.
+  const discreet = process.platform === 'darwin' && !process.env.CI ? ['-r', path.join(root, 'tests', 'discret.js')] : [];
   const child = target.app
     ? spawn(path.join(target.app, 'Contents', 'MacOS', 'Orbe'), ['--selftest', '--orbe-test', ...SWITCHES, ...(target.extra || [])], { env: base })
-    : spawn(process.execPath, [ensure(), target.dir, '--selftest', ...SWITCHES, ...(target.extra || [])], { env: base });
+    : spawn(process.execPath, [ensure(), ...discreet, target.dir, '--selftest', ...SWITCHES, ...(target.extra || [])], { env: base });
   let text = '';
   child.stdout.on('data', (d) => { text += d; });
   child.stderr.on('data', (d) => { text += d; });

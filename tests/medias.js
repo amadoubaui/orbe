@@ -220,6 +220,16 @@ module.exports = async function mediasTests(ctx) {
     check('barre latérale : titre posé comme du texte (aucune balise créée), pochette en data:image/png, commandes présentes',
       card.titre === HOSTILE.slice(0, mediaLib.LIMITS.text) && card.enfants === 0 && !card.pwned && card.img === 'data:image/png;base64,' && card.sub === 'Artiste 1' && card.prev && card.next && card.bar && card.visible, JSON.stringify(card));
 
+    // Avancement et titre : rien ne tourne en continu pendant la lecture (ENER-1).
+    {
+      const read = () => ui(`(() => { const el = document.querySelector('#media .mp[data-id="${p1}"]'); const f = el.querySelector('.mp-bar i'); const sp = el.querySelector('.mp-title span');
+        return { x: new DOMMatrix(getComputedStyle(f).transform).a, barre: f.getAnimations().length, tours: sp.getAnimations().map((a) => a.effect.getTiming().iterations) }; })()`);
+      const a1 = await read();
+      const a2 = await until(async () => { const r = await read(); return r.x > a1.x + 0.002 ? r : null; }, 'avancement qui progresse');
+      check('lecteur : l’avancement progresse par pas, sans transition ni animation en cours', a1.barre === 0 && a2.barre === 0 && a2.x > a1.x && a2.x < 1, JSON.stringify([a1, a2]));
+      check('lecteur : le titre trop long ne défile pas sans fin', a1.tours.every((n) => Number.isFinite(n) && n <= 2), JSON.stringify(a1.tours));
+    }
+
     // Lecture / pause.
     await w.mediaAct({ id: p1, act: 'toggle' });
     await until(async () => (await js(p1, 'document.getElementById("a").paused')) === true, 'pause dans la page');
