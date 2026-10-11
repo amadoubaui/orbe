@@ -551,6 +551,18 @@ module.exports = async function performancesTests(ctx) {
     check('profil neuf : pas d’historique, premier lancement reconnu sans le lire', empty.hadHistory === false && empty.historyPending === true && Object.keys(empty.state.history).length === 0);
   }
 
+  // --- Démarrage : les outils de vérification d'un émoji ne sont construits qu'au besoin (DEM-10) ---
+  {
+    const file = require.resolve('../src/main/icons');
+    const kept = require.cache[file];
+    delete require.cache[file];
+    const fresh = require(file);
+    const before = fresh.loaded;
+    const ok = fresh.valid('🏠') && fresh.valid('👨‍👩‍👧') && !fresh.valid('ab') && !fresh.valid('🏠🏠') && fresh.clean('') === '' && fresh.clean('x') === null;
+    check('icônes : rien n’est construit au chargement du module, et la vérification reste la même', before === false && fresh.loaded === true && ok, JSON.stringify({ before, apres: fresh.loaded, ok }));
+    if (kept) require.cache[file] = kept; else delete require.cache[file];
+  }
+
   // --- Repos : aucune animation sans fin hors d'un état passager (ENER-1, ENER-2) -----
   // Une animation en cours, même minuscule, fait composer la fenêtre entière à chaque image
   // d'écran (mesuré : 200 ms de processeur graphique par seconde). Seules celles liées à un

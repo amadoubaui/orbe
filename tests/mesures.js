@@ -395,6 +395,23 @@ const BENCHES = {
     });
   },
 
+  // Divers petits coûts hors du chemin des essais : sauvegarde de l'état (faite au lancement puis
+  // chaque heure, sur le fil principal), surveillance du bord gauche quand la fenêtre est au premier plan.
+  async divers({ first: w, store }) {
+    const fs = require('fs');
+    const { screen } = require('electron');
+    store.flush();
+    const backups = require(require('path').join(process.cwd(), 'src', 'main', 'backups'));
+    const times = [];
+    for (let i = 0; i < 15; i++) { const t0 = performance.now(); backups.snapshot(store.file, new Date(Date.now() + i * 1000)); times.push(performance.now() - t0); }
+    const t1 = performance.now();
+    for (let i = 0; i < 2000; i++) { screen.getCursorScreenPoint(); w.win.getContentBounds(); }
+    const bord = (performance.now() - t1) / 2;
+    const t2 = performance.now();
+    for (let i = 0; i < 20; i++) store.flush(true);
+    out({ bench: 'divers', onglets: Object.keys(w.data.tabs).length, etatKo: round(fs.statSync(store.file).size / 1024, 0), sauvegardeMs: round(median(times), 2), bordMicrosecondes: round(bord, 2), ecritureEtatMs: round((performance.now() - t2) / 20, 2) });
+  },
+
   // Repos : ce que coûte Orbe quand rien ne se passe. Plusieurs périodes de `ORBE_BENCH_IDLE` ms
   // (20 s par défaut) : une page fixe ; la même avec un onglet qui joue hors de vue (lecteur
   // miniature) ; mise à jour annoncée ; fenêtre réduite dans le Dock ; fenêtre masquée. Pour chacune : secondes de
