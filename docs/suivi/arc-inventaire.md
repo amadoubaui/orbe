@@ -723,7 +723,7 @@ Relevé complet d'Arc par l'accessibilité. Orbe : `menu.js` ; test self « les 
 | MEN-84 | Window → Open Library… | ⇧⌘L | ✅ | |
 | MEN-85 | Window → View Downloads… | ⇧⌘J | ✅ | |
 | MEN-86 | Window → View Easels… | | ✅ | |
-| MEN-87 | Window → View Media… | | 🟡 | Liste simple |
+| MEN-87 | Window → View Media… | | ✅ | « Médias » ouvre la Bibliothèque sur sa section Médias (une liste ; la grille de vignettes est BIB-7) ; self fin2 « barre de menus : « Médias » ouvre la Bibliothèque… » (2) ; ui 29 « menu « Médias »… » |
 | MEN-88 | Window → View Boosts… | | ✅ | « Afficher les Boosts… » (menu Présentation) ; self « barre de menus… » (voir BOO-11) |
 | MEN-89 | Window → Bring All to Front, liste des fenêtres | | ✅ | Rôle natif |
 | MEN-90 | Help → Getting Started | | ✅ | « Bienvenue dans Orbe » ; self « la page d'accueil s'affiche » |

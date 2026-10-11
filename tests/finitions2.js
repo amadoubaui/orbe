@@ -592,6 +592,23 @@ module.exports = async function finitions2Tests(ctx) {
       band.region === 'drag' && band.left === band.sw && band.top === 0 && band.height > 0 && band.height <= page.y && band.right === 10 && band.hit === 'page-drag', JSON.stringify([band, page]));
   }
 
+  // --- Fenêtre → Médias (MEN-87) ---------------------------------------------------------------------
+  {
+    const { Menu } = require('electron');
+    const find = (menu, label) => { for (const it of menu.items) { if (it.label === label) return it; if (it.submenu) { const f = find(it.submenu, label); if (f) return f; } } return null; };
+    (ctx.menu || require('../src/main/menu')).refresh(true);
+    await until(() => !!find(Menu.getApplicationMenu(), T('lib.media')), 'barre de menus à jour');
+    const item = find(Menu.getApplicationMenu(), T('lib.media'));
+    const before = w.activeId;
+    item.click();
+    const opened = await until(() => { const tab = w.activeId && d.tabs[w.activeId]; return tab && tab.internal && tab.url === 'orbe://app/library.html#media' ? tab : null; }, 'section Médias ouverte');
+    check('barre de menus : « Médias » ouvre la Bibliothèque sur sa section Médias, dans un onglet d’Orbe', !!item && item.enabled !== false && !!opened && opened.internal === true);
+    const rt = await until(() => { const x = win.live.get(opened.id); return x && !x.wc.isLoading() ? x : null; }, 'page chargée');
+    check('… la section Médias y est affichée', await until(() => rt.wc.executeJavaScript(`(() => { const on = document.querySelector('[data-tab].on'); return !!on && on.dataset.tab === 'media'; })()`).catch(() => false), 'onglet Médias sélectionné').then(() => true, () => false));
+    w.close(opened.id, { silent: true, ask: false });
+    if (before && d.tabs[before]) w.activate(before);
+  }
+
   // --- Remise en état ---------------------------------------------------------------------
   w.switchSpace(space.id);
   for (const id of Object.keys(d.tabs)) if (mine(d.tabs[id])) { OrbeWindow.destroyView(id); delete d.tabs[id]; }

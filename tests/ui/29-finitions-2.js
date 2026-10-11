@@ -359,6 +359,15 @@ module.exports = {
       assert.equal(await page.evaluate(() => window.__clics), 1);
     });
 
+    // --- Fenêtre → Médias ------------------------------------------------------------------------
+    await t.verifier('menu « Médias » : la Bibliothèque s’ouvre sur ses médias ; un clic sur « Téléchargements » change de section', async () => {
+      await ctx.menu('lib.media');
+      const lib = await ctx.attendrePage('library.html');
+      await jusqua(() => lib.evaluate(() => { const on = document.querySelector('[data-tab].on'); return !!on && on.dataset.tab === 'media'; }), 'section Médias');
+      await ctx.clic(lib, lib.locator('[data-tab=downloads]'));
+      await jusqua(() => lib.evaluate(() => document.querySelector('[data-tab].on').dataset.tab === 'downloads'), 'section Téléchargements');
+    });
+
     // --- Échap en plein écran -------------------------------------------------------------
     const plein = () => ctx.principal(({ w }) => w.win.isFullScreen());
     await ctx.menu('Ctrl+Cmd+F');
