@@ -132,6 +132,10 @@ module.exports = async function derniersTests(ctx) {
     const touche = await ctx.commands.typingIn(w.shellView.webContents, w);
     await ui(`${champ}.value = ${champ}.defaultValue`);
     check('nouvel Espace, champ de nom pas encore touché : ⌘Z n’est pas pris par le champ (il annulera la création) ; dès qu’on y a tapé, ⌘Z annule la saisie', intact === false && touche === true, `${intact} ${touche}`);
+    w.undoStack.push({ label: 'undo.move', undo() {}, redo() {} });
+    const autre = await ctx.commands.typingIn(w.shellView.webContents, w);
+    w.undoStack.pop();
+    check('… et si une autre action a eu lieu depuis la création, ⌘Z reste au champ de nom', autre === true, String(autre));
     w.replay('undo');
     check('nouvel Espace, puis ⌘Z : il est retiré', d.spaces.length === n1 && !d.spaces.includes(neuf) && w.space === space);
     await until(() => ui(`!slide && !${champ}`), 'champ de nom retiré');
@@ -237,7 +241,8 @@ module.exports = async function derniersTests(ctx) {
       return { over: d.classList.contains('over'), done: d.classList.contains('done'), nom: b ? b.querySelector('.drop-name').textContent : null, balises: b ? b.querySelectorAll('.drop-name *').length : -1, texte: b ? '' : l.textContent,
         centre: br ? Math.abs((br.left + br.right) / 2 - (lr.left + lr.right) / 2) < 2 && Math.abs((br.top + br.bottom) / 2 - (lr.top + lr.bottom) / 2) < 2 : false, gauche: Math.round(lr.left),
         anim: b ? getComputedStyle(b).animationName : '', props: b ? [...new Set(b.getAnimations().filter((a) => a.animationName === 'drop-bounce').flatMap((a) => a.effect.getKeyframes().flatMap((k) => Object.keys(k))))].filter((k) => !['offset', 'easing', 'composite', 'computedOffset'].includes(k)).sort().join() : '' }; })()`;
-    const b1 = await until(async () => { const v = await zone(lu); return v.over && v.nom ? v : null; }, 'bulle de l’onglet', 4000).catch(() => null);
+    // La zone glisse vers le côté visé (120 ms) : la bulle se lit une fois la zone arrivée.
+    const b1 = await until(async () => { const v = await zone(lu); return v.over && v.nom && v.centre && v.gauche > r.width / 2 - 20 ? v : null; }, 'bulle de l’onglet, zone en place', 4000).catch(() => zone(lu));
     check('glisser un onglet au-dessus de la page : il devient une bulle (icône et titre) au milieu du côté visé ; son titre est du texte, jamais du HTML',
       !!b1 && b1.nom === x1.title && b1.balises === 0 && b1.centre && b1.gauche > r.width / 2 - 20 && !b1.done, JSON.stringify(b1));
     w.handle('dragZoneOver', { ...droite, id: 'inconnu' });

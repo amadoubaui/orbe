@@ -342,12 +342,15 @@ function appInfo() {
   return [`Orbe ${app.getVersion()}`, `Electron ${process.versions.electron}`, `Chromium ${process.versions.chrome}`, `${process.platform} ${process.arch} ${require('os').release()}`].join('\n');
 }
 
-// La saisie en cours dans `target` a-t-elle quelque chose à annuler elle-même ? Dans la barre
-// latérale, un champ de nom auquel on n'a pas touché (celui qui s'ouvre à la création d'un
-// Espace ou d'un dossier) n'a rien à défaire : ⌘Z y annule l'action de la barre (la création).
+// La saisie en cours dans `target` a-t-elle quelque chose à annuler elle-même ? Un seul cas
+// où elle n'a rien à défaire : le champ de nom qui s'ouvre à la création d'un Espace, tant
+// qu'on n'y a pas touché et que cette création est la dernière action — ⌘Z annule alors la
+// création. Partout ailleurs (renommage ordinaire compris), ⌘Z reste l'annulation du texte.
 function typingIn(target, w) {
   const shell = !!w && !!w.shellView && target === w.shellView.webContents;
-  return target.executeJavaScript(`(() => { const e = document.activeElement; if (!e) return false; if (${shell} && e.matches('input.rename') && e.value === e.defaultValue) return false; return e.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(e.tagName); })()`).catch(() => true);
+  const last = shell ? w.undoStack[w.undoStack.length - 1] : null;
+  const fresh = last && typeof last.created === 'string' ? last.created : '';
+  return target.executeJavaScript(`(() => { const e = document.activeElement; if (!e) return false; if (${JSON.stringify(fresh)} && e.matches('input.rename') && e.value === e.defaultValue && typeof editing === 'string' && editing === ${JSON.stringify(fresh)}) return false; return e.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(e.tagName); })()`).catch(() => true);
 }
 
 async function undo(w, way = 'undo') {

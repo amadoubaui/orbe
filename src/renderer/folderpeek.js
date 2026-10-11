@@ -16,7 +16,6 @@
   let panel = null; // { el, input, list, id, head, rows }
   let timer = null;
   let over = null; // ligne de dossier survolée
-  let pressed = false;
 
   const el = (tag, cls, text) => {
     const e = document.createElement(tag);
@@ -28,7 +27,7 @@
   const find = (nodes, id) => { for (const n of nodes) { if (n.type !== 'folder') continue; if (n.id === id) return n; const f = find(n.children, id); if (f) return f; } return null; };
   // Onglets du dossier, sous-dossiers compris (leur nom accompagne alors la ligne).
   const flat = (folder, path = []) => folder.children.flatMap((n) => (n.type === 'folder' ? flat(n, [...path, n.name]) : [{ tab: n, path: path.join(' › ') }]));
-  const busy = () => pressed || document.body.classList.contains('dragging') || !!document.querySelector('input.rename') || document.getElementById('pager').classList.contains('sliding');
+  const busy = () => document.body.classList.contains('dragging') || !!document.querySelector('input.rename') || document.getElementById('pager').classList.contains('sliding');
 
   function close(now) {
     clearTimeout(timer);
@@ -122,13 +121,11 @@
     over = head;
     if (panel && head !== panel.head) leaveSoon();
     if (!panel) clearTimeout(timer);
-    if (head && !panel && !busy()) timer = setTimeout(() => open(head), DWELL);
+    if (head && !panel && !busy() && !e.buttons) timer = setTimeout(() => open(head), DWELL); // bouton enfoncé : un glisser passe, pas un survol
   });
   side.addEventListener('pointerleave', (e) => { if (e.target !== side) return; over = null; if (panel) leaveSoon(); else clearTimeout(timer); });
-  side.addEventListener('pointerdown', (e) => { pressed = true; if (!inside(e.target)) { clearTimeout(timer); close(true); } }, true);
-  addEventListener('pointerup', () => { pressed = false; }, true);
-  addEventListener('pointercancel', () => { pressed = false; }, true);
-  side.addEventListener('dragstart', () => { pressed = false; clearTimeout(timer); close(true); }, true);
+  side.addEventListener('pointerdown', (e) => { if (!inside(e.target)) { clearTimeout(timer); close(true); } }, true);
+  side.addEventListener('dragstart', () => { clearTimeout(timer); close(true); }, true);
   side.addEventListener('wheel', (e) => { if (!inside(e.target)) { clearTimeout(timer); close(true); } }, { capture: true, passive: true });
   side.addEventListener('click', (e) => {
     if (!panel || !inside(e.target)) return;

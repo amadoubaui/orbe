@@ -2576,6 +2576,7 @@ class OrbeWindow {
     let back = null;
     this.record('undo.newSpace', () => { back = this.removeSpace(space.id); }, () => back && back());
     const entry = this.undoStack[this.undoStack.length - 1];
+    if (entry) entry.created = space.id; // ⌘Z dans son champ de nom encore intact : voir commands.js
     this.changed();
     // « New Space Created », comme dans Arc — avec « Annuler » : un Espace créé par mégarde
     // (geste au bout de la rangée) se retire d'un clic, comme par ⌘Z.
