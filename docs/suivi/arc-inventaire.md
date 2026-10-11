@@ -890,14 +890,14 @@ Arc : `menu` pour ceux de la barre de menus, sinon la source indiquée. Orbe : `
 
 ## Bilan chiffré
 
-656 lignes au total : 538 ✅, 41 🟡, 29 ⬜, 48 ➖ (recompté le 9 octobre 2026).
+656 lignes au total : 568 ✅, 23 🟡, 16 ⬜, 49 ➖.
 
 | Domaine | ✅ | 🟡 | ⬜ | ➖ | Total |
 | --- | --- | --- | --- | --- | --- |
-| Barre latérale (BL) | 85 | 15 | 9 | 2 | 111 |
+| Barre latérale (BL) | 102 | 4 | 2 | 3 | 111 |
 | Barre de commande (CMD) | 49 | 0 | 0 | 4 | 53 |
-| Espaces et profils (ESP) | 21 | 1 | 2 | 0 | 24 |
-| Vie des onglets (ONG) | 25 | 1 | 1 | 2 | 29 |
+| Espaces et profils (ESP) | 23 | 1 | 0 | 0 | 24 |
+| Vie des onglets (ONG) | 27 | 0 | 0 | 2 | 29 |
 | Vue scindée (SCI) | 17 | 1 | 0 | 0 | 18 |
 | Aperçu (APE) | 11 | 0 | 1 | 0 | 12 |
 | Petite fenêtre (PET) | 12 | 4 | 0 | 0 | 16 |
@@ -911,11 +911,11 @@ Arc : `menu` pour ceux de la barre de menus, sinon la source indiquée. Orbe : `
 | Notes (NOT) | 5 | 0 | 0 | 0 | 5 |
 | Extensions et site (EXT) | 19 | 0 | 2 | 1 | 22 |
 | Réglages (REG) | 31 | 1 | 0 | 12 | 44 |
-| Menus (MEN) | 85 | 5 | 1 | 5 | 96 |
-| Raccourcis (RAC) | 44 | 1 | 1 | 2 | 48 |
-| Import et accueil (IMP) | 10 | 1 | 1 | 2 | 14 |
-| Divers (DIV) | 24 | 3 | 0 | 5 | 32 |
-| **Total** | **538** | **41** | **29** | **48** | **656** |
+| Menus (MEN) | 89 | 2 | 0 | 5 | 96 |
+| Raccourcis (RAC) | 46 | 0 | 0 | 2 | 48 |
+| Import et accueil (IMP) | 11 | 1 | 0 | 2 | 14 |
+| Divers (DIV) | 26 | 1 | 0 | 5 | 32 |
+| **Total** | **568** | **23** | **16** | **49** | **656** |
 
 Lecture : un 🟡 recouvre deux cas, que les colonnes « Preuve Orbe » et « Note » distinguent : du code présent mais sans test (un test suffit à le passer en ✅), ou une fonction réellement incomplète. La part de chacun n'a pas été comptée.
 
