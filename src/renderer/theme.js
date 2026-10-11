@@ -154,8 +154,17 @@
     return min;
   }
 
+  // Barre translucide : ce qui peut se trouver derrière elle. Le matériau du système
+  // (barre latérale de macOS, mica de Windows) suit l'apparence du système, pas le mode
+  // de l'Espace : sombre, il va du noir à un gris foncé ; clair, d'un gris moyen au blanc.
+  // (Bornes posées par hypothèse, non mesurées sur un bureau réel.)
+  const BACKDROP = { dark: [[0, 0, 0], [96, 96, 96]], light: [[128, 128, 128], [255, 255, 255]] };
+
   // Palette d'un thème. `dark` : apparence sombre du système (suivie en mode auto).
-  function palette(input, dark) {
+  // `show` : part de ce qui est derrière la barre et se voit à travers elle (0 : fond
+  // opaque ; 0,2 pour la barre translucide). Le contraste est alors garanti sur le fond
+  // tel qu'il s'affiche, aux deux extrêmes de ce qui peut se trouver derrière.
+  function palette(input, dark, show = 0) {
     const theme = input && Array.isArray(input.colors) && typeof input.intensity === 'number' ? input : normalize(input);
     const isDark = theme.mode === 'auto' ? !!dark : theme.mode === 'dark';
     const base = isDark ? BASE.dark : BASE.light;
@@ -170,20 +179,24 @@
     // (Les arrêts sont arrondis à l'octet avant chaque mesure : c'est la couleur affichée.)
     const DIM_MAX = 0.9;
     const whole = (c) => c.map(Math.round);
+    // Un arrêt tel qu'il s'affiche : lui-même, ou mêlé à ce qui se voit à travers la barre.
+    const through = show > 0 ? clamp(show, 0, 0.5) : 0;
+    const seen = (c) => (through ? [c, ...BACKDROP[dark ? 'dark' : 'light'].map((b) => whole(over(b, through, c)))] : [c]);
+    const worstSeen = (c, alpha) => Math.min(...seen(c).map((x) => worst(x, fam, alpha)));
     stops = stops.map((s) => {
       let c = whole(s);
-      for (let i = 0; i < 80 && worst(c, fam, DIM_MAX) < TARGET; i++) c = whole(mix(fam.push, c, 0.04));
+      for (let i = 0; i < 80 && worstSeen(c, DIM_MAX) < TARGET; i++) c = whole(mix(fam.push, c, 0.04));
       return c;
     });
     // Texte discret : l'opacité la plus faible qui reste lisible partout.
     let dim = fam.dim;
-    while (dim < DIM_MAX && stops.some((s) => worst(s, fam, dim) < TARGET)) dim = Math.round((dim + 0.01) * 100) / 100;
+    while (dim < DIM_MAX && stops.some((s) => worstSeen(s, dim) < TARGET)) dim = Math.round((dim + 0.01) * 100) / 100;
     const accent = rgb(theme.accent);
     // Couleur employée comme texte sur une pastille (compteur du bouclier, « Non
     // sécurisé ») : rapprochée du texte tant qu'elle ne s'y lit pas.
     const legible = (color) => {
       let c = whole(color);
-      for (let i = 0; i < 40 && stops.some((s) => contrast(c, over(fam.ink, fam.pill, s)) < TARGET); i++) c = whole(mix(fam.fg, c, 0.1));
+      for (let i = 0; i < 40 && stops.some((s) => seen(s).some((x) => contrast(c, over(fam.ink, fam.pill, x)) < TARGET)); i++) c = whole(mix(fam.fg, c, 0.1));
       return c;
     };
     const accentText = legible(mix(accent, fam.fg, 0.55));
@@ -211,7 +224,8 @@
       grain: theme.grain,
       texture: theme.texture,
       // Contraste le plus faible de la barre (texte principal, onglet en veille, texte discret).
-      contrast: Math.min(...stops.map((s) => worst(s, fam, dim))),
+      // (Barre translucide : sur le fond tel qu'il s'affiche, aux deux extrêmes de l'arrière-plan.)
+      contrast: Math.min(...stops.map((s) => worstSeen(s, dim))),
     };
   }
 
@@ -248,5 +262,5 @@
   // Celles qui ne concernent que le texte et les surfaces (pas le fond).
   const TEXT_VARS = ['--accent', '--on-accent', '--accent-text', '--warn', '--danger', '--fg', '--secondary', '--dim', '--faint', '--hover', '--pill', '--line', '--active', '--active-shadow'];
 
-  return { DEFAULT_COLOR, TEXTURES, MODES, MAX_COLORS, MIN_CONTRAST, PALETTES, PRESETS, TEXT_VARS, isHex, rgb, hex, mix, over, lum, contrast, hsvToHex, hexToHsv, normalize, apply, tintOf, palette, paint, cssVars };
+  return { BACKDROP, DEFAULT_COLOR, TEXTURES, MODES, MAX_COLORS, MIN_CONTRAST, PALETTES, PRESETS, TEXT_VARS, isHex, rgb, hex, mix, over, lum, contrast, hsvToHex, hexToHsv, normalize, apply, tintOf, palette, paint, cssVars };
 });

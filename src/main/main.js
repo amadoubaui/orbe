@@ -352,7 +352,7 @@ function setupUpdates() {
 function welcomeAction(action, sender) {
   const w = OrbeWindow.ownerOf(sender) || OrbeWindow.primary;
   if (action === 'welcome:info') {
-    return { arc: require('./import-arc').available(), colors: require('./store').SPACE_COLORS, color: w ? w.space.color : '', isDefault: panes.isDefaultBrowser() };
+    return { arc: require('./import-arc').available(), colors: require('./store').SPACE_COLORS, color: w ? w.space.color : '', isDefault: panes.isDefaultBrowser(), music: require('./sounds').music() };
   }
   if (action === 'welcome:done' && w) {
     store.state.window.welcomed = true;

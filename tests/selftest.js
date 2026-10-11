@@ -1153,6 +1153,9 @@ module.exports = async function selftest(ctx) {
   // Petite fenêtre, image dans l'image par site, capture… (tests/details.js)
   await require('./details')({ ...ctx, check });
 
+  // Sensations : fichiers récents au survol de la Bibliothèque… (tests/sensations.js)
+  await require('./sensations')({ ...ctx, check });
+
   // Correctifs de la revue de sécurité : quarantaine, sauvegardes, aiguillage, Boosts, adresses étroites.
   await require('./securite')({ ...ctx, check });
 

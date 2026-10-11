@@ -287,9 +287,11 @@ function flipPlay(f) {
 // <body> pour l'Espace courant ; sur #tint et sur la liste de l'autre Espace
 // pendant un changement d'Espace (fondu enchaîné).
 function themeVars(space, s) {
-  const p = OrbeTheme.palette(space, s.dark);
-  // Barre translucide : le fond laisse passer un peu du bureau.
-  return { p, vars: OrbeTheme.cssVars(p, FLOATING ? 0.96 : (s.translucent ? 0.8 : 1)) };
+  // Barre translucide : le fond laisse passer un peu du bureau ; le texte est
+  // calculé pour rester lisible sur ce fond-là (theme.js, `show`).
+  const alpha = FLOATING ? 0.96 : (s.translucent ? 0.8 : 1);
+  const p = OrbeTheme.palette(space, s.dark, FLOATING ? 0 : 1 - alpha);
+  return { p, vars: OrbeTheme.cssVars(p, alpha) };
 }
 function paintTheme(el, space, s, only) {
   const sig = JSON.stringify([space.color, space.color2, space.color3, space.plain, space.intensity, space.grain, space.texture, space.mode, s.dark, s.translucent, only ? 1 : 0]);
