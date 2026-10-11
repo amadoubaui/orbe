@@ -114,7 +114,7 @@ git clone https://github.com/amadoubaui/orbe.git
 cd orbe
 npm start        # lance le navigateur
 npm test         # tests de bout en bout (plus de 1 500 vérifications)
-npm run test:ui  # tests d'interface Playwright, souris et clavier réels (482 vérifications)
+npm run test:ui  # tests d'interface Playwright, souris et clavier réels (491 vérifications)
 npm run test:ext # couche d'API des extensions, dans le vrai navigateur (175 vérifications)
 # tests au clavier réel (prennent le clavier) : voir tests/natif/
 npm run build    # fabrique ~/.orbe-dev/dist/Orbe.app (-- --install pour /Applications)
