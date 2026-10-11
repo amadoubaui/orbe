@@ -127,6 +127,11 @@ scénario, et un essai qui n'avance plus s'arrête en écrivant ce qu'il attenda
 principal est figé). Écran verrouillé ou en veille, les vérifications qui ont
 besoin d'images ou de son sont ignorées une par une, avec la raison.
 
+Sur macOS, les fenêtres d'essai sont invisibles : transparentes, insensibles à
+la souris, sans clavier ni icône dans le Dock, pour qu'on puisse continuer à
+travailler pendant les tests (`tests/discret.js`). `ORBE_TEST_VISIBLE=1` les
+montre.
+
 Vidéos protégées (Widevine) : `ORBE_DRM=1 npm start` utilise un moteur qui les
 lit ; voir [docs/etude-extensions-et-distribution.md](docs/etude-extensions-et-distribution.md).
 

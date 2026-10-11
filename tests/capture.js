@@ -63,7 +63,9 @@ function screenWindows(file) {
 // Enregistre <dossier>/<nom>.png (et <nom>-ecran.png sous Windows).
 async function shoot(win, dir, name, background) {
   const file = path.join(dir, name + '.png');
-  if (process.platform === 'darwin') {
+  // Essais discrets (tests/discret.js) : la fenêtre est transparente à l'écran,
+  // on la recompose à partir de ses vues.
+  if (process.platform === 'darwin' && process.env.ORBE_DISCRET !== '1') {
     const id = win.getMediaSourceId().split(':')[1];
     try { execFileSync('screencapture', ['-x', '-o', '-l', id, file]); } catch {}
     return;

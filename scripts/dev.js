@@ -72,7 +72,11 @@ function supervise(args, env = process.env) {
   const exe = require(path.join(runtime, 'node_modules', 'electron'));
   const beat = path.join(os.tmpdir(), `orbe-battement-${process.pid}-${Date.now()}.txt`);
   const frozen = (Number(process.env.ORBE_TEST_FROZEN) || 30) * 1000;
-  const child = spawn(exe, [root, ...args], { stdio: 'inherit', env: { ...env, ORBE_HEARTBEAT: beat } });
+  // Sur macOS, hors intégration continue, les fenêtres d'essai sont invisibles et
+  // ne prennent ni le clavier ni la souris (tests/discret.js ; ORBE_TEST_VISIBLE=1
+  // pour les voir).
+  const discret = process.platform === 'darwin' && !env.CI ? ['-r', path.join(root, 'tests', 'discret.js')] : [];
+  const child = spawn(exe, [...discret, root, ...args], { stdio: 'inherit', env: { ...env, ORBE_HEARTBEAT: beat } });
   const started = Date.now();
   let over = false;
   let at = 0; // dernier battement lu

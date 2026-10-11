@@ -1,21 +1,14 @@
 // Chargé dans le processus principal avant Orbe (option -r d'Electron), pendant
 // les tests d'interface uniquement.
 //
-// Les fenêtres s'ouvrent sans prendre le clavier : la personne qui travaille
-// sur ce Mac garde le focus dans son application. Les événements envoyés par
-// Playwright visent une page précise et n'ont pas besoin du focus système.
-// ORBE_UI_FOCUS=1 rend le comportement normal (la fenêtre de test passe alors
-// au premier plan).
-const { BaseWindow, BrowserWindow, app } = require('electron');
+// Les fenêtres s'ouvrent sans prendre le clavier et, sur macOS, sans se montrer
+// (tests/discret.js) : la personne qui travaille sur ce Mac garde son écran et
+// le focus dans son application. Les événements envoyés par Playwright visent
+// une page précise et n'ont pas besoin du focus système.
+// ORBE_UI_FOCUS=1 ou ORBE_TEST_VISIBLE=1 rendent le comportement normal.
+const { BaseWindow, app } = require('electron');
 
-if (process.env.ORBE_UI_FOCUS !== '1') {
-  for (const proto of [BaseWindow.prototype, BrowserWindow.prototype]) {
-    const inactive = proto.showInactive;
-    proto.show = function show() { return inactive.call(this); };
-    proto.focus = function focus() {};
-  }
-  app.focus = () => {};
-}
+require('../discret');
 
 // --- Journal de fin de vie ------------------------------------------------------
 // Une fenêtre fermée ou une application qui s'arrête au milieu d'un groupe doit
