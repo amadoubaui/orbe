@@ -266,6 +266,8 @@
       fill(el, p);
       const at = [...host.children].filter((c) => !c.classList.contains('out'))[i];
       if (at !== el) host.insertBefore(el, at || null);
+      // Carte neuve : remplie avant d'être posée, son avancement n'a pas pu démarrer.
+      if (!el._tick) step(el);
     });
     const hide = !list.length && !host.children.length;
     if (list.length ? host.hidden : hide && !host.hidden) host.hidden = !list.length;

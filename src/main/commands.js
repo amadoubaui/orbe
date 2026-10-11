@@ -19,10 +19,10 @@ const COMMANDS = [
   // Fichier
   { name: 'newTab', label: 'file.newTab', accel: 'Cmd+T', keys: '⌘T', palette: false, run: (w) => w.openCommand('new') },
   // Comme dans Arc : une fenêtre neuve, sans onglet, s'ouvre sur la barre de commande.
-  { name: 'newWindow', label: 'file.newWindow', accel: 'Cmd+N', keys: '⌘N', global: true, run: () => greet(hooks.newWindow({})) },
-  { name: 'newIncognito', label: 'file.newIncognito', accel: 'Shift+Cmd+N', keys: '⇧⌘N', global: true, run: () => greet(hooks.newWindow({ incognito: true })) },
+  { name: 'newWindow', label: 'file.newWindow', accel: 'Cmd+N', keys: '⌘N', global: true, run: (w) => greet(hooks.newWindow({}, w)) },
+  { name: 'newIncognito', label: 'file.newIncognito', accel: 'Shift+Cmd+N', keys: '⇧⌘N', global: true, run: (w) => greet(hooks.newWindow({ incognito: true }, w)) },
   // « Blank Window » d'Arc (⌃⌘N) : une fenêtre hors des Espaces.
-  { name: 'newBlank', label: 'file.newBlank', accel: 'Ctrl+Cmd+N', keys: '⌃⌘N', global: true, run: () => greet(hooks.newWindow({ blank: true })) },
+  { name: 'newBlank', label: 'file.newBlank', accel: 'Ctrl+Cmd+N', keys: '⌃⌘N', global: true, run: (w) => greet(hooks.newWindow({ blank: true }, w)) },
   { name: 'newLittle', label: 'file.newLittle', accel: 'Alt+Cmd+N', keys: '⌥⌘N', global: true, run: () => hooks.newLittle('') },
   // ⌘Z / ⇧⌘Z : défait ou refait la dernière action de la barre latérale quand on
   // n'est pas en train d'écrire, sinon annulation classique du texte.

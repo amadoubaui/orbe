@@ -400,6 +400,14 @@ module.exports = async function mediasTests(ctx) {
   store.state.settings.mediaControls = mediaControls0;
   win.OrbeWindow.pushAll();
   await sleep(50);
+  // Carte neuve dont la durée est connue d'emblée : l'avancement démarre quand même (elle est
+  // remplie avant d'être posée dans la barre ; il restait figé une fois sur trois).
+  {
+    const neuf = await ui(`(() => { renderPlayers([{ id: 'essai-avancement', title: 'Essai', url: 'https://exemple.test/', playing: true, duration: 60, position: 1 }]);
+      const el = document.querySelector('#media .mp[data-id="essai-avancement"]'); const ok = !!el && el.isConnected && !!el._tick; renderPlayers([]); return ok; })()`);
+    check('lecteur : une carte neuve qui joue fait avancer sa barre dès qu’elle est posée', neuf === true);
+    await until(() => ui('!document.querySelector("#media .mp")'), 'carte d’essai retirée');
+  }
   server.close();
   if (server.closeAllConnections) server.closeAllConnections();
   return failed;
