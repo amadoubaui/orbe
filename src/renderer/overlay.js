@@ -524,7 +524,7 @@ function openIcons(p) {
     $('icons-tones').appendChild(b);
   });
   // Un Espace garde toujours une icône ; un dossier ou un onglet peut reprendre la sienne.
-  $('icons-reset').hidden = p.kind === 'space' || !p.current;
+  $('icons-reset').hidden = p.kind === 'space' || p.kind === 'draft' || !p.current;
   iconsInput.value = '';
   drawIcons();
   iconsList.scrollTop = 0;
