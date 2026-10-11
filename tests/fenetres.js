@@ -398,7 +398,11 @@ module.exports = async function fenetresTests(ctx) {
     await ed(`document.querySelectorAll('#swatches .dot')[3].click()`);
     await until(() => boosts.get(host).look.color === boosts.SWATCHES[2], 'couleur choisie');
     await until(async () => (await js('getComputedStyle(document.body).backgroundColor')) !== 'rgba(0, 0, 0, 0)', 'couleur appliquée à la page');
-    check('éditeur : une pastille du nuancier colore la page aussitôt', await ed(`document.querySelectorAll('#swatches .dot')[3].classList.contains('on')`));
+    // L'éditeur marque la pastille quand l'état lui revient du processus principal : un message
+    // distinct de celui qui colore la page, et qui peut arriver juste après lui (machine lente,
+    // batterie faible). On l'attend donc, au lieu de le lire à l'instant où la page est colorée.
+    const marked = await until(() => ed(`document.querySelectorAll('#swatches .dot')[3].classList.contains('on')`), 'pastille marquée dans l’éditeur', 4000).then(() => true, () => false);
+    check('éditeur : une pastille du nuancier colore la page aussitôt', marked);
     await ed(`(() => { const r = document.getElementById('size'); r.value = '130'; r.dispatchEvent(new Event('input', { bubbles: true })); const n = document.getElementById('name'); n.value = '  Mon   Boost  '; n.dispatchEvent(new Event('input', { bubbles: true })); })()`);
     await until(() => boosts.get(host).look.size === 130 && boosts.get(host).name === 'Mon Boost', 'taille et nom enregistrés');
     // (Le Boost est rangé d'abord, appliqué à la page ensuite : on attend la page.)

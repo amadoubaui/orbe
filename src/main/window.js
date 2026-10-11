@@ -46,6 +46,13 @@ const ICON_MAX = 65536;
 // Processus de la coque perdu : délai avant de la recharger, selon le nombre de pertes dans la minute.
 // Durée pendant laquelle un glisser signalé retient la réserve de vues (ms).
 const DRAG_HOLD = 8000;
+// Échap en plein écran : deux appuis en moins de 400 ms, ou une touche tenue 600 ms, en font sortir.
+const ESC_DOUBLE = 400;
+const ESC_HOLD = 600;
+// Glisser un onglet sur une page seule : part de la hauteur, en haut et en bas, qui empile la vue.
+const DROP_EDGE = 0.25;
+// Onglet glissé hors de la fenêtre : la nouvelle fenêtre se pose avec ce point de sa barre sous le pointeur.
+const TEAR = { x: 120, y: 60 };
 const uiRetryDelay = (n) => (n <= 3 ? 150 : Math.min(60000, 5000 * 2 ** (n - 4)));
 // Vues d'appoint tenues prêtes par la coque (voir `fillSpares`).
 const RESERVE = 'overlay.html#reserve';
@@ -87,6 +94,12 @@ const hooks = {
   busy: () => false, tabState: () => [], navState: () => ({}), failed: () => false, gone: () => {}, hung: () => {}, action: () => undefined, siteMenu: () => [],
   // Note « mise à jour disponible » de la barre latérale ({ version } ou null) : posée par main.js.
   updateNote: () => null,
+  // Position du pointeur à l'écran (onglet glissé hors de la fenêtre) ; remplacée dans les essais.
+  cursor: () => screen.getCursorScreenPoint(),
+  // Met une fenêtre en plein écran (nouvelle fenêtre ouverte depuis une fenêtre en plein écran) ; remplacé dans les essais.
+  enterFullScreen: (win) => { if (!win.isDestroyed()) win.setFullScreen(true); },
+  // Choix du fichier où enregistrer (export d'un Espace) ; remplacé dans les essais.
+  saveFile: async (parent, options) => { const r = await dialog.showSaveDialog(parent, options); return r.canceled ? null : r.filePath; },
   // Un arrêt d'Orbe demandé puis retenu par une page (« Rester ») : posé par main.js.
   quitAborted: () => {},
 };
@@ -98,6 +111,16 @@ function resumed(saved, spaces, on) {
   if (!on) return { spaceId: spaces[0].id, activeBySpace: {} };
   return { spaceId: spaces.some((s) => s.id === saved.spaceId) ? saved.spaceId : spaces[0].id, activeBySpace: { ...(saved.activeBySpace || {}) } };
 }
+// Nom d'un Espace dans un menu. Quand son profil n'est pas celui de l'Espace d'où l'on
+// part (`from`), il est rappelé à la suite (pastille de profil d'Arc) : déplacer un onglet
+// vers un Espace d'un autre profil change ses cookies et ses identifiants, autant le voir avant.
+function spaceLabel(sp, data = store.state, from = null, gap = ' ') {
+  const base = `${sp.icon}${gap}${sp.name}`;
+  const profiles = (data && data.profiles) || [];
+  if (profiles.length < 2 || !from || sp.profileId === from) return base;
+  const p = profiles.find((x) => x.id === sp.profileId);
+  return p && p.name ? `${base}  ·  ${p.name}` : base;
+}
 const isInternal = (url) => (url || '').startsWith(INTERNAL);
 const isErrorPage = (url) => (url || '').startsWith(INTERNAL + 'error.html');
 // Pages internes pouvant s'ouvrir dans un onglet, avec accès à l'interface.
@@ -107,7 +130,7 @@ const INTERNAL_PAGES = new Set(['library.html', 'shortcuts.html', 'welcome.html'
 const webUrl = (u) => (/^https?:\/\//i.test(u || '') ? u : null);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 // Messages de l'interface qui ne sont pas un geste de l'utilisateur (aucun son ne les suit).
-const QUIET_ACTIONS = new Set(['ready', 'themeGet', 'suggest', 'select', 'dragZone', 'dragZoneOver', 'sidebarWidth', 'splitResize']);
+const QUIET_ACTIONS = new Set(['ready', 'battery', 'themeGet', 'suggest', 'select', 'dragZone', 'dragZoneOver', 'sidebarWidth', 'splitResize']);
 // Ce que l'interface reçoit du thème d'un Espace (voir src/renderer/theme.js).
 const themeFields = (s) => ({ color: s.color, color2: s.color2 || '', color3: s.color3 || '', plain: !!s.plain, intensity: typeof s.intensity === 'number' ? s.intensity : 0.5, grain: s.grain || 0, texture: s.texture || 'grain', mode: s.mode || 'auto' });
 
@@ -606,6 +629,15 @@ class OrbeWindow {
       this.ui.webContents.once('did-finish-load', () => { loadingUi.delete(this.ui.webContents); if (this.gone) return; this.layout(); this.focusContent(); this.fillSpares(); });
       this.ui.webContents.loadURL(INTERNAL + 'shell.html');
     }, uiRetryDelay(this.uiCrashes.length));
+  }
+
+  // Nouvelle fenêtre demandée par l'utilisateur (⌘N, navigation privée, fenêtre vierge) :
+  // ouverte depuis une fenêtre en plein écran, elle s'ouvre en plein écran elle aussi (comme dans Arc).
+  static open(opts = {}, from = OrbeWindow.focused) {
+    const full = !!from && !!from.win && !from.win.isDestroyed() && from.win.isFullScreen();
+    const w = new OrbeWindow(opts);
+    if (full) hooks.enterFullScreen(w.win);
+    return w;
   }
 
   // La plus ancienne fenêtre normale encore ouverte mémorise son état.
@@ -1382,6 +1414,30 @@ class OrbeWindow {
   // seule la limite en nombre joue. `deep` (toutes les minutes) : s'y ajoutent
   // l'ancienneté et la mémoire relevée des processus d'onglets.
   // Renvoie [{ id, why }].
+  // Niveau de la batterie, relevé par la barre latérale (le processus principal n'y a pas accès) :
+  // seuls un nombre de 0 à 1 et un booléen sont retenus. Au passage sous le seuil, sur batterie,
+  // un message le dit une fois et les onglets cachés depuis dix minutes s'endorment (veille.js).
+  static setBattery(a, w) {
+    if (!a || typeof a !== 'object' || typeof a.charging !== 'boolean' || !Number.isFinite(a.level) || a.level < 0 || a.level > 1) return false;
+    const on = store.state.settings.batterySaver !== false;
+    const before = veille.saving(OrbeWindow.battery, on);
+    OrbeWindow.battery = { level: a.level, charging: a.charging };
+    const now = veille.saving(OrbeWindow.battery, on);
+    if (now && !before) {
+      // Au lancement, le niveau arrive avant que la fenêtre ait ses vues d'appoint : le message
+      // attend qu'il y en ait une (sinon sa vue naîtrait à part, dans son propre processus).
+      const target = w || OrbeWindow.focused || OrbeWindow.primary;
+      const say = (n) => {
+        if (!target || target.win.isDestroyed() || !veille.saving(OrbeWindow.battery, store.state.settings.batterySaver !== false)) return;
+        if (target.toastView || (target.spares || []).some((s) => s.ready) || n >= 20) target.toast(t('toast.batterySaver'));
+        else setTimeout(() => say(n + 1), 150);
+      };
+      say(0);
+      OrbeWindow.trimLive({ deep: true });
+    }
+    return true;
+  }
+
   static trimLive({ deep = false } = {}) {
     const s = store.state.settings;
     if (!deep && live.size <= s.maxLiveTabs) return [];
@@ -1406,7 +1462,7 @@ class OrbeWindow {
     }));
     const picked = veille.pick(tabs, {
       max: s.maxLiveTabs,
-      idleMs: deep ? (Number(s.sleepAfterHours) || 0) * 36e5 : 0,
+      idleMs: deep ? veille.idleFor(s.sleepAfterHours, veille.saving(OrbeWindow.battery, s.batterySaver !== false)) : 0,
       budgetMb: deep && Number(s.memoryBudget) ? veille.budget(os.totalmem(), Number(s.memoryBudget)) : 0,
       totalMb: mem ? mem.total : 0,
     });
@@ -3413,10 +3469,28 @@ class OrbeWindow {
       this.switcherClose();
     } else if (input.type === 'keyDown' && input.key === 'Escape') {
       if (this.switcher) this.hideModal();
+      else if (this.escFullScreen(input)) e.preventDefault();
       else if (this.findOpen) this.closeFind();
       // Comme dans Arc : Échap arrête la page en cours de chargement.
       else if (!fromUi && this.activeRt && this.activeRt.loading && !this.activeRt.wc.isDestroyed()) this.activeRt.wc.stop();
     }
+  }
+
+  // Fenêtre en plein écran : Échap va d'abord à la page (ou à ce qui est ouvert) ;
+  // doublé, ou maintenu, il fait sortir la fenêtre du plein écran (comme dans Arc).
+  // Le plein écran d'une page (vidéo) garde le comportement du moteur : un Échap suffit.
+  escFullScreen(input, now = Date.now()) {
+    if (!this.win.isFullScreen() || this.htmlFullscreen) { this.escAt = 0; return false; }
+    if (input.isAutoRepeat) {
+      if (!this.escAt || now - this.escAt < ESC_HOLD) return false;
+    } else {
+      const doubled = !!this.escAt && now - this.escAt <= ESC_DOUBLE;
+      this.escAt = now;
+      if (!doubled) return false;
+    }
+    this.escAt = 0;
+    this.win.setFullScreen(false);
+    return true;
   }
 
   // ⌘← / ⌘→ hors d'un champ de saisie : page précédente ou suivante. La page est
@@ -3593,12 +3667,16 @@ class OrbeWindow {
     let i = panes.findIndex((p) => x >= p.x && x < p.x + p.width + GAP && y >= p.y && y < p.y + p.height + GAP);
     if (i < 0) i = Math.max(0, ids.indexOf(this.activeId));
     const p = panes[i];
-    const vertical = p.vertical && ids.length > 1;
+    // Page seule : les quatre côtés (comme dans Arc). Le quart haut ou bas de la page
+    // empile le nouvel onglet au-dessus ou au-dessous ; le reste le place à gauche ou à
+    // droite. Vue déjà scindée : elle garde son sens (côte à côte, ou empilée).
+    const band = ids.length === 1 ? (y - p.y) / Math.max(1, p.height) : 0.5;
+    const vertical = ids.length > 1 ? !!p.vertical : band < DROP_EDGE || band > 1 - DROP_EDGE;
     const before = vertical ? y < p.y + p.height / 2 : x < p.x + p.width / 2;
     const zone = vertical
       ? { x: p.x - rect.x, y: (before ? p.y : p.y + p.height / 2) - rect.y, w: p.width, h: p.height / 2 }
       : { x: (before ? p.x : p.x + p.width / 2) - rect.x, y: p.y - rect.y, w: p.width / 2, h: p.height };
-    return { id: ids[i], before, zone: { x: Math.round(zone.x), y: Math.round(zone.y), w: Math.round(zone.w), h: Math.round(zone.h) } };
+    return { id: ids[i], before, vertical, zone: { x: Math.round(zone.x), y: Math.round(zone.y), w: Math.round(zone.w), h: Math.round(zone.h) } };
   }
 
   // Survol pendant un glisser : la zone de dépôt éclaire le côté visé.
@@ -3627,7 +3705,62 @@ class OrbeWindow {
       this.setVertical(g, vertical);
       return this.activate(id);
     }
-    return this.splitWith(anchor, id, false, !!(target && target.before));
+    const alone = !g;
+    this.splitWith(anchor, id, true, !!(target && target.before));
+    // Lâché en haut ou en bas d'une page seule : la vue est empilée.
+    const made = this.groupOf(anchor);
+    if (!made || !made.includes(id)) return undefined; // vue déjà pleine : rien n'a changé
+    if (alone && target && target.vertical) this.setVertical(made, true);
+    return this.activate(id);
+  }
+
+  // --- Onglet glissé hors de la fenêtre -------------------------------------
+  // Lâché hors de toute fenêtre d'Orbe : il s'ouvre dans une nouvelle fenêtre, posée sous
+  // le pointeur. Lâché sur une autre fenêtre ordinaire : c'est elle qui l'affiche. Les
+  // fenêtres ordinaires montrent les mêmes Espaces : l'onglet ne change pas de liste, il
+  // change de fenêtre. Le point vient du système (jamais de l'interface) ; `pt` sert aux essais.
+  tearOff(ids, pt = hooks.cursor()) {
+    ids = this.checkIds(ids);
+    if (!ids.length || !this.shared || !pt || !Number.isFinite(pt.x) || !Number.isFinite(pt.y)) return null;
+    const inside = (w) => { const b = w.win.getBounds(); return pt.x >= b.x && pt.x < b.x + b.width && pt.y >= b.y && pt.y < b.y + b.height; };
+    if (inside(this)) return null;
+    const other = OrbeWindow.all.find((w) => w !== this && w.shared && !w.win.isDestroyed() && w.win.isVisible() && !w.win.isMinimized() && inside(w));
+    if (other) return other.adopt(ids, this);
+    const from = this.win.getBounds();
+    const w = new OrbeWindow();
+    const area = screen.getDisplayNearestPoint({ x: Math.round(pt.x), y: Math.round(pt.y) }).workArea;
+    const width = Math.min(from.width, area.width);
+    const height = Math.min(from.height, area.height);
+    w.win.setBounds({
+      x: clamp(Math.round(pt.x - TEAR.x), area.x, area.x + area.width - width),
+      y: clamp(Math.round(pt.y - TEAR.y), area.y, area.y + area.height - height),
+      width,
+      height,
+    });
+    w.adopt(ids, this);
+    return w;
+  }
+
+  // Affiche ici des onglets venus d'une autre fenêtre ordinaire (`from`) : celle-ci passe
+  // d'abord à un autre onglet, pour ne pas rester sur une page vide. Si les deux fenêtres
+  // montrent des Espaces différents, la fenêtre d'arrivée passe à l'Espace des onglets.
+  adopt(ids, from) {
+    if (!this.shared || !from || from === this || !from.shared) return null;
+    ids = (Array.isArray(ids) ? ids : []).filter((id) => typeof id === 'string' && this.data.tabs[id] && this.locate(id) && this.locate(id).node.type !== 'folder');
+    if (!ids.length) return null;
+    for (const id of ids) {
+      if (!from.visibleIds().includes(id)) continue;
+      const loc = from.locate(id);
+      const space = (loc && loc.space) || from.space;
+      from.leaveSplit(id);
+      const next = from.nextActiveAfter(id, space);
+      if (next && next !== id && !ids.includes(next)) from.activate(next);
+      else { delete from.activeBySpace[space.id]; from.layout(); from.changed(); }
+    }
+    this.activate(ids[0]);
+    if (this.win.isMinimized()) this.win.restore();
+    this.win.focus();
+    return this;
   }
 
   // Adresse du lien survolé, en bas à gauche de la page.
@@ -4062,12 +4195,14 @@ class OrbeWindow {
       { type: 'separator' },
       { label: t(pinned ? 'tabs.unpin' : 'tabs.pin'), visible: !fav, click: () => this.togglePin(id) },
       { label: t(fav ? 'tabs.removeFavorite' : 'tabs.addFavorite'), visible: this.shared, click: () => this.toggleFavorite(id) },
+      // Favori : la pastille du nombre annoncé par le site (« (3) Boîte de réception ») se coupe site par site.
+      { label: t('tabs.showBadge'), type: 'checkbox', checked: !tab.noBadge, visible: fav, click: () => { if (tab.noBadge) delete tab.noBadge; else tab.noBadge = true; this.changed(); } },
       { label: t('tabs.openSplit'), enabled: !!this.activeId && this.activeId !== id, click: () => this.splitWith(this.activeId, id) },
       { label: t('tabs.separateAll'), visible: !!this.groupOf(id), click: () => this.separateAll(id) },
       { label: t(tab.muted ? 'tabs.unmute' : 'tabs.mute'), click: () => this.toggleMute(id) },
     ];
     // « Déplacer vers » : les autres Espaces, puis les dossiers de celui-ci (sauf le sien).
-    const dest = fav ? [] : others.map((s) => ({ label: `${s.icon} ${s.name}`, click: () => this.moveToSpace(id, s.id) }));
+    const dest = fav ? [] : others.map((s) => ({ label: spaceLabel(s, this.data, this.space.profileId), click: () => this.moveToSpace(id, s.id) }));
     const folders = [];
     const each = (nodes, trail) => {
       for (const n of nodes) {
@@ -4123,7 +4258,7 @@ class OrbeWindow {
       { label: t('tabs.folderFromSelection'), click: () => this.folderFromSelection(ids) },
     ];
     if (others.length && !lists.includes('favorites')) {
-      tpl.push({ label: t('tabs.moveTo'), submenu: others.map((s) => ({ label: `${s.icon} ${s.name}`, click: () => this.moveManyToSpace(ids, s.id) })) });
+      tpl.push({ label: t('tabs.moveTo'), submenu: others.map((s) => ({ label: spaceLabel(s, this.data, this.space.profileId), click: () => this.moveManyToSpace(ids, s.id) })) });
     }
     tpl.push({ type: 'separator' }, { label: t('tabs.closeMany', { n }), click: () => this.closeMany(ids) });
     return tpl;
@@ -4177,12 +4312,50 @@ class OrbeWindow {
       { label: t(this.space.hideHeader ? 'spaces.showHeader' : 'spaces.hideHeader'), click: () => this.toggleSpaceHeader() },
       { label: t('spaces.toFolder'), visible: this.shared, enabled: this.data.spaces.length > 1, click: () => this.turnSpaceIntoFolder() },
       { label: t('spaces.manage'), visible: this.shared, click: () => this.run('manageSpaces') },
+      { label: t('spaces.export'), visible: this.shared, click: () => this.exportSpace() },
       { type: 'separator' },
       { label: t('tabs.newFolder'), click: () => this.newFolder() },
       { label: t('spaces.new'), enabled: this.shared, click: () => this.newSpace() },
       { type: 'separator' },
       { label: t('spaces.delete'), enabled: this.data.spaces.length > 1, click: () => this.deleteSpace() },
     ];
+  }
+
+  // « Exporter l'Espace… » : ses épinglés (avec leurs dossiers) et ses onglets du jour, dans
+  // un fichier de signets (format HTML que tous les navigateurs, et Orbe, savent importer).
+  // Seules les adresses web sortent ; titres et adresses sont échappés.
+  spaceExportHtml(space = this.space) {
+    const escHtml = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    let count = 0;
+    const link = (id, pad) => {
+      const tab = this.data.tabs[id];
+      const url = tab && webUrl(tab.homeUrl || tab.url) ? (tab.homeUrl || tab.url) : '';
+      if (!url) return '';
+      count += 1;
+      return `${pad}<DT><A HREF="${escHtml(url)}">${escHtml(tab.customTitle || tab.title || url)}</A>\n`;
+    };
+    const folder = (name, body, pad) => `${pad}<DT><H3>${escHtml(name)}</H3>\n${pad}<DL><p>\n${body}${pad}</DL><p>\n`;
+    const walkNodes = (nodes, pad) => nodes.map((n) => (n.type === 'folder' ? folder(n.name, walkNodes(n.children || [], pad + '    '), pad) : link(n.id, pad))).join('');
+    const pad = '        ';
+    const body = walkNodes(space.pinned || [], pad) + folder(t('spaces.exportToday'), (space.today || []).map((id) => link(id, pad + '    ')).join(''), pad);
+    const html = '<!DOCTYPE NETSCAPE-Bookmark-file-1>\n<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">\n<TITLE>Bookmarks</TITLE>\n<H1>Bookmarks</H1>\n<DL><p>\n'
+      + folder(space.name, body, '    ') + '</DL><p>\n';
+    return { html, count };
+  }
+
+  async exportSpace(space = this.space) {
+    if (!this.shared) return null;
+    const name = String(space.name || 'Espace').replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ').trim().slice(0, 80) || 'Espace';
+    const file = await hooks.saveFile(this.win, { title: t('spaces.export'), defaultPath: path.join(app.getPath('documents'), `${name}.html`), filters: [{ name: 'HTML', extensions: ['html'] }] });
+    if (!file || typeof file !== 'string' || !path.isAbsolute(file)) return null;
+    const { html, count } = this.spaceExportHtml(space);
+    try { fs.writeFileSync(file, html); } catch (err) {
+      console.error('[orbe] export de l’Espace', err.message);
+      this.toast(t('spaces.exportFailed'), 'error');
+      return null;
+    }
+    this.toast(t('spaces.exported', { n: count }));
+    return { file, count };
   }
 
   spaceMenu(id) {
@@ -4346,6 +4519,7 @@ class OrbeWindow {
         // premier onglet, qui porte les icônes et les titres des autres.
         partners: g && g[0] === id ? g.slice(1).filter((x) => d.tabs[x]).map((x) => ({ id: x, title: d.tabs[x].customTitle || d.tabs[x].title || suggest.strip(d.tabs[x].url), favicon: d.tabs[x].favicon, ...(d.tabs[x].icon ? { icon: d.tabs[x].icon } : null), url: d.tabs[x].url })) : null,
         grouped: !!g && g[0] !== id,
+        noBadge: tab.noBadge === true,
         active: g && g[0] === id ? g.includes(activeId) : id === activeId,
         shown: false,
       };
@@ -4439,7 +4613,12 @@ class OrbeWindow {
       // Couleur de thème de la page affichée (barre d'outils teintée), hors vue scindée.
       pageColor: toolbar && this.activeRt && this.visibleIds().length === 1 ? this.activeRt.themeColor || null : null,
       downloads: downloads.length
-        ? { count: downloads.length, progress: downloads.reduce((a, x) => a + (x.total ? x.received / x.total : 0), 0) / downloads.length }
+        ? {
+          count: downloads.length,
+          progress: downloads.reduce((a, x) => a + (x.total ? x.received / x.total : 0), 0) / downloads.length,
+          // Les trois plus récents, pour les lignes du bas de la barre (nom borné : il vient du site).
+          items: downloads.slice(-3).reverse().map((x) => ({ id: String(x.id), name: String(x.name || '').slice(0, 200), received: Number(x.received) || 0, total: Number(x.total) || 0, paused: !!x.paused, left: require('./downloads').eta(x) })),
+        }
         : null,
     };
     platform.syncChrome(this.win, { color: space.color, dark: payload.dark, toolbar, translucent: settings.translucent });
@@ -4467,6 +4646,7 @@ class OrbeWindow {
     switch (action) {
       case 'ready': return this.sendState();
       case 'hoverTab': return this.prewake(a);
+      case 'battery': return OrbeWindow.setBattery(a, this);
       // Clic sur l'onglet déjà affiché : rien à faire, et surtout ne pas
       // reprendre le clavier (second clic d'un double-clic pour renommer).
       case 'activate': return a === this.activeId && live.has(a) && !this.peekState ? undefined : this.activate(a);
@@ -4503,6 +4683,8 @@ class OrbeWindow {
         return a && Array.isArray(a.ids) ? this.moveMany(a) : this.move(a);
       }
       case 'toggleMute': return this.toggleMute(a);
+      // « × » d'un téléchargement en cours, au bas de la barre latérale.
+      case 'dlCancel': { const dl = require('./downloads'); const rec = typeof a === 'string' ? dl.findRecord(a) : null; return rec && rec.state === 'progressing' ? dl.cancel(rec) : false; }
       case 'trace:stop': return require('./trace').stop(this);
       case 'mediaToggle': return this.mediaToggle();
       case 'mediaAct': return this.mediaAct(a);
@@ -4542,6 +4724,10 @@ class OrbeWindow {
       case 'paneMenu': return this.visibleIds().includes(a) && this.groupOf(a) ? this.popup(this.paneMenuTemplate(a)) : undefined;
       case 'paneClose': return this.visibleIds().includes(a) ? this.closeSplitPane(a) : undefined;
       case 'splitTab': return this.splitTab(String(a));
+      // Onglet lâché hors de la fenêtre : seuls les identifiants viennent de l'interface, le point vient du système.
+      case 'tearOff': return a && typeof a === 'object' && Array.isArray(a.ids) ? !!this.tearOff(a.ids) : false;
+      // Ligne d'une autre fenêtre d'Orbe lâchée sur cette barre latérale.
+      case 'adoptTab': { const from = typeof a === 'string' ? OrbeWindow.all.find((x) => x !== this && x.shared && x.orderedIds().includes(a)) : null; return from ? !!this.adopt([a], from) : false; }
       // ⌥⌘clic sur un onglet de la barre latérale : sa page s'ouvre dans une petite fenêtre.
       case 'littleTab': { const tab = this.data.tabs[a]; if (tab && webUrl(tab.url) && !this.incognito) hooks.openLittle(tab.url); return undefined; }
       case 'splitResize': return this.resizeSplit(Number(a.i), Number(a.at != null ? a.at : a.x));
@@ -4615,4 +4801,4 @@ function archiveStale() {
   if (count) { store.save(); for (const w of windows.values()) w.layout(); OrbeWindow.pushAll(); }
 }
 
-module.exports = { PEEK_PULL, OrbeWindow, windows, live, media, STATUS, trusted, hooks, lostAfterStay: () => lastLost, applyBoosts, cleanUrl, mdLink, isMeetingUrl, SPLIT_BAR, archiveStale, tabMemory, tabProcesses, processMb, lastSweep: () => lastSweep, noteDownload, uiRetryDelay, UI_PREFS, STATUS_MAX, ICON_MAX, thumbs: { keep: keepThumb, MAX: THUMBS }, INTERNAL, UI_PRELOAD, isInternal, MOTION, motion, place, forceMotion, motionStats: stats, boundsOf, inFlight, resumed };
+module.exports = { spaceLabel, PEEK_PULL, OrbeWindow, windows, live, media, STATUS, trusted, hooks, lostAfterStay: () => lastLost, applyBoosts, cleanUrl, mdLink, isMeetingUrl, SPLIT_BAR, archiveStale, tabMemory, tabProcesses, processMb, lastSweep: () => lastSweep, noteDownload, uiRetryDelay, UI_PREFS, STATUS_MAX, ICON_MAX, thumbs: { keep: keepThumb, MAX: THUMBS }, INTERNAL, UI_PRELOAD, isInternal, MOTION, motion, place, forceMotion, motionStats: stats, boundsOf, inFlight, resumed };

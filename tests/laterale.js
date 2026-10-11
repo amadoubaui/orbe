@@ -313,8 +313,8 @@ module.exports = async function lateraleTests(ctx) {
 
   // --- Menus de l'Espace, du vide de la barre et du « + » -----------------------
   tpl = w.spaceMenuTemplate();
-  check('menu de l’Espace : renommer, thème, icône, profil, en-tête, dossier, Espace, supprimer',
-    labels(tpl).join('|') === ['spaces.rename', 'spaces.editTheme', 'spaces.changeIcon', 'spaces.profile', 'spaces.hideHeader', 'spaces.toFolder', 'spaces.manage', 'tabs.newFolder', 'spaces.new', 'spaces.delete'].map((k) => T(k)).join('|'), labels(tpl).join('|'));
+  check('menu de l’Espace : renommer, thème, icône, profil, en-tête, gérer, exporter, dossier, Espace, supprimer',
+    labels(tpl).join('|') === ['spaces.rename', 'spaces.editTheme', 'spaces.changeIcon', 'spaces.profile', 'spaces.hideHeader', 'spaces.toFolder', 'spaces.manage', 'spaces.export', 'tabs.newFolder', 'spaces.new', 'spaces.delete'].map((k) => T(k)).join('|'), labels(tpl).join('|'));
   const profs = pick(tpl, 'spaces.profile').submenu;
   check('menu de l’Espace → Profil : un article par profil, celui de l’Espace coché, puis « Nouveau profil »',
     profs.filter((x) => x.type === 'radio').length === d.profiles.length && profs.find((x) => x.checked).label === d.profiles.find((p) => p.id === space.profileId).name && labels(profs).pop() === T('spaces.newProfile'));
@@ -774,7 +774,7 @@ module.exports = async function lateraleTests(ctx) {
 
   // Aide → Dépannage.
   const help = menuItem('help.troubleshooting');
-  check('Aide → Dépannage : « Afficher les données d’Orbe », « Copier les infos d’Orbe », « Restaurer une sauvegarde »', !!help && help.submenu.items.filter((x) => x.type !== 'separator').map((x) => x.label).join('|') === [T('help.revealData'), T('help.copyInfo'), T('help.recordTrace'), T('backup.menu')].join('|'));
+  check('Aide → Dépannage : « Afficher les données d’Orbe », « Copier les infos d’Orbe », « Gestionnaire de tâches », « Restaurer une sauvegarde »', !!help && help.submenu.items.filter((x) => x.type !== 'separator').map((x) => x.label).join('|') === [T('help.revealData'), T('help.copyInfo'), T('help.taskManager'), T('help.recordTrace'), T('backup.menu')].join('|'));
   menuItem('help.copyInfo').click();
   await until(async () => (await clipboard.readText()).startsWith(`Orbe ${app.getVersion()}\nElectron ${process.versions.electron}\nChromium ${process.versions.chrome}\n${process.platform}`), 'infos copiées');
   check('« Copier les infos d’Orbe » : versions d’Orbe, d’Electron, de Chromium et du système', true);

@@ -58,7 +58,7 @@ function tabRow(el, it) {
   }
   el.className = 'row tab' + (it.active ? ' active' : '') + (it.shown ? ' shown' : '') + (it.live ? ' live' : '')
     + (it.audible ? ' audible' : '') + (it.muted ? ' muted' : '') + (it.changed ? ' changed' : '') + (it.partners ? ' split' : '') + (it.grouped ? ' grouped' : '')
-    + (it.capture && it.capture.length ? ' capturing' : '')
+    + (it.capture && it.capture.length ? ' capturing' : '') + (it.capture && it.capture.includes('screen') ? ' sharing' : '')
     + (sel.has(it.id) ? ' sel' : '') + (flashId === it.id ? ' flash' : '');
   // Témoin de capture : écran, caméra ou micro (le premier de la liste).
   const cap = (it.capture && it.capture[0]) || '';
@@ -87,7 +87,7 @@ function tabRow(el, it) {
 // que rien d'autre n'a touché la ligne depuis (classes posées par un geste, une
 // animation, la sélection), elle est laissée telle quelle. Comparaison champ par
 // champ, sans rien allouer : à 1 000 onglets, c'est ce passage qui coûtait.
-const ROW_FIELDS = ['title', 'url', 'favicon', 'icon', 'loading', 'audible', 'muted', 'live', 'changed', 'grouped', 'active', 'shown', 'split'];
+const ROW_FIELDS = ['title', 'url', 'favicon', 'icon', 'loading', 'audible', 'muted', 'live', 'changed', 'grouped', 'active', 'shown', 'split', 'noBadge'];
 const rowStats = { drawn: 0, kept: 0 };
 function keepRow(el, it) {
   el._vm = it;
@@ -142,7 +142,7 @@ function folderRow(el, it) {
 function tileEl(el, it) {
   if (!el._built) {
     el._built = true;
-    el.innerHTML = `<span class="ic"></span><span class="dot"></span>`;
+    el.innerHTML = `<span class="ic"></span><span class="dot"><i></i><i></i><i></i></span>`;
     el._ic = el.firstChild;
     el.draggable = true;
   }
@@ -150,7 +150,7 @@ function tileEl(el, it) {
   el.title = it.title;
   // Pastille de notification : le nombre que le site annonce en tête de son titre (« (3) Boîte de
   // réception »), tant que sa page est vivante — un titre resté d'une session passée ne dit rien.
-  const n = it.live ? (/^\((\d{1,4})\+?\)/.exec(it.title) || [])[1] || '' : '';
+  const n = it.live && !it.noBadge ? (/^\((\d{1,4})\+?\)/.exec(it.title) || [])[1] || '' : '';
   if ((el._n || '') !== n) {
     el._n = n;
     if (!el._badge) { el._badge = Object.assign(document.createElement('span'), { className: 'count' }); el.appendChild(el._badge); }
@@ -410,10 +410,14 @@ function render(s) {
   drawSpaces(s.spaces, s.space.id);
 
   // Boutons des extensions : icône, pastille, clic = fenêtre de l'extension.
-  const exts = $('exts');
+  // Barre d'outils affichée : ils sont à sa droite (comme dans Arc), et non plus sous l'adresse.
+  const exts = s.toolbar && !FLOATING ? $('tb-exts') : $('exts');
   const extSig = JSON.stringify(s.extensions || []);
   if (exts._sig !== extSig) {
     exts._sig = extSig;
+    const idle = exts === $('exts') ? $('tb-exts') : $('exts');
+    idle._sig = '';
+    idle.textContent = '';
     exts.textContent = '';
     for (const x of s.extensions || []) {
       const b = document.createElement('button');
@@ -460,6 +464,7 @@ function render(s) {
   lib.classList.toggle('downloading', !!s.downloads);
   fxDownloads(s.downloadsStarted);
   if (s.downloads) lib.querySelector('circle').style.strokeDashoffset = String(75.4 * (1 - s.downloads.progress));
+  renderDownloads(s.downloads ? s.downloads.items || [] : []);
 
   // Dépôt en attente : les listes viennent de prendre leur ordre définitif.
   if (drag && drag.settling && drag.settling !== structSig(s)) endDrag();
@@ -471,6 +476,52 @@ function render(s) {
   revealed = reveal ? reveal.n : 0;
   offViewSoon();
 }
+
+// --- Téléchargements en cours, au bas de la barre -----------------------------
+// Une ligne par téléchargement (trois au plus) : nom, taille reçue sur taille
+// totale, temps restant, et « × » pour annuler. Un clic sur la ligne ouvre les
+// téléchargements de la Bibliothèque. Le nom vient du site : posé comme du texte.
+function byteSize(n) {
+  if (!(n > 0)) return '';
+  const u = t('dl.units').split(' ');
+  let i = 0;
+  while (n >= 1024 && i < u.length - 1) { n /= 1024; i += 1; }
+  return `${n.toFixed(i ? 1 : 0)} ${u[i]}`;
+}
+function timeLeft(sec) {
+  if (sec === null || sec === undefined || !(sec >= 0)) return '';
+  if (sec < 60) return t('dl.leftSec', { n: Math.max(1, Math.round(sec)) });
+  if (sec < 3600) return t('dl.leftMin', { n: Math.round(sec / 60) });
+  return t('dl.leftHour', { h: Math.floor(sec / 3600), m: Math.round((sec % 3600) / 60) });
+}
+function renderDownloads(list) {
+  const box = $('dls');
+  box.hidden = !list.length;
+  while (box.children.length > list.length) box.lastChild.remove();
+  list.forEach((d, i) => {
+    let el = box.children[i];
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'dl';
+      el.innerHTML = '<div class="dl-text"><span class="dl-name"></span><span class="dl-sub"></span></div><button class="ib dl-x"><svg class="i"><use href="#i-x"/></svg></button><i class="dl-bar"></i>';
+      box.appendChild(el);
+    }
+    el.dataset.dl = d.id;
+    el.querySelector('.dl-name').textContent = d.name;
+    el.title = d.name;
+    const sizes = d.total ? `${byteSize(d.received) || '0'} / ${byteSize(d.total)}` : byteSize(d.received);
+    el.querySelector('.dl-sub').textContent = [sizes, d.paused ? t('dl.paused') : timeLeft(d.left)].filter(Boolean).join(' · ');
+    el.querySelector('.dl-x').title = t('dl.cancel');
+    el.querySelector('.dl-bar').style.transform = `scaleX(${d.total ? Math.max(0, Math.min(1, d.received / d.total)).toFixed(3) : 0})`;
+  });
+}
+$('dls').addEventListener('click', (e) => {
+  const el = e.target.closest('.dl');
+  if (!el) return;
+  e.stopPropagation();
+  if (e.target.closest('.dl-x')) send('dlCancel', el.dataset.dl);
+  else send('command', 'downloads');
+});
 
 // --- Ligne de l'onglet affiché : la montrer, signaler qu'elle est hors de vue --
 let revealed = 0;
@@ -750,19 +801,21 @@ sidebar.addEventListener('contextmenu', (e) => {
 $('trace-note').onclick = () => send('trace:stop');
 $('update-open').onclick = () => send('update:show');
 $('update-close').onclick = () => send('update:dismiss');
-$('exts').addEventListener('contextmenu', (e) => {
-  const b = e.target.closest('[data-ext]');
-  if (!b) return;
-  e.preventDefault();
-  e.stopPropagation();
-  send('ext:menu', { id: b.dataset.ext });
-});
-$('exts').addEventListener('click', (e) => {
-  const b = e.target.closest('[data-ext]');
-  if (!b) return;
-  const r = b.getBoundingClientRect();
-  send('ext:popup', { id: b.dataset.ext, x: Math.round(r.left), y: Math.round(r.bottom + 6) });
-});
+for (const box of [$('exts'), $('tb-exts')]) {
+  box.addEventListener('contextmenu', (e) => {
+    const b = e.target.closest('[data-ext]');
+    if (!b) return;
+    e.preventDefault();
+    e.stopPropagation();
+    send('ext:menu', { id: b.dataset.ext });
+  });
+  box.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-ext]');
+    if (!b) return;
+    const r = b.getBoundingClientRect();
+    send('ext:popup', { id: b.dataset.ext, x: Math.round(r.left), y: Math.round(r.bottom + 6) });
+  });
+}
 $('b-sidebar').onclick = () => send('toggleSidebar');
 $('b-menu').onclick = () => send('command', 'appMenu');
 $('url').onclick = () => send('openCommand', 'edit');
@@ -1515,7 +1568,17 @@ sidebar.addEventListener('dragstart', (e) => {
   });
   return undefined;
 });
-sidebar.addEventListener('dragend', () => { if (drag && !drag.settling) endDrag(); });
+// Fin d'un glisser que personne n'a accepté. Onglet lâché hors de la fenêtre : il part
+// dans une nouvelle fenêtre (ou dans l'autre fenêtre d'Orbe qui se trouve dessous) ; le
+// processus principal le vérifie avec la position réelle du pointeur.
+sidebar.addEventListener('dragend', (e) => {
+  if (!drag || drag.settling) return;
+  const d = drag;
+  const out = !d.folder && !d.space && e.dataTransfer.dropEffect === 'none'
+    && (e.clientX < 0 || e.clientY < 0 || e.clientX > innerWidth || e.clientY > innerHeight);
+  endDrag();
+  if (out && S && !S.incognito && !S.blank) send('tearOff', { ids: d.ids || [d.id] });
+});
 
 // Image du glisser pour une sélection : la ligne saisie, une carte derrière
 // elle et le nombre d'onglets emportés. Posée hors de l'écran, le temps que le
@@ -1590,6 +1653,14 @@ function listTarget(y) {
   return t;
 }
 
+// Dépôt sur l'en-tête d'un dossier : il ne s'ouvre pas, son icône rebondit une fois
+// (transformation seulement) pour dire que l'onglet y est entré.
+function dropPulse(folderEl) {
+  const ic = folderEl && folderEl._head && folderEl._head.querySelector('.ic');
+  if (!ic || reducedMotion.matches) return;
+  ic.animate({ transform: ['scale(1)', 'scale(1.35)', 'scale(1)'] }, { duration: 280, easing: SPRING.easing, id: 'drop-pulse' });
+}
+
 // Pastilles des Espaces : rang où tomberait l'Espace glissé, et trait vertical.
 function spaceTarget(e) {
   if (!e.target.closest('#bottom')) return null;
@@ -1636,7 +1707,8 @@ function setZone(on, e) {
 function zoneKeyAt(x, y) {
   const panes = (S && S.panes) || [];
   const p = panes.find((q) => x >= q.x && x < q.x + q.w + 8 && y >= q.y && y < q.y + q.h + 8);
-  if (!p) return x < (S.sidebar.width + innerWidth) / 2 ? 'g' : 'd';
+  // Page seule : quatre côtés ; la hauteur est découpée en huit bandes, le processus principal tranche.
+  if (!p) return (x < (S.sidebar.width + innerWidth) / 2 ? 'g' : 'd') + Math.floor((8 * y) / Math.max(1, innerHeight));
   const stacked = panes.length > 1 && panes[0].x === panes[1].x;
   return p.id + (stacked ? (y < p.y + p.h / 2 ? 'h' : 'b') : (x < p.x + p.w / 2 ? 'g' : 'd'));
 }
@@ -1664,9 +1736,16 @@ document.addEventListener('drop', (e) => {
 function overSidebar(e) {
   if (overPage(e) || (drag && drag.settling)) return;
   if (!drag) {
-    // Adresse ou texte venu d'ailleurs (une ligne d'une autre fenêtre Orbe n'en est pas une).
     const types = [...e.dataTransfer.types];
-    if (types.includes('application/x-orbe-item') || !types.some((x) => x === 'text/uri-list' || x === 'text/plain')) return;
+    // Ligne venue d'une autre fenêtre d'Orbe : cette fenêtre va l'afficher.
+    if (types.includes('application/x-orbe-item')) {
+      if (!S || S.incognito || S.blank) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      return;
+    }
+    // Adresse ou texte venu d'ailleurs.
+    if (!types.some((x) => x === 'text/uri-list' || x === 'text/plain')) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
     return;
@@ -1686,8 +1765,13 @@ sidebar.addEventListener('drop', (e) => {
   if (overPage(e)) return undefined;
   e.preventDefault();
   if (!drag) {
-    // Ligne venue d'une autre fenêtre Orbe : ce n'est pas une adresse.
-    if ([...e.dataTransfer.types].includes('application/x-orbe-item')) return undefined;
+    // Ligne venue d'une autre fenêtre Orbe : ce n'est pas une adresse ; l'onglet s'affiche ici
+    // (le processus principal vérifie l'identifiant et la fenêtre d'où il vient).
+    if ([...e.dataTransfer.types].includes('application/x-orbe-item')) {
+      const id = e.dataTransfer.getData('application/x-orbe-item');
+      if (id && S && !S.incognito && !S.blank) send('adoptTab', String(id).slice(0, 80));
+      return undefined;
+    }
     const url = (e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain') || '').split('\n')[0].trim();
     if (url) send('dropUrl', url);
     return undefined;
@@ -1698,6 +1782,7 @@ sidebar.addEventListener('drop', (e) => {
   if (drag.space) { send('moveSpace', { id: drag.space, index: t.index }); return endDrag(); }
   if (t.toSpace) { send('moveToSpace', { ...(drag.ids ? { ids: drag.ids } : { id: drag.id }), spaceId: t.toSpace }); return endDrag(); }
   showTarget(t);
+  if (t.into) dropPulse(t.into);
   send('move', { ...(drag.ids ? { ids: drag.ids } : { id: drag.id }), to: t.to, folderId: t.folderId, index: t.index, ...(copying(e, t) ? { copy: true } : {}) });
   // Lâché à sa propre place, ou rien d'emporté dans les listes (tuile de favori) : fin immédiate.
   if (!geom) measure();
@@ -1721,6 +1806,53 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+// --- Infobulles maison ---------------------------------------------------------
+// Un bouton de la barre survolé une demi-seconde montre son nom et le raccourci en
+// vigueur (celui que l'utilisateur a choisi, s'il l'a changé). L'infobulle reste
+// dans la barre latérale : les pages sont posées par-dessus le reste de la fenêtre.
+const TIP_DELAY = 500;
+const tipEl = $('tip');
+let tipFor = null;
+let tipTimer = null;
+function tipHide() {
+  clearTimeout(tipTimer);
+  tipFor = null;
+  if (tipEl.hidden) return;
+  tipEl.classList.remove('on');
+  tipEl.hidden = true;
+}
+function tipShow(el) {
+  if (!el.isConnected || el.disabled || drag) return;
+  // « Actualiser » devient « Arrêter » pendant le chargement, comme son icône.
+  const stop = el.id === 'b-reload' && S && S.nav.loading;
+  $('tip-text').textContent = t(stop ? 'view.stop' : el.dataset.tip);
+  const keys = (stop ? KEYS.stop : KEYS[el.dataset.tipKey]) || '';
+  $('tip-key').textContent = keys;
+  $('tip-key').hidden = !keys;
+  tipEl.hidden = false;
+  const r = el.getBoundingClientRect();
+  const w = tipEl.offsetWidth;
+  const h = tipEl.offsetHeight;
+  const right = (FLOATING || !S || !S.sidebar.visible ? innerWidth : Math.min(innerWidth, S.sidebar.width)) - 6;
+  const x = Math.max(6, Math.min(right - w, r.left + r.width / 2 - w / 2));
+  const y = r.bottom + 6 + h > innerHeight - 4 ? r.top - h - 6 : r.bottom + 6;
+  tipEl.style.transform = `translate(${Math.round(x)}px,${Math.round(y)}px)`;
+  tipEl.classList.add('on');
+}
+document.addEventListener('mouseover', (e) => {
+  const el = e.target.closest ? e.target.closest('[data-tip]') : null;
+  if (el === tipFor) return;
+  tipHide();
+  if (!el) return;
+  tipFor = el;
+  tipTimer = setTimeout(() => { if (tipFor === el) tipShow(el); }, TIP_DELAY);
+});
+for (const ev of ['mousedown', 'keydown', 'wheel', 'dragstart', 'blur']) addEventListener(ev, tipHide, true);
+// Le pointeur quitte le bouton : l'infobulle s'efface, même s'il passe sur un bouton
+// grisé (qui ne signale aucun survol).
+document.addEventListener('mouseout', (e) => { if (tipFor && e.target.closest && e.target.closest('[data-tip]') === tipFor && !(e.relatedTarget && tipFor.contains(e.relatedTarget))) tipHide(); });
+document.addEventListener('mouseleave', tipHide);
+
 // Pointeur posé 150 ms sur un onglet en veille : le processus principal prépare
 // la connexion à son site, pour un réveil plus rapide au clic.
 let hoverId = null;
@@ -1734,6 +1866,17 @@ sidebar.addEventListener('mouseover', (e) => {
   if (id) hoverTimer = setTimeout(() => { if (hoverId === id) send('hoverTab', id); }, 150);
 });
 sidebar.addEventListener('mouseleave', () => { hoverId = null; clearTimeout(hoverTimer); });
+
+// Niveau de la batterie : relevé ici (le processus principal n'y a pas accès) et transmis à
+// chaque changement, pour l'économie de batterie (veille.js). Absent sur un poste fixe : rien.
+if (!FLOATING && navigator.getBattery) {
+  navigator.getBattery().then((b) => {
+    const tell = () => send('battery', { level: b.level, charging: b.charging });
+    b.addEventListener('levelchange', tell);
+    b.addEventListener('chargingchange', tell);
+    tell();
+  }).catch(() => {});
+}
 
 O.on('state', onState);
 // Renommer pendant un glissement (nouvel Espace) : après l'arrivée.

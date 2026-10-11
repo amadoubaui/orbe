@@ -129,7 +129,7 @@ function routeFor(url) {
 }
 
 function newWindow(opts = {}) {
-  return new OrbeWindow(opts);
+  return OrbeWindow.open(opts);
 }
 
 // Fenêtre des réglages, à volets (src/main/panes.js). `pane` : volet à afficher.
@@ -170,6 +170,7 @@ const SETTABLE = {
   memoryBudget: (v) => v === 0 || (Number.isInteger(v) && v >= 10 && v <= 80),
   externalLinks: prefs.externalLinks,
   autoPip: (v) => typeof v === 'boolean',
+  batterySaver: (v) => typeof v === 'boolean',
   sounds: (v) => typeof v === 'boolean',
   soundVolume: (v) => Number.isInteger(v) && v >= 0 && v <= 100,
   soundGestures: (v) => typeof v === 'boolean',
@@ -504,7 +505,7 @@ app.whenReady().then(async () => {
   menu.build();
 
   const first = newWindow();
-  if (firstRun && !SELFTEST && !process.env.ORBE_NO_WELCOME) { store.state.window.welcomed = true; first.openInternal('welcome.html'); }
+  if (firstRun && !SELFTEST && !process.env.ORBE_NO_WELCOME) { store.state.window.welcomed = true; require('./starter').seed(first); first.openInternal('welcome.html'); }
   for (const url of pendingUrls.splice(0)) openUrl(url);
 
   // L'historique se charge une fois la fenêtre affichée et la coque peinte.

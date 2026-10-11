@@ -108,7 +108,10 @@ body.fullscreen #top { padding-left: 0; }
 #capture-note { color: #dc2626; animation: capture-pulse 1.6s ease-in-out infinite; }
 @keyframes capture-pulse { 50% { opacity: 0.55; } }
 .row .act.cap { color: #dc2626; }
-.row.capturing .act.cap { display: grid; }
+.row.capturing .act.cap { display: grid; animation: capture-pulse 1.6s ease-in-out infinite; }
+/* Onglet dont l'écran est partagé : surligné en jaune, comme dans Arc. */
+.row.tab.sharing { box-shadow: inset 0 0 0 1.5px #facc15; background: color-mix(in srgb, #facc15 16%, transparent); }
+.row.tab.sharing.active { background: color-mix(in srgb, #facc15 16%, var(--active)); }
 #shield:hover { color: var(--fg); }
 #shield:active { transform: scale(0.94); transition: transform var(--press); }
 #shield.on { color: var(--accent-text, color-mix(in srgb, var(--accent) 55%, var(--fg))); }
@@ -214,6 +217,14 @@ body.dragging #fav:empty { min-height: 40px; border: 1.5px dashed var(--line); b
 .tile:not(.live) .favicon { opacity: 0.85; }
 .tile .dot { position: absolute; bottom: 5px; width: 4px; height: 4px; border-radius: 2px; background: var(--accent); opacity: 0; }
 .tile.audible .dot { opacity: 1; }
+/* Favori qui joue du son : le point devient trois barres qui dansent (transformation seule). */
+.tile .dot i { display: none; }
+.tile.audible .dot { width: 11px; height: 8px; bottom: 3px; border-radius: 0; background: none; display: flex; align-items: flex-end; justify-content: space-between; }
+.tile.audible .dot i { display: block; width: 3px; height: 8px; border-radius: 1.5px; background: var(--accent); transform-origin: center bottom; animation: tile-notes 900ms ease-in-out infinite; }
+.tile.audible .dot i:nth-child(2) { animation-delay: -300ms; }
+.tile.audible .dot i:nth-child(3) { animation-delay: -600ms; }
+@keyframes tile-notes { 0%, 100% { transform: scaleY(0.35); } 50% { transform: scaleY(1); } }
+@media (prefers-reduced-motion: reduce) { .tile.audible .dot i { animation: none; transform: scaleY(0.7); } .row.capturing .act.cap { animation: none; } }
 /* Pastille de notification d'un favori : le nombre annoncé par le titre de sa page. */
 .tile .count { position: absolute; top: 3px; right: 3px; min-width: 14px; height: 14px; padding: 0 4px; box-sizing: border-box; border-radius: 7px; background: #e5484d; color: #fff; font-size: 9.5px; font-weight: 700; line-height: 14px; text-align: center; pointer-events: none; }
 .tile .count[hidden] { display: none; }
@@ -373,6 +384,26 @@ body.incognito #incognito, body.blank-window #blank-note { display: flex; }
 /* Mise à jour disponible : une ligne discrète, un cœur qui bat ; au survol, la ligne
    devient le bouton — dégradé aux couleurs de l'Espace — et la croix paraît.
    Fondu et transformations seulement : la ligne ne change pas de taille. */
+/* Bande au-dessus de la page (la marge de 10 px) : on y déplace la fenêtre, comme par le haut d'une page dans Arc. */
+#page-drag { position: absolute; top: 0; left: 10px; right: 10px; height: 10px; -webkit-app-region: drag; }
+body.docked #page-drag { left: var(--sw); }
+body.fullscreen #page-drag, .floating #page-drag { display: none; }
+/* Infobulle maison des boutons de la barre : libellé et raccourci en vigueur. */
+#tip { position: fixed; left: 0; top: 0; z-index: 50; display: flex; align-items: center; gap: 8px; max-width: 260px; padding: 5px 8px; border-radius: 7px; background: rgba(28, 28, 32, 0.94); color: #fff; font-size: 11.5px; line-height: 1.2; white-space: nowrap; pointer-events: none; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25); opacity: 0; transition: opacity 90ms var(--ease-out); -webkit-app-region: no-drag; }
+#tip[hidden] { display: none; }
+#tip.on { opacity: 1; }
+#tip kbd { font: inherit; font-variant-numeric: tabular-nums; color: rgba(255, 255, 255, 0.62); letter-spacing: 0.5px; }
+#tip kbd[hidden] { display: none; }
+/* Téléchargements en cours, au bas de la barre : nom, taille, temps restant, annuler. */
+#dls { display: flex; flex-direction: column; gap: 4px; margin-bottom: 4px; flex: none; }
+#dls[hidden] { display: none; }
+.dl { position: relative; display: flex; align-items: center; gap: 4px; padding: 6px 4px 8px 10px; border-radius: 10px; background: var(--hover); color: var(--fg); overflow: hidden; cursor: default; }
+.dl-text { display: flex; flex-direction: column; min-width: 0; flex: 1; gap: 1px; }
+.dl-name { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dl-sub { font-size: 10.5px; opacity: 0.7; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dl .dl-x { flex: none; width: 22px; height: 22px; }
+.dl .dl-x svg.i { width: 12px; height: 12px; }
+.dl-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--accent); transform-origin: left center; transform: scaleX(0); transition: transform 200ms linear; }
 #trace-note { display: flex; align-items: center; gap: 8px; width: 100%; margin-bottom: 4px; padding: 7px 10px; border-radius: 10px; background: var(--hover); color: var(--fg); font-size: 11.5px; text-align: left; flex: none; }
 #trace-note[hidden] { display: none; }
 #trace-note i { width: 8px; height: 8px; border-radius: 50%; background: #ff453a; flex: none; }
@@ -663,6 +694,9 @@ html.win body:not(.toolbar):not(.fullscreen) #empty { top: 32px; }
 
 /* Boutons des extensions, sous l'adresse. */
 #exts { display: flex; flex-wrap: wrap; gap: 4px; flex: none; }
+/* Barre d'outils : les extensions à droite de l'adresse, sur une ligne. */
+#tb-exts { display: flex; gap: 2px; flex: none; align-items: center; -webkit-app-region: no-drag; }
+#tb-exts:empty { display: none; }
 #exts:not(:empty) { margin-top: 6px; }
 .ext { width: 30px; height: 28px; border-radius: 8px; display: grid; place-items: center; position: relative; transition: background 120ms, transform var(--spring-bouncy); }
 .ext:hover { background: var(--hover); }

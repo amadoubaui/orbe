@@ -319,6 +319,9 @@ module.exports = {
       const page = await pageDe(A + '/demandes');
       await jusqua(() => shell.locator('#capture-note').isVisible(), 'témoin dans la pastille');
       assert.equal(await shell.locator('#sidebar .row.tab.active.capturing').count(), 1);
+      // Écran partagé : la ligne de l'onglet est surlignée en jaune.
+      const ligne = await shell.locator('#sidebar .row.tab.active.sharing').evaluate((el) => getComputedStyle(el).boxShadow);
+      assert.ok(/rgb\(250, 204, 21\)/.test(ligne), 'liseré jaune : ' + ligne);
       assert.equal(await shell.getAttribute('#capture-note', 'title'), await ctx.texte('capture.screen'));
       const labels = await menuDe('#capture-note');
       assert.ok(labels.includes(await ctx.texte('capture.stop')), labels.join(' | '));
@@ -327,6 +330,7 @@ module.exports = {
       await jusqua(async () => !(await shell.locator('#capture-note').isVisible()), 'témoin éteint');
       assert.equal(await page.evaluate(() => typeof window.flux), 'undefined', 'le flux n’existe plus');
       assert.equal(await shell.locator('#sidebar .row.tab.capturing').count(), 0);
+      assert.equal(await shell.locator('#sidebar .row.tab.sharing').count(), 0, 'plus de surlignage');
     });
 
     // ------------------------------------------------------------- « Quitter la page ? »

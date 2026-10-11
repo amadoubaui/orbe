@@ -31,6 +31,23 @@ module.exports = {
       assert.equal(await shell.getAttribute('#exts .ext', 'title'), 'Essai');
     });
 
+    await t.verifier('barre d’outils affichée (⇧⌘D) : le bouton de l’extension passe à droite de l’adresse, et s’y laisse cliquer ; barre masquée, il revient sous l’adresse', async () => {
+      await ctx.menu('Shift+Cmd+D');
+      await jusqua(() => shell.locator('#toolbar').isVisible(), 'barre d’outils');
+      await jusqua(() => shell.evaluate(() => document.querySelectorAll('#tb-exts .ext').length === 1 && document.querySelectorAll('#exts .ext').length === 0), 'bouton dans la barre d’outils');
+      const adresse = await shell.locator('#tb-url').boundingBox();
+      const bouton = await shell.locator('#tb-exts .ext').boundingBox();
+      const barre = await shell.locator('#toolbar').boundingBox();
+      assert.ok(bouton.x >= adresse.x + adresse.width && bouton.x + bouton.width <= barre.x + barre.width + 1 && bouton.y >= barre.y && bouton.y + bouton.height <= barre.y + barre.height, JSON.stringify([adresse, bouton, barre]));
+      assert.equal(await sousLePointeur(shell, '#tb-exts .ext'), true);
+      await ctx.clic(shell, '#tb-exts .ext');
+      await jusqua(() => pageExt('popup.html'), 'fenêtre de l’extension', 8000);
+      await ctx.principal(({ req, w }) => req('ext-host.js').closePopup(w));
+      await jusqua(() => !pageExt('popup.html'), 'fenêtre refermée', 8000);
+      await ctx.menu('Shift+Cmd+D');
+      await jusqua(() => shell.evaluate(() => document.querySelectorAll('#exts .ext').length === 1 && document.querySelectorAll('#tb-exts .ext').length === 0), 'bouton revenu sous l’adresse');
+    });
+
     await t.verifier('un clic sur le bouton ouvre la fenêtre de l’extension', async () => {
       await ctx.clic(shell, '#exts .ext');
       const popup = await jusqua(() => pageExt('popup.html'), 'fenêtre de l’extension', 8000);

@@ -26,6 +26,8 @@ function t(key, vars) {
 function applyI18n(root = document) {
   for (const el of root.querySelectorAll('[data-t]')) el.textContent = t(el.dataset.t);
   for (const el of root.querySelectorAll('[data-t-title]')) el.title = t(el.dataset.tTitle);
+  // Bouton à infobulle maison : pas de `title` (deux infobulles se suivraient), mais un nom lisible par les aides techniques.
+  for (const el of root.querySelectorAll('[data-tip]')) el.setAttribute('aria-label', t(el.dataset.tip));
   for (const el of root.querySelectorAll('[data-t-ph]')) el.placeholder = t(el.dataset.tPh);
   // Raccourci d'une commande, dans la notation du système.
   for (const el of root.querySelectorAll('[data-key]')) if (KEYS[el.dataset.key]) el.textContent = KEYS[el.dataset.key];
