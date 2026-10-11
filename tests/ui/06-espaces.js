@@ -47,13 +47,14 @@ module.exports = {
       assert.equal(await nom(), 'Personnel');
     });
 
-    await t.verifier('« Nouvel Espace » (élément de menu) : nouvel Espace affiché, vide, prêt à être nommé', async () => {
+    await t.verifier('« Nouvel Espace » (élément de menu) : le panneau de création s’ouvre, rien n’est créé ; nom tapé puis Entrée : nouvel Espace affiché, vide', async () => {
       await ctx.menu('spaces.new');
-      await jusqua(() => shell.locator('#space-name input.rename').count(), 'champ de nom de l’Espace');
-      assert.equal(await shell.locator('#space-name input.rename').inputValue(), 'Nouvel Espace');
-      await shell.keyboard.type('Projets', { delay: 10 });
-      await shell.keyboard.press('Enter');
+      await ctx.panneauEspace();
+      assert.equal(await ctx.modal.getAttribute('#space-input', 'placeholder'), 'Nouvel Espace');
+      assert.equal((await ctx.etat()).espaces.length, 1, 'rien n’est créé avant « Créer »');
+      await ctx.creerEspace('Projets');
       await jusqua(async () => (await nom()) === 'Projets', 'nom affiché');
+      assert.equal(await shell.locator('#space-name input.rename').count(), 0, 'aucun champ de nom dans la barre');
       assert.deepEqual(await ctx.titres(), []);
       assert.equal(await shell.evaluate(() => document.body.classList.contains('no-tab')), true);
       assert.deepEqual((await ctx.etat()).espaces.map((s) => s.nom), ['Personnel', 'Projets']);
@@ -205,7 +206,7 @@ module.exports = {
       assert.equal(await nom(), 'Projets');
     });
 
-    await animer('tirer franchement au-delà du dernier Espace : un « + » sort du bord et grandit ; au bout, un nouvel Espace est créé — un seul', async () => {
+    await animer('tirer franchement au-delà du dernier Espace : un « + » sort du bord et grandit ; au bout, le panneau de création s’ouvre ; Entrée crée l’Espace — un seul', async () => {
       await ctx.sleep(400);
       await repos();
       const plus = () => shell.evaluate(() => { const el = document.querySelector('#pager .pager-plus'); if (!el) return null; const cs = getComputedStyle(el); const m = new DOMMatrix(cs.transform); return { p: Number(el.dataset.p), opacite: Number(cs.opacity), x: m.m41, echelle: Math.round(m.a * 100) / 100, pos: cs.position }; });
@@ -225,8 +226,12 @@ module.exports = {
       assert.equal((await ctx.etat()).espaces.length, 2, 'rien n’est créé tant que les doigts bougent');
       // Doigts posés (plus aucun événement) : l'anneau se referme, puis le nouvel Espace — un seul.
       await jusqua(() => shell.evaluate(() => !!document.querySelector('#pager .pager-plus.hold')), 'anneau du compte à rebours');
+      // Le geste ouvre le panneau de création — rien n'est créé avant Entrée (ou « Créer »).
+      await ctx.panneauEspace();
+      await ctx.sleep(300);
+      assert.equal((await ctx.etat()).espaces.length, 2, 'le geste seul ne crée rien');
+      await ctx.creerEspace('');
       await jusqua(async () => (await ctx.etat()).espaces.length === 3, 'nouvel Espace créé');
-      await jusqua(() => shell.locator('#space-name input.rename').count(), 'champ de nom du nouvel Espace');
       await ctx.sleep(300);
       const e = await ctx.etat();
       assert.equal(e.espaces.length, 3, 'un seul Espace créé');
@@ -290,9 +295,7 @@ module.exports = {
     // Beaucoup d'Espaces : toutes les pastilles doivent rester atteignables.
     for (let i = 3; i <= 9; i++) {
       await ctx.menu('spaces.new');
-      await jusqua(() => shell.locator('#space-name input.rename').count(), 'champ de nom');
-      await shell.keyboard.type('Espace ' + i, { delay: 5 });
-      await shell.keyboard.press('Enter');
+      await ctx.creerEspace('Espace ' + i);
       await jusqua(async () => (await nom()) === 'Espace ' + i, 'Espace ' + i);
     }
     await ctx.capture('espaces-9');

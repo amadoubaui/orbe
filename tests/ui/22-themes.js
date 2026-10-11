@@ -289,9 +289,7 @@ module.exports = {
     await t.verifier('d’un Espace à l’autre : le fond de l’autre Espace se fond par-dessus pendant le glissement, sa liste a déjà ses couleurs', async () => {
       await regler({ colors: ['#f5d98b'], intensity: 0.8, mode: 'light', grain: 0.3, texture: 'sand' });
       await ctx.menu('spaces.new');
-      await jusqua(() => shell.locator('#space-name input.rename').count(), 'champ de nom');
-      await shell.keyboard.type('Nuit', { delay: 5 });
-      await shell.keyboard.press('Enter');
+      await ctx.creerEspace('Nuit');
       await jusqua(async () => (await shell.textContent('#space-name')) === 'Nuit', 'second Espace');
       await regler({ colors: ['#1e3a8a', '#0f172a'], intensity: 0.9, mode: 'dark', grain: 0.2, texture: 'denim' });
       const nuit = await palette();
