@@ -174,12 +174,17 @@ module.exports = async function derniersTests(ctx) {
     const survol = (id) => ui(`${tete(id)}.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }))`);
     const vu = () => ui(`(() => { const p = document.getElementById('folder-peek'); if (!p || p.classList.contains('out')) return null; const s = document.getElementById('sidebar').getBoundingClientRect(); const r = p.getBoundingClientRect(); const h = ${tete('der-dossier')}.getBoundingClientRect();
       return { noms: [...p.querySelectorAll('.fp-name')].map((e) => e.textContent), subs: [...p.querySelectorAll('.fp-sub')].map((e) => e.textContent), balises: p.querySelectorAll('.fp-name *').length, dedans: r.left >= s.left && r.right <= s.right && r.top >= s.top && r.bottom <= s.bottom, sous: Math.round(r.top - h.bottom), invite: p.querySelector('.fp-search').placeholder, vide: p.querySelectorAll('.fp-empty').length, sel: [...p.querySelectorAll('.fp-row')].findIndex((e) => e.classList.contains('sel')), ferme: !${tete('der-dossier')}.parentElement.classList.contains('open') }; })()`);
+    // L'attente du survol (450 ms) est vérifiée à la vraie souris (ui 30). Ici, un survol simulé :
+    // le panneau ne paraît pas tout de suite ; puis l'ouverture est demandée directement, aux mêmes
+    // conditions — le vrai pointeur de la machine ou un changement de premier plan peuvent couper
+    // l'attente d'un survol simulé.
     await survol('der-dossier');
-    await sleep(150);
     const tot = await vu();
-    const p1 = await until(vu, 'aperçu du dossier', 4000).catch(() => null);
-    check('survol d’un dossier replié : après un court instant (pas avant), la liste de ses onglets paraît sous lui, dans la barre, sous-dossiers compris',
-      tot === null && !!p1 && p1.noms.join('|') === [t1.title, t2.title, t3.title].join('|') && p1.subs.join() === 'Cuisine' && p1.dedans && p1.sous >= 0 && p1.sous <= 8 && p1.ferme && p1.invite === T('fpeek.search', { name: 'Voyages' }), JSON.stringify([tot, p1]));
+    const ouvert = await ui(`folderPeek.show('der-dossier')`);
+    const p1 = await vu();
+    const gene = p1 ? '' : await ui(`JSON.stringify({ renommage: !!document.querySelector('input.rename'), glissement: document.getElementById('pager').classList.contains('sliding'), glisser: document.body.classList.contains('dragging'), ouvert: ${tete('der-dossier')}.parentElement.classList.contains('open') })`);
+    check('dossier replié survolé : rien au premier instant ; puis la liste de ses onglets paraît sous lui, dans la barre, sous-dossiers compris',
+      tot === null && ouvert === true && !!p1 && p1.noms.join('|') === [t1.title, t2.title, t3.title].join('|') && p1.subs.join() === 'Cuisine' && p1.dedans && p1.sous >= 0 && p1.sous <= 8 && p1.ferme && p1.invite === T('fpeek.search', { name: 'Voyages' }), JSON.stringify([tot, ouvert, p1, gene]));
     check('aperçu d’un dossier : un titre venu d’un site est du texte, jamais du HTML', !!p1 && p1.balises === 0 && p1.noms[1] === t2.title);
     const taper = (q) => ui(`(() => { const i = document.querySelector('#folder-peek .fp-search'); i.focus(); i.value = ${JSON.stringify(q)}; i.dispatchEvent(new Event('input', { bubbles: true })); })()`);
     await taper('ete');
