@@ -161,4 +161,105 @@ function merge(data, state = store.state) {
   return added;
 }
 
-module.exports = { ARC_FILE, read, count, merge, available: () => !!ARC_FILE && fs.existsSync(ARC_FILE) };
+// Met Orbe à jour d'après Arc (second import et suivants). Les Espaces déjà importés prennent
+// l'ordre, le nom, l'icône, les dossiers et l'ordre des épinglés d'Arc ; ce qui manque est
+// ajouté. RIEN n'est supprimé : un onglet épinglé, un dossier non vide, un favori ou un Espace
+// qui n'existent que dans Orbe sont gardés, à la suite de ceux d'Arc. Un onglet déjà là (même
+// adresse, même Espace) est réutilisé tel quel, avec son identifiant : il ne se recharge pas.
+// Rend le compte de ce qui a changé ; sur une copie de l'état, c'est un essai à blanc.
+function sync(data, state = store.state) {
+  const done = { spaces: 0, tabs: 0, folders: 0, favorites: 0, today: 0, renamed: 0, moved: 0 };
+  const addressOf = (id) => { const t = state.tabs[id]; return t ? t.homeUrl || t.url : ''; };
+  const shape = (nodes) => JSON.stringify(nodes, (k, v) => (k === 'open' ? undefined : v));
+  const walk = (nodes, fn) => { for (const n of nodes) { fn(n); if (n.type === 'folder') walk(n.children, fn); } };
+
+  // Les Espaces d'Arc absents d'Orbe : même chemin que le premier import.
+  const before = { tabs: Object.keys(state.tabs).length, favs: Object.values(state.favs).reduce((n, l) => n + l.length, 0) };
+  const known = new Set(state.spaces.map((s) => s.arcId).filter(Boolean));
+  done.spaces = merge(data, state);
+  const byArc = new Map(state.spaces.filter((s) => s.arcId).map((s) => [s.arcId, s]));
+
+  for (const sp of data.spaces) {
+    const space = byArc.get(sp.arcId);
+    if (!space || !known.has(sp.arcId)) continue; // tout juste créé par merge : déjà à l'image d'Arc
+    if (sp.name && space.name !== sp.name) { space.name = sp.name; done.renamed += 1; }
+    if (sp.icon && space.icon !== sp.icon) { space.icon = sp.icon; done.renamed += 1; }
+    // Ce qu'Orbe a déjà : onglets épinglés par adresse, dossiers par nom (chacun sert une fois).
+    const tabs = new Map();
+    const folders = new Map();
+    walk(space.pinned, (n) => {
+      const key = n.type === 'folder' ? n.name : addressOf(n.id);
+      const map = n.type === 'folder' ? folders : tabs;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(n);
+    });
+    const was = shape(space.pinned);
+    const take = (map, key) => { const l = map.get(key); return l && l.length ? l.shift() : null; };
+    const build = (nodes) => nodes.map((n) => {
+      if (n.type === 'folder') {
+        const old = take(folders, n.name);
+        if (!old) done.folders += 1;
+        return { type: 'folder', id: old ? old.id : uid(), name: n.name, open: old ? !!old.open : false, children: build(n.children) };
+      }
+      const old = take(tabs, n.url);
+      if (old) return { type: 'tab', id: old.id };
+      const tab = { id: uid(), url: n.url, title: n.title, favicon: '', createdAt: Date.now(), lastActiveAt: Date.now(), homeUrl: n.url };
+      if (n.name) tab.customTitle = n.name;
+      state.tabs[tab.id] = tab;
+      done.tabs += 1;
+      return { type: 'tab', id: tab.id };
+    });
+    const next = build(sp.pinned);
+    // Ce qui n'existe que dans Orbe reste, à la suite : les onglets, hors de tout dossier.
+    for (const l of tabs.values()) for (const n of l) next.push({ type: 'tab', id: n.id });
+    space.pinned = next;
+    if (shape(next) !== was) done.moved += 1;
+    // Onglets du jour d'Arc absents d'Orbe : ajoutés.
+    const here = new Set(space.today.map((id) => (state.tabs[id] || {}).url));
+    for (const t of sp.today) {
+      if (here.has(t.url)) continue;
+      here.add(t.url);
+      const tab = { id: uid(), url: t.url, title: t.title, favicon: '', createdAt: Date.now(), lastActiveAt: Date.now() };
+      state.tabs[tab.id] = tab;
+      space.today.push(tab.id);
+      done.today += 1;
+    }
+  }
+
+  // Favoris : ceux d'Arc d'abord, dans son ordre ; ceux d'Orbe seul ensuite.
+  for (const [key, list] of Object.entries(data.favorites)) {
+    const profile = key === 'default' ? { id: 'default' } : state.profiles.find((x) => x.arcKey === key);
+    if (!profile || !state.favs[profile.id]) continue;
+    const old = state.favs[profile.id];
+    const byUrl = new Map(old.map((id) => [addressOf(id), id]));
+    const next = [];
+    for (const fav of list) {
+      let id = byUrl.get(fav.url);
+      if (id) byUrl.delete(fav.url);
+      else {
+        id = uid();
+        state.tabs[id] = { id, url: fav.url, title: fav.title, favicon: '', createdAt: Date.now(), lastActiveAt: Date.now(), homeUrl: fav.url };
+        if (fav.name) state.tabs[id].customTitle = fav.name;
+      }
+      if (!next.includes(id)) next.push(id);
+    }
+    for (const id of old) if (!next.includes(id)) next.push(id);
+    if (next.join() !== old.join()) { if (next.length === old.length) done.moved += 1; state.favs[profile.id] = next; }
+  }
+  // Ce que merge a créé (Espaces neufs, favoris) entre aussi dans le compte.
+  const favs = Object.values(state.favs).reduce((n, l) => n + l.length, 0);
+  done.favorites = favs - before.favs;
+  done.tabs = Object.keys(state.tabs).length - before.tabs - done.favorites - done.today;
+
+  // Ordre des Espaces : celui d'Arc, à la place du premier Espace importé ; les autres ne bougent pas.
+  const order = data.spaces.map((sp) => byArc.get(sp.arcId)).filter(Boolean);
+  const first = state.spaces.findIndex((s) => order.includes(s));
+  const others = state.spaces.filter((s) => !order.includes(s));
+  const head = state.spaces.slice(0, Math.max(0, first)).filter((s) => !order.includes(s));
+  const arranged = [...head, ...order, ...others.filter((s) => !head.includes(s))];
+  if (arranged.map((s) => s.id).join() !== state.spaces.map((s) => s.id).join()) { state.spaces.splice(0, state.spaces.length, ...arranged); done.moved += 1; }
+  done.changed = done.spaces + done.tabs + done.folders + done.favorites + done.today + done.renamed + done.moved;
+  return done;
+}
+
+module.exports = { ARC_FILE, read, count, merge, sync, available: () => !!ARC_FILE && fs.existsSync(ARC_FILE) };

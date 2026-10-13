@@ -628,6 +628,59 @@ module.exports = async function selftest(ctx) {
     && imported.pinned.length === 2 && importedFolder.name === 'Dossier Arc' && importedFolder.children.length === 1 && imported.today.length === 1);
   check('import Arc : profil et favoris du profil', imported.profileId !== 'default' && w.data.favs[imported.profileId].length === 1);
   check('import Arc : pas de doublon au second import', arc.merge(arcData) === 0);
+  // Mise à jour d'après Arc : Arc a changé depuis l'import (ordre, dossier neuf, onglet neuf, doublon,
+  // favori neuf, nom), et Orbe a un épinglé et un favori que Arc n'a pas.
+  {
+    // Données seules, sans vue : rien n'est chargé.
+    const pose = (id, url) => { w.data.tabs[id] = { id, url, homeUrl: url, title: id, favicon: '', createdAt: Date.now(), lastActiveAt: Date.now() }; return w.data.tabs[id]; };
+    const propre = pose('arc-essai-epingle', 'https://exemple.org/orbe-seul');
+    imported.pinned.push({ type: 'tab', id: propre.id });
+    const favOrbe = pose('arc-essai-favori', 'https://exemple.org/favori-orbe');
+    w.data.favs[imported.profileId].push(favOrbe.id);
+    const idUn = imported.pinned.find((n) => n.type === 'tab' && w.data.tabs[n.id].url === 'https://exemple.org/un').id;
+    const idDossier = importedFolder.id;
+    const plus = JSON.parse(JSON.stringify(arcData));
+    plus.spaces[0].name = 'Espace Arc renommé';
+    plus.spaces[0].pinned = [
+      { type: 'folder', name: 'Dossier neuf', children: [{ type: 'tab', url: 'https://exemple.org/quatre', title: 'Quatre', name: '' }] },
+      plus.spaces[0].pinned[1], // « Dossier Arc », passé devant
+      plus.spaces[0].pinned[0], // « Un », passé derrière
+      { type: 'tab', url: 'https://exemple.org/un', title: 'Un', name: '' }, // le même une seconde fois
+    ];
+    plus.spaces[0].today.push({ type: 'tab', url: 'https://exemple.org/cinq', title: 'Cinq', name: '' });
+    plus.favorites['Profile 3'].unshift({ type: 'tab', url: 'https://exemple.org/favori-neuf', title: 'Favori neuf', name: '' });
+    plus.spaces.unshift({ arcId: 's0', name: 'Espace d’avant', icon: '', color: null, profile: 'default', pinned: [], today: [] });
+    const copie = JSON.parse(JSON.stringify(w.data));
+    const plan = arc.sync(plus, copie);
+    const avant = JSON.stringify(w.data);
+    check('mise à jour d’après Arc, essai à blanc : le compte est fait sur une copie, l’état ne bouge pas',
+      plan.spaces === 1 && plan.tabs === 2 && plan.folders === 1 && plan.favorites === 1 && plan.today === 1 && plan.changed > 0 && JSON.stringify(w.data) === avant, JSON.stringify(plan));
+    const fait = arc.sync(plus);
+    const noms = imported.pinned.map((n) => (n.type === 'folder' ? '[' + n.name + ':' + n.children.map((c) => w.data.tabs[c.id].url.split('/').pop()).join(',') + ']' : w.data.tabs[n.id].url.split('/').pop())).join(' ');
+    check('… appliquée : dossiers et onglets dans l’ordre d’Arc, le doublon d’Arc créé, l’épinglé d’Orbe seul gardé à la suite',
+      noms === '[Dossier neuf:quatre] [Dossier Arc:deux] un un orbe-seul' && imported.name === 'Espace Arc renommé', noms + ' / ' + imported.name);
+    check('… un onglet et un dossier déjà là sont réutilisés (mêmes identifiants), rien n’est supprimé',
+      imported.pinned[2].id === idUn && imported.pinned[1].id === idDossier && !!w.data.tabs[propre.id] && fait.tabs === 2);
+    const favs = w.data.favs[imported.profileId].map((id) => w.data.tabs[id].url.split('/').pop()).join(' ');
+    check('… favoris : ceux d’Arc d’abord, dans son ordre, celui d’Orbe seul ensuite ; onglet du jour ajouté', favs === 'favori-neuf favori favori-orbe' && imported.today.length === 2, favs);
+    const iAvant = w.data.spaces.findIndex((x) => x.arcId === 's0');
+    check('… Espaces : le nouvel Espace d’Arc vient juste avant, comme dans Arc ; les Espaces d’Orbe seul ne bougent pas',
+      iAvant >= 0 && w.data.spaces[iAvant + 1] === imported && w.data.spaces[0].id === JSON.parse(avant).spaces[0].id, w.data.spaces.map((x) => x.name).join(' | '));
+    const encore = arc.sync(plus);
+    check('… une seconde mise à jour ne change plus rien', encore.changed === 0, JSON.stringify(encore));
+    // Ménage : l'Espace d'avant, et ce que la mise à jour a créé.
+    const s0 = w.data.spaces[iAvant];
+    w.data.spaces.splice(iAvant, 1);
+    void s0;
+    const garde = new Set([...imported.today.slice(0, 1), w.data.favs[imported.profileId][1], idUn, importedFolder.children[0].id]);
+    const tous = [];
+    const voir = (nodes) => { for (const n of nodes) { if (n.type === 'folder') voir(n.children); else tous.push(n.id); } };
+    voir(imported.pinned);
+    for (const id of [...tous, ...imported.today, ...w.data.favs[imported.profileId]]) if (!garde.has(id)) { if (win.live.has(id)) OrbeWindow.destroyView(id); delete w.data.tabs[id]; }
+    imported.pinned = [{ type: 'tab', id: idUn }, { type: 'folder', id: idDossier, name: 'Dossier Arc', open: false, children: [{ type: 'tab', id: importedFolder.children[0].id }] }];
+    imported.today = imported.today.slice(0, 1);
+    w.data.favs[imported.profileId] = [w.data.favs[imported.profileId][1]];
+  }
   fs.unlinkSync(sample);
   w.data.spaces.splice(w.data.spaces.indexOf(imported), 1);
   for (const id of [...imported.today, ...w.data.favs[imported.profileId], imported.pinned[0].id, importedFolder.children[0].id]) delete w.data.tabs[id];

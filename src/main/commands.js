@@ -362,6 +362,31 @@ async function undo(w, way = 'undo') {
   if ((typing || !w.replay(way)) && target) target[way]();
 }
 
+// Mise à jour d'après Arc : ce qui changerait est d'abord compté sur une copie de l'état, puis
+// montré ; rien n'est supprimé (voir import-arc.js), et une sauvegarde est prise juste avant.
+async function syncArc(w, arc, data) {
+  const t = (k, v) => store.t(k, null, v);
+  const plan = arc.sync(data, JSON.parse(JSON.stringify(store.state)));
+  if (!plan.changed) return void w.toast(t('import.already'));
+  const r = await dialog.showMessageBox(w.win, {
+    type: 'question',
+    message: t('import.syncTitle'),
+    detail: t('import.syncDetail', { spaces: plan.spaces, tabs: plan.tabs, folders: plan.folders, favorites: plan.favorites, today: plan.today }) + '\n\n' + t('import.syncNote'),
+    buttons: [t('import.syncGo'), t('edit.undo')],
+    defaultId: 0,
+    cancelId: 1,
+  });
+  if (r.response !== 0) return undefined;
+  try { require('./backups').snapshot(undefined, new Date(), { fresh: true }); } catch {}
+  arc.sync(data);
+  store.save();
+  const { OrbeWindow } = require('./window');
+  for (const win of OrbeWindow.all) win.layout();
+  OrbeWindow.pushAll();
+  w.toast(t('import.syncDone'));
+  return undefined;
+}
+
 async function importArc(w) {
   const arc = require('./import-arc');
   const t = (k, v) => store.t(k, null, v);
@@ -372,6 +397,8 @@ async function importArc(w) {
     await dialog.showMessageBox(w.win, { type: 'info', message: t('import.none') });
     return;
   }
+  // Déjà importé une fois : on ne refait pas l'import, on met Orbe à jour d'après Arc.
+  if (store.state.spaces.some((s) => s.arcId)) return syncArc(w, arc, data);
   const n = arc.count(data);
   const r = await dialog.showMessageBox(w.win, {
     type: 'question',

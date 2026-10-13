@@ -50,7 +50,9 @@ interface entièrement en français (anglais disponible dans les réglages).
   ⇧clic, s'ouvre par-dessus la page ; ⌘O en fait un onglet, Échap le ferme.
 - **Profils** : cookies, connexions et favoris séparés, un profil par Espace.
 - **Import depuis Arc** : Espaces, épinglés, dossiers, favoris et profils
-  (menu Orbe → Importer depuis Arc…).
+  (menu Orbe → Importer depuis Arc…). Relancée plus tard, la même commande met
+  Orbe à jour d'après Arc (ordre, noms, dossiers, onglets ajoutés) sans rien
+  supprimer, après une sauvegarde.
 - **Vidéo et son** : la vidéo en cours passe en image dans l'image quand tu
   changes d'onglet ; un lecteur miniature dans la barre latérale pilote le son.
 - **Bloqueur de publicités et de traqueurs** intégré (24 000 domaines, moins
