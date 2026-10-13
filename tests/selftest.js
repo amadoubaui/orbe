@@ -1190,6 +1190,9 @@ module.exports = async function selftest(ctx) {
   // Import direct des signets des navigateurs installés, sur de faux profils (tests/import-navigateurs.js)
   await require('./import-navigateurs')({ ...ctx, check });
 
+  // Historique, mots de passe et cookies d'Arc, sur de fausses bases (tests/import-arc-donnees.js)
+  await require('./import-arc-donnees')({ ...ctx, check });
+
   // Accueil du premier lancement, étape par étape (tests/accueil.js)
   await require('./accueil')({ ...ctx, check });
 

@@ -495,6 +495,10 @@ app.whenReady().then(async () => {
   // Import depuis un navigateur installé. En test, aucun vrai profil n'est lu :
   // les essais désignent eux-mêmes un dossier d'essai (import-browsers.configure).
   if (SELFTEST || process.env.ORBE_UI_TEST === '1') require('./import-browsers').configure({ home: '', local: '', roaming: '' });
+  // De même pour les profils d'Arc (historique, mots de passe, cookies) : jamais lus pendant un
+  // essai. `security: ''` en plus de `root: ''` : même un essai mal écrit ne touche pas le trousseau.
+  if (SELFTEST || process.env.ORBE_UI_TEST === '1') require('./import-arc-data').configure({ root: '', security: '' });
+  else require('./import-arc-data').configure({ root: platform.arcUserDataDir() });
   // Les essais servent leurs pages depuis 127.0.0.1 : le mode développeur automatique des sites locaux
   // y afficherait partout la barre d'outils. Coupé au départ ; les essais qui le vérifient l'activent.
   if (SELFTEST || process.env.ORBE_UI_TEST === '1') store.state.settings.devLocalhost = false;

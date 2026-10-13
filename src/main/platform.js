@@ -254,9 +254,15 @@ function arcSidebarFile() {
   return '';
 }
 
+// Dossier des profils Chromium d'Arc (historique, mots de passe, cookies). macOS seulement :
+// sous Windows, Arc chiffre avec une clé liée à son propre programme (import-arc-data.js).
+function arcUserDataDir() {
+  return isMac ? path.join(os.homedir(), 'Library', 'Application Support', 'Arc', 'User Data') : '';
+}
+
 module.exports = {
   isMac, isWin, name: isMac ? 'mac' : isWin ? 'win' : 'linux',
   accel, keys, label, adaptCommands, adaptLocales, WIN_ACCEL,
   windowChrome, setButtons, topInset, syncChrome, tint, materialSupported, CAPTION_H,
-  menuTemplate, popupAppMenu, makeDefault, undoDefault, arcSidebarFile,
+  menuTemplate, popupAppMenu, makeDefault, undoDefault, arcSidebarFile, arcUserDataDir,
 };

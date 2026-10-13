@@ -211,6 +211,45 @@ la confirmation d'identité, avertit, puis écrit le fichier en `0600`.
 - Pas de synchronisation, pas de clés d'accès (passkeys), pas de codes à usage
   unique (le champ `OTPAuth` d'un import est conservé et réexporté, pas utilisé).
 
+## Reprise des mots de passe d'Arc
+
+La commande « Reprendre l'historique et les connexions d'Arc… » (menu Orbe,
+macOS) lit les profils Chromium d'Arc et range les mots de passe trouvés dans le
+coffre, les cookies dans les sessions, l'historique à part. Le détail et les
+règles tenues sont en tête de `src/main/import-arc-data.js` ; les essais sont
+`tests/import-arc-donnees.js` (25 vérifications, fausses bases, clé d'essai, le
+vrai trousseau jamais touché). Une relecture de sécurité indépendante a eu lieu
+le 13 octobre 2026 ; ses constats sont corrigés.
+
+Ce que la fonction garantit : rien ne tourne hors d'un geste de l'utilisateur
+(commande atteignable par la seule interface de confiance, jamais par une page,
+une extension ou un raccourci), rien n'est lu en mode test, Arc n'est jamais
+modifié (bases copiées, lues en lecture seule par `sqlite3`, copies effacées).
+Un cookie n'entre que chiffré **et** lié à son hôte par l'empreinte de Chromium
+(base en version 24 au moins) : jamais la colonne en clair, jamais une base plus
+ancienne. Un mot de passe n'entre que si l'adresse et le domaine
+d'authentification désignent le même site. La clé d'Arc est lue par
+`/usr/bin/security` (c'est « security » que macOS nomme, pas Orbe) ; la fenêtre
+d'Orbe l'explique et met en garde contre « Toujours autoriser » ; sans la clé,
+seul l'historique est repris.
+
+Limites assumées, à relire (constats de la relecture) :
+
+1. **« Toujours autoriser »** laisserait l'accès à la clé d'Arc ouvert à tout
+   programme du compte. Orbe le dit avant et après, mais ne le vérifie pas
+   après coup (une seconde lecture risquerait une demande inutile). À essayer :
+   confirmer que tuer `security` referme la demande, puis signaler l'accès resté
+   ouvert. Mieux : lire la clé depuis Orbe (module natif), à terme.
+2. **Déplacement d'origine par réécriture des deux colonnes** (`origin_url` et
+   `signon_realm`, ou `host_key` et son empreinte) : un programme du compte qui
+   récrit tout de façon cohérente pourrait encore déplacer un secret. Limite du
+   format de Chromium ; seule la cohérence interne est vérifiée.
+3. **Un mot de passe d'Arc écrase un compte d'Orbe du même site** sans comparer
+   les dates (comme l'import CSV). La fenêtre l'annonce ; le remplacement n'est
+   pas compté à part.
+4. Pas d'intégrité cryptographique des bases d'Arc : `safeStorage` et le
+   chiffrement de Chromium ne font pas foi de l'auteur de la valeur.
+
 ## Application fabriquée
 
 - **Mode test verrouillé** : `--selftest`, `ORBE_SCENARIO` et le trousseau
@@ -277,3 +316,7 @@ Points encore ouverts :
 5. `nodeIntegrationInSubFrames` sur les vues d'onglet.
 6. La valeur réelle de `promptTouchID` comme barrière, et le délai de 90 s.
 7. Pas d'intégrité cryptographique du fichier du coffre.
+8. Reprise d'Arc : les quatre limites listées sous « Reprise des mots de passe
+   d'Arc » (accès « Toujours autoriser » non revérifié, déplacement d'origine
+   par réécriture cohérente, écrasement sans comparer les dates, pas d'intégrité
+   des bases d'Arc).

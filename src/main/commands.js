@@ -172,6 +172,7 @@ const COMMANDS = [
   { name: 'boosts', label: 'boost.list', run: (w) => hooks.openBoost(w, 'list') },
   { name: 'checkUpdates', label: 'app.checkUpdates', global: true, run: () => hooks.checkUpdates() },
   { name: 'importArc', label: 'app.importArc', run: (w) => importArc(w) },
+  { name: 'importArcData', label: 'app.importArcData', run: (w) => importArcData(w) },
   { name: 'importBookmarks', label: 'app.importBookmarks', run: (w) => hooks.importBookmarks(w) },
   { name: 'newProfile', label: 'spaces.newProfile', palette: false, run: (w) => w.newProfile() },
   { name: 'support', label: 'support.menu', run: (w) => w.newTab(SUPPORT_URL) },
@@ -360,6 +361,52 @@ async function undo(w, way = 'undo') {
   const typing = target ? await typingIn(target, w) : false;
   // Dans un champ de texte, ou sans action de la barre latérale à défaire : la page.
   if ((typing || !w.replay(way)) && target) target[way]();
+}
+
+// Historique, mots de passe et connexions d'Arc (import-arc-data.js). Rien n'est lu avant la
+// confirmation, sauf des nombres ; la clé d'Arc est demandée par macOS à l'utilisateur.
+let arcDataBusy = false;
+async function importArcData(w) {
+  const data = require('./import-arc-data');
+  const t = (k, v) => store.t(k, null, v);
+  if (!w.shared || arcDataBusy) return undefined;
+  if (!data.available()) return void dialog.showMessageBox(w.win, { type: 'info', message: t('import.none') });
+  arcDataBusy = true;
+  try {
+    // Chaque profil d'Arc va dans le profil d'Orbe né de lui au premier import.
+    const sessions = require('./sessions');
+    const targets = new Map([['default', { pid: 'default', session: sessions.profileSession('default') }]]);
+    for (const p of store.state.profiles) if (p.arcKey) targets.set(p.arcKey, { pid: p.id, session: sessions.profileSession(p.id) });
+    const n = await data.survey(new Set(targets.keys()));
+    const r = await dialog.showMessageBox(w.win, {
+      type: 'question',
+      message: t('import.dataTitle'),
+      detail: t('import.dataDetail', { profiles: n.profiles, history: n.history, logins: n.logins, cookies: n.cookies }) + '\n\n' + t('import.dataNote'),
+      // Par défaut, le choix le moins engageant : l'historique seul, qui ne lit aucun mot de
+      // passe. « Tout reprendre » demande un clic voulu (relecture de sécurité, constat M4).
+      buttons: [t('import.dataGo'), t('import.dataHistoryOnly'), t('edit.undo')],
+      defaultId: 1,
+      cancelId: 2,
+    });
+    if (r.response === 2) return undefined;
+    const secrets = r.response === 0;
+    const passwords = require('./passwords');
+    w.toast(t('import.dataRunning'));
+    const done = await data.importAll({
+      targets,
+      want: { history: true, logins: secrets, cookies: secrets },
+      sinks: { history: (list) => store.mergeHistory(list), logins: (pid, list) => passwords.importList(pid, list) },
+    });
+    await dialog.showMessageBox(w.win, {
+      type: done.noKey ? 'warning' : 'info',
+      message: t(done.noKey ? 'import.dataNoKey' : 'import.dataDone'),
+      detail: t('import.dataResult', { profiles: done.profiles, history: done.history, logins: done.logins, cookies: done.cookies, skipped: done.skipped })
+        + (secrets && !done.noKey ? '\n\n' + t('import.dataKept') : ''),
+    });
+  } finally {
+    arcDataBusy = false;
+  }
+  return undefined;
 }
 
 // Mise à jour d'après Arc : ce qui changerait est d'abord compté sur une copie de l'état, puis

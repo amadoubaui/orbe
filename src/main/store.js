@@ -328,6 +328,34 @@ class Store {
     this.saveHistory();
   }
 
+  // Historique repris d'un autre navigateur : une adresse déjà connue garde le plus grand
+  // nombre de visites et la date la plus récente ; le tout reste borné, les plus récentes
+  // d'abord. Rend le nombre d'adresses ajoutées.
+  mergeHistory(list) {
+    const h = this.state.history;
+    // Un titre venu d'un autre navigateur est une donnée étrangère : pas de caractères de
+    // contrôle ni de séparateurs de ligne Unicode (U+2028/U+2029). Regex bâtie depuis une
+    // chaîne pour qu'aucun de ces caractères n'entre littéralement dans ce fichier.
+    const ctrl = new RegExp('[\\u0000-\\u001f\\u007f\\u2028\\u2029]', 'g');
+    const cleanTitle = (t) => String(t).replace(ctrl, ' ').slice(0, 300);
+    let added = 0;
+    for (const x of list) {
+      if (!x || !/^https?:/i.test(x.url || '') || !(x.last > 0)) continue;
+      const e = h[x.url];
+      if (!e) { h[x.url] = { url: x.url, visits: Math.max(1, x.visits | 0), last: x.last, ...(x.title ? { title: cleanTitle(x.title) } : {}) }; added += 1; continue; }
+      e.visits = Math.max(e.visits || 0, x.visits | 0);
+      if (x.last > (e.last || 0)) { e.last = x.last; if (x.title) e.title = cleanTitle(x.title); }
+    }
+    let all = Object.values(h);
+    if (all.length > HISTORY_MAX) {
+      all = all.sort((a, b) => b.last - a.last).slice(0, HISTORY_MAX);
+      this.state.history = Object.fromEntries(all.map((x) => [x.url, x]));
+    }
+    this.historyCount = all.length;
+    this.saveHistory();
+    return added;
+  }
+
   touchHistory(url, patch) {
     const e = this.state.history[url];
     if (!e) return;

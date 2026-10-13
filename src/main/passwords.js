@@ -368,6 +368,22 @@ function importCsv(pid, text) {
   return count;
 }
 
+// Comptes repris d'un autre navigateur (import-arc-data.js) : mêmes règles que le CSV —
+// adresse http(s) et mot de passe obligatoires, compte déjà présent mis à jour, une seule
+// écriture du coffre à la fin. Renvoie le décompte, ou null si le coffre est fermé.
+function importList(pid, list) {
+  if (!Array.isArray(list) || !open()) return null;
+  const count = { created: 0, updated: 0, same: 0, skipped: 0 };
+  for (const x of list) {
+    const origin = originOf(x && x.origin);
+    if (!origin || !x.password) { count.skipped += 1; continue; }
+    const res = save(pid, { origin, username: x.username || '', password: x.password }, { persist: false });
+    if (res) count[res.result] += 1; else count.skipped += 1;
+  }
+  if (!write()) return null;
+  return count;
+}
+
 // En clair, par nature : à n'écrire que sur demande explicite. Les colonnes
 // sont celles de l'export Safari / Trousseau iCloud, que Chrome relit aussi.
 function exportCsv(pid) {
@@ -1079,6 +1095,6 @@ function configure(options) {
 module.exports = {
   attach, configure, action, sync, contextMenuItems, openManager, forgetProfile, hooks,
   // Pour les tests et l'import.
-  save, remove, setNever, matchesFor, relation, registrable, importCsv, exportCsv, parseCsv, generate, originOf, status, encryptionAvailable,
+  save, remove, setNever, matchesFor, relation, registrable, importCsv, importList, exportCsv, parseCsv, generate, originOf, status, encryptionAvailable,
   internals: { vault, states, overlays, limits, allowed, CHOICE_TTL, copySecret, clearClipboardIfOurs, authenticate, open, bucket, get manager() { return manager; } },
 };

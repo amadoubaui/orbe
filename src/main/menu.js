@@ -71,6 +71,7 @@ function build() {
         ...(platform.isWin ? [item('undoDefaultBrowser')] : []),
         sep,
         ...(platform.arcSidebarFile() || platform.isMac ? [item('importArc')] : []),
+        ...(platform.arcUserDataDir() ? [item('importArcData')] : []),
         item('importBookmarks'),
         sep,
         { label: t('app.services'), role: 'services' },
