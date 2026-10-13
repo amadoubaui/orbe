@@ -113,12 +113,15 @@
 <div id="drop-line"></div>
 <div id="tip" role="tooltip" hidden><span id="tip-text"></span><kbd id="tip-key"></kbd></div>
 
-<script src="common.js"></script>
-<script src="theme.js"></script>
-<script src="players.js"></script>
-<script src="fx.js"></script>
-<script src="shell.js"></script>
-<script src="libpeek.js"></script>
-<script src="folderpeek.js"></script>
+<!-- Scripts différés : placés en fin de page, ils s'exécutent au même moment et dans le même
+     ordre que sans « defer », mais ils sont demandés tous ensemble au lieu d'un par un, chacun
+     attendant la fin du précédent (DEM-13). -->
+<script src="common.js" defer></script>
+<script src="theme.js" defer></script>
+<script src="players.js" defer></script>
+<script src="fx.js" defer></script>
+<script src="shell.js" defer></script>
+<script src="libpeek.js" defer></script>
+<script src="folderpeek.js" defer></script>
 </body>
 </html>

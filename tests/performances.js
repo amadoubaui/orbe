@@ -33,6 +33,13 @@ module.exports = async function performancesTests(ctx) {
 
   await until(() => ui('typeof S === "object" && S !== null'), 'coque chargée');
 
+  // --- Page de la coque : ses scripts sont demandés ensemble (DEM-13) -----------------
+  {
+    const r = await ui(`(() => { const s = [...document.scripts].filter((x) => x.src); return { n: s.length, differes: s.filter((x) => x.defer).length, ordre: s.map((x) => x.src.split('/').pop()).join(' '), prets: typeof t === 'function' && !!window.OrbeTheme && !!window.renderPlayers && !!window.fxStart && typeof send === 'function' && !!window.libPeek && !!window.folderPeek }; })()`);
+    check('coque : tous ses scripts sont différés (demandés ensemble, exécutés dans l’ordre de la page), et tous ont tourné',
+      r.n >= 7 && r.differes === r.n && r.ordre.startsWith('common.js ') && r.ordre.indexOf('shell.js') < r.ordre.indexOf('libpeek.js') && r.prets, JSON.stringify(r));
+  }
+
   // --- Vues d'appoint : nées de la coque, dans son processus -----------------------
   if (ctx.modalAtStart !== undefined) check('la vue modale n’est pas créée avec la fenêtre : elle attend l’affichage de la coque', ctx.modalAtStart === null);
   await until(() => w.modal && !w.modal.webContents.isLoading() && w.spares.some((s) => s.ready), 'vue modale et réserve prêtes');

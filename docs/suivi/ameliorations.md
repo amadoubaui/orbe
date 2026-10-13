@@ -1139,12 +1139,37 @@ Classés par gain ressenti rapporté au risque.
   instant, passe de 24 à 55 ms : le travail est déplacé, pas supprimé (barre affichée au plus
   tôt à 572 → 561 ms, dans le bruit). Essayé aussi : n'envoyer qu'une langue aux vues
   (516 → 511 ms, dans le bruit, pour un changement du pont de l'interface) : écarté.
-- ⬜ **DEM-13 — La page de la coque se charge 22 ms plus lentement qu'en 0.12.** Relevé en passant
-  (8 quater) : de la navigation à l'événement `load` de `shell.html`, 95 ms (88–110) en 0.12,
-  118 ms (104–136) aujourd'hui, profil vide, charge 4. C'est l'essentiel du retard de toutes les
-  étapes suivantes (barre rendue, vue modale). Non décomposé (scripts de la coque 105 → 150 Ko,
-  textes 79 → 132 Ko transmis par un appel synchrone puis recopiés par le pont : 8 ms par vue,
-  mesuré sur la vue modale). Gain : inconnu, 10 à 20 ms au mieux ; risque faible à moyen. Effort M.
+- ✅ **DEM-13 — La page de la coque se charge 22 ms plus lentement qu'en 0.12.** *(décomposé et corrigé le 13 oct. : scripts différés, « load » 111 → 95 ms)*
+  Relevé en 8 quater : de la navigation à l'événement `load` de `shell.html`, 95 ms (88–110) en
+  0.12, 118 ms (104–136) en 0.15.2. Décomposé le 13 oct. par une trace du moteur au démarrage
+  (`--trace-startup`, deux traces par version) et par des repères posés dans des copies jetables ;
+  mesure `mesures.js coque` ajoutée (étapes de la page, repères s'il y en a). Trois faits :
+  (1) **les scripts de la coque étaient demandés un par un**, chacun après la fin du précédent
+  (1 à 3,5 ms l'aller-retour par le processus principal) : trois en 0.12, sept aujourd'hui, et
+  les deux derniers (`libpeek.js`, `folderpeek.js`) partaient après le « ready » de `shell.js`,
+  donc pendant que le processus principal envoie l'état (3 à 12 ms d'attente de plus) ;
+  (2) le pont de l'interface coûte 3 à 5 ms de plus (textes des deux langues, 79 → 132 Ko :
+  appel synchrone 3 → 5 à 10 ms) ; (3) l'exécution des scripts ne compte pas (3 ms en tout), et
+  la première mise en page (5 à 12 ms) est la même dans les deux versions.
+  Changement : les sept scripts portent `defer`. Placés en fin de page, ils s'exécutent au même
+  moment et dans le même ordre, mais sont demandés tous ensemble. Mesuré, arbre d'avant contre
+  arbre corrigé, 11 tours en alternance, charge 7,5 : `load` **111,4 (106–131) → 95,3 (86–116) ms**,
+  coque chargée 421 → 399 ms depuis la création du processus ; même sens machine chargée
+  (charge 31 : 137 → 119 ms). Les étapes suivantes (barre rendue, vue modale) suivent dans deux
+  séries sur trois, la troisième est dans le bruit d'une machine partagée : gain pour la personne
+  **non établi** au-delà du chargement lui-même. Essayés et non gardés : n'annoncer « ready »
+  qu'à `DOMContentLoaded` (−4 à −12 ms, moins que `defer`), servir les sept scripts en une seule
+  réponse (pas mieux que `defer`, et un fichier de 150 Ko arrive plus tard que le premier petit).
+  Reste : le point (2), déjà essayé en 8 quater sur la vue modale (dans le bruit) ; DEM-14.
+  Risque : faible (ordre d'exécution inchangé). Essai : « coque : tous ses scripts sont différés… ».
+- ⬜ **DEM-14 — Chaque page de l'interface demande un `favicon.ico` qui n'existe pas.** Vu dans les
+  traces de DEM-13 : juste après `load`, la coque (et chaque vue) demande `orbe://app/favicon.ico` ;
+  la demande traverse le processus principal jusqu'à `net.fetch` d'un fichier absent (3 à 8 ms
+  d'aller-retour, hors du chemin du premier affichage, mais au moment où le processus principal
+  crée les vues de réserve). Proposé : répondre tout de suite (réponse vide) ou déclarer une icône
+  vide dans les pages. Gain : non mesuré. De même, les pages des vues (`overlay.html`, quatre
+  scripts) chargent leurs scripts un par un comme la coque avant DEM-13 : `defer` à y essayer,
+  mesure `modale`. Risque faible. Effort S.
 - ➖ **PERF-30 — Ne pas envoyer un état identique au précédent.** Écarté après mesure :
   `sendState` envoie bien 60 fois sur 60 un état identique si on l'appelle 60 fois (0,12 ms côté
   principal, 1,5 ms de tâche dans la coque à 200 onglets), mais au repos **aucun** état n'est

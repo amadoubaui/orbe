@@ -199,6 +199,38 @@ const BENCHES = {
     out({ bench: 'modale', etapes: e, ecarts: { chargeeADemande: round(e.reserveDemandee - e.coqueChargee, 1), demandeAVue: round(e.premiereVueCreee - e.reserveDemandee, 1), vueAChargee: round(e.premiereVueChargee - e.premiereVueCreee, 1), chargeeAPrete: round(e.modalePrete - e.premiereVueChargee, 1), coqueChargeeAPrete: round(e.modalePrete - e.coqueChargee, 1) }, page, coque: shell });
   },
 
+  // Page de la coque (DEM-13) : de la navigation à l'événement « load », étape par étape, et
+  // chaque fichier demandé (début, fin, en ms depuis le début de la navigation). Rien n'est
+  // modifié dans la version mesurée : tout vient des relevés du moteur.
+  async coque({ first: w }) {
+    const t0 = process.getCreationTime();
+    const ui = w.ui.webContents;
+    if (ui.isLoading()) await new Promise((r) => ui.once('did-finish-load', r));
+    const charge = round(performance.timeOrigin + performance.now() - t0, 1);
+    await sleep(1200);
+    const page = await ui.executeJavaScript(`(() => {
+      const n = performance.getEntriesByType('navigation')[0] || {};
+      const fichiers = {};
+      let dernier = 0;
+      for (const x of performance.getEntriesByType('resource')) {
+        if (x.startTime > n.loadEventEnd) continue;
+        const nom = x.name.split('/').pop().replace(/\W/g, '_');
+        fichiers[nom] = { debut: x.startTime, fin: x.responseEnd };
+        dernier = Math.max(dernier, x.responseEnd);
+      }
+      const peint = (performance.getEntriesByType('paint').find((x) => x.name === 'first-contentful-paint') || {}).startTime;
+      // Repères posés à la main dans une copie jetable (performance.mark), s'il y en a.
+      const reperes = {};
+      for (const x of performance.getEntriesByType('mark')) reperes[x.name.replace(/[^a-z0-9]/gi, '_')] = x.startTime;
+      return { origine: performance.timeOrigin, reponse: n.responseEnd, interactif: n.domInteractive, domFini: n.domContentLoadedEventEnd, charge: n.loadEventEnd,
+        scripts: n.domContentLoadedEventStart - n.responseEnd, dernierFichier: dernier, peint, fichiers, reperes };
+    })()`).catch(() => ({}));
+    const r = (o) => { for (const k of Object.keys(o)) { if (typeof o[k] === 'number') o[k] = round(o[k], 1); else if (o[k] && typeof o[k] === 'object') r(o[k]); } return o; };
+    const origine = round(page.origine - t0, 1);
+    delete page.origine;
+    out({ bench: 'coque', navigationDebut: origine, coqueChargee: charge, page: r(page) });
+  },
+
   // Mémoire : au repos, puis après avoir ouvert toutes les vues d'appoint.
   async memoire({ first: w, base }) {
     const rt = await until(() => w.activeRt);
