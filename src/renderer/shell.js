@@ -887,6 +887,11 @@ const PAGER = {
   flick: 1.5, // vitesse (px/ms) d'un geste vif, qui suffit à changer d'Espace
   flickMin: 40, // déplacement minimal pour qu'un geste vif compte
   idle: 90, // sans événement pendant ce temps (ms), les doigts sont considérés levés
+  // Nouveau geste pendant l'inertie du précédent (voir wheelFresh) : l'inertie ne fait que
+  // décroître ; un geste qui repart, lui, remonte nettement après être retombé.
+  freshDrop: 0.6, // le geste décidé doit d'abord être retombé sous cette part de son sommet…
+  freshRise: 1.8, // …puis remonter d'autant de fois son creux…
+  freshMin: 4, // …plus tant de pixels (les frémissements de fin d'inertie ne comptent pas)
   response: 0.2, // ressort du glissement : réponse (s), amortissement critique (≈ 240 ms)
   elastic: 0.55, // raideur de l'élastique au bout de la rangée
   // Nouvel Espace au bout de la rangée : un geste voulu, en deux temps. Tirer d'autant (px,
@@ -906,6 +911,8 @@ const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 let slide = null; // glissement en cours
 let wheelIdle = null;
 let wheelLocked = false; // suite (inertie) d'un geste déjà décidé : ignorée
+let wheelPeak = 0; // sommet du geste décidé (px par événement), depuis le verrou
+let wheelFloor = 0; // creux atteint depuis ce sommet
 let lastWheel = 0;
 let swipeSum = 0;
 
@@ -1102,11 +1109,30 @@ function slideEnd() {
   for (const fn of after) fn();
 }
 
+// Un geste est décidé : sa suite (doigts encore posés, puis inertie) est ignorée.
+function wheelLock(dx) {
+  wheelLocked = true;
+  wheelPeak = wheelFloor = Math.abs(dx || 0);
+}
+
+// Pendant le verrou : cet événement ouvre-t-il un NOUVEAU geste ? macOS envoie l'inertie d'un
+// balayage pendant près d'une seconde, sans silence : attendre qu'elle s'éteigne obligeait à
+// s'arrêter entre deux Espaces. L'inertie ne fait que décroître ; des doigts reposés font
+// remonter le mouvement après qu'il est retombé (ou le font repartir dans l'autre sens).
+function wheelFresh(dx) {
+  const m = Math.abs(dx);
+  // Le geste décidé accélère encore (pas encore retombé) : son sommet monte, rien de nouveau.
+  if (m > wheelPeak && wheelFloor > wheelPeak * PAGER.freshDrop) { wheelPeak = wheelFloor = m; return false; }
+  const fallen = wheelFloor <= wheelPeak * PAGER.freshDrop;
+  wheelFloor = Math.min(wheelFloor, m);
+  return fallen && m >= wheelFloor * PAGER.freshRise + PAGER.freshMin;
+}
+
 // Le balayage a franchi le seuil : on change d'Espace et les listes finissent leur course.
-function slideCommit() {
+function slideCommit(dx) {
   const W = pagerWidth();
   slide.commit = true;
-  wheelLocked = true;
+  wheelLock(dx);
   drawSpaces(S.spaces, slide.targetId); // la pastille change tout de suite
   send('switchSpace', slide.targetId);
   slideFly(slide.dir * W, () => {
@@ -1175,18 +1201,30 @@ sidebar.addEventListener('wheel', (e) => {
   lastWheel = now;
   clearTimeout(wheelIdle);
   wheelIdle = setTimeout(() => { wheelLocked = false; lastWheel = 0; slideRelease(); }, PAGER.idle);
-  if (wheelLocked || !S || drag || editingNow()) return;
+  let fresh = false;
+  if (wheelLocked) {
+    if (!wheelFresh(e.deltaX)) return;
+    wheelLocked = false; // un nouveau geste commence dans l'inertie du précédent
+    fresh = true;
+    swipeSum = 0;
+  }
+  if (!S || drag || editingNow()) return;
   if (reducedMotion.matches) {
     // Sans animation : un geste franc change d'Espace, rien ne glisse.
     swipeSum += e.deltaX;
-    if (Math.abs(swipeSum) > 70) { wheelLocked = true; send('stepSpace', swipeSum > 0 ? 1 : -1); swipeSum = 0; }
+    if (Math.abs(swipeSum) > 70) { wheelLock(e.deltaX); send('stepSpace', swipeSum > 0 ? 1 : -1); swipeSum = 0; }
     return;
   }
-  if (slide && slide.commit) return; // un glissement décidé va à son terme
+  if (slide && slide.commit) {
+    // Un glissement décidé va à son terme. Mais si le geste suivant est déjà là et que le
+    // nouvel Espace est arrivé, il se pose tout de suite : les listes repartent sous les doigts.
+    if (!fresh || !slide.pending) return;
+    slideEnd();
+  }
   if (slide && slide.armed) {
     if (Math.abs(e.deltaX) <= PAGER.jitter) return; // doigts posés : un frémissement ne change rien
     // Le geste repart dans l'autre sens : on renonce, la liste revient, le reste du geste est ignoré.
-    if (e.deltaX < 0) { wheelLocked = true; slideArm(false); slideFly(0, slideEnd); return; }
+    if (e.deltaX < 0) { wheelLock(e.deltaX); slideArm(false); slideFly(0, slideEnd); return; }
     slideHoldStop(); // il continue : le compte à rebours reprendra au prochain arrêt
   }
   let x = e.deltaX;
@@ -1217,7 +1255,7 @@ sidebar.addEventListener('wheel', (e) => {
   slideSet(Math.max(-W, Math.min(W, x)));
   const far = Math.abs(slide.x) >= Math.min(W * PAGER.commit, PAGER.commitMax);
   const brisk = Math.abs(slide.v) >= PAGER.flick && Math.abs(slide.x) >= PAGER.flickMin && Math.sign(slide.v) === dir;
-  if (far || brisk) slideCommit();
+  if (far || brisk) slideCommit(e.deltaX);
 }, { passive: false });
 
 // --- Rebond élastique de la liste ---------------------------------------------

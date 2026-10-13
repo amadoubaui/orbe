@@ -319,5 +319,49 @@ module.exports = {
       await jusqua(async () => (await nom()) === dernier, 'dernier Espace de la rangée');
       assert.equal(await active(), 8);
     });
+
+    // --- Gestes enchaînés (ORB-003) -------------------------------------------------
+    // Un vrai balayage : les doigts accélèrent puis se lèvent, et macOS continue d'envoyer
+    // l'inertie, qui décroît sans jamais se taire pendant près d'une seconde. Tout est envoyé
+    // sans pause de plus de 12 ms : aucun silence ne peut servir de séparation entre deux gestes.
+    const DOIGTS = [4, 10, 20, 35, 45, 45, 40, 30];
+    const envoyer = async (dx) => { await shell.mouse.wheel(dx, 0); await ctx.sleep(12); };
+    const doigts = async (sens) => { for (const v of DOIGTS) await envoyer(sens * v); };
+    const inertie = async (sens, depuis, jusque) => { for (let v = depuis; v >= jusque; v *= 0.9) await envoyer(sens * Math.round(v)); };
+    const surLaBarre = async () => { const c = await ctx.centre(shell.locator('#scroll')); await shell.mouse.move(c.x, c.y); };
+
+    await animer('trois balayages enchaînés sans s’arrêter, chacun lancé dans l’inertie du précédent : trois Espaces de suite', async () => {
+      await repos();
+      await surLaBarre();
+      for (let i = 0; i < 3; i++) { await doigts(-1); await inertie(-1, 27, 5); }
+      await inertie(-1, 5, 1);
+      await jusqua(async () => (await active()) === 5, 'trois Espaces plus loin');
+      await repos();
+      assert.equal(await active(), 5);
+    });
+
+    await animer('… et retour dans l’autre sens, sans pause non plus', async () => {
+      await surLaBarre();
+      for (let i = 0; i < 2; i++) { await doigts(1); await inertie(1, 27, 5); }
+      await inertie(1, 5, 1);
+      await jusqua(async () => (await active()) === 7, 'deux Espaces en arrière');
+      await repos();
+      assert.equal(await active(), 7);
+    });
+
+    await animer('un seul balayage, même vif et suivi de toute son inertie : un seul Espace', async () => {
+      await ctx.sleep(300);
+      await surLaBarre();
+      await doigts(-1);
+      await inertie(-1, 27, 1);
+      await repos();
+      assert.equal(await active(), 6);
+      // Le geste accélère encore après avoir changé d'Espace, puis s'éteint : toujours un seul.
+      await ctx.sleep(300);
+      for (const v of [20, 40, 60, 80, 100, 90]) await envoyer(-v);
+      await inertie(-1, 80, 1);
+      await repos();
+      assert.equal(await active(), 5);
+    });
   },
 };
