@@ -1160,16 +1160,19 @@ Classés par gain ressenti rapporté au risque.
   **non établi** au-delà du chargement lui-même. Essayés et non gardés : n'annoncer « ready »
   qu'à `DOMContentLoaded` (−4 à −12 ms, moins que `defer`), servir les sept scripts en une seule
   réponse (pas mieux que `defer`, et un fichier de 150 Ko arrive plus tard que le premier petit).
-  Reste : le point (2), déjà essayé en 8 quater sur la vue modale (dans le bruit) ; DEM-14.
+  Reste : le point (2), déjà essayé en 8 quater sur la vue modale (dans le bruit). DEM-14, ouvert
+  à cette occasion, a été écarté après mesure.
   Risque : faible (ordre d'exécution inchangé). Essai : « coque : tous ses scripts sont différés… ».
-- ⬜ **DEM-14 — Chaque page de l'interface demande un `favicon.ico` qui n'existe pas.** Vu dans les
-  traces de DEM-13 : juste après `load`, la coque (et chaque vue) demande `orbe://app/favicon.ico` ;
-  la demande traverse le processus principal jusqu'à `net.fetch` d'un fichier absent (3 à 8 ms
-  d'aller-retour, hors du chemin du premier affichage, mais au moment où le processus principal
-  crée les vues de réserve). Proposé : répondre tout de suite (réponse vide) ou déclarer une icône
-  vide dans les pages. Gain : non mesuré. De même, les pages des vues (`overlay.html`, quatre
-  scripts) chargent leurs scripts un par un comme la coque avant DEM-13 : `defer` à y essayer,
-  mesure `modale`. Risque faible. Effort S.
+- ➖ **DEM-14 — Chaque page de l'interface demande un `favicon.ico` qui n'existe pas ; les vues chargent leurs scripts un par un.** Écarté après mesure (13 oct., `mesures.js modale`, arbre d'avant contre arbre modifié, tours en alternance), **rien à gagner** :
+  (a) répondre tout de suite à `orbe://app/favicon.ico` (réponse vide, sans passer par
+  `net.fetch` d'un fichier absent) : coque chargée → vue modale prête 111 (96–167) → 116
+  (99–223) ms, « vue modale prête » 645 → 641 ms (13 tours, charge 13 à 18) : dans le bruit ;
+  la demande part après `load`, hors de tout chemin d'affichage.
+  (b) `defer` sur les quatre scripts de `overlay.html`, comme pour la coque (DEM-13) : vue créée →
+  vue chargée 67,4 (55–92) → 66,4 (59–81) ms, page de la vue 54 → 63 ms (11 tours, charge 12) :
+  aucun gain. La raison se lit dans la trace de DEM-13 : les vues naissent dans le processus de
+  la coque, et `base.css`, `common.js`, `theme.js` leur viennent de son cache en mémoire, sans
+  aller-retour par le processus principal. Les deux changements ont été retirés.
 - ➖ **PERF-30 — Ne pas envoyer un état identique au précédent.** Écarté après mesure :
   `sendState` envoie bien 60 fois sur 60 un état identique si on l'appelle 60 fois (0,12 ms côté
   principal, 1,5 ms de tâche dans la coque à 200 onglets), mais au repos **aucun** état n'est
