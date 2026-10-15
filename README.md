@@ -160,6 +160,14 @@ simples, pour un démarrage rapide et une interface fluide.
 Voir [docs/feuille-de-route.md](docs/feuille-de-route.md). Les prochains
 chantiers : extensions Chrome, synchronisation, puis la version Windows.
 
+## Du même auteur
+
+- [**Atoll**](https://github.com/amadoubaui/atoll) : le navigateur qui démarre
+  comme un système d'exploitation. Bureau, Dock, dossiers, fenêtres, espaces et
+  Mission Control ; chaque site devient une application. [atoll.pixework.pro](https://atoll.pixework.pro)
+- [**KoraCut**](https://github.com/amadoubaui/koracut) : studio multimédia libre
+  (montage, étalonnage, audio, motion design) pilotable par des agents IA.
+
 ## Soutenir le projet
 
 Orbe est gratuit et libre. Si tu veux aider à financer les mises à jour et les
