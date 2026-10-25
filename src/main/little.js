@@ -210,7 +210,9 @@ class LittleWindow {
     if (isInternal(url)) return;
     this.url = url;
     if (!this.view) {
-      this.view = new WebContentsView({ webPreferences: { session: sessions.profileSession(this.profileId), sandbox: true, contextIsolation: true } });
+      // Chrome exige une activation de la page pour démarrer un média ; le défaut
+      // d'Electron est `no-user-gesture-required`.
+      this.view = new WebContentsView({ webPreferences: { session: sessions.profileSession(this.profileId), sandbox: true, contextIsolation: true, autoplayPolicy: 'document-user-activation-required' } });
       this.view.setBackgroundColor('#ffffff');
       this.view.setBorderRadius(9);
       this.win.contentView.addChildView(this.view);

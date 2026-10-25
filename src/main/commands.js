@@ -107,6 +107,10 @@ const COMMANDS = [
   { name: 'prevSpace', label: 'spaces.prev', accel: 'Alt+Cmd+Left', keys: '⌥⌘←', run: (w) => w.stepSpace(-1) },
   // Onglets
   { name: 'togglePin', label: 'tabs.pin', accel: 'Cmd+D', keys: '⌘D', run: (w) => (w.selected().length > 1 ? w.pinMany(w.selected()) : w.togglePin()) },
+  // Suppression directe de l'onglet affiché, s'il est épinglé ou favori. Le
+  // raccourci ne vaut que tant que l'article du menu Onglets est là (onglet
+  // épinglé ou favori affiché) : ailleurs, il n'est pas enregistré.
+  { name: 'deleteActive', label: 'tabs.deletePinned', accel: 'Alt+Cmd+Backspace', keys: '⌥⌘⌫', paletteLabel: (w) => { const l = hardActive(w); return l === 'favorites' ? 'tabs.deleteFavorite' : l ? 'tabs.deletePinned' : ''; }, run: (w) => { if (hardActive(w)) w.deleteTabs([w.activeId]); } },
   { name: 'newFolder', label: 'tabs.newFolder', run: (w) => w.newFolder() },
   { name: 'openInSpace', label: 'little.openIn', accel: 'Alt+Cmd+O', keys: '⌥⌘O', palette: false, run: () => {} },
   { name: 'expandPeek', label: 'peek.expand', accel: 'Cmd+O', keys: '⌘O', palette: false, run: (w) => w.expandPeek() },
@@ -211,6 +215,12 @@ function greet(w) {
 function strayed(w) {
   const tab = w.activeId ? w.data.tabs[w.activeId] : null;
   return !!tab && !!tab.homeUrl && tab.homeUrl !== tab.url;
+}
+
+// Liste de l'onglet affiché s'il peut être supprimé définitivement, sinon ''.
+function hardActive(w) {
+  const loc = w.activeId ? w.locate(w.activeId) : null;
+  return loc && (loc.list === 'pinned' || loc.list === 'favorites') ? loc.list : '';
 }
 
 // « Remplacer l'adresse épinglée par l'adresse actuelle ».

@@ -216,7 +216,7 @@ const GROUPS = [
   ['menu.view', ['toggleSidebar', 'toggleToolbar', 'collapsePinned', 'stop', 'reload', 'forceReload', 'clearCookies', 'clearCache', 'addSplit', 'addSplitRight', 'addSplitLeft', 'addSplitTop', 'addSplitBottom', 'splitDirection', 'closeSplit', 'separateSplit', 'separateAll', 'expandSplit', 'nextPane', 'prevPane', 'pane1', 'pane2', 'pane3', 'pane4', 'boost', 'zap', 'boosts', 'actualSize', 'zoomIn', 'zoomOut', 'fullscreen']],
   ['view.developer', ['source', 'devtools', 'inspect', 'console', 'network', 'toggleDevMode', 'taskManager']],
   ['menu.spaces', ['newSpace', 'editTheme', 'renameSpace', 'newProfile', 'deleteSpace', 'manageSpaces', 'nextSpace', 'prevSpace']],
-  ['menu.tabs', ['togglePin', 'newFolder', 'duplicate', 'expandPeek', 'openInSpace', 'toggleMute', 'nextTab', 'prevTab', 'revealTab', 'clearToday', 'resetTabs', 'expandFolders', 'collapseFolders']],
+  ['menu.tabs', ['togglePin', 'deleteActive', 'newFolder', 'duplicate', 'expandPeek', 'openInSpace', 'toggleMute', 'nextTab', 'prevTab', 'revealTab', 'clearToday', 'resetTabs', 'expandFolders', 'collapseFolders']],
   ['menu.archive', ['back', 'forward', 'history', 'viewArchive', 'clearArchive']],
   ['menu.window', ['stayOnTop', 'library', 'downloads', 'media', 'notes', 'easels']],
   ['menu.extensions', ['cycleExtensions']],

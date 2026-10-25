@@ -184,7 +184,7 @@ function setup({ win, sessions, test = false }) {
   controlDeps.live = live;
   // Geste récent de l'utilisateur dans un onglet (relevé par popups.gesture) : sert au partage d'écran et aux liens externes.
   const gesture = (wc) => { const where = locate(wc); if (!where) return null; return where.rt.gesture ? Date.now() - where.rt.gesture : Infinity; };
-  permissions.setup({ test, toast, ownerWindow, gesture });
+  permissions.setup({ test, toast, ownerWindow, gesture, popup: (wc) => popups.isMark(wc) });
   displayMedia.setup({ test, toast });
   certs.setup();
   auth.setup();
@@ -209,6 +209,7 @@ function setup({ win, sessions, test = false }) {
   hooks.stayed = (wc) => unload.stayedAgo(wc);
   hooks.input = (rt, input) => popups.gesture(rt, input);
   hooks.popup = (rt, details) => popups.allowed(rt, details);
+  hooks.popupOpened = (wc) => popups.mark(wc);
   hooks.navigated = (rt) => popups.reset(rt);
   hooks.busy = (rt) => capture.of(rt.wc).length > 0;
   hooks.tabState = (rt) => capture.of(rt.wc);

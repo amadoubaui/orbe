@@ -204,6 +204,18 @@ function shouldBlock(url, { firstPartyUrl, resourceType } = {}) {
   return !!host && isListed(host) && isThirdParty(host, hostOf(firstPartyUrl));
 }
 
+// Fonction pure : faut-il refuser une popup vers `url`, ouverte par la page
+// `firstPartyUrl` ? `window.open` ne déclenche pas `onBeforeRequest` : le filtre
+// réseau ne voit pas ces ouvertures. Contrairement à `shouldBlock`, l'état
+// `enabled` compte ici puisque l'écouteur de popups n'est pas retiré ;
+// `isThirdParty` applique déjà « même site » et la liste d'exceptions.
+function shouldBlockPopup(url, firstPartyUrl) {
+  if (!enabled) return false;
+  if (!domains) loadSync();
+  const host = hostOf(url);
+  return !!host && isListed(host) && isThirdParty(host, hostOf(firstPartyUrl));
+}
+
 // Hôte de la page affichée dans l'onglet d'où part la requête. Dans l'ordre :
 //   1. `frame.top.url` — le plus fiable, juste même depuis une iframe imbriquée ;
 //   2. `webContents.getURL()` — si le cadre a déjà disparu ;
@@ -370,7 +382,7 @@ function configure(opts = {}) {
 const info = () => ({ loaded: !!domains, domains: domains ? domains.size : 0, loadMs, listPath });
 
 module.exports = {
-  attach, configure, setEnabled, isEnabled, allowSite, isSiteAllowed, stats, resetTab, shouldBlock,
+  attach, configure, setEnabled, isEnabled, allowSite, isSiteAllowed, stats, resetTab, shouldBlock, shouldBlockPopup,
   // Pour composer avec un autre écouteur onBeforeRequest, et pour les outils :
   decide, FILTER, load, loadSync, setDomains, info, hostOf, registrableDomain, isSuffix,
 };

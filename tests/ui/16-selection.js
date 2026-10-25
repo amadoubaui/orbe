@@ -208,6 +208,19 @@ module.exports = {
       await jusqua(async () => (await shell.locator('#sidebar .sel').count()) === 0, 'sélection vidée');
     });
 
+    await t.verifier('menu de la sélection épinglée : « Supprimer les 2 onglets » ; ⌘Z les rétablit', async () => {
+      await choisir(ligne('Page D', '#pinned'), ligne('Page B', '#pinned'));
+      const vu = await menuDe(ligne('Page B', '#pinned'));
+      assert.ok(vu.includes(await libelle('tabs.deleteMany', { n: 2 })), 'article de suppression présent : ' + vu.join('|'));
+      await actionner('tabs.deleteMany', { n: 2 });
+      await jusqua(async () => (await epingles()).join() === '[Lot: Page E, Page C]', 'épinglés supprimés');
+      const e = await ctx.etat();
+      assert.ok(!e.archive.includes(ctx.url('/d')) && !e.archive.includes(ctx.url('/b')), 'aucune archive pour les épinglés');
+      await attendreSelection([]);
+      await ctx.menu('Cmd+Z');
+      await jusqua(async () => (await epingles()).join() === '[Lot: Page E, Page C],Page D,Page B', 'épinglés rétablis');
+    });
+
     await ctx.ouvrir('/a', 'Page A');
     await ctx.ouvrir('/c', 'Page C');
 

@@ -781,7 +781,7 @@ module.exports = async function selftest(ctx) {
   }
 
   // Téléchargement
-  win.live.get(a.id).wc.downloadURL(base + '/file.txt');
+  require('../src/main/downloads').saveFrom(win.live.get(a.id).wc, base + '/file.txt');
   await until(() => store.state.downloads[0] && store.state.downloads[0].state === 'completed', 'téléchargement terminé');
   const dl = store.state.downloads[0];
   check('téléchargement enregistré', fs.existsSync(dl.path) && fs.readFileSync(dl.path, 'utf8') === 'bonjour');

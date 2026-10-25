@@ -32,6 +32,7 @@ module.exports = async function reglagesTests(ctx) {
   const set = (patch) => globalAction('settings:set', patch, null);
   const suggest = require('../src/main/suggest');
   const sessions = require('../src/main/sessions');
+  const downloads = require('../src/main/downloads');
   const boosts = require('../src/main/boosts');
   const bm = require('../src/main/import-bookmarks');
   const more = require('../src/main/ext-more');
@@ -175,7 +176,7 @@ module.exports = async function reglagesTests(ctx) {
   fs.mkdirSync(own2);
   await globalAction('settings:setProfile', { id: pid, key: 'downloadDir', value: own2 }, null);
   check('dossier des téléchargements propre à un profil', sessions.hooks.downloadDir(sessions.profileSession(pid)) === own2 && sessions.hooks.downloadDir(sessions.mainSession()) === tmp);
-  wc.downloadURL(base + '/f.txt');
+  downloads.saveFrom(wc, base + '/f.txt');
   await until(() => fs.existsSync(path.join(tmp, 'reglages-essai.txt')), 'fichier téléchargé');
   check('un téléchargement arrive dans le dossier choisi', fs.readFileSync(path.join(tmp, 'reglages-essai.txt'), 'utf8') === 'bonjour');
   fs.rmSync(own2, { recursive: true });

@@ -188,7 +188,7 @@ module.exports = {
       try {
         await ctx.clic(shell, ctx.ligne('Page A'));
         await jusqua(async () => (await volets()).actif === 'Page A', 'Page A affichée');
-        await ctx.principal(({ w, store }, a) => { store.state.settings.downloadDir = a.dir; w.activeRt.wc.downloadURL(a.url); }, { dir: dossier, url: `http://127.0.0.1:${serveur.address().port}/gros.bin` });
+        await ctx.principal(({ w, store, req }, a) => { store.state.settings.downloadDir = a.dir; req('downloads.js').saveFrom(w.activeRt.wc, a.url); }, { dir: dossier, url: `http://127.0.0.1:${serveur.address().port}/gros.bin` });
         const ligne = shell.locator('#dls .dl').first();
         await jusqua(() => ligne.isVisible(), 'ligne du téléchargement', 10000);
         assert.equal(await ligne.locator('.dl-name').textContent(), 'gros.bin');

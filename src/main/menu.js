@@ -197,6 +197,9 @@ function build() {
       submenu: [
         item('newTab', { accelerator: undefined }),
         item('togglePin', { labelKey: pinned ? 'tabs.unpin' : 'tabs.pin' }),
+        ...(loc && (loc.list === 'pinned' || loc.list === 'favorites')
+          ? [item('deleteActive', { labelKey: loc.list === 'favorites' ? 'tabs.deleteFavorite' : 'tabs.deletePinned' })]
+          : []),
         item('newFolder'),
         item('duplicate'),
         item('expandPeek', { enabled: !!w && !!w.peekState }),

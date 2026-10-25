@@ -162,6 +162,19 @@ module.exports = {
       assert.equal((await ctx.etat()).archive[0], ctx.url('/a'), 'rétablir la suppression archive de nouveau l’onglet, sans reposer la question');
     });
 
+    await t.verifier('épinglé supprimé puis ⌘Z : il revient épinglé, hors archive', async () => {
+      await menuContextuel(ligne('Page D', '#pinned'), 'tabs.deletePinned');
+      await attendre([], () => ctx.titres('#pinned'));
+      assert.ok(!(await ctx.etat()).archive.includes(ctx.url('/d')), 'pas d’archive pour un épinglé supprimé');
+      await menuDit('Cmd+Z', 'Annuler Supprimer l’onglet épinglé');
+      await annuler();
+      await attendre(['Page D'], () => ctx.titres('#pinned'));
+      await retablir();
+      await attendre([], () => ctx.titres('#pinned'));
+      await annuler();
+      await attendre(['Page D'], () => ctx.titres('#pinned'));
+    });
+
     await t.verifier('aperçu fermé par son bouton puis ⌘Z : il se rouvre', async () => {
       await ctx.clic(shell, ligne('Page C'));
       await jusqua(async () => (await ctx.etat()).actifUrl === ctx.url('/c'), 'C affiché');

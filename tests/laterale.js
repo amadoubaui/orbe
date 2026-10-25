@@ -195,6 +195,44 @@ module.exports = async function lateraleTests(ctx) {
   check('… la page est fermée, l’onglet reste épinglé', !win.live.has(p1) && space.pinned.some((n) => n.id === p1) && !!d.tabs[p1]);
   check('… et l’article est grisé tant que la page est fermée', pick(w.tabMenuTemplate(p1), 'tabs.closeKeep').enabled === false);
 
+  // Suppression directe : « Supprimer définitivement l'onglet épinglé ».
+  w.activate(p1);
+  await until(() => win.live.has(p1) && !wcOf(p1).isLoading(), 'épinglé rechargé avant suppression');
+  menu.build();
+  const menuDel = menuItem('tabs.deletePinned');
+  check('menu Onglets : « Supprimer définitivement l’onglet épinglé » avec son raccourci pour l’onglet affiché, et l’action dans la barre de commande',
+    !!menuDel && !!menuDel.accelerator && menuDel.accelerator === require('../src/main/shortcuts').accelOf('deleteActive')
+    && w.commandList().some((c) => c.command === 'deleteActive'));
+  w.activate(A);
+  menu.build();
+  check('… ni l’un ni l’autre pour un onglet du jour',
+    !menuItem('tabs.deletePinned') && !menuItem('tabs.deleteFavorite') && !w.commandList().some((c) => c.command === 'deleteActive'));
+  w.activate(p1);
+  menu.build();
+  menuItem('tabs.deletePinned').click();
+  check('… l’article du menu supprime l’onglet affiché',
+    !d.tabs[p1] && !space.pinned.some((n) => n.id === p1) && w.pendingLabel('undo') === 'undo.deletePinned');
+  w.replay('undo');
+  check('… et ⌘Z le rétablit épinglé', !!d.tabs[p1] && space.pinned.some((n) => n.id === p1));
+  const pinnedAt = space.pinned.findIndex((n) => n.id === p1);
+  const homeBefore = d.tabs[p1].homeUrl;
+  const archiveBefore = store.state.archive.length;
+  tpl = w.tabMenuTemplate(p1);
+  check('menu d’un épinglé : « Supprimer définitivement l’onglet épinglé », absent d’un onglet du jour',
+    labels(tpl).includes(T('tabs.deletePinned')) && !labels(w.tabMenuTemplate(A)).includes(T('tabs.deletePinned')));
+  pick(tpl, 'tabs.deletePinned').click();
+  check('… il quitte la barre, sa vue est fermée et rien n’entre dans l’archive',
+    !d.tabs[p1] && !space.pinned.some((n) => n.id === p1) && !win.live.has(p1) && store.state.archive.length === archiveBefore
+    && w.pendingLabel('undo') === 'undo.deletePinned', w.pendingLabel('undo'));
+  w.replay('undo');
+  check('⌘Z le rétablit épinglé, au même rang, avec son adresse',
+    space.pinned.findIndex((n) => n.id === p1) === pinnedAt && !!d.tabs[p1] && d.tabs[p1].homeUrl === homeBefore
+    && !space.today.includes(p1) && store.state.archive.length === archiveBefore);
+  w.replay('redo');
+  check('⇧⌘Z le supprime de nouveau', !d.tabs[p1] && !space.pinned.some((n) => n.id === p1));
+  w.replay('undo');
+  check('⌘Z le rétablit encore', !!d.tabs[p1] && space.pinned.some((n) => n.id === p1));
+
   // « / » : l'épinglé a quitté son adresse ; retour, ⌘clic, adresse remplacée.
   w.activate(p1);
   await until(() => win.live.has(p1) && !wcOf(p1).isLoading(), 'épinglé rechargé');

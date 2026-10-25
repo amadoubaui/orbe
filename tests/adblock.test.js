@@ -4,7 +4,7 @@ const { test, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const adblock = require('../src/main/adblock');
 
-const { shouldBlock, hostOf, registrableDomain } = adblock;
+const { shouldBlock, shouldBlockPopup, hostOf, registrableDomain } = adblock;
 const PAGE = 'https://www.journal.fr/article/1';
 const from = (firstPartyUrl, resourceType = 'script') => ({ firstPartyUrl, resourceType });
 
@@ -102,6 +102,36 @@ test('liste d\'exceptions : rien n\'est bloqué sur un site autorisé', () => {
   adblock.allowSite('journal.fr', false);
   assert.equal(shouldBlock('https://pub.test/ad.js', from(PAGE)), true);
   assert.deepEqual(changes, [{ enabled: true, allowlist: ['journal.fr'] }, { enabled: true, allowlist: [] }]);
+});
+
+test('shouldBlockPopup : refuse une ouverture vers un domaine publicitaire listé', () => {
+  assert.equal(shouldBlockPopup('https://pub.test/pop.html', PAGE), true);
+  assert.equal(shouldBlockPopup('https://x.traceur.co.uk/p.gif', PAGE), true);
+  assert.equal(shouldBlockPopup('https://cdn.eu.pub.test/pop.html', 'https://journal.fr/'), true);
+  // Même site : la popup appartient au site qui l'ouvre.
+  assert.equal(shouldBlockPopup('https://stats.journal.fr/pop.html', 'https://abonnes.journal.fr/'), false);
+  assert.equal(shouldBlockPopup('https://ads.pub.test/a', 'https://pub.test/'), false);
+  // Liste d'exceptions : le site autorisé ouvre ce qu'il veut.
+  adblock.allowSite('journal.fr', true);
+  assert.equal(shouldBlockPopup('https://pub.test/pop.html', 'https://www.journal.fr/'), false);
+  assert.equal(shouldBlockPopup('https://pub.test/pop.html', 'https://autre.fr/'), true);
+  adblock.allowSite('journal.fr', false);
+  // Bloqueur désactivé : aucune ouverture n'est refusée, même vers un tiers listé.
+  adblock.setEnabled(false);
+  assert.equal(shouldBlockPopup('https://pub.test/pop.html', 'https://autre.fr/'), false);
+  adblock.setEnabled(true);
+  // Schémas non http(s)/ws(s) : jamais bloqués, quel que soit l'hôte apparent.
+  for (const url of ['orbe://pub.test/x', 'file:///pub.test/x', 'chrome-extension://pub.test/x.js', 'data:text/plain,pub.test', 'blob:https://pub.test/42', '']) {
+    assert.equal(shouldBlockPopup(url, PAGE), false, url);
+  }
+});
+
+test('shouldBlockPopup : charge la liste au premier appel', () => {
+  adblock.configure({ listPath: adblock.info().listPath + '.absent' }); // force un rechargement
+  adblock.configure({ listPath: require('path').join(__dirname, '../assets/blocklist.txt') });
+  assert.equal(adblock.info().loaded, false);
+  assert.equal(shouldBlockPopup('https://securepubads.g.doubleclick.net/tag/js/gpt.js', PAGE), true);
+  assert.equal(adblock.info().loaded, true);
 });
 
 test('configure : reprend l\'état enregistré sans le signaler en retour', () => {

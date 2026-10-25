@@ -1034,48 +1034,48 @@ module.exports = async function essentielsTests(ctx) {
   const dlDir = app.getPath('downloads');
   const custom = fs.mkdtempSync(path.join(os.tmpdir(), 'orbe-dl-'));
   const dl = await open(A + '/fichiers', 'Page /fichiers');
-  // Téléchargements multiples : une page a droit à un téléchargement qu'on ne lui a pas demandé ; au suivant, Orbe demande.
+  // Même le premier téléchargement automatique d'une page sans geste demande l'autorisation.
   {
     const ses = dl.wc.session;
     const count = () => store.state.downloads.length;
     const n0 = count();
     dl.wc.downloadURL(A + '/note.txt');
-    await until(() => count() === n0 + 1, 'premier téléchargement automatique');
-    dl.wc.downloadURL(A + '/note.txt');
     sheet = await sheetOf(dl.wc, 'perm');
-    check('téléchargements multiples : le deuxième téléchargement lancé par la page sans geste attend une réponse, sur une feuille qui nomme le site',
-      count() === n0 + 1 && sheet.payload.lines.join() === t('perm.downloads') && sheet.payload.site === permissions.siteName(A), sheet.payload);
+    check('premier téléchargement lancé par la page sans geste : la feuille demande l’autorisation avant toute écriture',
+      count() === n0 && sheet.payload.lines.join() === t('perm.downloads') && sheet.payload.site === permissions.siteName(A), sheet.payload);
     check('la demande d’autorisation est une bulle ancrée en haut de la page, qui dit où changer d’avis',
       await inSheet(sheet, '(() => { const c = document.getElementById("card").getBoundingClientRect(); return document.body.classList.contains("anchor") && c.top < 40 && c.left < 40 && document.getElementById("later").textContent.length > 20; })()'));
     await press(sheet, 'deny');
-    dl.wc.downloadURL(A + '/note.txt');
-    check('refus : retenu pour le site, plus de question ni de téléchargement automatique', store.state.permissions[A].downloads === false && await noSheet(dl.wc) && count() === n0 + 1);
-    downloads.saveFrom(dl.wc, A + '/note.txt');
-    await until(() => count() === n0 + 2, 'téléchargement demandé par Orbe');
-    await click(dl.wc);
-    dl.wc.downloadURL(A + '/note.txt');
-    await until(() => count() === n0 + 3, 'téléchargement après un geste');
+    await until(() => store.state.permissions[A] && store.state.permissions[A].downloads === false, 'refus retenu');
+    check('refus : rien n’est téléchargé et le refus est retenu pour le site', count() === n0 && store.state.permissions[A].downloads === false);
     dl.wc.downloadURL(A + '/note.txt');
     await sleep(300);
-    check('« Enregistrer l’image » (demandé par Orbe) et un téléchargement qui suit un geste passent toujours ; un geste n’en couvre qu’un', count() === n0 + 3);
+    check('le refus retenu vaut pour les suivants, sans nouvelle question', await noSheet(dl.wc) && count() === n0);
+    downloads.saveFrom(dl.wc, A + '/note.txt');
+    await until(() => count() === n0 + 1, 'téléchargement demandé par Orbe');
+    await click(dl.wc);
+    dl.wc.downloadURL(A + '/note.txt');
+    await until(() => count() === n0 + 2, 'téléchargement après un geste');
+    dl.wc.downloadURL(A + '/note.txt');
+    await sleep(300);
+    check('« Enregistrer l’image » (demandé par Orbe) et un téléchargement qui suit un geste passent toujours ; un geste n’en couvre qu’un', count() === n0 + 2);
     // Site sans réponse retenue, page rechargée : la question revient, et « Autoriser » relance le fichier refusé.
     permissions.reset(ses, A, 'downloads');
     win.live.get(dl.id).gesture = 0;
     dl.wc.reload();
     await until(() => !dl.wc.isLoading() && permissions.internals.pages.get(dl.wc.id).downloads === 0, 'page rechargée');
     dl.wc.downloadURL(A + '/note.txt');
-    await until(() => count() === n0 + 4, 'premier téléchargement de la page rechargée');
-    dl.wc.downloadURL(A + '/note.txt');
     sheet = await sheetOf(dl.wc, 'perm');
     await press(sheet, 'allow');
-    await until(() => count() === n0 + 5, 'téléchargement relancé après l’accord');
+    await until(() => count() === n0 + 3, 'téléchargement relancé après l’accord');
     dl.wc.downloadURL(A + '/note.txt');
-    await until(() => count() === n0 + 6, 'téléchargements suivants sans question');
+    await until(() => count() === n0 + 4, 'téléchargements suivants sans question');
     check('accord : retenu pour le site, le fichier refusé repart et les suivants passent sans question', store.state.permissions[A].downloads === true && !sheets.top(dl.wc));
     check('… et l’autorisation figure parmi celles du site', permissions.list(ses, A).some((x) => x.key === 'downloads' && x.value === true && x.label === t('perm.downloads')));
-    await until(() => store.state.downloads.slice(0, 6).every((d) => d.state !== 'progressing'), 'téléchargements d’essai terminés');
+    const made = count() - n0;
+    await until(() => store.state.downloads.slice(0, made).every((d) => d.state !== 'progressing'), 'téléchargements d’essai terminés');
     // Les fichiers de cet essai ne restent pas : la suite compte sur un dossier sans « note.txt ».
-    for (const d of store.state.downloads.slice(0, 6)) { try { fs.rmSync(d.path, { force: true }); } catch {} }
+    for (const d of store.state.downloads.slice(0, made)) { try { fs.rmSync(d.path, { force: true }); } catch {} }
   }
   const newest = () => store.state.downloads[0];
   const start = async (file) => { const before = newest(); dl.wc.downloadURL(A + file); return until(() => (newest() !== before ? newest() : null), 'téléchargement lancé : ' + file); };

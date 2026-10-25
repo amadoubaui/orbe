@@ -358,7 +358,7 @@ module.exports = {
 
     // ------------------------------------------------------------- Téléchargements
     await t.verifier('Bibliothèque : pause, reprise et annulation d’un téléchargement en cours', async () => {
-      await ctx.principal(({ w }, u) => { w.activeRt.wc.downloadURL(u); }, A + '/gros.bin');
+      await ctx.principal(({ w, req }, u) => { req('downloads.js').saveFrom(w.activeRt.wc, u); }, A + '/gros.bin');
       await jusqua(() => fs.existsSync(path.join(dossier, 'gros.bin')), 'fichier créé dans le dossier choisi', 10000);
       await ctx.menu('Shift+Cmd+J');
       const lib = await ctx.attendrePage('library.html');

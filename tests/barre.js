@@ -205,6 +205,59 @@ module.exports = async function barreTests(ctx) {
   w.rename(space.id, 'Autre nom');
   check('une nouvelle action vide la liste de ce qui peut être rétabli', pending('redo') === null && pending() === 'undo.renameSpace');
 
+  // --- Suppression définitive (épinglés, favoris) -----------------------------
+  wipe();
+  w.switchSpace(space.id);
+  const [n1, n2, n3, n4] = make('nopq');
+  const delFolder = { type: 'folder', id: 'del-dossier', name: 'À supprimer', open: true, children: [] };
+  space.pinned.push(delFolder);
+  w.togglePin(n1);
+  w.togglePin(n2);
+  w.move({ id: n2, to: 'folder', folderId: delFolder.id, index: 0 });
+  w.toggleFavorite(n4);
+  w.splitWith(n1, n3);
+  w.activate(n1);
+  w.toggleSplitDirection();
+  const split0 = [...(w.groupOf(n1) || [])];
+  const vert0 = w.isVertical(w.groupOf(n1));
+  w.undoStack.length = 0;
+  w.redoStack.length = 0;
+  const beforeDel = snap();
+  const arch0 = store.state.archive.length;
+  const said = [];
+  const toast0 = w.toast;
+  w.toast = (text) => { said.push(text); };
+  w.handle('deleteTabs', { ids: [n1, n2, n3, n4] });
+  w.toast = toast0;
+  const gone = snap();
+  check('suppression : le bilan sépare les suppressions des archivages',
+    said.includes(store.t('toast.tabsDeletedMixed', null, { p: 3, n: 1 })), said.join(' | '));
+  check('suppression : épinglés et favori partent définitivement, l’onglet du jour part à l’archive',
+    !d.tabs[n1] && !d.tabs[n2] && !d.tabs[n3] && !d.tabs[n4]
+    && !space.pinned.some((n) => n.id === n1) && delFolder.children.length === 0 && !w.favorites.includes(n4)
+    && store.state.archive.some((x) => x.url === url('p'))
+    && !store.state.archive.some((x) => [url('n'), url('o'), url('q')].includes(x.url))
+    && ![n1, n2, n3, n4].some((id) => win.live.has(id)), JSON.stringify(store.state.archive.map((x) => x.url)));
+  check('suppression : une seule action ⌘Z, l’onglet affiché est remplacé', pending() === 'undo.deleteTabs' && !w.activeBySpace[space.id], pending());
+  w.replay('undo');
+  const restored = () => ({
+    snap: snap() === beforeDel,
+    fav: w.favorites.includes(n4),
+    split: (w.groupOf(n1) || []).join() === split0.join(),
+    vertical: w.isVertical(w.groupOf(n1)) === vert0,
+    archive: store.state.archive.length === arch0,
+    active: [n1, n3].includes(w.activeBySpace[space.id]),
+  });
+  check('⌘Z rétablit tout, au même endroit : épinglé, dossier, favori, onglet du jour, vue scindée et sens',
+    Object.values(restored()).every(Boolean), `${JSON.stringify(restored())}\n${snap()}\n≠ ${beforeDel}`);
+  w.replay('redo');
+  check('⇧⌘Z supprime de nouveau, sans archiver les épinglés ni le favori',
+    snap() === gone && !d.tabs[n1] && !d.tabs[n2] && !d.tabs[n3] && !d.tabs[n4]
+    && !store.state.archive.some((x) => [url('n'), url('o'), url('q')].includes(x.url))
+    && store.state.archive.some((x) => x.url === url('p')));
+  w.replay('undo');
+  check('⌘Z les rétablit encore', snap() === beforeDel);
+
   // Effacer Aujourd'hui : tout revient, dans l'ordre, l'onglet affiché ne change pas.
   wipe();
   const lot = make('ghijk');

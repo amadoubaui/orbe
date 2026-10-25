@@ -1881,10 +1881,11 @@ sidebar.addEventListener('drop', (e) => {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && drag) { if (!drag.settling) endDrag(); }
   else if (e.key === 'Escape' && sel.size) setSel([]);
-  // Suppr ou Retour arrière, la barre latérale ayant le clavier : archive la sélection.
+  // Suppr ou Retour arrière, la barre latérale ayant le clavier : supprime la sélection
+  // (épinglés et favoris définitivement, onglets du jour vers l'archive).
   else if ((e.key === 'Delete' || e.key === 'Backspace') && sel.size && !editingNow()) {
     e.preventDefault();
-    send('close', { ids: [...sel] });
+    send('deleteTabs', { ids: [...sel] });
   }
 });
 

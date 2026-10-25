@@ -90,15 +90,16 @@ toutes ses garanties.
 Ce que le panneau ne propose pas : accès des extensions site par site et extensions en
 navigation privée, qu'Electron ne permet pas de faire respecter (voir `docs/extensions.md`).
 
-## Téléchargements multiples (`downloadGate` dans `src/main/permissions.js`)
+## Téléchargements automatiques (`downloadGate` dans `src/main/permissions.js`)
 
-Une page peut lancer un téléchargement que personne n'a demandé ; au **deuxième**, Orbe pose
-la question (« Télécharger plusieurs fichiers à la suite »), retenue par site comme les autres
-autorisations. Est « demandé » : un téléchargement que le moteur rattache à un geste, celui
-qui suit un geste dans l'onglet de moins de cinq secondes (un seul par geste), et ceux
-qu'Orbe lance lui-même (« Enregistrer l'image »). La décision est synchrone (`will-download`) :
-le téléchargement qui déclenche la question est refusé, puis relancé si la réponse est oui et
-que la page est toujours là. Une seule question par page ; un refus vaut pour le site.
+Une page peut lancer un téléchargement que personne n'a demandé ; Orbe pose alors la question
+(« Télécharger des fichiers automatiquement »), retenue par site comme les autres autorisations,
+dès le premier téléchargement automatique. Restent « demandés » : un téléchargement que le
+moteur rattache à un geste, celui qui suit un geste dans l'onglet de moins de cinq secondes (un
+seul par geste), et ceux qu'Orbe lance lui-même (« Enregistrer l'image »). La décision est
+synchrone (`will-download`) : le téléchargement qui déclenche la question est refusé, puis
+relancé si la réponse est oui et que la page est toujours là. Une seule question par page ; un
+refus vaut pour le site.
 
 ## Mode développeur automatique (`devAuto` dans `src/main/prefs.js`)
 

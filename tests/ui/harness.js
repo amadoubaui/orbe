@@ -72,11 +72,16 @@ function servir() {
 }
 
 // --- Lancement ------------------------------------------------------------------
-async function lancer() {
+// `opts.userData` / `opts.serveur` : relancer le vrai navigateur sur le profil
+// (et les pages locales) d'un lancement précédent — pour éprouver le démarrage
+// à froid, qui seul restaure une session comme au premier lancement de
+// l'application. Le premier lancement garde son serveur ouvert (ctx.arreter)
+// et le second ferme tout (ctx.fermer).
+async function lancer(opts = {}) {
   const { _electron } = require(path.join(runtime, 'node_modules', 'playwright-core'));
-  const { server, hits } = await servir();
+  const { server, hits } = opts.serveur || await servir();
   const hote = `127.0.0.1:${server.address().port}`;
-  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'orbe-ui-'));
+  const userData = opts.userData || fs.mkdtempSync(path.join(os.tmpdir(), 'orbe-ui-'));
   const app = await _electron.launch({
     executablePath: electronBin,
     // Trousseau factice : les tests ne touchent jamais au vrai trousseau du système.
@@ -87,7 +92,7 @@ async function lancer() {
     env: { ...process.env, ORBE_USER_DATA: userData, ORBE_NO_WELCOME: '1', ORBE_UI_TEST: '1' },
   });
 
-  const ctx = { app, hote, hits, userData, root, sleep, jusqua, delai };
+  const ctx = { app, hote, hits, userData, serveur: { server, hits }, root, sleep, jusqua, delai };
 
   // --- Journal du processus principal ---------------------------------------------
   // Tout ce qu'il écrit est gardé, avec le code ou le signal de sa fin : si
@@ -451,11 +456,19 @@ async function lancer() {
     } catch {}
   };
 
-  ctx.fermer = async () => {
+  // Ferme l'application seule : le profil et les pages locales restent en place
+  // pour un lancement à froid suivant (voir `lancer`).
+  ctx.arreter = async () => {
     ctx.fermeture = true;
     try { await delai(app.close(), 6000, 'fermeture'); } catch { try { app.process().kill('SIGKILL'); } catch {} }
-    if (server.closeAllConnections) server.closeAllConnections();
-    await new Promise((r) => server.close(r));
+  };
+
+  ctx.fermer = async () => {
+    await ctx.arreter();
+    try {
+      if (server.closeAllConnections) server.closeAllConnections();
+      await new Promise((r) => server.close(() => r()));
+    } catch {}
     try { fs.rmSync(userData, { recursive: true, force: true }); } catch {}
   };
 

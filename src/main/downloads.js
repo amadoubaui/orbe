@@ -327,7 +327,7 @@ function attach(ses, { persist, hooks }) {
     // Demandé par Orbe pour l'utilisateur (« Enregistrer l'image ») : hors de la règle qui suit.
     const wanted = wc && !wc.isDestroyed() ? expected.get(wc.id) : null;
     const mine = !!wanted && wanted.delete(item.getURL());
-    // Téléchargements multiples lancés par la page sans rien demander (permissions.downloadGate).
+    // Téléchargements automatiques lancés par la page sans rien demander (permissions.downloadGate).
     if (!mine && !env.gate(ses, wc, item)) { event.preventDefault(); return; }
     const name = safeName(item.getFilename());
     let target = uniquePath(downloadDir(ses), name);
